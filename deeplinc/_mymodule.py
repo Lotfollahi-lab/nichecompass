@@ -11,7 +11,7 @@ from torch.distributions import kl_divergence as kl
 torch.backends.cudnn.benchmark = True
 
 
-class MyModule(BaseModuleClass):
+class DeepLinc(BaseModuleClass):
     """
     Skeleton Variational auto-encoder model.
 
