@@ -1,4 +1,4 @@
-"""scvi-tools-skeleton."""
+"""scvi-tools-skeleton.
 
 import logging
 
@@ -35,3 +35,5 @@ logger.addHandler(ch)
 logger.propagate = False
 
 __all__ = ["MyModel", "MyModule", "MyPyroModel", "MyPyroModule"]
+
+"""

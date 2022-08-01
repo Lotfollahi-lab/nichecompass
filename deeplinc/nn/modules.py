@@ -76,9 +76,11 @@ class GCNLayer(nn.Module):
         Activation function used in the GCN layer.
     """
 
-    def __init__(
-        self, n_input: int, n_output: int, dropout: float = 0.0, activation=F.relu
-    ):
+    def __init__(self,
+                 n_input: int,
+                 n_output: int,
+                 dropout: float = 0.0,
+                 activation=F.relu):
         self.dropout = dropout
         self.activation = activation
         self.weights = nn.Parameter(
@@ -94,6 +96,49 @@ class GCNLayer(nn.Module):
         output = F.dropout(input, self.dropout, self.training)
         output = torch.mm(output, self.weights)
         output = torch.mm(adj_mtx, output)
+        return self.activation(output)
+
+
+class SparseGCNLayer(nn.Module):
+    """
+    Graph convolutional network layer class as per Kipf, T. N. & Welling, M.
+    Semi-Supervised Classification with Graph Convolutional Networks. arXiv
+    [cs.LG] (2016).
+
+    Parameters
+    ----------
+    n_input
+        Number of input nodes to the GCN Layer.
+    n_output
+        Number of output nodes from the GCN layer.
+    dropout
+        Probability of nodes to be dropped during training.
+    activation
+        Activation function used in the GCN layer.
+    """
+
+    def __init__(self,
+                 n_input: int,
+                 n_output: int,
+                 dropout: float = 0.0,
+                 activation=F.relu):
+        self.dropout = dropout
+        self.activation = activation
+        self.weights = nn.Parameter(
+            torch.Tensor(n_input, n_output, dtype=torch.float32)
+        )
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        # Glorot weight initialization
+        torch.nn.init.xavier_uniform_(self.weights)
+
+    def forward(self,
+                input: torch.sparse_coo_tensor,
+                adj_mtx: torch.sparse_coo_tensor):
+        output = F.dropout(input, self.dropout, self.training)
+        output = torch.sparse.mm(output, self.weights)
+        output = torch.sparse.mm(adj_mtx, output)
         return self.activation(output)
 
 
@@ -131,7 +176,10 @@ class GCNEncoder(nn.Module):
         activation=F.relu,
     ):
         super(GCNEncoder, self).__init__()
-        self.gcn_l1 = GCNLayer(n_input, n_hidden, dropout, activation=activation)
+        self.gcn_l1 = SparseGCNLayer(n_input,
+                                     n_hidden,
+                                     dropout,
+                                     activation=activation)
         self.gcn_mu = GCNLayer(n_hidden, n_latent, activation=lambda x: x)
         self.gcn_logstd = GCNLayer(n_hidden, n_latent, activation=lambda x: x)
 

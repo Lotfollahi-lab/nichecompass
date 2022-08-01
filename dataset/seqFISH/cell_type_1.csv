@@ -1,0 +1,1598 @@
+Cell_ID,Cell_class_id,Cell_class_name
+1,0,neuron
+2,0,neuron
+3,0,neuron
+4,0,neuron
+5,0,neuron
+6,0,neuron
+7,0,neuron
+8,0,neuron
+9,0,neuron
+10,0,neuron
+11,0,neuron
+12,0,neuron
+13,0,neuron
+14,0,neuron
+15,0,neuron
+16,0,neuron
+17,0,neuron
+18,0,neuron
+19,0,neuron
+20,0,neuron
+21,0,neuron
+22,0,neuron
+23,0,neuron
+24,0,neuron
+25,0,neuron
+26,0,neuron
+27,0,neuron
+28,0,neuron
+29,0,neuron
+30,0,neuron
+31,0,neuron
+32,0,neuron
+33,0,neuron
+34,0,neuron
+35,0,neuron
+36,0,neuron
+37,0,neuron
+38,0,neuron
+39,0,neuron
+40,0,neuron
+41,0,neuron
+42,0,neuron
+43,0,neuron
+44,0,neuron
+45,0,neuron
+46,1,glial cells
+47,2,Endo
+48,0,neuron
+49,1,glial cells
+50,0,neuron
+51,0,neuron
+52,0,neuron
+53,1,glial cells
+54,0,neuron
+55,0,neuron
+56,0,neuron
+57,0,neuron
+58,0,neuron
+59,0,neuron
+60,0,neuron
+61,0,neuron
+62,0,neuron
+63,1,glial cells
+64,0,neuron
+65,0,neuron
+66,0,neuron
+67,0,neuron
+68,0,neuron
+69,0,neuron
+70,0,neuron
+71,0,neuron
+72,0,neuron
+73,0,neuron
+74,0,neuron
+75,0,neuron
+76,0,neuron
+77,0,neuron
+78,0,neuron
+79,0,neuron
+80,0,neuron
+81,0,neuron
+82,0,neuron
+83,0,neuron
+84,0,neuron
+85,0,neuron
+86,0,neuron
+87,0,neuron
+88,0,neuron
+89,0,neuron
+90,0,neuron
+91,1,glial cells
+92,0,neuron
+93,0,neuron
+94,1,glial cells
+95,1,glial cells
+96,1,glial cells
+97,1,glial cells
+98,0,neuron
+99,0,neuron
+100,1,glial cells
+101,0,neuron
+102,0,neuron
+103,0,neuron
+104,0,neuron
+105,0,neuron
+106,0,neuron
+107,0,neuron
+108,0,neuron
+109,1,glial cells
+110,0,neuron
+111,0,neuron
+112,0,neuron
+113,0,neuron
+114,0,neuron
+115,0,neuron
+116,0,neuron
+117,0,neuron
+118,0,neuron
+119,0,neuron
+120,0,neuron
+121,0,neuron
+122,1,glial cells
+123,0,neuron
+124,0,neuron
+125,0,neuron
+126,0,neuron
+127,0,neuron
+128,0,neuron
+129,0,neuron
+130,1,glial cells
+131,0,neuron
+132,0,neuron
+133,0,neuron
+134,0,neuron
+135,1,glial cells
+136,0,neuron
+137,0,neuron
+138,0,neuron
+139,0,neuron
+140,0,neuron
+141,0,neuron
+142,0,neuron
+143,0,neuron
+144,0,neuron
+145,0,neuron
+146,0,neuron
+147,0,neuron
+148,0,neuron
+149,0,neuron
+150,0,neuron
+151,0,neuron
+152,0,neuron
+153,0,neuron
+154,0,neuron
+155,0,neuron
+156,0,neuron
+157,0,neuron
+158,0,neuron
+159,0,neuron
+160,0,neuron
+161,0,neuron
+162,0,neuron
+163,0,neuron
+164,0,neuron
+165,0,neuron
+166,0,neuron
+167,0,neuron
+168,1,glial cells
+169,0,neuron
+170,0,neuron
+171,0,neuron
+172,0,neuron
+173,0,neuron
+174,0,neuron
+175,0,neuron
+176,0,neuron
+177,0,neuron
+178,0,neuron
+179,0,neuron
+180,0,neuron
+181,0,neuron
+182,0,neuron
+183,0,neuron
+184,0,neuron
+185,0,neuron
+186,0,neuron
+187,0,neuron
+188,0,neuron
+189,0,neuron
+190,0,neuron
+191,0,neuron
+192,0,neuron
+193,0,neuron
+194,0,neuron
+195,0,neuron
+196,0,neuron
+197,1,glial cells
+198,0,neuron
+199,0,neuron
+200,0,neuron
+201,2,Endo
+202,0,neuron
+203,0,neuron
+204,0,neuron
+205,0,neuron
+206,0,neuron
+207,1,glial cells
+208,0,neuron
+209,0,neuron
+210,0,neuron
+211,0,neuron
+212,0,neuron
+213,0,neuron
+214,0,neuron
+215,0,neuron
+216,0,neuron
+217,0,neuron
+218,0,neuron
+219,0,neuron
+220,0,neuron
+221,0,neuron
+222,0,neuron
+223,0,neuron
+224,0,neuron
+225,0,neuron
+226,0,neuron
+227,0,neuron
+228,0,neuron
+229,0,neuron
+230,0,neuron
+231,0,neuron
+232,0,neuron
+233,0,neuron
+234,1,glial cells
+235,0,neuron
+236,0,neuron
+237,0,neuron
+238,1,glial cells
+239,0,neuron
+240,0,neuron
+241,0,neuron
+242,0,neuron
+243,0,neuron
+244,1,glial cells
+245,0,neuron
+246,0,neuron
+247,0,neuron
+248,0,neuron
+249,0,neuron
+250,0,neuron
+251,1,glial cells
+252,0,neuron
+253,0,neuron
+254,0,neuron
+255,0,neuron
+256,0,neuron
+257,0,neuron
+258,0,neuron
+259,0,neuron
+260,0,neuron
+261,0,neuron
+262,0,neuron
+263,0,neuron
+264,0,neuron
+265,0,neuron
+266,1,glial cells
+267,0,neuron
+268,0,neuron
+269,0,neuron
+270,0,neuron
+271,0,neuron
+272,0,neuron
+273,0,neuron
+274,0,neuron
+275,0,neuron
+276,0,neuron
+277,0,neuron
+278,0,neuron
+279,2,Endo
+280,0,neuron
+281,0,neuron
+282,0,neuron
+283,0,neuron
+284,0,neuron
+285,0,neuron
+286,2,Endo
+287,0,neuron
+288,0,neuron
+289,0,neuron
+290,0,neuron
+291,1,glial cells
+292,0,neuron
+293,0,neuron
+294,0,neuron
+295,1,glial cells
+296,1,glial cells
+297,0,neuron
+298,0,neuron
+299,0,neuron
+300,0,neuron
+301,0,neuron
+302,0,neuron
+303,0,neuron
+304,0,neuron
+305,0,neuron
+306,0,neuron
+307,0,neuron
+308,0,neuron
+309,0,neuron
+310,0,neuron
+311,0,neuron
+312,0,neuron
+313,0,neuron
+314,0,neuron
+315,0,neuron
+316,0,neuron
+317,0,neuron
+318,0,neuron
+319,0,neuron
+320,0,neuron
+321,0,neuron
+322,0,neuron
+323,0,neuron
+324,0,neuron
+325,0,neuron
+326,0,neuron
+327,0,neuron
+328,0,neuron
+329,0,neuron
+330,0,neuron
+331,0,neuron
+332,0,neuron
+333,0,neuron
+334,1,glial cells
+335,0,neuron
+336,1,glial cells
+337,0,neuron
+338,0,neuron
+339,0,neuron
+340,0,neuron
+341,0,neuron
+342,0,neuron
+343,0,neuron
+344,0,neuron
+345,0,neuron
+346,0,neuron
+347,0,neuron
+348,0,neuron
+349,0,neuron
+350,0,neuron
+351,0,neuron
+352,0,neuron
+353,0,neuron
+354,0,neuron
+355,0,neuron
+356,0,neuron
+357,0,neuron
+358,0,neuron
+359,0,neuron
+360,0,neuron
+361,0,neuron
+362,0,neuron
+363,0,neuron
+364,0,neuron
+365,1,glial cells
+366,0,neuron
+367,0,neuron
+368,0,neuron
+369,0,neuron
+370,0,neuron
+371,0,neuron
+372,1,glial cells
+373,0,neuron
+374,0,neuron
+375,0,neuron
+376,0,neuron
+377,0,neuron
+378,0,neuron
+379,0,neuron
+380,0,neuron
+381,0,neuron
+382,1,glial cells
+383,0,neuron
+384,0,neuron
+385,0,neuron
+386,0,neuron
+387,0,neuron
+388,0,neuron
+389,0,neuron
+390,0,neuron
+391,0,neuron
+392,0,neuron
+393,0,neuron
+394,0,neuron
+395,0,neuron
+396,0,neuron
+397,0,neuron
+398,0,neuron
+399,0,neuron
+400,0,neuron
+401,0,neuron
+402,0,neuron
+403,0,neuron
+404,1,glial cells
+405,0,neuron
+406,0,neuron
+407,1,glial cells
+408,0,neuron
+409,0,neuron
+410,1,glial cells
+411,0,neuron
+412,0,neuron
+413,0,neuron
+414,0,neuron
+415,0,neuron
+416,0,neuron
+417,1,glial cells
+418,0,neuron
+419,0,neuron
+420,0,neuron
+421,0,neuron
+422,0,neuron
+423,0,neuron
+424,0,neuron
+425,0,neuron
+426,0,neuron
+427,0,neuron
+428,0,neuron
+429,0,neuron
+430,0,neuron
+431,0,neuron
+432,0,neuron
+433,0,neuron
+434,1,glial cells
+435,0,neuron
+436,0,neuron
+437,0,neuron
+438,0,neuron
+439,0,neuron
+440,0,neuron
+441,0,neuron
+442,0,neuron
+443,0,neuron
+444,1,glial cells
+445,0,neuron
+446,0,neuron
+447,0,neuron
+448,0,neuron
+449,0,neuron
+450,0,neuron
+451,0,neuron
+452,0,neuron
+453,0,neuron
+454,0,neuron
+455,0,neuron
+456,0,neuron
+457,0,neuron
+458,0,neuron
+459,0,neuron
+460,0,neuron
+461,1,glial cells
+462,0,neuron
+463,0,neuron
+464,0,neuron
+465,0,neuron
+466,0,neuron
+467,0,neuron
+468,0,neuron
+469,1,glial cells
+470,0,neuron
+471,0,neuron
+472,0,neuron
+473,0,neuron
+474,0,neuron
+475,0,neuron
+476,1,glial cells
+477,0,neuron
+478,0,neuron
+479,1,glial cells
+480,0,neuron
+481,0,neuron
+482,0,neuron
+483,0,neuron
+484,1,glial cells
+485,0,neuron
+486,0,neuron
+487,0,neuron
+488,0,neuron
+489,0,neuron
+490,0,neuron
+491,0,neuron
+492,1,glial cells
+493,0,neuron
+494,0,neuron
+495,1,glial cells
+496,1,glial cells
+497,0,neuron
+498,0,neuron
+499,0,neuron
+500,0,neuron
+501,0,neuron
+502,1,glial cells
+503,1,glial cells
+504,1,glial cells
+505,0,neuron
+506,0,neuron
+507,0,neuron
+508,0,neuron
+509,0,neuron
+510,1,glial cells
+511,0,neuron
+512,1,glial cells
+513,0,neuron
+514,0,neuron
+515,0,neuron
+516,1,glial cells
+517,0,neuron
+518,0,neuron
+519,1,glial cells
+520,1,glial cells
+521,0,neuron
+522,0,neuron
+523,0,neuron
+524,0,neuron
+525,0,neuron
+526,1,glial cells
+527,1,glial cells
+528,0,neuron
+529,0,neuron
+530,1,glial cells
+531,0,neuron
+532,0,neuron
+533,0,neuron
+534,0,neuron
+535,0,neuron
+536,0,neuron
+537,0,neuron
+538,0,neuron
+539,0,neuron
+540,0,neuron
+541,0,neuron
+542,0,neuron
+543,0,neuron
+544,0,neuron
+545,0,neuron
+546,0,neuron
+547,1,glial cells
+548,0,neuron
+549,0,neuron
+550,1,glial cells
+551,0,neuron
+552,1,glial cells
+553,0,neuron
+554,0,neuron
+555,0,neuron
+556,0,neuron
+557,0,neuron
+558,0,neuron
+559,0,neuron
+560,0,neuron
+561,1,glial cells
+562,0,neuron
+563,0,neuron
+564,0,neuron
+565,0,neuron
+566,1,glial cells
+567,0,neuron
+568,1,glial cells
+569,1,glial cells
+570,0,neuron
+571,1,glial cells
+572,0,neuron
+573,0,neuron
+574,1,glial cells
+575,0,neuron
+576,0,neuron
+577,0,neuron
+578,1,glial cells
+579,1,glial cells
+580,0,neuron
+581,1,glial cells
+582,1,glial cells
+583,0,neuron
+584,0,neuron
+585,0,neuron
+586,0,neuron
+587,0,neuron
+588,0,neuron
+589,0,neuron
+590,0,neuron
+591,0,neuron
+592,0,neuron
+593,1,glial cells
+594,0,neuron
+595,0,neuron
+596,0,neuron
+597,0,neuron
+598,0,neuron
+599,0,neuron
+600,0,neuron
+601,0,neuron
+602,0,neuron
+603,0,neuron
+604,0,neuron
+605,0,neuron
+606,0,neuron
+607,0,neuron
+608,0,neuron
+609,0,neuron
+610,0,neuron
+611,0,neuron
+612,0,neuron
+613,0,neuron
+614,0,neuron
+615,0,neuron
+616,0,neuron
+617,0,neuron
+618,0,neuron
+619,0,neuron
+620,0,neuron
+621,0,neuron
+622,0,neuron
+623,0,neuron
+624,0,neuron
+625,1,glial cells
+626,0,neuron
+627,0,neuron
+628,0,neuron
+629,0,neuron
+630,0,neuron
+631,0,neuron
+632,0,neuron
+633,0,neuron
+634,0,neuron
+635,0,neuron
+636,0,neuron
+637,0,neuron
+638,0,neuron
+639,0,neuron
+640,0,neuron
+641,0,neuron
+642,0,neuron
+643,0,neuron
+644,0,neuron
+645,0,neuron
+646,0,neuron
+647,0,neuron
+648,0,neuron
+649,0,neuron
+650,1,glial cells
+651,0,neuron
+652,0,neuron
+653,0,neuron
+654,0,neuron
+655,0,neuron
+656,0,neuron
+657,0,neuron
+658,0,neuron
+659,0,neuron
+660,0,neuron
+661,0,neuron
+662,0,neuron
+663,0,neuron
+664,0,neuron
+665,0,neuron
+666,0,neuron
+667,0,neuron
+668,1,glial cells
+669,0,neuron
+670,0,neuron
+671,0,neuron
+672,0,neuron
+673,0,neuron
+674,0,neuron
+675,0,neuron
+676,0,neuron
+677,0,neuron
+678,0,neuron
+679,0,neuron
+680,0,neuron
+681,0,neuron
+682,0,neuron
+683,0,neuron
+684,0,neuron
+685,1,glial cells
+686,0,neuron
+687,0,neuron
+688,0,neuron
+689,0,neuron
+690,0,neuron
+691,2,Endo
+692,0,neuron
+693,0,neuron
+694,0,neuron
+695,1,glial cells
+696,0,neuron
+697,0,neuron
+698,0,neuron
+699,0,neuron
+700,0,neuron
+701,0,neuron
+702,0,neuron
+703,0,neuron
+704,0,neuron
+705,0,neuron
+706,0,neuron
+707,0,neuron
+708,0,neuron
+709,0,neuron
+710,0,neuron
+711,0,neuron
+712,0,neuron
+713,0,neuron
+714,1,glial cells
+715,0,neuron
+716,0,neuron
+717,1,glial cells
+718,2,Endo
+719,0,neuron
+720,0,neuron
+721,1,glial cells
+722,0,neuron
+723,0,neuron
+724,1,glial cells
+725,1,glial cells
+726,0,neuron
+727,0,neuron
+728,0,neuron
+729,0,neuron
+730,0,neuron
+731,0,neuron
+732,0,neuron
+733,0,neuron
+734,0,neuron
+735,1,glial cells
+736,0,neuron
+737,0,neuron
+738,0,neuron
+739,0,neuron
+740,0,neuron
+741,2,Endo
+742,0,neuron
+743,0,neuron
+744,0,neuron
+745,2,Endo
+746,0,neuron
+747,0,neuron
+748,0,neuron
+749,1,glial cells
+750,0,neuron
+751,0,neuron
+752,0,neuron
+753,1,glial cells
+754,0,neuron
+755,0,neuron
+756,0,neuron
+757,0,neuron
+758,0,neuron
+759,0,neuron
+760,0,neuron
+761,0,neuron
+762,0,neuron
+763,0,neuron
+764,0,neuron
+765,0,neuron
+766,0,neuron
+767,1,glial cells
+768,0,neuron
+769,0,neuron
+770,0,neuron
+771,0,neuron
+772,1,glial cells
+773,1,glial cells
+774,0,neuron
+775,0,neuron
+776,0,neuron
+777,0,neuron
+778,0,neuron
+779,0,neuron
+780,0,neuron
+781,0,neuron
+782,0,neuron
+783,0,neuron
+784,0,neuron
+785,0,neuron
+786,0,neuron
+787,0,neuron
+788,0,neuron
+789,0,neuron
+790,0,neuron
+791,0,neuron
+792,0,neuron
+793,0,neuron
+794,0,neuron
+795,0,neuron
+796,0,neuron
+797,0,neuron
+798,0,neuron
+799,0,neuron
+800,0,neuron
+801,0,neuron
+802,0,neuron
+803,0,neuron
+804,0,neuron
+805,0,neuron
+806,0,neuron
+807,0,neuron
+808,0,neuron
+809,0,neuron
+810,0,neuron
+811,0,neuron
+812,0,neuron
+813,1,glial cells
+814,0,neuron
+815,0,neuron
+816,1,glial cells
+817,0,neuron
+818,0,neuron
+819,0,neuron
+820,0,neuron
+821,0,neuron
+822,0,neuron
+823,0,neuron
+824,0,neuron
+825,0,neuron
+826,0,neuron
+827,0,neuron
+828,1,glial cells
+829,0,neuron
+830,0,neuron
+831,0,neuron
+832,0,neuron
+833,0,neuron
+834,1,glial cells
+835,0,neuron
+836,0,neuron
+837,0,neuron
+838,0,neuron
+839,0,neuron
+840,2,Endo
+841,0,neuron
+842,0,neuron
+843,0,neuron
+844,0,neuron
+845,0,neuron
+846,0,neuron
+847,0,neuron
+848,0,neuron
+849,0,neuron
+850,0,neuron
+851,0,neuron
+852,0,neuron
+853,0,neuron
+854,0,neuron
+855,0,neuron
+856,0,neuron
+857,0,neuron
+858,0,neuron
+859,0,neuron
+860,0,neuron
+861,0,neuron
+862,1,glial cells
+863,0,neuron
+864,0,neuron
+865,0,neuron
+866,0,neuron
+867,0,neuron
+868,0,neuron
+869,0,neuron
+870,0,neuron
+871,0,neuron
+872,0,neuron
+873,0,neuron
+874,0,neuron
+875,0,neuron
+876,1,glial cells
+877,0,neuron
+878,0,neuron
+879,0,neuron
+880,1,glial cells
+881,0,neuron
+882,1,glial cells
+883,0,neuron
+884,0,neuron
+885,0,neuron
+886,0,neuron
+887,0,neuron
+888,0,neuron
+889,1,glial cells
+890,0,neuron
+891,0,neuron
+892,0,neuron
+893,0,neuron
+894,0,neuron
+895,0,neuron
+896,1,glial cells
+897,0,neuron
+898,0,neuron
+899,0,neuron
+900,0,neuron
+901,1,glial cells
+902,0,neuron
+903,0,neuron
+904,0,neuron
+905,1,glial cells
+906,1,glial cells
+907,0,neuron
+908,0,neuron
+909,1,glial cells
+910,1,glial cells
+911,0,neuron
+912,0,neuron
+913,0,neuron
+914,0,neuron
+915,0,neuron
+916,0,neuron
+917,0,neuron
+918,0,neuron
+919,0,neuron
+920,1,glial cells
+921,0,neuron
+922,0,neuron
+923,0,neuron
+924,0,neuron
+925,0,neuron
+926,0,neuron
+927,0,neuron
+928,1,glial cells
+929,0,neuron
+930,0,neuron
+931,0,neuron
+932,0,neuron
+933,0,neuron
+934,0,neuron
+935,0,neuron
+936,0,neuron
+937,0,neuron
+938,0,neuron
+939,0,neuron
+940,0,neuron
+941,0,neuron
+942,0,neuron
+943,0,neuron
+944,0,neuron
+945,0,neuron
+946,0,neuron
+947,0,neuron
+948,0,neuron
+949,1,glial cells
+950,0,neuron
+951,0,neuron
+952,0,neuron
+953,0,neuron
+954,0,neuron
+955,0,neuron
+956,0,neuron
+957,0,neuron
+958,0,neuron
+959,0,neuron
+960,0,neuron
+961,0,neuron
+962,1,glial cells
+963,0,neuron
+964,0,neuron
+965,1,glial cells
+966,1,glial cells
+967,0,neuron
+968,0,neuron
+969,1,glial cells
+970,0,neuron
+971,0,neuron
+972,0,neuron
+973,0,neuron
+974,0,neuron
+975,0,neuron
+976,0,neuron
+977,0,neuron
+978,1,glial cells
+979,0,neuron
+980,0,neuron
+981,1,glial cells
+982,0,neuron
+983,0,neuron
+984,0,neuron
+985,0,neuron
+986,0,neuron
+987,1,glial cells
+988,0,neuron
+989,0,neuron
+990,0,neuron
+991,0,neuron
+992,0,neuron
+993,0,neuron
+994,0,neuron
+995,0,neuron
+996,0,neuron
+997,0,neuron
+998,0,neuron
+999,0,neuron
+1000,0,neuron
+1001,0,neuron
+1002,0,neuron
+1003,1,glial cells
+1004,0,neuron
+1005,0,neuron
+1006,0,neuron
+1007,0,neuron
+1008,0,neuron
+1009,0,neuron
+1010,1,glial cells
+1011,0,neuron
+1012,0,neuron
+1013,0,neuron
+1014,0,neuron
+1015,0,neuron
+1016,0,neuron
+1017,0,neuron
+1018,0,neuron
+1019,0,neuron
+1020,0,neuron
+1021,0,neuron
+1022,1,glial cells
+1023,0,neuron
+1024,1,glial cells
+1025,0,neuron
+1026,0,neuron
+1027,0,neuron
+1028,0,neuron
+1029,0,neuron
+1030,0,neuron
+1031,0,neuron
+1032,0,neuron
+1033,0,neuron
+1034,0,neuron
+1035,0,neuron
+1036,0,neuron
+1037,0,neuron
+1038,0,neuron
+1039,0,neuron
+1040,0,neuron
+1041,2,Endo
+1042,0,neuron
+1043,1,glial cells
+1044,0,neuron
+1045,0,neuron
+1046,0,neuron
+1047,0,neuron
+1048,0,neuron
+1049,0,neuron
+1050,1,glial cells
+1051,0,neuron
+1052,0,neuron
+1053,0,neuron
+1054,0,neuron
+1055,0,neuron
+1056,0,neuron
+1057,1,glial cells
+1058,0,neuron
+1059,0,neuron
+1060,0,neuron
+1061,0,neuron
+1062,0,neuron
+1063,0,neuron
+1064,0,neuron
+1065,0,neuron
+1066,0,neuron
+1067,1,glial cells
+1068,0,neuron
+1069,0,neuron
+1070,1,glial cells
+1071,0,neuron
+1072,1,glial cells
+1073,0,neuron
+1074,0,neuron
+1075,0,neuron
+1076,0,neuron
+1077,0,neuron
+1078,0,neuron
+1079,0,neuron
+1080,0,neuron
+1081,0,neuron
+1082,0,neuron
+1083,0,neuron
+1084,0,neuron
+1085,0,neuron
+1086,0,neuron
+1087,0,neuron
+1088,0,neuron
+1089,1,glial cells
+1090,0,neuron
+1091,0,neuron
+1092,0,neuron
+1093,0,neuron
+1094,0,neuron
+1095,0,neuron
+1096,0,neuron
+1097,0,neuron
+1098,0,neuron
+1099,0,neuron
+1100,0,neuron
+1101,0,neuron
+1102,0,neuron
+1103,0,neuron
+1104,0,neuron
+1105,0,neuron
+1106,0,neuron
+1107,0,neuron
+1108,0,neuron
+1109,0,neuron
+1110,1,glial cells
+1111,0,neuron
+1112,0,neuron
+1113,0,neuron
+1114,0,neuron
+1115,0,neuron
+1116,0,neuron
+1117,0,neuron
+1118,0,neuron
+1119,0,neuron
+1120,0,neuron
+1121,1,glial cells
+1122,0,neuron
+1123,1,glial cells
+1124,0,neuron
+1125,0,neuron
+1126,0,neuron
+1127,0,neuron
+1128,0,neuron
+1129,0,neuron
+1130,0,neuron
+1131,0,neuron
+1132,0,neuron
+1133,0,neuron
+1134,1,glial cells
+1135,0,neuron
+1136,0,neuron
+1137,1,glial cells
+1138,0,neuron
+1139,0,neuron
+1140,0,neuron
+1141,1,glial cells
+1142,0,neuron
+1143,0,neuron
+1144,0,neuron
+1145,0,neuron
+1146,0,neuron
+1147,1,glial cells
+1148,0,neuron
+1149,0,neuron
+1150,0,neuron
+1151,0,neuron
+1152,0,neuron
+1153,1,glial cells
+1154,0,neuron
+1155,0,neuron
+1156,0,neuron
+1157,0,neuron
+1158,0,neuron
+1159,0,neuron
+1160,0,neuron
+1161,0,neuron
+1162,0,neuron
+1163,0,neuron
+1164,0,neuron
+1165,0,neuron
+1166,0,neuron
+1167,0,neuron
+1168,0,neuron
+1169,0,neuron
+1170,0,neuron
+1171,0,neuron
+1172,0,neuron
+1173,0,neuron
+1174,0,neuron
+1175,0,neuron
+1176,0,neuron
+1177,0,neuron
+1178,1,glial cells
+1179,0,neuron
+1180,0,neuron
+1181,1,glial cells
+1182,0,neuron
+1183,0,neuron
+1184,0,neuron
+1185,0,neuron
+1186,0,neuron
+1187,0,neuron
+1188,1,glial cells
+1189,0,neuron
+1190,0,neuron
+1191,0,neuron
+1192,0,neuron
+1193,0,neuron
+1194,0,neuron
+1195,0,neuron
+1196,0,neuron
+1197,0,neuron
+1198,0,neuron
+1199,0,neuron
+1200,0,neuron
+1201,0,neuron
+1202,0,neuron
+1203,0,neuron
+1204,0,neuron
+1205,0,neuron
+1206,1,glial cells
+1207,0,neuron
+1208,0,neuron
+1209,0,neuron
+1210,1,glial cells
+1211,0,neuron
+1212,0,neuron
+1213,0,neuron
+1214,0,neuron
+1215,0,neuron
+1216,0,neuron
+1217,0,neuron
+1218,0,neuron
+1219,0,neuron
+1220,1,glial cells
+1221,0,neuron
+1222,0,neuron
+1223,0,neuron
+1224,0,neuron
+1225,0,neuron
+1226,0,neuron
+1227,0,neuron
+1228,0,neuron
+1229,0,neuron
+1230,0,neuron
+1231,0,neuron
+1232,0,neuron
+1233,0,neuron
+1234,0,neuron
+1235,0,neuron
+1236,0,neuron
+1237,0,neuron
+1238,0,neuron
+1239,0,neuron
+1240,0,neuron
+1241,0,neuron
+1242,1,glial cells
+1243,1,glial cells
+1244,0,neuron
+1245,0,neuron
+1246,1,glial cells
+1247,0,neuron
+1248,0,neuron
+1249,0,neuron
+1250,1,glial cells
+1251,0,neuron
+1252,0,neuron
+1253,0,neuron
+1254,1,glial cells
+1255,0,neuron
+1256,0,neuron
+1257,0,neuron
+1258,0,neuron
+1259,0,neuron
+1260,0,neuron
+1261,0,neuron
+1262,0,neuron
+1263,0,neuron
+1264,0,neuron
+1265,0,neuron
+1266,0,neuron
+1267,0,neuron
+1268,0,neuron
+1269,0,neuron
+1270,0,neuron
+1271,0,neuron
+1272,0,neuron
+1273,0,neuron
+1274,0,neuron
+1275,0,neuron
+1276,0,neuron
+1277,0,neuron
+1278,0,neuron
+1279,0,neuron
+1280,0,neuron
+1281,0,neuron
+1282,1,glial cells
+1283,0,neuron
+1284,0,neuron
+1285,0,neuron
+1286,0,neuron
+1287,0,neuron
+1288,0,neuron
+1289,0,neuron
+1290,0,neuron
+1291,0,neuron
+1292,0,neuron
+1293,0,neuron
+1294,1,glial cells
+1295,0,neuron
+1296,0,neuron
+1297,0,neuron
+1298,0,neuron
+1299,0,neuron
+1300,0,neuron
+1301,0,neuron
+1302,0,neuron
+1303,0,neuron
+1304,1,glial cells
+1305,0,neuron
+1306,0,neuron
+1307,0,neuron
+1308,0,neuron
+1309,0,neuron
+1310,0,neuron
+1311,0,neuron
+1312,0,neuron
+1313,0,neuron
+1314,0,neuron
+1315,0,neuron
+1316,0,neuron
+1317,1,glial cells
+1318,0,neuron
+1319,0,neuron
+1320,0,neuron
+1321,0,neuron
+1322,0,neuron
+1323,0,neuron
+1324,0,neuron
+1325,0,neuron
+1326,0,neuron
+1327,1,glial cells
+1328,0,neuron
+1329,1,glial cells
+1330,0,neuron
+1331,0,neuron
+1332,1,glial cells
+1333,0,neuron
+1334,0,neuron
+1335,0,neuron
+1336,0,neuron
+1337,0,neuron
+1338,0,neuron
+1339,0,neuron
+1340,0,neuron
+1341,0,neuron
+1342,0,neuron
+1343,0,neuron
+1344,0,neuron
+1345,0,neuron
+1346,0,neuron
+1347,0,neuron
+1348,0,neuron
+1349,0,neuron
+1350,0,neuron
+1351,0,neuron
+1352,0,neuron
+1353,0,neuron
+1354,1,glial cells
+1355,0,neuron
+1356,0,neuron
+1357,0,neuron
+1358,1,glial cells
+1359,0,neuron
+1360,0,neuron
+1361,0,neuron
+1362,1,glial cells
+1363,0,neuron
+1364,0,neuron
+1365,0,neuron
+1366,0,neuron
+1367,0,neuron
+1368,0,neuron
+1369,0,neuron
+1370,0,neuron
+1371,0,neuron
+1372,0,neuron
+1373,0,neuron
+1374,0,neuron
+1375,0,neuron
+1376,0,neuron
+1377,1,glial cells
+1378,0,neuron
+1379,0,neuron
+1380,0,neuron
+1381,0,neuron
+1382,0,neuron
+1383,0,neuron
+1384,0,neuron
+1385,0,neuron
+1386,0,neuron
+1387,0,neuron
+1388,0,neuron
+1389,0,neuron
+1390,0,neuron
+1391,1,glial cells
+1392,0,neuron
+1393,0,neuron
+1394,0,neuron
+1395,0,neuron
+1396,0,neuron
+1397,0,neuron
+1398,0,neuron
+1399,0,neuron
+1400,0,neuron
+1401,0,neuron
+1402,0,neuron
+1403,0,neuron
+1404,0,neuron
+1405,0,neuron
+1406,1,glial cells
+1407,0,neuron
+1408,0,neuron
+1409,0,neuron
+1410,0,neuron
+1411,0,neuron
+1412,0,neuron
+1413,1,glial cells
+1414,0,neuron
+1415,0,neuron
+1416,0,neuron
+1417,0,neuron
+1418,1,glial cells
+1419,0,neuron
+1420,0,neuron
+1421,0,neuron
+1422,0,neuron
+1423,0,neuron
+1424,1,glial cells
+1425,0,neuron
+1426,0,neuron
+1427,0,neuron
+1428,1,glial cells
+1429,0,neuron
+1430,0,neuron
+1431,0,neuron
+1432,0,neuron
+1433,0,neuron
+1434,0,neuron
+1435,0,neuron
+1436,0,neuron
+1437,0,neuron
+1438,0,neuron
+1439,0,neuron
+1440,0,neuron
+1441,0,neuron
+1442,0,neuron
+1443,0,neuron
+1444,0,neuron
+1445,0,neuron
+1446,0,neuron
+1447,0,neuron
+1448,0,neuron
+1449,0,neuron
+1450,0,neuron
+1451,0,neuron
+1452,0,neuron
+1453,0,neuron
+1454,0,neuron
+1455,0,neuron
+1456,0,neuron
+1457,0,neuron
+1458,0,neuron
+1459,0,neuron
+1460,0,neuron
+1461,0,neuron
+1462,0,neuron
+1463,0,neuron
+1464,0,neuron
+1465,0,neuron
+1466,0,neuron
+1467,0,neuron
+1468,0,neuron
+1469,0,neuron
+1470,0,neuron
+1471,0,neuron
+1472,0,neuron
+1473,0,neuron
+1474,0,neuron
+1475,0,neuron
+1476,0,neuron
+1477,0,neuron
+1478,0,neuron
+1479,0,neuron
+1480,0,neuron
+1481,0,neuron
+1482,0,neuron
+1483,2,Endo
+1484,0,neuron
+1485,0,neuron
+1486,0,neuron
+1487,0,neuron
+1488,0,neuron
+1489,0,neuron
+1490,0,neuron
+1491,0,neuron
+1492,0,neuron
+1493,0,neuron
+1494,0,neuron
+1495,0,neuron
+1496,0,neuron
+1497,0,neuron
+1498,0,neuron
+1499,0,neuron
+1500,0,neuron
+1501,0,neuron
+1502,0,neuron
+1503,0,neuron
+1504,0,neuron
+1505,0,neuron
+1506,0,neuron
+1507,0,neuron
+1508,0,neuron
+1509,1,glial cells
+1510,0,neuron
+1511,0,neuron
+1512,0,neuron
+1513,0,neuron
+1514,0,neuron
+1515,0,neuron
+1516,1,glial cells
+1517,0,neuron
+1518,1,glial cells
+1519,0,neuron
+1520,0,neuron
+1521,0,neuron
+1522,0,neuron
+1523,0,neuron
+1524,0,neuron
+1525,0,neuron
+1526,0,neuron
+1527,0,neuron
+1528,0,neuron
+1529,0,neuron
+1530,0,neuron
+1531,0,neuron
+1532,0,neuron
+1533,0,neuron
+1534,1,glial cells
+1535,0,neuron
+1536,0,neuron
+1537,0,neuron
+1538,0,neuron
+1539,0,neuron
+1540,0,neuron
+1541,0,neuron
+1542,0,neuron
+1543,0,neuron
+1544,0,neuron
+1545,1,glial cells
+1546,0,neuron
+1547,0,neuron
+1548,0,neuron
+1549,0,neuron
+1550,0,neuron
+1551,0,neuron
+1552,0,neuron
+1553,1,glial cells
+1554,0,neuron
+1555,0,neuron
+1556,1,glial cells
+1557,1,glial cells
+1558,0,neuron
+1559,1,glial cells
+1560,0,neuron
+1561,1,glial cells
+1562,0,neuron
+1563,0,neuron
+1564,0,neuron
+1565,0,neuron
+1566,1,glial cells
+1567,0,neuron
+1568,0,neuron
+1569,0,neuron
+1570,0,neuron
+1571,0,neuron
+1572,0,neuron
+1573,0,neuron
+1574,0,neuron
+1575,0,neuron
+1576,0,neuron
+1577,0,neuron
+1578,0,neuron
+1579,0,neuron
+1580,1,glial cells
+1581,0,neuron
+1582,0,neuron
+1583,0,neuron
+1584,0,neuron
+1585,0,neuron
+1586,0,neuron
+1587,0,neuron
+1588,1,glial cells
+1589,0,neuron
+1590,1,glial cells
+1591,0,neuron
+1592,0,neuron
+1593,0,neuron
+1594,0,neuron
+1595,0,neuron
+1596,0,neuron
+1597,0,neuron

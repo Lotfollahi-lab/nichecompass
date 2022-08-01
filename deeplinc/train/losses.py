@@ -46,7 +46,9 @@ def compute_gvae_loss(preds, labels, mu, logstd, n_nodes, norm_factor, pos_weigh
     return cost
 
 
-def compute_adversarial_loss():
+def compute_adversarial_loss(preds,
+                             preds_real,
+                             preds_fake):
     """
     Compute the Discriminator loss of the adversarial module.
 
@@ -55,6 +57,20 @@ def compute_adversarial_loss():
     preds
         Tensor tha
     """
+
+    # Adversarial ground truths
+    dc_labels_real = torch.ones_like(preds_real)
+    dc_labels_fake = torch.zeros_like(preds_fake)
+    gen_labels = torch.ones_like(preds_fake)
+
+    # Discriminator loss
+    dc_bce_real = F.binary_cross_entropy_with_logits(preds_real, dc_labels_real)
+    dc_bce_fake = F.binary_cross_entropy_with_logits(preds_fake, dc_labels_fake)
+
+    # Generator loss
+    gen_bce = F.binary_cross_entropy_with_logits(preds, gen_labels)
+    
+    return dc_bce_real + dc_bce_fake + gen_bce
 
 
 def compute_combined_loss(preds, labels, mu, logstd, n_nodes, norm_factor, pos_weight):
@@ -66,7 +82,6 @@ def compute_combined_loss(preds, labels, mu, logstd, n_nodes, norm_factor, pos_w
     ----------
 
     """
-
     gvae_loss = compute_gvae_loss(
         preds, labels, mu, logstd, n_nodes, norm_factor, pos_weight
     )

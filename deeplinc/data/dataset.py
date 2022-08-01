@@ -12,15 +12,17 @@ class SpatialAnnDataDataset(Dataset):
     Parameters
     ----------
     adata
-        Spatially annotated AnnData object. Normalized adjaceny matrix needs to
-        be stored in ad.AnnData.obsp[adj_mx_key].
+        Spatially annotated AnnData object. Adjaceny matrix needs to be stored 
+        in ad.AnnData.obsp[adj_mx_key].
     adj_mx_key
         Key in ad.AnnData.obsp where adjacency matrix is stored. Defaults to
         "spatial_connectivities", which is where squidpy.gr.spatial_neighbors()
         outputs computed adjacency matrix.
     """
 
-    def __init__(self, adata: ad.AnnData, adj_mx_key: str = "spatial_connectivities"):
+    def __init__(self,
+                 adata: ad.AnnData,
+                 adj_mx_key: str = "spatial_connectivities"):
         super(SpatialAnnDataDataset, self).__init__()
         if sparse.issparse(adata.X):  # keep sparsity?
             self.X = torch.tensor(adata.X.A)

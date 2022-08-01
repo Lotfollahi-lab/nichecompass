@@ -1,7 +1,67 @@
+import anndata as ad
 import torch
 import torch.nn.functional as F
-from modules import DotProductDecoder, FCLayer, GCNEncoder
 from torch import nn as nn
+
+from .modules import DotProductDecoder, FCLayer, GCNEncoder
+
+class Deeplinc(nn.Module):
+    """
+    Deeplinc model class as per Li, R. & Yang, X. De novo reconstruction of cell
+    interaction landscapes from single-cell spatial transcriptome data with 
+    DeepLinc. Genome Biol. 23, 124 (2022).
+
+    Parameters
+    ----------
+    n_input
+        Number of nodes in the input layer.
+    n_hidden
+        Number of nodes per hidden layer.
+    n_latent
+        Number of nodes in the latent space.
+    dropout
+        Probability that nodes will be dropped during training.
+    """
+    def __init__(self,
+                 adata: ad.AnnData,
+                 n_input: int,
+                 n_hidden: int,
+                 n_latent: int,
+                 n_hidden1_disc: int,
+                 n_hidden2_disc: int,
+                 dropout: float = 0.0):
+        super().__init__()
+        self.vgae = VGAE()
+        self.discriminator = Discriminator()
+        
+        self.is_trained_ = False
+        self.trainer = None
+
+    def train(self,
+              n_epochs: int = 400,
+              lr: float = 1e-3,
+              eps: float = 0.01,
+              **kwargs):
+        """
+        Train the model.
+
+        Parameters
+        ----------
+        n_epochs:
+            Number of epochs.
+        lr:
+            Learning rate.
+        eps:
+            torch.optim.Adam eps parameter.
+        kwargs:
+            Keyword arguments for the Deeplinc trainer.
+        """
+        self.trainer = None
+        self.trainer.train(n_epochs, lr, eps)
+        self.is_trained_ = True
+        return 1
+    def predict():
+        return 1
 
 
 class VGAE(nn.Module):
@@ -25,13 +85,11 @@ class VGAE(nn.Module):
         self, n_input: int, n_hidden: int, n_latent: int, dropout: float = 0.0
     ):
         super(VGAE, self).__init__()
-        self.encoder = GCNEncoder(
-            n_input=n_input,
-            n_hidden=n_hidden,
-            n_latent=n_latent,
-            dropout=dropout,
-            activation=F.relu,
-        )
+        self.encoder = GCNEncoder(n_input=n_input,
+                                  n_hidden=n_hidden,
+                                  n_latent=n_latent,
+                                  dropout=dropout,
+                                  activation=F.relu,)
         self.decoder = DotProductDecoder(droput=dropout, activation=F.sigmoid)
 
     def reparameterize(self, mu: torch.Tensor, logstd: torch.tensor):
@@ -46,7 +104,7 @@ class VGAE(nn.Module):
         self.mu, self.logstd = self.encoder(X, A)
         self.Z = self.reparameterize(self.mu, self.logstd)
         A_pred = self.decoder(self.Z)
-        return A_pred
+        return A_pred, self.mu, self.logstd
 
 
 class Discriminator(nn.Module):
