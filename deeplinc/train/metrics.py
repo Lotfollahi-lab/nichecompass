@@ -6,15 +6,15 @@ from sklearn.metrics import average_precision_score
 from sklearn.metrics import roc_auc_score
 
 
-def get_eval_metrics(Z, edges_test_pos, edges_test_neg, acc_threshold: float = 0.5):
+def get_eval_metrics(A_rec_logits, edges_test_pos, edges_test_neg, acc_threshold: float = 0.5):
     """
     Get the evaluation metrics
     prediction of positive and negative test edges and calculate the accuracy.
 
     Parameters
     ----------
-    Z:
-        Latent space features that are fed into the decoder.
+    A_rec_logits:
+        Reconstructed adjacency matrix with logits.
     edges_test_pos:
         Numpy array containing node indices of positive edges.
     edges_test_neg:
@@ -28,9 +28,9 @@ def get_eval_metrics(Z, edges_test_pos, edges_test_neg, acc_threshold: float = 0
     max_acc_score
         Accuracy under optimal classification threshold. 
     """
-    A_rec_probs = torch.sigmoid(torch.mm(Z, Z.T))
-
-     # Collect predictions for each label (positive vs negative edge) separately
+    # Calculate adjacency matrix with edge probabilities
+    A_rec_probs = torch.sigmoid(A_rec_logits)
+    # Collect predictions for each label (positive vs negative edge) separately
     pred_probs_pos_labels = []
     for edge in edges_test_pos:
         pred_probs_pos_labels.append(A_rec_probs[edge[0], edge[1]])
@@ -52,15 +52,15 @@ def get_eval_metrics(Z, edges_test_pos, edges_test_neg, acc_threshold: float = 0
     return roc_score, ap_score, acc_score
 
 
-def get_optimal_cls_threshold_and_accuracy(Z, edges_test_pos, edges_test_neg):
+def get_optimal_cls_threshold_and_accuracy(A_rec_logits, edges_test_pos, edges_test_neg):
     """
     Select the classification threshold that maximizes the accuracy for the
     prediction of positive and negative test edges and calculate the accuracy.
 
     Parameters
     ----------
-    Z:
-        Latent space features that are fed into the decoder.
+    A_rec_logits:
+        Reconstructed adjacency matrix with logits.
     edges_test_pos:
         Numpy array containing node indices of positive edges.
     edges_test_neg:
@@ -72,8 +72,8 @@ def get_optimal_cls_threshold_and_accuracy(Z, edges_test_pos, edges_test_neg):
     max_acc_score
         Accuracy under optimal classification threshold. 
     """
-    A_rec_probs = torch.sigmoid(torch.mm(Z, Z.T))
-
+    # Calculate adjacency matrix with edge probabilities
+    A_rec_probs = torch.sigmoid(A_rec_logits)
     # Collect predicted probabilities for positive and negative edges separately
     pred_probs_pos_labels = []
     for edge in edges_test_pos:
@@ -105,7 +105,7 @@ def get_optimal_cls_threshold_and_accuracy(Z, edges_test_pos, edges_test_neg):
     return optimal_threshold, max_acc_score
 
 
-def reduce_edges_per_node(A_rec_probs,
+def reduce_edges_per_node(A_rec_logits,
                           optimal_threshold,
                           edges_per_node,
                           reduction):
@@ -115,8 +115,8 @@ def reduce_edges_per_node(A_rec_probs,
 
     Parameters
     ----------
-    A_rec_probs:
-        Reconstructed adjacency matrix with edge probabilities.
+    A_rec_logits:
+        Reconstructed adjacency matrix with logits.
     optimal_threshold:
         Optimal classification threshold as calculated with 
         get_optimal_cls_threshold_and_accuracy().
@@ -132,6 +132,8 @@ def reduce_edges_per_node(A_rec_probs,
     A_rec_new
         The new reconstructed adjacency matrix with reduced edge predictions.
     """
+    # Calculate adjacency matrix with edge probabilities
+    A_rec_probs = torch.sigmoid(A_rec_logits)
     A_rec = copy.deepcopy(A_rec_probs)
     A_rec = (A_rec>optimal_threshold).int()
     A_rec_tmp = copy.deepcopy(A_rec_probs)

@@ -7,6 +7,7 @@ from .modules import DotProductDecoder, FCLayer, GCNEncoder
 
 class Deeplinc(nn.Module):
     """
+    ### WIP ###
     Deeplinc model class as per Li, R. & Yang, X. De novo reconstruction of cell
     interaction landscapes from single-cell spatial transcriptome data with 
     DeepLinc. Genome Biol. 23, 124 (2022).
@@ -80,17 +81,20 @@ class VGAE(nn.Module):
     dropout
         Probability that nodes will be dropped during training.
     """
-
     def __init__(
-        self, n_input: int, n_hidden: int, n_latent: int, dropout: float = 0.0
-    ):
+            self,
+            n_input: int,
+            n_hidden: int,
+            n_latent: int,
+            dropout: float = 0.0):
         super(VGAE, self).__init__()
-        self.encoder = GCNEncoder(n_input=n_input,
-                                  n_hidden=n_hidden,
-                                  n_latent=n_latent,
-                                  dropout=dropout,
-                                  activation=F.relu,)
-        self.decoder = DotProductDecoder(dropout=dropout, activation=torch.sigmoid)
+        self.encoder = GCNEncoder(
+            n_input = n_input,
+            n_hidden = n_hidden,
+            n_latent = n_latent,
+            dropout = dropout,
+            activation = torch.relu)
+        self.decoder = DotProductDecoder(dropout = dropout)
 
     def reparameterize(self, mu: torch.Tensor, logstd: torch.tensor):
         if self.training:
@@ -103,12 +107,13 @@ class VGAE(nn.Module):
     def forward(self, X, A):
         self.mu, self.logstd = self.encoder(X, A)
         self.Z = self.reparameterize(self.mu, self.logstd)
-        A_pred = self.decoder(self.Z)
-        return A_pred, self.mu, self.logstd
+        A_rec_logits = self.decoder(self.Z)
+        return A_rec_logits, self.mu, self.logstd
 
 
 class Discriminator(nn.Module):
     """
+    ### WIP ###
     Discriminator class. Adversarial network that takes a sample from the latent
     space as input and uses fully connected layers with a final sigmoid
     activation in the last layer to judge whether a sample is from a prior
@@ -125,7 +130,6 @@ class Discriminator(nn.Module):
     activation
         Activation function used in the first and second hidden layer.
     """
-
     def __init__(
         self,
         n_input: int = 125,

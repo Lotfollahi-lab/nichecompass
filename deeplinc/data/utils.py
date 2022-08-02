@@ -5,7 +5,7 @@ import torch
 
 
 def train_test_split(adata: ad.AnnData,
-                     adj_mx_key: str = "spatial_connectivities",
+                     A_key: str = "spatial_connectivities",
                      test_ratio: float = 0.1):
     """
     Splits the edges defined in the adjacency matrix of adata into training and 
@@ -13,35 +13,41 @@ def train_test_split(adata: ad.AnnData,
 
     Parameters
     ----------
-    adata
-        Spatially annotated AnnData object. Adjaceny matrix needs to be stored 
-        in ad.AnnData.obsp[adj_mx_key].
-    adj_mx_key
-        Key in ad.AnnData.obsp where adjacency matrix is stored. Defaults to
-        "spatial_connectivities", which is where squidpy.gr.spatial_neighbors()
-        outputs the computed adjacency matrix.
-    test_ratio
+    adata:
+        Spatially annotated AnnData object. Adjaceny matrix with labels and 0s
+        on diagonal needs to be stored in ad.AnnData.obsp[A_key].
+    A_key:
+        Key in ad.AnnData.obsp where adjacency matrix labels are stored. 
+        Defaults to"spatial_connectivities", which is where 
+        squidpy.gr.spatial_neighbors() outputs the computed adjacency matrix.
+    test_ratio:
         Ratio of edges that will be used for testing.
     Returns
     ----------
-    adj_mx_train
-    adj_mx_test
-    edges_train
-    edges_test
-    edges_test_neg
+    A_train:
+        Adjacency matrix with training labels and 0s on diagonal.
+    A_test:
+        Adjacency matrix with testing labels and 0s on diagonal.
+    edges_train:
+        Numpy array containing training edges.
+    edges_test_pos:
+        Numpy array containing positive test edges.
+    edges_test_neg:
+        Numpy array containing negative test edges.
     """
     ## Extract edges from the adjacency matrix
-    adj_mx = adata.obsp[adj_mx_key]
+    A = adata.obsp[A_key]
     # Check that diagonal elements of adjacency matrix are set to 0
-    if np.diag(adj_mx.todense()).sum() != 0:
+    if np.diag(A.todense()).sum() != 0:
         raise AssertionError("The diagonal elements of the adjacency matrix \
         are not 0.")
-    n_nodes = adj_mx.shape[0]
-    adj_mx_triu = sp.triu(adj_mx)  # upper triangle of adjacency matrix
-    # single edge for adjacent cells
-    edges_single = sparse_adj_mx_to_edges(adj_mx_triu)
-    # double edge for adjacent cells
-    edges_double = sparse_adj_mx_to_edges(adj_mx)
+    n_nodes = A.shape[0]
+    # Get upper triangle of adjacency matrix (single entry for edges)
+    A_triu = sp.triu(A)
+    # single edge entry for adjacent cells
+    edges_single = sparse_A_to_edges(A_triu)
+    # double edge entry for adjacent cells
+    edges_double = sparse_A_to_edges(A)
     n_edges = edges_single.shape[0]
 
     if test_ratio > 1: # absolute test ratio
@@ -56,8 +62,8 @@ def train_test_split(adata: ad.AnnData,
     edges_train = np.delete(edges_single, idx_edges_test, axis=0)
 
     ## Sample negative test edges
-    # node combinations without edge
-    n_nonedges = n_nodes**2-int(adj_mx.sum())-n_nodes
+    # Get node combinations without edge
+    n_nonedges = n_nodes**2-int(A.sum())-n_nodes
     if (n_nonedges)/2 < 2*n_edges_test:
         raise AssertionError("The network is too dense. Please decrease the \
         test ratio or delete some edges in the network.")
@@ -70,29 +76,29 @@ def train_test_split(adata: ad.AnnData,
     assert ~has_overlapping_edges(edges_test, edges_train)
 
     ## Construct (symmetric) train and test adjacency matrix with sampled edges
-    adj_mx_train = sp.csr_matrix(
+    A_train = sp.csr_matrix(
         (np.ones(edges_train.shape[0]), (edges_train[:, 0], edges_train[:, 1])),
-        shape=adj_mx.shape,
-    )
-    adj_mx_train = adj_mx_train + adj_mx_train.T # make symmetric
-    adj_mx_test = sp.csr_matrix(
+        shape=A.shape)
+    # Make symmetric
+    A_train = A_train + A_train.T
+    A_test = sp.csr_matrix(
         (np.ones(edges_test.shape[0]), (edges_test[:, 0], edges_test[:, 1])),
-        shape=adj_mx.shape,
-    )
-    adj_mx_test = adj_mx_test + adj_mx_test.T # make symmetric
+        shape=A.shape)
+    # Make symmetric
+    A_test = A_test + A_test.T
 
-    return adj_mx_train, adj_mx_test, edges_train, edges_test, edges_test_neg
+    return A_train, A_test, edges_train, edges_test, edges_test_neg
 
 
 ##### HELPER FUNCTIONS #####
 
-def sparse_adj_mx_to_edges(sparse_adj_mx):
+def sparse_A_to_edges(sparse_A):
     """
     Extract node indices of edges from a sparse adjacency matrix.
 
     Parameters
     ----------
-    adj_mx
+    A
         Sparse adjacency matrix from which edges are to be extracted.
     Returns
     ----------
@@ -106,9 +112,9 @@ def sparse_adj_mx_to_edges(sparse_adj_mx):
                [3, 4],
                [4, 3]], dtype=int32)
     """
-    if not sp.isspmatrix_coo(sparse_adj_mx):
-        sparse_adj_mx = sparse_adj_mx.tocoo()
-    edge_indeces = np.vstack((sparse_adj_mx.row, sparse_adj_mx.col)).transpose()
+    if not sp.isspmatrix_coo(sparse_A):
+        sparse_A = sparse_A.tocoo()
+    edge_indeces = np.vstack((sparse_A.row, sparse_A.col)).transpose()
     return edge_indeces
     
 
@@ -141,9 +147,7 @@ def sample_neg_test_edges(n_nodes, edges_test, edges_double):
             continue
         if has_overlapping_edges([idx_i, idx_j], edges_double):
             continue
-        if has_overlapping_edges([idx_j, idx_i], edges_double): # redundant
-            continue
-        if edges_test_neg: # if list contains values
+        if edges_test_neg:
             if has_overlapping_edges([idx_j, idx_i], np.array(edges_test_neg)):
                 continue
             if has_overlapping_edges([idx_i, idx_j], np.array(edges_test_neg)):
@@ -181,9 +185,9 @@ def has_overlapping_edges(edge_array, comparison_edge_array, prec_decimals = 5):
     return overlap
 
 
-def normalize_adj_mx(adj_mx):
+def normalize_A(A_diag):
     """
-    Symmetrically normalize adjacency matrix as per Kipf, T. N. & Welling, M.
+    Symmetrically normalize adjacency matrix as per Kipf, T. N. & Welling, M. 
     Variational Graph Auto-Encoders. arXiv [stat.ML] (2016). Calculate
     D**(-1/2)*A*D**(-1/2) where D is the degree matrix and A is the adjacency
     matrix where diagonal elements are set to 1, i.e. every node is connected
@@ -191,21 +195,20 @@ def normalize_adj_mx(adj_mx):
 
     Parameters
     ----------
-    adj_mx
-        The adjacency matrix to be symmetrically normalized.
+    A_diag:
+        The adjacency matrix to be symmetrically normalized with 1s on diagonal.
     Returns
     ----------  
-    adj_mx_nom
-        Symmetrically normalized sparse adjacency matrix.
+    A_norm_diag:
+        Symmetrically normalized sparse adjacency matrix with diagonal values.
     """
-    adj_mx = sp.coo_matrix(adj_mx)  # convert to sparse matrix COOrdinate format
-    adj_mx_ = adj_mx + sp.eye(adj_mx.shape[0])  # add 1s on diagonal
-    rowsums = np.array(adj_mx_.sum(1))  # calculate sums over rows
-    degree_mx_inv_sqrt = sp.diags(np.power(rowsums, -0.5).flatten())  # D**(-1/2)
-    adj_mx_norm = (
-        adj_mx_.dot(degree_mx_inv_sqrt).transpose().dot(degree_mx_inv_sqrt).tocoo()
-    )  # D**(-1/2)*A*D**(-1/2)
-    return sparse_mx_to_sparse_tensor(adj_mx_norm)
+    rowsums = np.array(A_diag.sum(1))  # calculate sums over rows
+     # D**(-1/2)
+    degree_mx_inv_sqrt = sp.diags(np.power(rowsums, -0.5).flatten())
+    # D**(-1/2)*A*D**(-1/2)
+    A_norm_diag = (
+        A_diag.dot(degree_mx_inv_sqrt).transpose().dot(degree_mx_inv_sqrt).tocoo())
+    return sparse_mx_to_sparse_tensor(A_norm_diag)
 
 
 def sparse_mx_to_sparse_tensor(sparse_mx):
@@ -218,34 +221,3 @@ def sparse_mx_to_sparse_tensor(sparse_mx):
     values = torch.from_numpy(sparse_mx.data)
     shape = torch.Size(sparse_mx.shape)
     return torch.sparse.FloatTensor(indices, values, shape)
-
-
-def test(adata: ad.AnnData,
-                adj_mx_key: str = "spatial_connectivities",
-                test_ratio: float = 0.1):
-
-    split_adj_mx_and_edges = train_test_split(adata=adata,
-                                              adj_mx_key=adj_mx_key,
-                                              test_ratio=test_ratio)
-    adj_mx_train, adj_mx_test = split_adj_mx_and_edges[:2]
-    edges_train, edges_test, edges_test_neg = split_adj_mx_and_edges[2:]
-
-    n_nodes = adj_mx_train.shape[0]
-    
-    adj_mx_labels = adj_mx_train + sp.eye(adj_mx_train.shape[0])
-
-
-    return
-
-
-def make_dataset(
-    adata,
-    train_ratio,
-):
-    """
-    Splits adata into train and validation data.
-
-    Parameters
-    ----------
-    """
-    return 1

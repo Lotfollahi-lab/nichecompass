@@ -1,10 +1,3 @@
-import squidpy as sq
-import torch
-import scipy.sparse as sp
-import numpy as np
-adata = sq.datasets.visium_fluo_adata()
-sq.gr.spatial_neighbors(adata, n_rings=2, coord_type="grid", n_neighs=200)
-adj_mtx = adata.obsp["spatial_connectivities"]
 type(adata.X)
 sparse_mx = adata.X.tocoo()
 sparse_mx.shape

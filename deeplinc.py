@@ -7,6 +7,7 @@ import argparse
 import sys
 import time
 from webbrowser import get
+from deeplinc.data.utils import normalize_A
 
 import numpy as np
 import scipy.sparse as sp
@@ -14,16 +15,16 @@ import squidpy as sq
 import torch
 from torch import optim
 
-from deeplinc.data import train_test_split, normalize_adj_mx
+from deeplinc.data import train_test_split, normalize_A
 from deeplinc.nn import VGAE
-from deeplinc.train import compute_gvae_loss, get_eval_metrics
+from deeplinc.train import compute_vgae_loss, get_eval_metrics
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=42, help='Random seed.')
 parser.add_argument('--n_epochs', type=int, default=200, help='Number of epochs to train.')
-parser.add_argument('--hidden', type=int, default=32, help='Number of units in hidden layer.')
-parser.add_argument('--latent', type=int, default=16, help='Number of units in latent layer.')
-parser.add_argument('--lr', type=float, default=0.0005, help='Initial learning rate.')
+parser.add_argument('--hidden', type=int, default=250, help='Number of units in hidden layer.')
+parser.add_argument('--latent', type=int, default=125, help='Number of units in latent layer.')
+parser.add_argument('--lr', type=float, default=0.001, help='Initial learning rate.')
 parser.add_argument('--dropout', type=float, default=0., help='Dropout rate (1 - keep probability).')
 
 args = parser.parse_args()
@@ -45,77 +46,76 @@ def gae_for(args):
     #adj_orig = adj_orig - sp.dia_matrix((adj_orig.diagonal()[np.newaxis, :], [0]), shape=adj_orig.shape)
     #adj_orig.eliminate_zeros()
 
-    adj_mx_train, adj_mx_test, edges_train, edges_test, edges_test_neg = train_test_split(
-        adata=adata,
-        adj_mx_key="spatial_connectivities",
-        test_ratio=0.1)
+    train_test_split_tuple = train_test_split(adata, "spatial_connectivities")
+    A_train_nodiag, A_test_nodiag = train_test_split_tuple[:2]
+    edges_train, edges_test_pos, edges_test_neg = train_test_split_tuple[2:]
 
     print("Train test split completed...")
-    print(adj_mx_train.shape)
-    print(adj_mx_test.shape)
-    print(edges_train.shape)
-    print(edges_test.shape)
-    print(edges_test_neg.shape)
-    
 
-    adj_mx_norm = normalize_adj_mx(adj_mx_train)
-    adj_mx_labels = adj_mx_train + sp.eye(adj_mx_train.shape[0])
-    adj_mx_labels = torch.FloatTensor(adj_mx_labels.toarray())
+    A_train_norm = normalize_A(A_train_nodiag)
+    A_label_diag = A_train + sp.eye(A_train.shape[0])
+    A_label_diag = torch.FloatTensor(A_label.toarray())
 
     # Reweight positive examples of edges (Aij = 1) in loss calculation using 
     # the proportion of negative examples relative to positive ones to achieve
     # equal total weighting of negative and positive examples
-    n_neg_edges = n_nodes**2 - adj_mx_train.sum()
-    n_pos_edges = adj_mx_train.sum()
-    gvae_loss_pos_weight =  torch.FloatTensor([n_neg_edges / n_pos_edges])
+    n_neg_edges_train = n_nodes**2 - A_train.sum()
+    n_pos_edges_train = A_train.sum()
+    vgae_loss_pos_weight = torch.FloatTensor(
+        [n_neg_edges_train / n_pos_edges_train])
 
     # Weighting of reconstruction loss compared to Kullback-Leibler divergence
-    gvae_loss_norm_factor = n_nodes**2 / float(n_neg_edges * 2)
+    vgae_loss_norm_factor = n_nodes**2 / float(n_neg_edges_train * 2)
 
     model = VGAE(n_input, args.hidden, args.latent, args.dropout)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     print("Start model training...")
 
-    hidden_emb = None
     for epoch in range(args.n_epochs):
-        t = time.time()
+        start_time = time.time()
         model.train()
-        optimizer.zero_grad()
-        adj_mx_pred, mu, logstd = model(features, adj_mx_norm)
-        print(f"mu: {mu}")
-        print(f"logstd: {logstd}")
-        loss = compute_gvae_loss(
-            preds=adj_mx_pred,
-            labels=adj_mx_labels,
+        A_rec_logits, mu, logstd = model(features, A_train_norm)
+        #print(f"A_rec_probs: {A_rec_probs}")
+        #print(f"mu: {mu}")
+        #print(f"logstd: {logstd}")
+
+        loss = compute_vgae_loss(
+            A_rec_logits=A_rec_logits,
+            A_label=A_label,
             mu=mu,
             logstd=logstd,
             n_nodes=n_nodes,
-            norm_factor=gvae_loss_norm_factor,
-            pos_weight=gvae_loss_pos_weight)
+            norm_factor=vgae_loss_norm_factor,
+            pos_weight=vgae_loss_pos_weight,
+            debug=True)
+
+        optimizer.zero_grad()
         loss.backward()
-        cur_loss = loss.item()
         optimizer.step()
 
-        hidden_emb = mu.data.numpy()
-        roc_curr, ap_curr = get_roc_score(
-            hidden_emb,
-            adj_mx,
-            edges_test,
-            edges_test_neg)
-
-        print("Epoch:", '%04d' % (epoch + 1), "train_loss=", "{:.5f}".format(cur_loss),
-              "val_ap=", "{:.5f}".format(ap_curr),
-              "time=", "{:.5f}".format(time.time() - t)
-              )
-
-    print("Optimization Finished!")
-
-    roc_score, ap_score, acc_score = get_eval_metrics(
-        Z,
+        roc_score, ap_score, acc_score = get_eval_metrics(
+        A_rec_logits,
         edges_test,
         edges_test_neg,
         0.5)
+
+        print(f"Epoch: {epoch+1}")
+        print(f"Train loss: {loss.item()}")
+        print(f"Test roc score: {roc_score}")
+        print(f"Test ap score: {ap_score}")
+        print(f"Test accuracy: {acc_score}")
+        print(f"Time: {time.time() - start_time}")
+        print("--------------------")
+
+    print("Optimization completed...")
+
+    roc_score, ap_score, acc_score = get_eval_metrics(
+        A_rec_logits,
+        edges_test,
+        edges_test_neg,
+        0.5)
+
     print('Test ROC score: ' + str(roc_score))
     print('Test AP score: ' + str(ap_score))
 
