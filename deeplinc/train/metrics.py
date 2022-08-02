@@ -1,78 +1,55 @@
+import copy
 import numpy as np
 import torch
-import copy
-from scipy.special import expit
-from sklearn import metrics
 from sklearn.metrics  import accuracy_score
 from sklearn.metrics import average_precision_score
-from sklearn.metrics import f1_score
 from sklearn.metrics import roc_auc_score
 
 
-class LinkPredictionMetrics():
-    def __init__(self, edges_pos, edges_neg):
-        self.edges_pos = edges_pos
-        self.edges_neg = edges_neg
+def get_eval_metrics(Z, edges_test_pos, edges_test_neg, acc_threshold: float = 0.5):
+    """
+    Get the evaluation metrics
+    prediction of positive and negative test edges and calculate the accuracy.
 
-    def get_roc_score(self, emb, feas):
-        # if emb is None:
-        #     feed_dict.update({placeholders['dropout']: 0})
-        #     emb = sess.run(model.z_mean, feed_dict=feed_dict)
+    Parameters
+    ----------
+    Z:
+        Latent space features that are fed into the decoder.
+    edges_test_pos:
+        Numpy array containing node indices of positive edges.
+    edges_test_neg:
+        Numpy array containing node indices of negative edges.
+    acc_threshold:
+        Threshold to be used for the calculation of the accuracy.
+    Returns
+    ----------
+    optimal_cls_threshold
+        Classification threshold that maximizes accuracy.
+    max_acc_score
+        Accuracy under optimal classification threshold. 
+    """
+    A_rec_probs = torch.sigmoid(torch.mm(Z, Z.T))
 
-        def sigmoid(x):
-            if x >= 0:      #对sigmoid函数的优化，避免了出现极大的数据溢出
-                return 1.0/(1+np.exp(-x))
-            else:
-                return np.exp(x)/(1+np.exp(x))
-
-        # Predict on test set of edges
-        adj_rec = np.dot(emb, emb.T)
-        preds = []
-        pos = []
-        for e in self.edges_pos:
-            preds.append(sigmoid(adj_rec[e[0], e[1]]))
-
-        preds_neg = []
-        neg = []
-        for e in self.edges_neg:
-            preds_neg.append(sigmoid(adj_rec[e[0], e[1]]))
-
-        preds_all = np.hstack([preds, preds_neg])
-        labels_all = np.hstack([np.ones(len(preds)), np.zeros(len(preds))])
-
-        roc_score = roc_auc_score(labels_all, preds_all)
-        ap_score = average_precision_score(labels_all, preds_all)
-        acc_score = accuracy_score(labels_all, np.round(preds_all))
-
-        return roc_score, ap_score, acc_score, emb
-
-    def get_prob(self, emb, feas):
-        # if emb is None:
-        #     feed_dict.update({placeholders['dropout']: 0})
-        #     emb = sess.run(model.z_mean, feed_dict=feed_dict)
-
-        def sigmoid(x):
-            if x >= 0:      #对sigmoid函数的优化，避免了出现极大的数据溢出
-                return 1.0/(1+np.exp(-x))
-            else:
-                return np.exp(x)/(1+np.exp(x))
-
-        # Predict on test set of edges
-        adj_rec = np.dot(emb, emb.T)
-        preds = []
-        pos = []
-        for e in self.edges_pos:
-            preds.append(sigmoid(adj_rec[e[0], e[1]]))
-
-        preds_neg = []
-        neg = []
-        for e in self.edges_neg:
-            preds_neg.append(sigmoid(adj_rec[e[0], e[1]]))
-
-        labels_all = np.hstack((np.array(['connections between not_disrupted cells' for i in range(len(preds))]), np.array(['connections between disrupted cells' for i in range(len(preds))])))
-        preds_all = np.hstack([preds, preds_neg])
-
-        return np.hstack((labels_all.reshape(-1,1),preds_all.reshape(-1,1)))
+     # Collect predictions for each label (positive vs negative edge) separately
+    pred_probs_pos_labels = []
+    for edge in edges_test_pos:
+        pred_probs_pos_labels.append(A_rec_probs[edge[0], edge[1]])
+    pred_probs_neg_labels = []
+    for edge in edges_test_neg:
+        pred_probs_neg_labels.append(A_rec_probs[edge[0], edge[1]])
+    
+    # Create tensor of ground truth labels
+    pred_probs_all_labels = torch.hstack([torch.tensor(pred_probs_pos_labels),
+                                          torch.tensor(pred_probs_neg_labels)])
+    preds_all_labels = (pred_probs_all_labels>acc_threshold).int()
+    all_labels = torch.hstack([torch.ones(len(pred_probs_pos_labels)),
+                               torch.zeros(len(pred_probs_neg_labels))])
+    
+    roc_score = roc_auc_score(all_labels, pred_probs_all_labels)
+    ap_score = average_precision_score(all_labels, pred_probs_all_labels)
+    acc_score = accuracy_score(all_labels, preds_all_labels)
+    
+    return roc_score, ap_score, acc_score
 
 
 def get_optimal_cls_threshold_and_accuracy(Z, edges_test_pos, edges_test_neg):
@@ -128,31 +105,49 @@ def get_optimal_cls_threshold_and_accuracy(Z, edges_test_pos, edges_test_neg):
     return optimal_threshold, max_acc_score
 
 
+def reduce_edges_per_node(A_rec_probs,
+                          optimal_threshold,
+                          edges_per_node,
+                          reduction):
+    """
+    Reduce the edges of the reconstruced edge probability adjacency matrix to
+    max_edge_target per node.
 
-import numpy as np
-from sklearn.metrics import roc_auc_score, average_precision_score
-
-def get_roc_score(emb, adj_orig, edges_pos, edges_neg):
-    def sigmoid(x):
-        return 1 / (1 + np.exp(-x))
-
-    # Predict on test set of edges
-    adj_rec = np.dot(emb, emb.T)
-    preds = []
-    pos = []
-    for e in edges_pos:
-        preds.append(sigmoid(adj_rec[e[0], e[1]]))
-        pos.append(adj_orig[e[0], e[1]])
-
-    preds_neg = []
-    neg = []
-    for e in edges_neg:
-        preds_neg.append(sigmoid(adj_rec[e[0], e[1]]))
-        neg.append(adj_orig[e[0], e[1]])
-
-    preds_all = np.hstack([preds, preds_neg])
-    labels_all = np.hstack([np.ones(len(preds)), np.zeros(len(preds_neg))])
-    roc_score = roc_auc_score(labels_all, preds_all)
-    ap_score = average_precision_score(labels_all, preds_all)
-
-    return roc_score, ap_score
+    Parameters
+    ----------
+    A_rec_probs:
+        Reconstructed adjacency matrix with edge probabilities.
+    optimal_threshold:
+        Optimal classification threshold as calculated with 
+        get_optimal_cls_threshold_and_accuracy().
+    edges_per_node:
+        Target for edges per node.
+    reduction:
+        "soft": Keep edges that are among the top <edges_per_node> edges for one
+        of the two edge nodes.
+        "hard": Keep edges that are among the top <edges_per_node> edgesfor both
+        of the two edge nodes.
+    Returns
+    ----------
+    A_rec_new
+        The new reconstructed adjacency matrix with reduced edge predictions.
+    """
+    A_rec = copy.deepcopy(A_rec_probs)
+    A_rec = (A_rec>optimal_threshold).int()
+    A_rec_tmp = copy.deepcopy(A_rec_probs)
+    for node in range(0, A_rec_tmp.shape[0]):
+        tmp = A_rec_tmp[node,:]
+        A_rec_tmp[node,:] = (A_rec_tmp[node,:] >= np.sort(tmp)[-edges_per_node]).int()
+    A_rec_new = A_rec + A_rec_tmp
+    # Mark edges that have been recreated and are among the top 2 node edges for
+    # one of the nodes
+    A_rec_new = (A_rec_new == 2).int()
+    # Make adjacency matrix symmetric
+    A_rec_new = A_rec_new + A_rec_new.T 
+    # keep edges that are among the top 2 node edges for one of the nodes
+    if reduction == "soft": # union
+        A_rec_new = (A_rec_new != 0).int()
+    # keep edges that are among the top 2 node edges for both of the nodes
+    elif reduction == "hard": # intersection
+        A_rec_new = (A_rec_new == 2).int()
+    return A_rec_new

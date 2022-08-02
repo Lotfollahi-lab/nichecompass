@@ -6,6 +6,7 @@ from __future__ import print_function
 import argparse
 import sys
 import time
+from webbrowser import get
 
 import numpy as np
 import scipy.sparse as sp
@@ -15,7 +16,7 @@ from torch import optim
 
 from deeplinc.data import train_test_split, normalize_adj_mx
 from deeplinc.nn import VGAE
-from deeplinc.train import compute_gvae_loss, get_roc_score
+from deeplinc.train import compute_gvae_loss, get_eval_metrics
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=42, help='Random seed.')
@@ -110,11 +111,11 @@ def gae_for(args):
 
     print("Optimization Finished!")
 
-    roc_score, ap_score = get_roc_score(
-        hidden_emb,
-        adj_mtx,
+    roc_score, ap_score, acc_score = get_eval_metrics(
+        Z,
         edges_test,
-        edges_test_neg)
+        edges_test_neg,
+        0.5)
     print('Test ROC score: ' + str(roc_score))
     print('Test AP score: ' + str(ap_score))
 

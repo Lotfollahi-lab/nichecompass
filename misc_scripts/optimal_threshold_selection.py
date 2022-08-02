@@ -1,6 +1,7 @@
 import numpy as np
 import copy
 import torch
+import sys
 from scipy.special import expit
 from sklearn import metrics
 from sklearn.metrics  import accuracy_score
@@ -9,6 +10,7 @@ from sklearn.metrics import f1_score
 from sklearn.metrics import roc_auc_score
 
 from deeplinc.train.metrics import get_optimal_cls_threshold_and_accuracy
+from deeplinc.train.metrics import reduce_edges_per_node
 
 # 5 nodes, 2 dimensions latent space simulation
 torch.manual_seed(0)
@@ -42,6 +44,12 @@ print(acc)
 A_rec_probs = torch.sigmoid(torch.mm(Z, Z.T))
 
 print("\n", f"A_rec_probs: {A_rec_probs}", "\n")
+
+A_rec_soft = reduce_edges_per_node(A_rec_probs, thresh, 2, "soft")
+print(f"A_rec_soft: {A_rec_soft}", "\n")
+A_rec_hard = reduce_edges_per_node(A_rec_probs, thresh, 2, "hard")
+print(f"A_rec_hard: {A_rec_hard}", "\n")
+sys.exit(1)
 
 # Collect predictions for each label (positive vs negative edge) separately
 pred_probs_pos_labels = []
@@ -87,7 +95,7 @@ A_rec = (A_rec>optimal_threshold).int()
 
 print(f"A_rec: {A_rec}", "\n")
 
-def reduce_edges_per_node(A_rec_probs, A_rec, max_edge_target, type):
+def reduce_edges_per_node(A_rec_probs, A_rec, max_edge_target, reduction):
     A_rec_tmp = copy.deepcopy(A_rec_probs)
     for node in range(0, A_rec_tmp.shape[0]):
         tmp = A_rec_tmp[node,:]
@@ -103,10 +111,10 @@ def reduce_edges_per_node(A_rec_probs, A_rec, max_edge_target, type):
     A_rec_new = A_rec_new + A_rec_new.T 
     print(f"A_rec new: {A_rec_new}", "\n")
     # keep edges that are among the top 2 node edges for one of the nodes
-    if type == "soft": # union
+    if reduction == "soft": # union
         A_rec_new = (A_rec_new != 0).int()
     # keep edges that are among the top 2 node edges for both of the nodes
-    elif type == "hard": # intersection
+    elif reduction == "hard": # intersection
         A_rec_new = (A_rec_new == 2).int()
     return A_rec_new
 
