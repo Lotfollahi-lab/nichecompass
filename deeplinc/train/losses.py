@@ -32,16 +32,15 @@ def compute_gvae_loss(preds, labels, mu, logstd, n_nodes, norm_factor, pos_weigh
     """
 
     weighted_bce = F.binary_cross_entropy_with_logits(
-        preds, labels, pos_weight=pos_weight
+        preds,
+        labels,
+        pos_weight=pos_weight
     )
 
-    # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
-    kld = (
-        -0.5
-        / n_nodes
-        * torch.mean(torch.sum(1 + 2 * logstd - mu.pow(2) - logstd.exp().pow(2), 1))
-    )
+    kld = (-0.5 / n_nodes) * torch.mean(torch.sum(1 + 2 * logstd - mu.pow(2) - logstd.exp().pow(2), 1))
 
+    print(f"BCE: {norm_factor * weighted_bce}")
+    print(f"KLD: {kld}")
     cost = norm_factor * weighted_bce + kld
     return cost
 

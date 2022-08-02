@@ -20,7 +20,7 @@ class DotProductDecoder(nn.Module):
         to sigmoid activation.
     """
 
-    def __init__(self, dropout: float = 0.0, activation=F.sigmoid):
+    def __init__(self, dropout: float = 0.0, activation=torch.sigmoid):
         super(DotProductDecoder, self).__init__()
         self.dropout = dropout
         self.activation = activation
@@ -81,10 +81,11 @@ class GCNLayer(nn.Module):
                  n_output: int,
                  dropout: float = 0.0,
                  activation=F.relu):
+        super(GCNLayer, self).__init__()
         self.dropout = dropout
         self.activation = activation
         self.weights = nn.Parameter(
-            torch.Tensor(n_input, n_output, dtype=torch.float32)
+            torch.FloatTensor(n_input, n_output)
         )
         self.initialize_weights()
 
@@ -176,10 +177,7 @@ class GCNEncoder(nn.Module):
         activation=F.relu,
     ):
         super(GCNEncoder, self).__init__()
-        self.gcn_l1 = SparseGCNLayer(n_input,
-                                     n_hidden,
-                                     dropout,
-                                     activation=activation)
+        self.gcn_l1 = GCNLayer(n_input, n_hidden, dropout, activation=activation)
         self.gcn_mu = GCNLayer(n_hidden, n_latent, activation=lambda x: x)
         self.gcn_logstd = GCNLayer(n_hidden, n_latent, activation=lambda x: x)
 

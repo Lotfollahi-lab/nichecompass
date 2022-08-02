@@ -90,7 +90,7 @@ class VGAE(nn.Module):
                                   n_latent=n_latent,
                                   dropout=dropout,
                                   activation=F.relu,)
-        self.decoder = DotProductDecoder(droput=dropout, activation=F.sigmoid)
+        self.decoder = DotProductDecoder(dropout=dropout, activation=torch.sigmoid)
 
     def reparameterize(self, mu: torch.Tensor, logstd: torch.tensor):
         if self.training:

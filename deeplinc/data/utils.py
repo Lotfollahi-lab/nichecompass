@@ -1,6 +1,7 @@
 import anndata as ad
 import numpy as np
 import scipy.sparse as sp
+import torch
 
 
 def train_test_split(adata: ad.AnnData,
@@ -204,7 +205,19 @@ def normalize_adj_mx(adj_mx):
     adj_mx_norm = (
         adj_mx_.dot(degree_mx_inv_sqrt).transpose().dot(degree_mx_inv_sqrt).tocoo()
     )  # D**(-1/2)*A*D**(-1/2)
-    return adj_mx_norm
+    return sparse_mx_to_sparse_tensor(adj_mx_norm)
+
+
+def sparse_mx_to_sparse_tensor(sparse_mx):
+    """
+    Convert a scipy sparse matrix to a torch sparse tensor.
+    """
+    sparse_mx = sparse_mx.tocoo().astype(np.float32)
+    indices = torch.from_numpy(
+        np.vstack((sparse_mx.row, sparse_mx.col)).astype(np.int64))
+    values = torch.from_numpy(sparse_mx.data)
+    shape = torch.Size(sparse_mx.shape)
+    return torch.sparse.FloatTensor(indices, values, shape)
 
 
 def test(adata: ad.AnnData,
