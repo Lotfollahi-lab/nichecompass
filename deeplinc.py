@@ -7,6 +7,7 @@ import argparse
 import sys
 import time
 from webbrowser import get
+from deeplinc.data import SpatialAnnDataDataset
 from deeplinc.data.utils import normalize_A
 
 import numpy as np
@@ -46,11 +47,12 @@ def gae_for(args):
     #adj_orig = adj_orig - sp.dia_matrix((adj_orig.diagonal()[np.newaxis, :], [0]), shape=adj_orig.shape)
     #adj_orig.eliminate_zeros()
 
-    train_test_split_tuple = train_test_split(adata, "spatial_connectivities")
-    A_train_nodiag, A_test_nodiag = train_test_split_tuple[:2]
-    edges_train, edges_test_pos, edges_test_neg = train_test_split_tuple[2:]
+    dataset = SpatialAnnDataDataset(
+        adata,
+        A_key = "spatial_connectivities",
+        test_ratio = 0.1)
 
-    print("Train test split completed...")
+    print("adata initialized and preprocessed...")
 
     A_train_norm = normalize_A(A_train_nodiag)
     A_label_diag = A_train + sp.eye(A_train.shape[0])
@@ -59,10 +61,11 @@ def gae_for(args):
     # Reweight positive examples of edges (Aij = 1) in loss calculation using 
     # the proportion of negative examples relative to positive ones to achieve
     # equal total weighting of negative and positive examples
-    n_neg_edges_train = n_nodes**2 - A_train.sum()
-    n_pos_edges_train = A_train.sum()
-    vgae_loss_pos_weight = torch.FloatTensor(
-        [n_neg_edges_train / n_pos_edges_train])
+    def compute_vgae_loss_parameters():
+        n_neg_edges_train = n_nodes ** 2 - n_edges_train * 2
+        n_pos_edges_train = n_edges_train * 2
+        vgae_loss_pos_weight = torch.FloatTensor(
+            [n_neg_edges_train / n_pos_edges_train])
 
     # Weighting of reconstruction loss compared to Kullback-Leibler divergence
     vgae_loss_norm_factor = n_nodes**2 / float(n_neg_edges_train * 2)

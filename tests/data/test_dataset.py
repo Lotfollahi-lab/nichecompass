@@ -93,6 +93,8 @@ class TestSpatialAnnDataDataset(unittest.TestCase):
         for i,j in dataset.edges_test_neg:
             self.assertEqual(dataset.A.toarray()[i, j], 0)
 
+        print(type(dataset.A_train_diag))
+        print(type(dataset.A_train_diag_norm))
 
 if __name__ == '__main__':
     unittest.main()
