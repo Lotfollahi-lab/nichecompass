@@ -6,7 +6,7 @@ from torch.utils.data import Dataset
 
 from .utils import sparse_A_to_edges
 from .utils import has_overlapping_edges
-from .utils import sample_neg_test_edges
+from .utils import sample_neg_edges
 from .utils import sparse_mx_to_sparse_tensor
 from .utils import normalize_A
 
@@ -71,11 +71,13 @@ class SpatialAnnDataDataset(Dataset):
         extracted_edges = self._extract_edges()
         self.edges = extracted_edges[0] 
         self.edges_train = extracted_edges[1] 
-        self.edges_test = extracted_edges[2] 
-        self.edges_test_neg = extracted_edges[3]
+        self.edges_train_neg = extracted_edges[2] 
+        self.edges_test = extracted_edges[3] 
+        self.edges_test_neg = extracted_edges[4]
 
         self.n_edges_train = len(self.edges_train)
-        self.n_edges_test_neg = len(self.edges_test)
+        self.n_edges_train_neg = len(self.edges_train_neg)
+        self.n_edges_test_neg = len(self.edges_test_neg)
 
         preprocessed_As = self._preprocess_A()
         self.A_train = preprocessed_As[0]
@@ -99,7 +101,8 @@ class SpatialAnnDataDataset(Dataset):
 
     def _extract_edges(self):
         """
-        Extract node indices of edges from the adjacency matrix.
+        Extract node index pairs of edges from self.A, which is a sparse 
+        adjacency matrix in coo format with 0s on the diagonal.
         
         Returns
         ----------
@@ -112,23 +115,29 @@ class SpatialAnnDataDataset(Dataset):
         """
         # Get upper triangle of adjacency matrix (single entry for edges)
         A_triu = sp.triu(self.A)
-        edges_single = sparse_A_to_edges(A_triu) # single edge adjacent nodes
+        edges = sparse_A_to_edges(A_triu) # single edge adjacent nodes
         edges_double = sparse_A_to_edges(self.A) # double edge adjacent nodes
         idx_edges_all = np.array(range(self.n_edges))
         np.random.shuffle(idx_edges_all)
         idx_edges_test = idx_edges_all[:self.n_edges_test]
         idx_edges_train = idx_edges_all[self.n_edges_test:]
 
-        edges_test = edges_single[idx_edges_test]
-        edges_train = edges_single[idx_edges_train]
-        edges_test_neg = sample_neg_test_edges(
-            self.n_nodes,
-            edges_test,
-            edges_double)
+        edges_test = edges[idx_edges_test]
+        edges_train = edges[idx_edges_train]
+        edges_test_neg = sample_neg_edges(
+            n_nodes = self.n_nodes,
+            edges_pos = edges_test,
+            edges_excluded = edges_train)
+        edges_train_neg = sample_neg_edges(
+            n_nodes = self.n_nodes,
+            edges_pos = edges_train,
+            edges_excluded = np.concatenate(
+                (edges_test, edges_test_neg), axis=0))
 
         assert ~has_overlapping_edges(edges_test_neg, edges_double)
+        assert ~has_overlapping_edges(edges_train_neg, edges_double)
 
-        return edges_single, edges_train, edges_test, edges_test_neg
+        return edges, edges_train, edges_train_neg, edges_test, edges_test_neg
 
 
     def _preprocess_A(self):

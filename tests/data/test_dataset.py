@@ -20,6 +20,7 @@ class TestSpatialAnnDataDataset(unittest.TestCase):
         test_ratio = 0.1
         n_edges_test = int(test_ratio * n_edges)
         n_edges_train = n_edges - n_edges_test
+        n_edges_train_neg = n_edges - n_edges_test
         n_edges_test_neg = int(test_ratio * n_edges)
         # Identity feature matrix
         X = np.eye(n_nodes, node_dim).astype("float32")
@@ -53,6 +54,7 @@ class TestSpatialAnnDataDataset(unittest.TestCase):
         self.assertEqual(n_edges, dataset.n_edges)
         self.assertEqual(n_nonedges, dataset.n_nonedges)
         self.assertEqual(n_edges_train, dataset.n_edges_train)
+        self.assertEqual(n_edges_train_neg, dataset.n_edges_train_neg)
         self.assertEqual(n_edges_test, dataset.n_edges_test)
         self.assertEqual(n_edges_test_neg, dataset.n_edges_test_neg)
         self.assertEqual(
@@ -65,11 +67,29 @@ class TestSpatialAnnDataDataset(unittest.TestCase):
             int(dataset.A_train_diag.to_dense().sum()),
             int(dataset.A_train.sum() + dataset.n_nodes))
         self.assertTrue(~has_overlapping_edges(
+            dataset.edges_train_neg, 
+            dataset.edges_train))
+        self.assertTrue(~has_overlapping_edges(
             dataset.edges_test_neg, 
             dataset.edges_test))
         self.assertTrue(~has_overlapping_edges(
             dataset.edges_test, 
             dataset.edges_train))
+        self.assertTrue(~has_overlapping_edges(
+            dataset.edges_test_neg, 
+            dataset.edges_train_neg))
+        self.assertTrue(~has_overlapping_edges(
+            dataset.edges_test_neg, 
+            dataset.edges_train))
+        self.assertTrue(~has_overlapping_edges(
+            dataset.edges_train_neg, 
+            dataset.edges_test))
+        self.assertTrue(~has_overlapping_edges(
+            dataset.edges_train_neg, 
+            dataset.edges))
+        self.assertTrue(~has_overlapping_edges(
+            dataset.edges_test_neg, 
+            dataset.edges))
         self.assertEqual(
             dataset.A_train_diag.to_dense().sum(),
             dataset.n_nodes + dataset.n_edges_train * 2)

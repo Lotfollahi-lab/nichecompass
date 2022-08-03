@@ -1,4 +1,5 @@
 import argparse
+import sys
 import time
 
 import anndata as ad
@@ -63,7 +64,6 @@ def main(args):
     #adj_orig = adj_orig - sp.dia_matrix((adj_orig.diagonal()[np.newaxis, :], [0]), shape=adj_orig.shape)
     #adj_orig.eliminate_zeros()
 
-    print("START HERE")
     np.random.seed(1)
     n_nodes = 100
     node_dim = 100
@@ -87,7 +87,9 @@ def main(args):
 
     adata = ad.AnnData(X)
     adata.obsp["spatial_connectivities"] = sp.csr_matrix(A)
-        
+    
+    print("Initialize and preprocess dataset...")
+
     dataset = SpatialAnnDataDataset(
         adata,
         A_key = "spatial_connectivities",
@@ -101,11 +103,14 @@ def main(args):
 
     vgae_loss_norm_factor, vgae_loss_pos_weight = compute_vgae_loss_parameters(
         dataset.A_train_diag.to_dense())
+
+    print(f"VGAE loss pos weight: {vgae_loss_pos_weight}")
+    print(f"VGAE loss norm factor: {vgae_loss_norm_factor}")
     
     model = VGAE(
         dataset.n_node_features,
-        args.hidden,
-        args.latent,
+        args.n_hidden,
+        args.n_latent,
         args.dropout)
     optimizer = torch.optim.Adam(model.parameters(), lr = args.lr)
 
@@ -115,7 +120,10 @@ def main(args):
         start_time = time.time()
         model.train()
         A_rec_logits, mu, logstd = model(dataset.X, dataset.A_train_diag_norm)
-        #print(f"A_rec_probs: {A_rec_probs}")
+        print(f"A_rec_logits: {A_rec_logits}")
+        print(f"A_rec_logits dims: {A_rec_logits.size()}")
+
+        sys.exit(1)
         #print(f"mu: {mu}")
         #print(f"logstd: {logstd}")
 
@@ -127,7 +135,7 @@ def main(args):
             n_nodes = dataset.n_nodes,
             norm_factor = vgae_loss_norm_factor,
             pos_weight = vgae_loss_pos_weight,
-            debug=True)
+            debug = True)
 
         optimizer.zero_grad()
         loss.backward()
@@ -135,8 +143,8 @@ def main(args):
 
         roc_score, ap_score, acc_score = get_eval_metrics(
         A_rec_logits,
-        edges_test,
-        edges_test_neg,
+        dataset.edges_train,
+        dataset.edges_train_neg,
         0.5)
         
         print("--------------------")
@@ -148,7 +156,7 @@ def main(args):
         print(f"Time: {time.time() - start_time}")
         print("--------------------")
 
-    print("Optimization completed...")
+    print("Model training finished...")
 
     test_roc_score, test_ap_score, test_acc_score = get_eval_metrics(
         A_rec_logits,

@@ -118,49 +118,56 @@ def sparse_A_to_edges(sparse_A):
     return edge_indeces
     
 
-def sample_neg_test_edges(n_nodes, edges_test, edges_double):
+def sample_neg_edges(n_nodes, edges_pos, edges_excluded):
     """
-    Sample as many negative test edges as needed to match the number of positive
-    test edges. Negative test edges connect nodes that are not connected.
+    Sample as many negative edges as needed to match the number of positive 
+    edges. Negative edges connect nodes that are not connected. Self-connecting 
+    edges are excluded.
 
     Parameters
     ----------
-    n
-        Number of nodes to sample negative test edges from.
-    edges_test
-        Numpy array containing positive test edges.
-    edges_double
-        Numpy array containing all existing edges with double directions
+    n:
+        Number of nodes to sample negative edges from.
+    edges_pos:
+        Numpy array containing positive edges.
+    edges_excluded:
+        Numpy array containing edges that are to be excluded.
     Returns
     ----------  
-    edges_test_neg
-        Numpy array containing negative test edges.
+    edges_neg:
+        Numpy array containing negative edges.
         Example:
         array([[0,  3],
-               [3,  0]], dtype=int32)
+               [1,  2]], dtype=int32)
     """
-    edges_test_neg = []
-    while len(edges_test_neg) < len(edges_test):
+    edges_neg = []
+    while len(edges_neg) < len(edges_pos):
         idx_i = np.random.randint(0, n_nodes)
         idx_j = np.random.randint(0, n_nodes)
         if idx_i == idx_j:
             continue
-        if has_overlapping_edges([idx_i, idx_j], edges_double):
+        if has_overlapping_edges([idx_i, idx_j], edges_pos):
             continue
-        if edges_test_neg:
-            if has_overlapping_edges([idx_j, idx_i], np.array(edges_test_neg)):
+        if has_overlapping_edges([idx_j, idx_i], edges_pos):
+            continue
+        if has_overlapping_edges([idx_i, idx_j], edges_excluded):
+            continue
+        if has_overlapping_edges([idx_j, idx_i], edges_excluded):
+            continue
+        if edges_neg:
+            if has_overlapping_edges([idx_i, idx_j], np.array(edges_neg)):
                 continue
-            if has_overlapping_edges([idx_i, idx_j], np.array(edges_test_neg)):
+            if has_overlapping_edges([idx_j, idx_i], np.array(edges_neg)):
                 continue
-        edges_test_neg.append([idx_i, idx_j])
-    edges_test_neg = np.array(edges_test_neg, dtype=np.int32)
-    return edges_test_neg
+        edges_neg.append([idx_i, idx_j])
+    edges_neg = np.array(edges_neg, dtype = np.int32)
+    return edges_neg
 
 
 def has_overlapping_edges(edge_array, comparison_edge_array, prec_decimals = 5):
     """
 	Check whether two edge arrays have overlapping edges. This is used for 
-    sampling of negative test edges that are not in positive test set.
+    sampling of negative edges that are not in positive edge set.
 
     Parameters
     ----------
