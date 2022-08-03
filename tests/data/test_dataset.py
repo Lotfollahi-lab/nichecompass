@@ -3,6 +3,7 @@ import unittest
 import anndata as ad
 import numpy as np
 import scipy.sparse as sp
+import torch
 
 from deeplinc.data import SpatialAnnDataDataset
 from deeplinc.data import sparse_A_to_edges
@@ -13,7 +14,7 @@ class TestSpatialAnnDataDataset(unittest.TestCase):
     def test_init(self):
         np.random.seed(1)
         n_nodes = 100
-        node_dim = 10
+        node_dim = 100
         n_edges = 150
         n_nonedges = int(n_nodes ** 2 - n_nodes - n_edges * 2) / 2
         test_ratio = 0.1
@@ -61,7 +62,7 @@ class TestSpatialAnnDataDataset(unittest.TestCase):
             int(dataset.A_test.sum()/2),
              len(dataset.edges_test))
         self.assertEqual(
-            int(dataset.A_train_diag.sum()),
+            int(dataset.A_train_diag.to_dense().sum()),
             int(dataset.A_train.sum() + dataset.n_nodes))
         self.assertTrue(~has_overlapping_edges(
             dataset.edges_test_neg, 
@@ -70,7 +71,7 @@ class TestSpatialAnnDataDataset(unittest.TestCase):
             dataset.edges_test, 
             dataset.edges_train))
         self.assertEqual(
-            dataset.A_train_diag.sum(),
+            dataset.A_train_diag.to_dense().sum(),
             dataset.n_nodes + dataset.n_edges_train * 2)
         for i,j in dataset.edges:
             self.assertEqual(dataset.A.toarray()[i, j], 1)
@@ -92,9 +93,8 @@ class TestSpatialAnnDataDataset(unittest.TestCase):
             self.assertEqual(dataset.A_test[i, j], 1)   
         for i,j in dataset.edges_test_neg:
             self.assertEqual(dataset.A.toarray()[i, j], 0)
-
-        print(type(dataset.A_train_diag))
-        print(type(dataset.A_train_diag_norm))
+        self.assertIsInstance(dataset.A_train_diag, torch.Tensor)
+        self.assertIsInstance(dataset.A_train_diag_norm, torch.Tensor)
 
 if __name__ == '__main__':
     unittest.main()

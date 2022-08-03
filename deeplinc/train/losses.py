@@ -62,6 +62,23 @@ def compute_vgae_loss(
     return vgae_loss
 
 
+def compute_vgae_loss_parameters(A_label):
+    n_all_labels = A_label.shape[0] ** 2
+    n_pos_labels = A_label.sum()
+    n_neg_labels = n_all_labels - n_pos_labels
+    neg_to_pos_label_ratio = n_neg_labels / n_pos_labels
+
+    # Weight reconstruction loss compared to Kullback-Leibler divergence
+    vgae_loss_norm_factor = n_all_labels / float(n_neg_labels * 2)
+
+    # Reweight positive examples of edges (Aij = 1) in loss calculation 
+    # using the proportion of negative examples relative to positive ones to
+    # achieve equal total weighting of negative and positive examples
+    vgae_loss_pos_weight = torch.FloatTensor([neg_to_pos_label_ratio])
+
+    return vgae_loss_norm_factor, vgae_loss_pos_weight
+
+
 def compute_adversarial_loss(preds,
                              preds_real,
                              preds_fake):

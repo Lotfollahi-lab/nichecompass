@@ -7,6 +7,7 @@ from torch.utils.data import Dataset
 from .utils import sparse_A_to_edges
 from .utils import has_overlapping_edges
 from .utils import sample_neg_test_edges
+from .utils import sparse_mx_to_sparse_tensor
 from .utils import normalize_A
 
 
@@ -38,6 +39,8 @@ class SpatialAnnDataDataset(Dataset):
             self.X = torch.FloatTensor(adata.X.toarray())
         else:
             self.X = torch.FloatTensor(adata.X)
+
+        self.n_node_features = self.X.size(1)
         
         # Store adjacency matrix in sparse format
         if not sp.isspmatrix_coo(adata.obsp[A_key]):
@@ -49,6 +52,8 @@ class SpatialAnnDataDataset(Dataset):
         if not np.diag(self.A.todense()).sum() == 0:
             raise ImportError("The diagonal elements of the input adjacency \
                               matrix are not all 0.")
+
+        self.A_diag = self.A + sp.eye(self.A.shape[0])
 
         self.n_nodes = int(self.A.shape[0])
         self.n_edges = int(self.A.todense().sum()/2)
@@ -156,6 +161,9 @@ class SpatialAnnDataDataset(Dataset):
         A_test = A_test + A_test.T
 
         A_train_diag = A_train + sp.eye(A_train.shape[0])
+        # Store as sparse tensor
         A_train_diag_norm = normalize_A(A_train_diag)
+        # Store as sparse tensor
+        A_train_diag = sparse_mx_to_sparse_tensor(A_train_diag.tocoo())
 
         return A_train, A_train_diag, A_train_diag_norm, A_test
