@@ -4,94 +4,6 @@ import scipy.sparse as sp
 import torch
 
 
-def train_test_split(adata: ad.AnnData,
-                     A_key: str = "spatial_connectivities",
-                     test_ratio: float = 0.1):
-    """
-    Splits the edges defined in the adjacency matrix of adata into training and 
-    test edges for model training.
-
-    Parameters
-    ----------
-    adata:
-        Spatially annotated AnnData object. Adjaceny matrix with labels and 0s
-        on diagonal needs to be stored in ad.AnnData.obsp[A_key].
-    A_key:
-        Key in ad.AnnData.obsp where adjacency matrix labels are stored. 
-        Defaults to"spatial_connectivities", which is where 
-        squidpy.gr.spatial_neighbors() outputs the computed adjacency matrix.
-    test_ratio:
-        Ratio of edges that will be used for testing.
-    Returns
-    ----------
-    A_train:
-        Adjacency matrix with training labels and 0s on diagonal.
-    A_test:
-        Adjacency matrix with testing labels and 0s on diagonal.
-    edges_train:
-        Numpy array containing training edges.
-    edges_test_pos:
-        Numpy array containing positive test edges.
-    edges_test_neg:
-        Numpy array containing negative test edges.
-    """
-    ## Extract edges from the adjacency matrix
-    A = adata.obsp[A_key]
-    # Check that diagonal elements of adjacency matrix are set to 0
-    if np.diag(A.todense()).sum() != 0:
-        raise AssertionError("The diagonal elements of the adjacency matrix \
-        are not 0.")
-    n_nodes = A.shape[0]
-    # Get upper triangle of adjacency matrix (single entry for edges)
-    A_triu = sp.triu(A)
-    # single edge entry for adjacent cells
-    edges_single = sparse_A_to_edges(A_triu)
-    # double edge entry for adjacent cells
-    edges_double = sparse_A_to_edges(A)
-    n_edges = edges_single.shape[0]
-
-    if test_ratio > 1: # absolute test ratio
-        test_ratio = test_ratio / n_edges 
-
-    ## Split into train and test edges
-    n_edges_test = int(np.floor(n_edges * test_ratio))
-    idx_edges_all = np.array(range(n_edges))
-    np.random.shuffle(idx_edges_all)
-    idx_edges_test = idx_edges_all[:n_edges_test]
-    edges_test = edges_single[idx_edges_test]
-    edges_train = np.delete(edges_single, idx_edges_test, axis=0)
-
-    ## Sample negative test edges
-    # Get node combinations without edge
-    n_nonedges = n_nodes**2-int(A.sum())-n_nodes
-    if (n_nonedges)/2 < 2*n_edges_test:
-        raise AssertionError("The network is too dense. Please decrease the \
-        test ratio or delete some edges in the network.")
-    else:
-        edges_test_neg = sample_neg_test_edges(n_nodes,
-                                               edges_test,
-                                               edges_double)
-
-    assert ~has_overlapping_edges(edges_test_neg, edges_double)
-    assert ~has_overlapping_edges(edges_test, edges_train)
-
-    ## Construct (symmetric) train and test adjacency matrix with sampled edges
-    A_train = sp.csr_matrix(
-        (np.ones(edges_train.shape[0]), (edges_train[:, 0], edges_train[:, 1])),
-        shape=A.shape)
-    # Make symmetric
-    A_train = A_train + A_train.T
-    A_test = sp.csr_matrix(
-        (np.ones(edges_test.shape[0]), (edges_test[:, 0], edges_test[:, 1])),
-        shape=A.shape)
-    # Make symmetric
-    A_test = A_test + A_test.T
-
-    return A_train, A_test, edges_train, edges_test, edges_test_neg
-
-
-##### HELPER FUNCTIONS #####
-
 def sparse_A_to_edges(sparse_A):
     """
     Extract node indices of edges from a sparse adjacency matrix.
@@ -228,3 +140,75 @@ def sparse_mx_to_sparse_tensor(sparse_mx):
     values = torch.from_numpy(sparse_mx.data)
     shape = torch.Size(sparse_mx.shape)
     return torch.sparse.FloatTensor(indices, values, shape)
+
+
+def spatial_adata_from_csv(
+         X_file_path,
+         A_file_path,
+         A_key = "spatial_connectivities"):
+    """
+    
+    """
+    adata = ad.read_csv(X_file_path)
+    adata.obsp[A_key] = 1
+
+
+def simulate_spatial_adata(
+        n_nodes = 100,
+        n_node_features = 0,
+        adj_nodes_feature_multiplier = 1,
+        n_edges = 150,
+        random_seed = 1,
+        debug = False):
+    """
+    Simulate feature and adjacency matrices to return spatially annotated adata.
+
+    Parameters
+    ----------
+    n_nodes:
+        Number of simulated nodes.
+    n_node_features:
+        Number of simulated node features. If == 0, identity matrix will be used
+        as feature matrix as per Kipf, T. N. & Welling, M. Variational Graph 
+        Auto-Encoders. arXiv [stat.ML] (2016).
+    adj_nodes_feature_multiplier:
+        Multiplier to increase feature correlation for adjacent nodes.
+    n_edges:
+        Number of simulated edges.
+    random_seed:
+        Random seed used for generation of random numbers.
+    """
+    np.random.seed(random_seed)
+    
+    # Create symmetric adjacency matrix
+    A = np.random.rand(n_nodes, n_nodes)
+    A = (A + A.T) / 2
+    np.fill_diagonal(A, 0)
+    threshold = np.sort(A, axis = None)[-(n_edges * 2)]
+    A = (A >= threshold).astype("int")
+
+    if debug:
+        print("")
+        print(f"A:\n {A}", "\n")
+
+    if n_node_features == 0:
+        X = np.eye(n_nodes, n_nodes).astype("float32") # identity matrix
+    else:
+        X = np.random.rand(n_nodes, n_node_features)
+        # Increase feature correlation between adjacent nodes
+        tmp = adj_nodes_feature_multiplier * np.random.rand(1, n_node_features)
+        for i in range(n_nodes):
+            for j in range(n_nodes):
+                print(i,j)
+                if A[i, j] == 1:
+                    X[i, :] = X[i, :] + tmp
+                    X[j, :] = X[j, :] + tmp
+
+    if debug:
+        print(f"X:\n {X}", "\n")
+
+    adata = ad.AnnData(X.astype("float32"))
+    adata.obsp["spatial_connectivities"] = sp.csr_matrix(A)
+
+    return adata
+    

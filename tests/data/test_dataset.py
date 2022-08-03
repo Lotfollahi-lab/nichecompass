@@ -8,36 +8,25 @@ import torch
 from deeplinc.data import SpatialAnnDataDataset
 from deeplinc.data import sparse_A_to_edges
 from deeplinc.data import has_overlapping_edges
+from deeplinc.data import simulate_spatial_adata
 
 
 class TestSpatialAnnDataDataset(unittest.TestCase):
     def test_init(self):
-        np.random.seed(1)
         n_nodes = 100
-        node_dim = 100
         n_edges = 150
         n_nonedges = int(n_nodes ** 2 - n_nodes - n_edges * 2) / 2
         test_ratio = 0.1
         n_edges_test = int(test_ratio * n_edges)
+        n_edges_test_neg = n_edges_test
         n_edges_train = n_edges - n_edges_test
-        n_edges_train_neg = n_edges - n_edges_test
-        n_edges_test_neg = int(test_ratio * n_edges)
-        # Identity feature matrix
-        X = np.eye(n_nodes, node_dim).astype("float32")
-        print(f"X:\n {X}", "\n")
-        
-        # Symmetric adjacency matrix
-        A = np.random.rand(n_nodes, n_nodes)
-        A = (A + A.T)/2
-        np.fill_diagonal(A, 0)
-        threshold = np.sort(A, axis = None)[-n_edges*2]
-        A = (A >= threshold).astype("int")
-        print(A.sum())
-        print(f"A:\n {A}", "\n")
-        
-        adata = ad.AnnData(X)
-        adata.obsp["spatial_connectivities"] = sp.csr_matrix(A)
-        print(f"adata A sparse:\n {adata.obsp['spatial_connectivities']}", "\n")
+        n_edges_train_neg = n_edges_train
+
+        adata = simulate_spatial_adata(
+            n_nodes = n_nodes,
+            n_node_features = 0,
+            n_edges = n_edges,
+            random_seed = 1)
 
         dataset = SpatialAnnDataDataset(
             adata,
@@ -93,28 +82,31 @@ class TestSpatialAnnDataDataset(unittest.TestCase):
         self.assertEqual(
             dataset.A_train_diag.to_dense().sum(),
             dataset.n_nodes + dataset.n_edges_train * 2)
-        for i,j in dataset.edges:
+        for i, j in dataset.edges:
             self.assertEqual(dataset.A.toarray()[i, j], 1)
-        for i,j in dataset.edges_train:
+        for i, j in dataset.edges_train:
             self.assertEqual(dataset.A_train[i, j], 1)
-        for i,j in dataset.edges_train:
+        for i, j in dataset.edges_train:
             self.assertEqual(dataset.A_train_diag[i, j], 1)
         for i in range(dataset.n_nodes):
             self.assertEqual(dataset.A_train_diag[i, i], 1)
-        for i,j in dataset.edges_train:
+        for i, j in dataset.edges_train:
             self.assertNotEqual(dataset.A_train_diag_norm[i, j], 0)
         for i in range(dataset.n_nodes):
             self.assertNotEqual(dataset.A_train_diag_norm[i, i], 0)
-        for i, j in zip(range(dataset.n_nodes), range(dataset.n_nodes)):
-            if (i, j) not in dataset.edges_train and i != j:
-                self.assertEqual(dataset.A_train_diag_norm[i, j], 0)
+        for i in range(dataset.n_nodes):
             self.assertNotEqual(dataset.A_train_diag_norm[i, i], 0)
-        for i,j in dataset.edges_test:
+            for j in range(dataset.n_nodes):
+                if ((i, j) not in dataset.edges_train and (j, i) not in 
+                dataset.edges_train and i != j):
+                    self.assertEqual(dataset.A_train_diag_norm[i, j], 0)
+        for i, j in dataset.edges_test:
             self.assertEqual(dataset.A_test[i, j], 1)   
-        for i,j in dataset.edges_test_neg:
+        for i, j in dataset.edges_test_neg:
             self.assertEqual(dataset.A.toarray()[i, j], 0)
         self.assertIsInstance(dataset.A_train_diag, torch.Tensor)
         self.assertIsInstance(dataset.A_train_diag_norm, torch.Tensor)
+
 
 if __name__ == '__main__':
     unittest.main()

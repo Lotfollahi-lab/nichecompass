@@ -3,6 +3,7 @@ import sys
 import time
 
 import anndata as ad
+from deeplinc.data.utils import simulate_spatial_adata
 import numpy as np
 import scipy.sparse as sp
 import squidpy as sq
@@ -64,30 +65,40 @@ def main(args):
     #adj_orig = adj_orig - sp.dia_matrix((adj_orig.diagonal()[np.newaxis, :], [0]), shape=adj_orig.shape)
     #adj_orig.eliminate_zeros()
 
-    np.random.seed(1)
-    n_nodes = 100
-    node_dim = 100
-    n_edges = 150
-    n_nonedges = int(n_nodes ** 2 - n_nodes - n_edges * 2) / 2
-    test_ratio = 0.1
-    n_edges_test = int(test_ratio * n_edges)
-    n_edges_train = n_edges - n_edges_test
-    n_edges_test_neg = int(test_ratio * n_edges)
-    # Identity feature matrix
-    X = np.eye(n_nodes, node_dim).astype("float32")
-    print(f"X:\n {X}", "\n")
+    # np.random.seed(1)
+    # n_nodes = 100
+    # node_dim = 100
+    # n_edges = 150
+    # n_nonedges = int(n_nodes ** 2 - n_nodes - n_edges * 2) / 2
+    # test_ratio = 0.1
+    # n_edges_test = int(test_ratio * n_edges)
+    # n_edges_train = n_edges - n_edges_test
+    # n_edges_test_neg = int(test_ratio * n_edges)
+    # # Identity feature matrix
+    # X = np.eye(n_nodes, node_dim).astype("float32")
+    # print(f"X:\n {X}", "\n")
+    # 
+    # # Symmetric adjacency matrix
+    # A = np.random.rand(n_nodes, n_nodes)
+    # A = (A + A.T)/2
+    # np.fill_diagonal(A, 0)
+    # threshold = np.sort(A, axis = None)[-n_edges*2]
+    # A = (A >= threshold).astype("int")
+    # print(f"A:\n {A}", "\n")
+# 
+    # adata = ad.AnnData(X)
+    # adata.obsp["spatial_connectivities"] = sp.csr_matrix(A)
     
-    # Symmetric adjacency matrix
-    A = np.random.rand(n_nodes, n_nodes)
-    A = (A + A.T)/2
-    np.fill_diagonal(A, 0)
-    threshold = np.sort(A, axis = None)[-n_edges*2]
-    A = (A >= threshold).astype("int")
-    print(f"A:\n {A}", "\n")
+    print("Loading data...")
 
-    adata = ad.AnnData(X)
-    adata.obsp["spatial_connectivities"] = sp.csr_matrix(A)
-    
+    adata = simulate_spatial_adata(
+        n_node_features=50,
+        adj_nodes_feature_multiplier=100)
+    print(adata.X)
+    print(adata.obsp["spatial_connectivities"])
+    sys.exit(1)
+    # adata = spatial_adata_from_csv()
+
     print("Initialize and preprocess dataset...")
 
     dataset = SpatialAnnDataDataset(
