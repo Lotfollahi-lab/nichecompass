@@ -9,6 +9,7 @@ from deeplinc.data.utils import normalize_A
 adata = sq.datasets.visium_fluo_adata()
 sq.gr.spatial_neighbors(adata, n_rings=2, coord_type="grid", n_neighs=10)
 A = adata.obsp["spatial_connectivities"]
+print(type(A))
 n_nodes = A.toarray().shape[0]
 A_and_edges_train_test_split = train_test_split(adata, "spatial_connectivities")
 A_train, A_test = A_and_edges_train_test_split[:2]

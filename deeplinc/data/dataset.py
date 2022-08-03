@@ -52,7 +52,8 @@ class SpatialAnnDataDataset(Dataset):
 
         self.n_nodes = int(self.A.shape[0])
         self.n_edges = int(self.A.todense().sum()/2)
-        self.n_nonedges = (self.n_nodes**2-self.n_edges*2-self.n_nodes)/2
+        self.n_nonedges = int(
+            (self.n_nodes ** 2 - self.n_edges * 2 - self.n_nodes) / 2)
         if test_ratio > 1: # absolute test ratio
             self.test_ratio = test_ratio / self.n_edges 
         else:
@@ -63,9 +64,10 @@ class SpatialAnnDataDataset(Dataset):
             test ratio or delete some edges in the network.")
         
         extracted_edges = self._extract_edges()
-        self.edges_train = extracted_edges[0] 
-        self.edges_test = extracted_edges[1] 
-        self.edges_test_neg = extracted_edges[2]
+        self.edges = extracted_edges[0] 
+        self.edges_train = extracted_edges[1] 
+        self.edges_test = extracted_edges[2] 
+        self.edges_test_neg = extracted_edges[3]
 
         self.n_edges_train = len(self.edges_train)
         self.n_edges_test_neg = len(self.edges_test)
@@ -120,9 +122,8 @@ class SpatialAnnDataDataset(Dataset):
             edges_double)
 
         assert ~has_overlapping_edges(edges_test_neg, edges_double)
-        assert ~has_overlapping_edges(edges_test, edges_train)
 
-        return edges_train, edges_test, edges_test_neg
+        return edges_single, edges_train, edges_test, edges_test_neg
 
 
     def _preprocess_A(self):
