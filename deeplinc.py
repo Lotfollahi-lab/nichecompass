@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--seed",
     type = int,
-    default = 42,
+    default = 1,
     help = "Random seed.")
 parser.add_argument(
     "--n_epochs",
@@ -40,7 +40,7 @@ parser.add_argument(
 parser.add_argument(
     "--lr",
     type = float,
-    default = 0.001,
+    default = 0.0004,
     help = "Initial learning rate.")
 parser.add_argument(
     "--dropout",
@@ -92,14 +92,20 @@ def main(args):
     print("Loading data...")
 
     adata = simulate_spatial_adata(
-        n_node_features=50,
-        adj_nodes_feature_multiplier=100)
-    print(adata.X)
-    print(adata.obsp["spatial_connectivities"])
-    sys.exit(1)
+        n_nodes = 100,
+        n_node_features = 10000,
+        n_edges = 2000,
+        adj_nodes_feature_multiplier = 10)
+
+    #print(adata.X[0])
+    #print(adata.X[24])
+    #print(adata.X[1])
+    #print(adata.obsp["spatial_connectivities"])
+    #sys.exit(1)
+
     # adata = spatial_adata_from_csv()
 
-    print("Initialize and preprocess dataset...")
+    print("Initializing and preprocessing dataset...")
 
     dataset = SpatialAnnDataDataset(
         adata,
@@ -111,6 +117,8 @@ def main(args):
     #A_train_norm = normalize_A(A_train_nodiag)
     #A_label_diag = A_train + sp.eye(A_train.shape[0])
     #A_label_diag = torch.FloatTensor(A_label.toarray())
+
+    print("Calculating VGAE loss parameters:")
 
     vgae_loss_norm_factor, vgae_loss_pos_weight = compute_vgae_loss_parameters(
         dataset.A_train_diag.to_dense())
@@ -127,7 +135,7 @@ def main(args):
         args.dropout)
     optimizer = torch.optim.Adam(model.parameters(), lr = args.lr)
 
-    print("Start model training...")
+    print("Starting model training...")
 
     for epoch in range(args.n_epochs):
         start_time = time.time()
@@ -147,7 +155,7 @@ def main(args):
             n_nodes = dataset.n_nodes,
             norm_factor = vgae_loss_norm_factor,
             pos_weight = vgae_loss_pos_weight,
-            debug = False)
+            debug = True)
 
         optimizer.zero_grad()
         loss.backward()
@@ -159,7 +167,7 @@ def main(args):
         dataset.edges_train_neg,
         0.5)
         
-        if (epoch + 1) % 10 == 0:
+        if epoch == 0 or (epoch + 1) % 10 == 0:
             print("--------------------")
             print(f"Epoch: {epoch+1}")
             print(f"Train loss: {loss.item()}")

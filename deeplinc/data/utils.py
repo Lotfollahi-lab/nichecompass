@@ -1,6 +1,8 @@
 import anndata as ad
 import numpy as np
+import pandas as pd
 import scipy.sparse as sp
+import scipy.stats as st
 import torch
 
 
@@ -150,18 +152,22 @@ def spatial_adata_from_csv(
     
     """
     adata = ad.read_csv(X_file_path)
-    adata.obsp[A_key] = 1
+    A_df = pd.read_csv(A_file_path, sep=",", header = 0)
+    A = A_df.values
+    adata.obsp[A_key] = sp.csr_matrix(A).tocoo()
+
+    return adata
 
 
 def simulate_spatial_adata(
         n_nodes = 100,
         n_node_features = 0,
-        adj_nodes_feature_multiplier = 1,
+        adj_nodes_feature_multiplier = 3,
         n_edges = 150,
         random_seed = 1,
         debug = False):
     """
-    Simulate feature and adjacency matrices to return spatially annotated adata.
+    Simulate (correlated) feature and adjacency matrices and return as adata.
 
     Parameters
     ----------
@@ -172,7 +178,8 @@ def simulate_spatial_adata(
         as feature matrix as per Kipf, T. N. & Welling, M. Variational Graph 
         Auto-Encoders. arXiv [stat.ML] (2016).
     adj_nodes_feature_multiplier:
-        Multiplier to increase feature correlation for adjacent nodes.
+        Multiplier to increase feature correlation for adjacent nodes and their
+        joint neighbors.
     n_edges:
         Number of simulated edges.
     random_seed:
@@ -191,21 +198,45 @@ def simulate_spatial_adata(
         print("")
         print(f"A:\n {A}", "\n")
 
-    if n_node_features == 0:
-        X = np.eye(n_nodes, n_nodes).astype("float32") # identity matrix
+    if n_node_features == 0: # identity matrix as feature matrix
+        X = np.eye(n_nodes, n_nodes).astype("float32")
     else:
         X = np.random.rand(n_nodes, n_node_features)
-        # Increase feature correlation between adjacent nodes
-        tmp = adj_nodes_feature_multiplier * np.random.rand(1, n_node_features)
+        # Increase feature correlation between adjacent nodes and their joint
+        # neighbors
         for i in range(n_nodes):
             for j in range(n_nodes):
-                print(i,j)
+                tmp = adj_nodes_feature_multiplier * np.random.rand(
+                    1, n_node_features)
                 if A[i, j] == 1:
                     X[i, :] = X[i, :] + tmp
                     X[j, :] = X[j, :] + tmp
+                    joint_neighb_idces = np.where(A[i, :] * A[j, :] == 1)[0]
+                    for joint_neighb_idx in joint_neighb_idces:
+                        X[joint_neighb_idx, :] = X[joint_neighb_idx, :] + tmp
+        
+        # Normalize feature matrix node-wise
+        rowsums = X.sum(axis = 1)
+        X = X / rowsums[:, np.newaxis]
+
+        # Calculate correlation of adjacent nodes vs non-adjacent nodes
+        corr_adj = 0
+        corr_non_adj = 0 
+        for i in range(n_nodes):
+            for j in range(n_nodes):
+                if i == j:
+                    continue 
+                if A[i, j] == 1:
+                    corr_adj += st.stats.pearsonr(X[i, :], X[j, :])[0]
+                if A[i, j] != 1:
+                    corr_non_adj += st.stats.pearsonr(X[i, :], X[j, :])[0]
+        mean_corr_adj = corr_adj / (A.sum() / 2)
+        mean_corr_non_adj = corr_non_adj / (n_nodes ** 2 - A.sum() - n_nodes)
 
     if debug:
         print(f"X:\n {X}", "\n")
+        print(f"Average correlation adjacent nodes: {mean_corr_adj}")
+        print(f"Average correlation non-adjacent nodes: {mean_corr_non_adj}")
 
     adata = ad.AnnData(X.astype("float32"))
     adata.obsp["spatial_connectivities"] = sp.csr_matrix(A)
