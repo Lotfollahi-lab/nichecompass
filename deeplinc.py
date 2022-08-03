@@ -104,6 +104,8 @@ def main(args):
     vgae_loss_norm_factor, vgae_loss_pos_weight = compute_vgae_loss_parameters(
         dataset.A_train_diag.to_dense())
 
+    # vgae_loss_norm_factor = 200
+
     print(f"VGAE loss pos weight: {vgae_loss_pos_weight}")
     print(f"VGAE loss norm factor: {vgae_loss_norm_factor}")
     
@@ -120,22 +122,21 @@ def main(args):
         start_time = time.time()
         model.train()
         A_rec_logits, mu, logstd = model(dataset.X, dataset.A_train_diag_norm)
-        print(f"A_rec_logits: {A_rec_logits}")
-        print(f"A_rec_logits dims: {A_rec_logits.size()}")
-
-        sys.exit(1)
+        
+        #print(f"A_rec_logits: {A_rec_logits}")
+        #print(f"A_rec_logits dims: {A_rec_logits.size()}")
         #print(f"mu: {mu}")
         #print(f"logstd: {logstd}")
 
         loss = compute_vgae_loss(
             A_rec_logits = A_rec_logits,
-            A_label = dataset.A_train_diag,
+            A_label = dataset.A_train_diag.to_dense(),
             mu = mu,
             logstd = logstd,
             n_nodes = dataset.n_nodes,
             norm_factor = vgae_loss_norm_factor,
             pos_weight = vgae_loss_pos_weight,
-            debug = True)
+            debug = False)
 
         optimizer.zero_grad()
         loss.backward()
@@ -147,15 +148,16 @@ def main(args):
         dataset.edges_train_neg,
         0.5)
         
-        print("--------------------")
-        print(f"Epoch: {epoch+1}")
-        print(f"Train loss: {loss.item()}")
-        print(f"Train ROC score: {roc_score}")
-        print(f"Train AP score: {ap_score}")
-        print(f"Train ACC score: {acc_score}")
-        print(f"Time: {time.time() - start_time}")
-        print("--------------------")
-
+        if (epoch + 1) % 10 == 0:
+            print("--------------------")
+            print(f"Epoch: {epoch+1}")
+            print(f"Train loss: {loss.item()}")
+            print(f"Train ROC score: {roc_score}")
+            print(f"Train AP score: {ap_score}")
+            print(f"Train ACC score: {acc_score}")
+            print(f"Time: {time.time() - start_time}")
+    
+    print("--------------------")
     print("Model training finished...")
 
     test_roc_score, test_ap_score, test_acc_score = get_eval_metrics(
