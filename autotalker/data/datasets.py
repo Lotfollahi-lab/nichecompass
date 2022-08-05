@@ -134,6 +134,15 @@ class SpatialAnnDataDataset(Dataset):
             edges_excluded = np.concatenate(
                 (edges_test, edges_test_neg), axis=0))
 
+        # Sort edge arrays
+        edges_test = edges_test[np.lexsort((edges_test[:,1], edges_test[:,0]))]
+        edges_train = edges_train[np.lexsort(
+            (edges_train[:,1], edges_train[:,0]))]
+        edges_test_neg = edges_test_neg[np.lexsort(
+            (edges_test_neg[:,1], edges_test_neg[:,0]))]
+        edges_train_neg = edges_train_neg[np.lexsort(
+            (edges_train_neg[:,1], edges_train_neg[:,0]))]
+
         assert ~has_overlapping_edges(edges_test_neg, edges_double)
         assert ~has_overlapping_edges(edges_train_neg, edges_double)
 

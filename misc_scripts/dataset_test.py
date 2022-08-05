@@ -1,6 +1,6 @@
 import squidpy as sq
 
-from deeplinc.data.dataset import SpatialAnnDataDataset
+from autotalker.data.datasets import SpatialAnnDataDataset
 
 adata = sq.datasets.visium_fluo_adata()
 sq.gr.spatial_neighbors(adata, n_rings=2, coord_type="grid", n_neighs=10)

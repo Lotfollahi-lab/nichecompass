@@ -5,10 +5,10 @@ import numpy as np
 import scipy.sparse as sp
 import torch
 
-from deeplinc.data import SpatialAnnDataDataset
-from deeplinc.data import sparse_A_to_edges
-from deeplinc.data import has_overlapping_edges
-from deeplinc.data import simulate_spatial_adata
+from autotalker.data import SpatialAnnDataDataset
+from autotalker.data import sparse_A_to_edges
+from autotalker.data import has_overlapping_edges
+from autotalker.data import simulate_spatial_adata
 
 
 class TestSpatialAnnDataDataset(unittest.TestCase):

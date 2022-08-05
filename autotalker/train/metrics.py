@@ -7,8 +7,9 @@ import sklearn.metrics as skm
 
 def get_eval_metrics(
         A_rec_logits: torch.tensor,
-        edges_pos,
-        edges_neg):
+        edges_pos: np.ndarray,
+        edges_neg: np.ndarray,
+        debug: bool = False):
     """
     Get the evaluation metrics for the (balanced) sample of positive and 
     negative edges.
@@ -53,6 +54,10 @@ def get_eval_metrics(
     
     auroc_score = skm.roc_auc_score(all_labels, pred_probs_all_labels)
     auprc_score = skm.average_precision_score(all_labels, pred_probs_all_labels)
+
+    if debug == True:
+        print(f"Labels: {all_labels}", "\n")
+        print(f"Predicted probabilities: {pred_probs_all_labels}", "\n")
 
     # Get the optimal classification probability threshold above which an edge 
     # is classified as positive so that the threshold maximizes the accuracy 
