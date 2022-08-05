@@ -1,108 +1,92 @@
 import copy
+
 import numpy as np
 import torch
-from sklearn.metrics  import accuracy_score
-from sklearn.metrics import average_precision_score
-from sklearn.metrics import roc_auc_score
+import sklearn.metrics as skm
 
 
-def get_eval_metrics(A_rec_logits, edges_test_pos, edges_test_neg, acc_threshold: float = 0.5):
+def get_eval_metrics(
+        A_rec_logits: torch.tensor,
+        edges_pos,
+        edges_neg):
     """
-    Get the evaluation metrics
-    prediction of positive and negative test edges and calculate the accuracy.
+    Get the evaluation metrics for the (balanced) sample of positive and 
+    negative edges.
 
     Parameters
     ----------
     A_rec_logits:
         Reconstructed adjacency matrix with logits.
-    edges_test_pos:
+    edges_pos:
         Numpy array containing node indices of positive edges.
-    edges_test_neg:
+    edges_neg:
         Numpy array containing node indices of negative edges.
-    acc_threshold:
-        Threshold to be used for the calculation of the accuracy.
     Returns
     ----------
-    optimal_cls_threshold
-        Classification threshold that maximizes accuracy.
-    max_acc_score
-        Accuracy under optimal classification threshold. 
+    auroc_score:
+        Area under the receiver operating characteristic curve.
+    auprc_score:
+        Area under the precision-recall curve.
+    acc_score:
+        Accuracy under optimal classification threshold.
+    f1_score:
+        F1 score under optimal classification threshold.
     """
     # Calculate adjacency matrix with edge probabilities
     A_rec_probs = torch.sigmoid(A_rec_logits)
+
     # Collect predictions for each label (positive vs negative edge) separately
     pred_probs_pos_labels = []
-    for edge in edges_test_pos:
-        pred_probs_pos_labels.append(A_rec_probs[edge[0], edge[1]])
+    for edge in edges_pos:
+        pred_probs_pos_labels.append(A_rec_probs[edge[0], edge[1]].item())
     pred_probs_neg_labels = []
-    for edge in edges_test_neg:
-        pred_probs_neg_labels.append(A_rec_probs[edge[0], edge[1]])
+    for edge in edges_neg:
+        pred_probs_neg_labels.append(A_rec_probs[edge[0], edge[1]].item())
     
-    # Create tensor of ground truth labels
-    pred_probs_all_labels = torch.hstack([torch.tensor(pred_probs_pos_labels),
-                                          torch.tensor(pred_probs_neg_labels)])
-    preds_all_labels = (pred_probs_all_labels>acc_threshold).int()
-    all_labels = torch.hstack([torch.ones(len(pred_probs_pos_labels)),
-                               torch.zeros(len(pred_probs_neg_labels))])
+    # Create vector with label-ordered predicted probabilities
+    pred_probs_all_labels = np.hstack([pred_probs_pos_labels,
+                                       pred_probs_neg_labels])
     
-    roc_score = roc_auc_score(all_labels, pred_probs_all_labels)
-    ap_score = average_precision_score(all_labels, pred_probs_all_labels)
-    acc_score = accuracy_score(all_labels, preds_all_labels)
+    # Create vector with label-ordered ground truth labels
+    all_labels = np.hstack([np.ones(len(pred_probs_pos_labels)),
+                            np.zeros(len(pred_probs_neg_labels))])
     
-    return roc_score, ap_score, acc_score
+    auroc_score = skm.roc_auc_score(all_labels, pred_probs_all_labels)
+    auprc_score = skm.average_precision_score(all_labels, pred_probs_all_labels)
 
-
-def get_optimal_cls_threshold_and_accuracy(A_rec_logits, edges_test_pos, edges_test_neg):
-    """
-    Select the classification threshold that maximizes the accuracy for the
-    prediction of positive and negative test edges and calculate the accuracy.
-
-    Parameters
-    ----------
-    A_rec_logits:
-        Reconstructed adjacency matrix with logits.
-    edges_test_pos:
-        Numpy array containing node indices of positive edges.
-    edges_test_neg:
-        Numpy array containing node indices of negative edges.
-    Returns
-    ----------
-    optimal_cls_threshold
-        Classification threshold that maximizes accuracy.
-    max_acc_score
-        Accuracy under optimal classification threshold. 
-    """
-    # Calculate adjacency matrix with edge probabilities
-    A_rec_probs = torch.sigmoid(A_rec_logits)
-    # Collect predicted probabilities for positive and negative edges separately
-    pred_probs_pos_labels = []
-    for edge in edges_test_pos:
-        pred_probs_pos_labels.append(A_rec_probs[edge[0], edge[1]])
-    pred_probs_neg_labels = []
-    for edge in edges_test_neg:
-        pred_probs_neg_labels.append(A_rec_probs[edge[0], edge[1]])
-    
-    all_labels = torch.hstack([torch.ones(len(pred_probs_pos_labels)),
-    
-                               torch.zeros(len(pred_probs_neg_labels))])
-    
-    # Calculate accuracies for all thresholds and store best accuracy and 
-    # threshold
+    # Get the optimal classification probability threshold above which an edge 
+    # is classified as positive so that the threshold maximizes the accuracy 
+    # over the sampled (balanced) set of positive and negative edges.
     all_acc_score = {}
     max_acc_score = 0
     optimal_threshold = 0
     for threshold in np.arange(0.01, 1, 0.005):
-        pred_probs_all_labels = torch.hstack(
-            [torch.tensor(pred_probs_pos_labels),
-             torch.tensor(pred_probs_neg_labels)])
-        preds_all_labels = (pred_probs_all_labels>threshold).int()
-        acc_score = accuracy_score(all_labels, preds_all_labels)
+        preds_all_labels = (pred_probs_all_labels > threshold).astype("int")
+        acc_score = skm.accuracy_score(all_labels, preds_all_labels)
         all_acc_score[threshold] = acc_score
         if acc_score > max_acc_score:
             max_acc_score = acc_score
             optimal_threshold = threshold
+    preds_all_labels = (pred_probs_all_labels > optimal_threshold).astype("int")
+    acc_score = skm.accuracy_score(all_labels, preds_all_labels)
 
-    return optimal_threshold, max_acc_score
+    # Get the optimal classification probability threshold above which an edge 
+    # is classified as positive so that the threshold maximizes the f1 score 
+    # over the sampled (balanced) set of positive and negative edges.
+    all_f1_score = {}
+    max_f1_score = 0
+    optimal_threshold = 0
+    for threshold in np.arange(0.01, 1, 0.005):
+        preds_all_labels = (pred_probs_all_labels > threshold).astype("int")
+        f1_score = skm.f1_score(all_labels, preds_all_labels)
+        all_f1_score[threshold] = f1_score
+        if f1_score > max_f1_score:
+            max_f1_score = f1_score
+            optimal_threshold = threshold
+    preds_all_labels = (pred_probs_all_labels > optimal_threshold).astype("int")
+    f1_score = skm.f1_score(all_labels, preds_all_labels)
+    
+    return auroc_score, auprc_score, acc_score, f1_score
 
 
 def reduce_edges_per_node(A_rec_logits,

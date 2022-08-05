@@ -4,4 +4,4 @@ from .utils import sample_neg_edges
 from .utils import has_overlapping_edges
 from .utils import normalize_A
 from .utils import simulate_spatial_adata
-from .dataset import SpatialAnnDataDataset
+from .datasets import SpatialAnnDataDataset

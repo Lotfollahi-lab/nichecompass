@@ -161,33 +161,39 @@ def main(args):
         loss.backward()
         optimizer.step()
 
-        roc_score, ap_score, acc_score = get_eval_metrics(
-        A_rec_logits,
-        dataset.edges_train,
-        dataset.edges_train_neg,
-        0.5)
-        
+        eval_metrics_train = get_eval_metrics(
+            A_rec_logits,
+            dataset.edges_train,
+            dataset.edges_train_neg)
+        auroc_score_train = eval_metrics_train[0]
+        auprc_score_train = eval_metrics_train[1]
+        acc_score_train = eval_metrics_train[2]
+        f1_score_train = eval_metrics_train[3]
         if epoch == 0 or (epoch + 1) % 10 == 0:
             print("--------------------")
             print(f"Epoch: {epoch+1}")
             print(f"Train loss: {loss.item()}")
-            print(f"Train ROC score: {roc_score}")
-            print(f"Train AP score: {ap_score}")
-            print(f"Train ACC score: {acc_score}")
-            print(f"Time: {time.time() - start_time}")
+            print(f"Train (balanced) AUROC score: {auroc_score_train}")
+            print(f"Train (balanced) AUPRC score: {auprc_score_train}")
+            print(f"Train (balanced) ACC score: {acc_score_train}")
+            print(f"Train (balanced) F1 score: {f1_score_train}")
+            print(f"Elapsed training time: {time.time() - start_time}")
     
     print("--------------------")
     print("Model training finished...")
 
-    test_roc_score, test_ap_score, test_acc_score = get_eval_metrics(
+    eval_metrics_test = get_eval_metrics(
         A_rec_logits,
         dataset.edges_test,
-        dataset.edges_test_neg,
-        0.5)
-
-    print(f"Test ROC score: {test_roc_score})")
-    print(f"Test AP score: {test_ap_score})")
-    print(f"Test ACC score: {test_acc_score})")
+        dataset.edges_test_neg)
+    auroc_score_test = eval_metrics_test[0]
+    auprc_score_test = eval_metrics_test[1]
+    acc_score_test = eval_metrics_test[2]
+    f1_score_test = eval_metrics_test[3]
+    print(f"Test (balanced) AUROC score: {auroc_score_test}")
+    print(f"Test (balanced) AUPRC score: {auprc_score_test}")
+    print(f"Test (balanced) ACC score: {acc_score_test}")
+    print(f"Test (balanced) F1 score: {f1_score_test}")
 
 
 if __name__ == '__main__':
