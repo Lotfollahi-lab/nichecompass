@@ -3,17 +3,17 @@ import sys
 import time
 
 import anndata as ad
-from deeplinc.data.utils import simulate_spatial_adata
+from autotalker.data.utils import simulate_spatial_adata
 import numpy as np
 import scipy.sparse as sp
 import squidpy as sq
 import torch
 
-from deeplinc.data import SpatialAnnDataDataset
-from deeplinc.nn import VGAE
-from deeplinc.train import compute_vgae_loss_parameters
-from deeplinc.train import compute_vgae_loss
-from deeplinc.train import get_eval_metrics
+from autotalker.data import SpatialAnnDataDataset
+from autotalker.nn import VGAE
+from autotalker.train import compute_vgae_loss_parameters
+from autotalker.train import compute_vgae_loss
+from autotalker.train import get_eval_metrics
 
 
 parser = argparse.ArgumentParser()
