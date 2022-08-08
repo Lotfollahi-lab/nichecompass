@@ -2,9 +2,7 @@ import argparse
 import sys
 import time
 
-import anndata as ad
 import numpy as np
-import scipy.sparse as sp
 import squidpy as sq
 import torch
 
@@ -22,17 +20,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--dataset",
     type = str,
-    default = "simulation",
+    default = "cora",
     help = "Dataset to use for model training.")
-parser.add_argument(
-    "--seed",
-    type = int,
-    default = 1,
-    help = "Random seed.")
 parser.add_argument(
     "--n_epochs",
     type = int,
-    default = 200, # 200
+    default = 200,
     help = "Number of epochs to train.")
 parser.add_argument(
     "--n_hidden",
@@ -58,61 +51,35 @@ args = parser.parse_args()
 
 
 def main(args):
-    
-    # adata = sq.datasets.visium_fluo_adata()
-    # sq.gr.spatial_neighbors(adata, n_rings=2, coord_type="grid", n_neighs=10)
-    # A = adata.obsp["spatial_connectivities"]
-    # X = torch.FloatTensor(adata.X.toarray())
-    # n_nodes = A.shape[0]
-    # n_input = X.size(1)
-    #adj, features = load_data(args.dataset_str)
-    #n_nodes, feat_dim = features.shape
-
-    # Store original adjacency matrix (without diagonal entries) for later
-    #adj_orig = adj
-    #adj_orig = adj_orig - sp.dia_matrix((adj_orig.diagonal()[np.newaxis, :], [0]), shape=adj_orig.shape)
-    #adj_orig.eliminate_zeros()
-
-    # np.random.seed(1)
-    # n_nodes = 100
-    # node_dim = 100
-    # n_edges = 150
-    # n_nonedges = int(n_nodes ** 2 - n_nodes - n_edges * 2) / 2
-    # test_ratio = 0.1
-    # n_edges_test = int(test_ratio * n_edges)
-    # n_edges_train = n_edges - n_edges_test
-    # n_edges_test_neg = int(test_ratio * n_edges)
-    # # Identity feature matrix
-    # X = np.eye(n_nodes, node_dim).astype("float32")
-    # print(f"X:\n {X}", "\n")
-    # 
-    # # Symmetric adjacency matrix
-    # A = np.random.rand(n_nodes, n_nodes)
-    # A = (A + A.T)/2
-    # np.fill_diagonal(A, 0)
-    # threshold = np.sort(A, axis = None)[-n_edges*2]
-    # A = (A >= threshold).astype("int")
-    # print(f"A:\n {A}", "\n")
-# 
-    # adata = ad.AnnData(X)
-    # adata.obsp["spatial_connectivities"] = sp.csr_matrix(A)
 
     # Configure PyTorch GPU device if available
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print(f"Configuring device {device} ...")
+    print(f"Configured device {device}...")
     
-    print("Loading data...")
+    print("Loading dataset:")
 
     if args.dataset == "cora":
+        print("cora")
         adata = load_benchmark_spatial_adata("cora")
     elif args.dataset == "citeseer":
+        print("citeseer")
         adata = load_benchmark_spatial_adata("citeseer")
     elif args.dataset == "pubmed":
+        print("pubmed")
         adata = load_benchmark_spatial_adata("pubmed")
     elif args.dataset == "seqFISH":
+        print("seqFISH")
         adata = load_spatial_adata_from_csv(
             "datasets/seqFISH/counts.csv",
             "datasets/seqFISH/adj.csv")
+    elif args.dataset == "visium":
+        print("visium")
+        adata = sq.datasets.visium_fluo_adata()
+        sq.gr.spatial_neighbors(
+            adata,
+            n_rings = 2,
+            coord_type = "grid",
+            n_neighs = 10)
     elif args.dataset == "simulation":
         adata = simulate_spatial_adata(
             n_nodes = 8,
@@ -120,13 +87,14 @@ def main(args):
             n_edges = 10,
             adj_nodes_feature_multiplier = 10)
 
-
-    print(adata.X)
-    #print(adata.X.shape)
-    print(adata.obsp["spatial_connectivities"].toarray())
-    #sys.exit(1)
-
-    # adata = spatial_adata_from_csv()
+    print(f"Number of nodes: {adata.X.shape[0]}")
+    print(
+        "Number of edges: ", 
+        f"{int(np.triu(adata.obsp['spatial_connectivities'].toarray()).sum())}",
+        sep="")
+    # print(adata.X)
+    # print(adata.obsp["spatial_connectivities"].toarray())
+    # sys.exit(1)
 
     print("Initializing and preprocessing dataset...")
 
@@ -141,10 +109,6 @@ def main(args):
 
     print("Dataset initialized and preprocessed...")
 
-    #A_train_norm = normalize_A(A_train_nodiag)
-    #A_label_diag = A_train + sp.eye(A_train.shape[0])
-    #A_label_diag = torch.FloatTensor(A_label.toarray())
-
     print("Calculating VGAE loss parameters:")
 
     vgae_loss_norm_factor, vgae_loss_pos_weight = compute_vgae_loss_parameters(
@@ -152,8 +116,12 @@ def main(args):
 
     # vgae_loss_norm_factor = 200
 
-    print(f"VGAE loss pos weight: {vgae_loss_pos_weight}")
+    print(f"VGAE loss pos weight: {vgae_loss_pos_weight.item()}")
     print(f"VGAE loss norm factor: {vgae_loss_norm_factor}")
+
+    vgae_loss_pos_weight = vgae_loss_pos_weight.to(device)
+
+    print("Initializing model...")
     
     model = VGAE(
         dataset.n_node_features,
@@ -164,8 +132,8 @@ def main(args):
     
     optimizer = torch.optim.Adam(model.parameters(), lr = args.lr)
 
-    vgae_loss_pos_weight = vgae_loss_pos_weight.to(device)
-
+    print("--------------------")
+    print("--------------------")
     print("Starting model training...")
 
     for epoch in range(args.n_epochs):
