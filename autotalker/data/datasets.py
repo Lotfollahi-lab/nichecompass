@@ -49,9 +49,9 @@ class SpatialAnnDataDataset(Dataset):
             self.A = adata.obsp[A_key]
         if not (self.A.todense() == self.A.todense().T).all():
             raise ImportError("The input adjacency matrix is not symmetric.")
-        if not np.diag(self.A.todense()).sum() == 0:
-            raise ImportError("The diagonal elements of the input adjacency \
-                              matrix are not all 0.")
+        #if not np.diag(self.A.todense()).sum() == 0:
+        #    raise ImportError("The diagonal elements of the input adjacency \
+        #                      matrix are not all 0.")
 
         self.A_diag = self.A + sp.eye(self.A.shape[0])
 
@@ -88,7 +88,6 @@ class SpatialAnnDataDataset(Dataset):
     def __getitem__(self, index):
         output = dict()
         output["X"] = self.X[index, :]
-        output["A"] = self.A[index, :]
         return output
 
     def __len__(self):
@@ -181,7 +180,11 @@ class SpatialAnnDataDataset(Dataset):
         A_train_diag = A_train + sp.eye(A_train.shape[0])
         # Store as sparse tensor
         A_train_diag_norm = normalize_A(A_train_diag)
+        
         # Store as sparse tensor
-        A_train_diag = sparse_mx_to_sparse_tensor(A_train_diag.tocoo())
+        A_train = sparse_mx_to_sparse_tensor(A_train)
+        A_train_diag = sparse_mx_to_sparse_tensor(A_train_diag)
+        A_train_diag_norm = sparse_mx_to_sparse_tensor(A_train_diag_norm)
+        A_test = sparse_mx_to_sparse_tensor(A_test)
 
         return A_train, A_train_diag, A_train_diag_norm, A_test

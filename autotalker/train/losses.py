@@ -1,16 +1,17 @@
+from re import A
 import torch
 import torch.nn.functional as F
 import torch.nn.modules.loss
 
 
 def compute_vgae_loss(
-        A_rec_logits: torch.tensor,
-        A_label: torch.tensor,
-        mu: torch.tensor,
-        logstd: torch.tensor,
+        A_rec_logits: torch.Tensor,
+        A_label: torch.Tensor,
+        mu: torch.Tensor,
+        logstd: torch.Tensor,
         n_nodes: int,
         norm_factor: float,
-        pos_weight: torch.tensor,
+        pos_weight: torch.Tensor,
         debug: bool=False):
     """
     Compute the Variational Graph Autoencoder loss which consists of the
@@ -63,6 +64,18 @@ def compute_vgae_loss(
 
 
 def compute_vgae_loss_parameters(A_label):
+    """
+    Compute parameters for the vgae loss function as per 
+    https://github.com/tkipf/gae.git. A small adjustment is that adjacency 
+    matrix with 1s on the diagonal is used to reflect real labels used for
+    training). 
+    
+    Parameters
+    ----------
+    A_label:
+        Adjacency matrix with labels (1s for training edges and diagonals)
+    """
+    A_label = A_label.to_dense()
     n_all_labels = A_label.shape[0] ** 2
     n_pos_labels = A_label.sum()
     n_neg_labels = n_all_labels - n_pos_labels
@@ -104,21 +117,3 @@ def compute_adversarial_loss(preds,
     gen_bce = F.binary_cross_entropy_with_logits(preds, gen_labels)
     
     return dc_bce_real + dc_bce_fake + gen_bce
-
-
-def compute_combined_loss(preds, labels, mu, logstd, n_nodes, norm_factor, pos_weight):
-    """
-    Compute combined loss consisting of the Graph Variational Autoencoder loss
-    and the loss of the adversarial module
-
-    Parameters
-    ----------
-
-    """
-    gvae_loss = compute_gvae_loss(
-        preds, labels, mu, logstd, n_nodes, norm_factor, pos_weight
-    )
-
-    adversarial_loss = compute_adversarial_loss()
-
-    return gvae_loss + adversarial_loss

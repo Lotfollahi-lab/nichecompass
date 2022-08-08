@@ -1,6 +1,6 @@
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
-from torch import nn as nn
 
 
 class GCNEncoder(nn.Module):
@@ -22,8 +22,7 @@ class GCNEncoder(nn.Module):
         Number of output nodes from the GCN encoder, making up the latent 
         features.
     dropout
-        Probability of nodes to be dropped in the first GCN layer during
-        training.
+        Probability of nodes to be dropped during training.
     activation
         Activation function used in the first GCN layer.
     """
@@ -36,8 +35,16 @@ class GCNEncoder(nn.Module):
             activation = torch.relu):
         super(GCNEncoder, self).__init__()
         self.gcn_l1 = GCNLayer(n_input, n_hidden, dropout, activation)
-        self.gcn_mu = GCNLayer(n_hidden, n_latent, activation = lambda x: x)
-        self.gcn_logstd = GCNLayer(n_hidden, n_latent, activation = lambda x: x)
+        self.gcn_mu = GCNLayer(
+            n_hidden,
+            n_latent,
+            dropout,
+            activation = lambda x: x)
+        self.gcn_logstd = GCNLayer(
+            n_hidden,
+            n_latent,
+            dropout,
+            activation = lambda x: x)
 
     def forward(self, X, A):
         hidden = self.gcn_l1(X, A)
@@ -66,34 +73,9 @@ class DotProductDecoder(nn.Module):
         self.dropout = dropout
 
     def forward(self, Z):
-        Z_dropout = F.dropout(Z, self.dropout, self.training)
-        A_rec_logits = torch.mm(Z_dropout, Z_dropout.t())
+        Z = F.dropout(Z, self.dropout, self.training)
+        A_rec_logits = torch.mm(Z, Z.t())
         return A_rec_logits
-
-
-class FCLayer(nn.Module):
-    """
-    Fully connected layer class.
-
-    Parameters
-    ----------
-    n_input
-        Number of input nodes to the FC Layer.
-    n_output
-        Number of output nodes from the FC layer.
-    activation
-        Activation function used in the FC layer.
-    """
-    def __init__(self, n_input: int, n_output: int, activation = F.relu):
-        self.activation = activation
-        self.linear = nn.Linear(n_input, n_output)
-
-    def forward(self, input: torch.Tensor):
-        output = self.linear(input)
-        if self.activation is not None:
-            return self.activation(output)
-        else:
-            return output
 
 
 class GCNLayer(nn.Module):
@@ -132,46 +114,31 @@ class GCNLayer(nn.Module):
     def forward(self, input: torch.Tensor, adj_mx: torch.Tensor):
         output = F.dropout(input, self.dropout, self.training)
         output = torch.mm(output, self.weights)
-        output = torch.mm(adj_mx, output)
+        output = torch.sparse.mm(adj_mx, output)
         return self.activation(output)
 
 
-class SparseGCNLayer(nn.Module):
+class FCLayer(nn.Module):
     """
-    ### WIP ###
-    Graph convolutional network layer class as per Kipf, T. N. & Welling, M.
-    Semi-Supervised Classification with Graph Convolutional Networks. arXiv
-    [cs.LG] (2016).
+    Fully connected layer class.
 
     Parameters
     ----------
     n_input
-        Number of input nodes to the GCN Layer.
+        Number of input nodes to the FC Layer.
     n_output
-        Number of output nodes from the GCN layer.
-    dropout
-        Probability of nodes to be dropped during training.
+        Number of output nodes from the FC layer.
     activation
-        Activation function used in the GCN layer.
+        Activation function used in the FC layer.
     """
-    def __init__(self,
-                 n_input: int,
-                 n_output: int,
-                 dropout: float = 0.0,
-                 activation = torch.relu):
-        self.dropout = dropout
+    def __init__(self, n_input: int, n_output: int, activation = F.relu):
+        super(FCLayer, self).__init__()
         self.activation = activation
-        self.weights = nn.Parameter(torch.FloatTensor(n_input, n_output))
-        self.initialize_weights()
+        self.linear = nn.Linear(n_input, n_output)
 
-    def initialize_weights(self):
-        # Glorot weight initialization
-        torch.nn.init.xavier_uniform_(self.weights)
-
-    def forward(self,
-                X: torch.sparse_coo_tensor,
-                A: torch.sparse_coo_tensor):
-        output = F.dropout(X, self.dropout, self.training)
-        output = torch.sparse.mm(output, self.weights)
-        output = torch.sparse.mm(A, output)
-        return self.activation(output)
+    def forward(self, input: torch.Tensor):
+        output = self.linear(input)
+        if self.activation is not None:
+            return self.activation(output)
+        else:
+            return output

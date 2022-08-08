@@ -1,8 +1,13 @@
+import sys
+
 import anndata as ad
+import networkx as nx
 import numpy as np
 import pandas as pd
+import pickle as pkl
 import scipy.sparse as sp
 import scipy.stats as st
+import squidpy as sq
 import torch
 
 
@@ -128,8 +133,8 @@ def normalize_A(A_diag):
     degree_mx_inv_sqrt = sp.diags(np.power(rowsums, -0.5).flatten())
     # D**(-1/2)*A*D**(-1/2)
     A_norm_diag = (
-        A_diag.dot(degree_mx_inv_sqrt).transpose().dot(degree_mx_inv_sqrt).tocoo())
-    return sparse_mx_to_sparse_tensor(A_norm_diag)
+        A_diag.dot(degree_mx_inv_sqrt).transpose().dot(degree_mx_inv_sqrt))
+    return A_norm_diag
 
 
 def sparse_mx_to_sparse_tensor(sparse_mx):
@@ -144,7 +149,7 @@ def sparse_mx_to_sparse_tensor(sparse_mx):
     return torch.sparse.FloatTensor(indices, values, shape)
 
 
-def spatial_adata_from_csv(
+def load_spatial_adata_from_csv(
          X_file_path,
          A_file_path,
          A_key = "spatial_connectivities"):
@@ -242,4 +247,42 @@ def simulate_spatial_adata(
     adata.obsp["spatial_connectivities"] = sp.csr_matrix(A)
 
     return adata
+
+
+def load_benchmark_spatial_adata(dataset = "cora"):
+    # Load the data: x, tx, allx, graph
+    names = ['x', 'tx', 'allx', 'graph']
+    objects = []
+    for i in range(len(names)):
+        with open("datasets/benchmark/ind.{}.{}".format(dataset, names[i]), 'rb') as f:
+            if sys.version_info > (3, 0):
+                objects.append(pkl.load(f, encoding='latin1'))
+            else:
+                objects.append(pkl.load(f))
+    x, tx, allx, graph = tuple(objects)
+    test_idx_reorder = parse_index_file("datasets/benchmark/ind.{}.test.index".format(dataset))
+    test_idx_range = np.sort(test_idx_reorder)
+
+    if dataset == 'citeseer':
+        # Fix citeseer dataset (there are some isolated nodes in the graph)
+        # Find isolated nodes, add them as zero-vecs into the right position
+        test_idx_range_full = range(min(test_idx_reorder), max(test_idx_reorder)+1)
+        tx_extended = sp.lil_matrix((len(test_idx_range_full), x.shape[1]))
+        tx_extended[test_idx_range-min(test_idx_range), :] = tx
+        tx = tx_extended
+
+    features = sp.vstack((allx, tx)).tolil()
+    features[test_idx_reorder, :] = features[test_idx_range, :]
+    adj = nx.adjacency_matrix(nx.from_dict_of_lists(graph))
+
+    adata = ad.AnnData(features.toarray().astype("float32"))
+    adata.obsp["spatial_connectivities"] = sp.csr_matrix(adj)
+
+    return adata
     
+
+def parse_index_file(filename):
+    index = []
+    for line in open(filename):
+        index.append(int(line.strip()))
+    return index

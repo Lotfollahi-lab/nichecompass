@@ -6,7 +6,7 @@ import sklearn.metrics as skm
 
 
 def get_eval_metrics(
-        A_rec_logits: torch.tensor,
+        A_rec_probs: torch.Tensor,
         edges_pos: np.ndarray,
         edges_neg: np.ndarray,
         debug: bool = False):
@@ -16,8 +16,8 @@ def get_eval_metrics(
 
     Parameters
     ----------
-    A_rec_logits:
-        Reconstructed adjacency matrix with logits.
+    A_rec_probs:
+        Reconstructed adjacency matrix with edge probabilities.
     edges_pos:
         Numpy array containing node indices of positive edges.
     edges_neg:
@@ -33,9 +33,6 @@ def get_eval_metrics(
     f1_score:
         F1 score under optimal classification threshold.
     """
-    # Calculate adjacency matrix with edge probabilities
-    A_rec_probs = torch.sigmoid(A_rec_logits)
-
     # Collect predictions for each label (positive vs negative edge) separately
     pred_probs_pos_labels = []
     for edge in edges_pos:
