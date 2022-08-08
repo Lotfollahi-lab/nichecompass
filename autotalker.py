@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--dataset",
     type = str,
-    default = "cora",
+    default = "citeseer",
     help = "Dataset to use for model training.")
 parser.add_argument(
     "--n_epochs",
