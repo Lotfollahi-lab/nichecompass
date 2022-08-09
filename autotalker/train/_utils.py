@@ -1,4 +1,10 @@
 import numpy as np
+from torch_geometric.data import Data
+from torch_geometric.transforms import RandomLinkSplit
+from torch_geometric.utils import add_self_loops
+from torch_geometric.utils import to_dense_adj
+
+from autotalker.data import SpatialAnnDataset
 
 
 class EarlyStopping:
@@ -105,3 +111,24 @@ class EarlyStopping:
         if improved:
             self.best_performance_state = current_metric
         return improved
+
+
+def prepare_data(
+    adata,
+    val_frac: float = 0.1,
+    test_frac: float = 0):
+
+    dataset = SpatialAnnDataset(adata)
+    data = Data(x = dataset.x, edge_index = dataset.edge_index, adj = dataset.adj)
+
+    transform = RandomLinkSplit(
+        num_val = val_frac,
+        num_test = test_frac,
+        is_undirected = True,
+        split_labels = True)
+
+    train_data, val_data, test_data = transform(data)
+
+    train_adj_labels = to_dense_adj(add_self_loops(train_data.edge_index)[0])[0]
+
+    return train_data, val_data, test_data, train_adj_labels

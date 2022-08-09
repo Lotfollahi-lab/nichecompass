@@ -41,8 +41,7 @@ class VGAE(BaseModuleClass):
             n_hidden = n_hidden,
             n_latent = n_latent,
             dropout_rate = dropout_rate,
-            activation = torch.relu
-        )
+            activation = torch.relu)
         
         self.decoder = DotProductDecoder(dropout_rate = dropout_rate)
 

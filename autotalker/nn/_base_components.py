@@ -35,22 +35,16 @@ class GCNEncoder(nn.Module):
             dropout_rate: float = 0.0,
             activation = torch.relu):
         super(GCNEncoder, self).__init__()
-        self.gcn_l1 = GCNLayer(n_input, n_hidden, dropout_rate, activation)
-        self.gcn_mu = GCNLayer(
-            n_hidden,
-            n_latent,
-            dropout_rate,
-            activation = lambda x: x)
-        self.gcn_logstd = GCNLayer(
-            n_hidden,
-            n_latent,
-            dropout_rate,
-            activation = lambda x: x)
+        self.gcn_l1 = GCNConv(n_input, n_hidden)
+        self.gcn_mu = GCNConv(n_hidden, n_latent)
+        self.gcn_logstd = GCNConv(n_hidden, n_latent)
+        self.dropout = nn.Dropout(dropout_rate)
+        self.activation = activation
 
-    def forward(self, X, A):
-        hidden = self.gcn_l1(X, A)
-        mu = self.gcn_mu(hidden, A)
-        logstd = self.gcn_logstd(hidden, A)
+    def forward(self, x, edge_index):
+        hidden = self.dropout(self.activation(self.gcn_l1(x, edge_index)))
+        mu = self.gcn_mu(hidden, edge_index)
+        logstd = self.gcn_logstd(hidden, edge_index)
         return mu, logstd
 
 

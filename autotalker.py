@@ -14,6 +14,7 @@ from autotalker.modules import VGAE
 from autotalker.train import compute_vgae_loss_parameters
 from autotalker.train import compute_vgae_loss
 from autotalker.train import get_eval_metrics
+from autotalker.train import prepare_data
 
 
 parser = argparse.ArgumentParser()
@@ -105,21 +106,19 @@ def main(args):
 
     print("Initializing and preprocessing dataset...")
 
-    dataset = SpatialAnnDataPyGDataset(
-        adata,
-        A_key = "spatial_connectivities",
-        test_ratio = 0.1)
-
-    X = dataset.X.to(device)
-    A_label = dataset.A_train_diag.to(device)
-    A_norm = dataset.A_train_diag_norm.to(device)
+    train_data, val_data, test_data, train_adj_labels = prepare_data(adata)
+    train_data = train_data.to(device)
+    val_data = val_data.to(device)
+    test_data = test_data.to(device)
+    train_adj_labels = train_adj_labels.to(device)
+    print(train_data)
 
     print("Dataset initialized and preprocessed...")
 
     print("Calculating VGAE loss parameters:")
 
     vgae_loss_norm_factor, vgae_loss_pos_weight = compute_vgae_loss_parameters(
-        A_label)
+        train_adj_labels)
 
     # vgae_loss_norm_factor = 200
 
@@ -131,7 +130,7 @@ def main(args):
     print("Initializing model...")
     
     model = VGAE(
-        dataset.n_node_features,
+        train_data.x.size(1),
         args.n_hidden,
         args.n_latent,
         args.dropout)
@@ -143,17 +142,19 @@ def main(args):
     print("--------------------")
     print("Starting model training...")
 
+    start_time = time.time()
+
     for epoch in range(args.n_epochs):
-        start_time = time.time()
  
-        A_rec_logits, mu, logstd = model(X, A_norm)
+        adj_rec_logits, mu, logstd = model(train_data.x, train_data.edge_index)
+        # A_rec_logits, mu, logstd = model(X, A_norm)
 
         loss = compute_vgae_loss(
-            A_rec_logits = A_rec_logits,
-            A_label = A_label.to_dense(),
+            A_rec_logits = adj_rec_logits,
+            A_label = train_adj_labels,
             mu = mu,
             logstd = logstd,
-            n_nodes = dataset.n_nodes,
+            n_nodes = train_data.x.size(0),
             norm_factor = vgae_loss_norm_factor,
             pos_weight = vgae_loss_pos_weight,
             debug = False)
@@ -168,8 +169,8 @@ def main(args):
 
             eval_metrics_train = get_eval_metrics(
                 A_rec_probs,
-                dataset.edges_train,
-                dataset.edges_train_neg)
+                train_data.pos_edge_label_index,
+                train_data.neg_edge_label_index)
 
             auroc_score_train = eval_metrics_train[0]
             auprc_score_train = eval_metrics_train[1]
@@ -190,8 +191,8 @@ def main(args):
 
     eval_metrics_test = get_eval_metrics(
         A_rec_probs,
-        dataset.edges_test,
-        dataset.edges_test_neg)
+        val_data.pos_edge_label_index,
+        val_data.neg_edge_label_index)
     auroc_score_test = eval_metrics_test[0]
     auprc_score_test = eval_metrics_test[1]
     acc_score_test = eval_metrics_test[2]

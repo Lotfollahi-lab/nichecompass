@@ -2,6 +2,14 @@ import torch
 import torch.nn.functional as F
 
 
+def compute_adj_recon_loss(adj_recon_logits, adj_labels, pos_weight):
+    F.binary_cross_entropy_with_logits(
+        A_rec_logits,
+        A_label,
+        pos_weight=pos_weight)
+
+
+
 def compute_vgae_loss(
         A_rec_logits: torch.Tensor,
         A_label: torch.Tensor,
@@ -79,7 +87,6 @@ def compute_vgae_loss_parameters(A_label):
     vgae_loss_pos_weight:
         Weight with which loss for positive labels (Aij = 1) is reweighted.
     """
-    A_label = A_label.to_dense()
     n_all_labels = A_label.shape[0] ** 2
     n_pos_labels = A_label.sum()
     n_neg_labels = n_all_labels - n_pos_labels

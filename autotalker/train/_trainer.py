@@ -3,9 +3,14 @@ from collections import defaultdict
 
 
 import torch
-from torch_geometric.loader import DataLoader
+from torch_geometric.utils import add_self_loops
+from toch_geometric.utils import to_dense_adj
 
-from .utils import EarlyStopping
+from ._utils import EarlyStopping
+from ._utils import prepare_data
+from ._losses import compute_vgae_loss
+from ._losses import compute_vgae_loss_parameters
+
 
 class Trainer:
     """
@@ -21,6 +26,7 @@ class Trainer:
     def __init__(self,
                  adata,
                  model,
+                 train_frac: float = 0.9,
                  batch_size: int = 128,
                  alpha_epoch_anneal: int = None,
                  alpha_kl: float = 1.,
@@ -31,6 +37,7 @@ class Trainer:
 
         self.adata = adata
         self.model = model
+        self.train_frac = train_frac
         self.batch_size = batch_size
         self.alpha_epoch_anneal = alpha_epoch_anneal
         self.alpha_kl = alpha_kl
@@ -82,22 +89,26 @@ class Trainer:
 
         self.logs = defaultdict(list)
 
-        # Create Train/Valid AnnotatetDataset objects
-        self.train_data, self.valid_data = make_dataset(
+        self.train_data, self.valid_data, self.test_data = prepare_data(
             self.adata,
-            train_frac=self.train_frac,
-            condition_key=self.condition_key,
-            cell_type_keys=self.cell_type_keys,
-            condition_encoder=self.model.condition_encoder,
-            cell_type_encoder=self.model.cell_type_encoder,
-        )
+            train_frac = self.train_frac)
+
+    def loss():
+    
+
+        
+
+        compute_vgae_loss_parameters()
+        compute_vgae_loss()
+
+        return loss
+
 
     def train(self,
-              n_epochs: int = 400,
+              n_epochs: int = 200,
               lr: float = 1e-3,
               eps: float = 0.01):
 
-        self.initialize_loaders()
         start_time = time.time()
         self.model.train()
         self.n_epochs = n_epochs
@@ -105,17 +116,11 @@ class Trainer:
         params = filter(lambda p: p.requires_grad, self.model.parameters())
         self.optimizer = torch.optim.Adam(params, lr = lr, eps = eps, weight_decay = self.weight_decay)
 
-        self.before_loop()
+        self.before_training()
 
         for self.epoch in range(n_epochs):
             self.on_epoch_begin(lr, eps)
             self.iter_logs = defaultdict(list)
-            for self.iter, batch_data in enumerate(self.dataloader_train):
-                for key, batch in batch_data.items():
-                    batch_data[key] = batch.to(self.device)
-
-                # Loss Calculation
-                self.on_iteration(batch_data)
 
             # Validation of Model, Monitoring, Early Stopping
             self.on_epoch_end()
@@ -124,8 +129,8 @@ class Trainer:
                     break
 
         if self.best_state_dict is not None and self.reload_best:
-            print("Saving best state of network...")
-            print("Best State was in Epoch", self.best_epoch)
+            print("Saving best state of the network...")
+            print("Best state was in epoch", self.best_epoch)
             self.model.load_state_dict(self.best_state_dict)
 
         self.model.eval()
@@ -133,7 +138,7 @@ class Trainer:
 
         self.training_time += (time.time() - start_time)
 
-    def before_loop(self):
+    def before_training(self):
         pass
 
     def on_epoch_begin(self, lr, eps):
@@ -142,17 +147,8 @@ class Trainer:
     def after_loop(self):
         pass
 
-    def on_iteration(self, batch_data):
-        # Dont update any weight on first layers except condition weights
-        if self.model.freeze:
-            for name, module in self.model.named_modules():
-                if isinstance(module, nn.BatchNorm1d):
-                    if not module.weight.requires_grad:
-                        module.affine = False
-                        module.track_running_stats = False
-
         # Calculate Loss depending on Trainer/Model
-        self.current_loss = loss = self.loss(batch_data)
+        self.current_loss = loss = self.loss()
         self.optimizer.zero_grad()
         loss.backward()
 
