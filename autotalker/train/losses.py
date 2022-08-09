@@ -1,7 +1,5 @@
-from re import A
 import torch
 import torch.nn.functional as F
-import torch.nn.modules.loss
 
 
 def compute_vgae_loss(
@@ -68,12 +66,18 @@ def compute_vgae_loss_parameters(A_label):
     Compute parameters for the vgae loss function as per 
     https://github.com/tkipf/gae.git. A small adjustment is that adjacency 
     matrix with 1s on the diagonal is used to reflect real labels used for
-    training). 
+    training. 
     
     Parameters
     ----------
     A_label:
         Adjacency matrix with labels (1s for training edges and diagonals)
+    Returns
+    ----------
+    vgae_loss_norm_factor:
+        Weight of reconstruction loss compared to Kullback-Leibler divergence.
+    vgae_loss_pos_weight:
+        Weight with which loss for positive labels (Aij = 1) is reweighted.
     """
     A_label = A_label.to_dense()
     n_all_labels = A_label.shape[0] ** 2
@@ -81,7 +85,6 @@ def compute_vgae_loss_parameters(A_label):
     n_neg_labels = n_all_labels - n_pos_labels
     neg_to_pos_label_ratio = n_neg_labels / n_pos_labels
 
-    # Weight reconstruction loss compared to Kullback-Leibler divergence
     vgae_loss_norm_factor = n_all_labels / float(n_neg_labels * 2)
 
     # Reweight positive examples of edges (Aij = 1) in loss calculation 
@@ -92,16 +95,23 @@ def compute_vgae_loss_parameters(A_label):
     return vgae_loss_norm_factor, vgae_loss_pos_weight
 
 
-def compute_adversarial_loss(preds,
-                             preds_real,
+def compute_adversarial_loss(preds_real,
                              preds_fake):
     """
     Compute the Discriminator loss of the adversarial module.
 
     Parameters
     ----------
-    preds
-        Tensor tha
+    preds_real:
+
+    preds_fake:
+
+    Returns
+    ----------
+    dc_bce:
+        Binary cross entropy loss of the discriminator module.
+    gen_bce:
+        Binary cross entropy loss of the generator module.
     """
 
     # Adversarial ground truths
@@ -112,8 +122,9 @@ def compute_adversarial_loss(preds,
     # Discriminator loss
     dc_bce_real = F.binary_cross_entropy_with_logits(preds_real, dc_labels_real)
     dc_bce_fake = F.binary_cross_entropy_with_logits(preds_fake, dc_labels_fake)
+    dc_bce = dc_bce_real + dc_bce_fake
 
     # Generator loss
-    gen_bce = F.binary_cross_entropy_with_logits(preds, gen_labels)
-    
-    return dc_bce_real + dc_bce_fake + gen_bce
+    gen_bce = F.binary_cross_entropy_with_logits(preds_fake, gen_labels)
+
+    return dc_bce, gen_bce

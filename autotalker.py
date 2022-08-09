@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--dataset",
     type = str,
-    default = "citeseer",
+    default = "MERFISH",
     help = "Dataset to use for model training.")
 parser.add_argument(
     "--n_epochs",
@@ -40,7 +40,7 @@ parser.add_argument(
 parser.add_argument(
     "--lr",
     type = float,
-    default = 0.01, # 0.0004
+    default = 0.01, # 0.0004 for visium
     help = "Initial learning rate.")
 parser.add_argument(
     "--dropout",
@@ -72,6 +72,11 @@ def main(args):
         adata = load_spatial_adata_from_csv(
             "datasets/seqFISH/counts.csv",
             "datasets/seqFISH/adj.csv")
+    elif args.dataset == "MERFISH":
+        print("MERFISH")
+        adata = load_spatial_adata_from_csv(
+            "datasets/MERFISH/counts.csv",
+            "datasets/MERFISH/adj.csv")
     elif args.dataset == "visium":
         print("visium")
         adata = sq.datasets.visium_fluo_adata()
@@ -79,15 +84,17 @@ def main(args):
             adata,
             n_rings = 2,
             coord_type = "grid",
-            n_neighs = 10)
+            n_neighs = 6)
     elif args.dataset == "simulation":
+        print("simulation")
         adata = simulate_spatial_adata(
-            n_nodes = 8,
-            n_node_features = 0,
-            n_edges = 10,
-            adj_nodes_feature_multiplier = 10)
+            n_nodes = 1600,
+            n_node_features = 200,
+            n_edges = 3000,
+            adj_nodes_feature_multiplier = 5)
 
     print(f"Number of nodes: {adata.X.shape[0]}")
+    print(f"Number of node features: {adata.X.shape[1]}")
     print(
         "Number of edges: ", 
         f"{int(np.triu(adata.obsp['spatial_connectivities'].toarray()).sum())}",
