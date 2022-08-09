@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch_geometric.nn import GCNConv
 
 
 class GCNEncoder(nn.Module):
@@ -31,19 +32,19 @@ class GCNEncoder(nn.Module):
             n_input: int,
             n_hidden: int,
             n_latent: int,
-            dropout: float = 0.0,
+            dropout_rate: float = 0.0,
             activation = torch.relu):
         super(GCNEncoder, self).__init__()
-        self.gcn_l1 = GCNLayer(n_input, n_hidden, dropout, activation)
+        self.gcn_l1 = GCNLayer(n_input, n_hidden, dropout_rate, activation)
         self.gcn_mu = GCNLayer(
             n_hidden,
             n_latent,
-            dropout,
+            dropout_rate,
             activation = lambda x: x)
         self.gcn_logstd = GCNLayer(
             n_hidden,
             n_latent,
-            dropout,
+            dropout_rate,
             activation = lambda x: x)
 
     def forward(self, X, A):
@@ -68,12 +69,12 @@ class DotProductDecoder(nn.Module):
     dropout
         Probability of nodes to be dropped during training.
     """
-    def __init__(self, dropout: float = 0.0):
+    def __init__(self, dropout_rate: float = 0.0):
         super(DotProductDecoder, self).__init__()
-        self.dropout = dropout
+        self.dropout_rate = dropout_rate
 
     def forward(self, Z):
-        Z = F.dropout(Z, self.dropout, self.training)
+        Z = F.dropout(Z, self.dropout_rate, self.training)
         A_rec_logits = torch.mm(Z, Z.t())
         return A_rec_logits
 

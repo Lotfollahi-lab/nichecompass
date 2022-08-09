@@ -11,9 +11,9 @@ from .utils import sparse_mx_to_sparse_tensor
 from .utils import normalize_A
 
 
-class SpatialAnnDataDataset(Dataset):
+class SpatialAnnDataPyGDataset(Dataset):
     """
-    Spatial AnnData dataset class.
+    Dataset handler for autotalker model and trainer.
 
     Parameters
     ----------
@@ -32,7 +32,7 @@ class SpatialAnnDataDataset(Dataset):
             adata: ad.AnnData,
             A_key: str = "spatial_connectivities",
             test_ratio: float = 0.1):
-        super(SpatialAnnDataDataset, self).__init__()
+        super().__init__()
 
         # Store features in dense format
         if sp.issparse(adata.X): 

@@ -6,4 +6,4 @@ from .utils import normalize_A
 from .utils import simulate_spatial_adata
 from .utils import load_spatial_adata_from_csv
 from .utils import load_benchmark_spatial_adata
-from .datasets import SpatialAnnDataDataset
+from .datasets import SpatialAnnDataPyGDataset

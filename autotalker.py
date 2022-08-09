@@ -6,11 +6,11 @@ import numpy as np
 import squidpy as sq
 import torch
 
-from autotalker.data import SpatialAnnDataDataset
+from autotalker.data import SpatialAnnDataPyGDataset
 from autotalker.data import load_benchmark_spatial_adata
 from autotalker.data import load_spatial_adata_from_csv
 from autotalker.data import simulate_spatial_adata
-from autotalker.nn import VGAE
+from autotalker.modules import VGAE
 from autotalker.train import compute_vgae_loss_parameters
 from autotalker.train import compute_vgae_loss
 from autotalker.train import get_eval_metrics
@@ -105,7 +105,7 @@ def main(args):
 
     print("Initializing and preprocessing dataset...")
 
-    dataset = SpatialAnnDataDataset(
+    dataset = SpatialAnnDataPyGDataset(
         adata,
         A_key = "spatial_connectivities",
         test_ratio = 0.1)
