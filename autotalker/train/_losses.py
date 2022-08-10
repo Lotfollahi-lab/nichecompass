@@ -2,25 +2,35 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 from matplotlib.ticker import MaxNLocator
+from torch_geometric.utils import add_self_loops
+from torch_geometric.utils import to_dense_adj
 
 
-def compute_adj_recon_loss(adj_recon_logits, adj_labels, pos_weight):
-    F.binary_cross_entropy_with_logits(
-        A_rec_logits,
-        A_label,
+def compute_adj_recon_loss(adj_recon_logits, edge_label_index, pos_weight):
+
+    adj_labels = to_dense_adj(add_self_loops(edge_label_index)[0])[0]
+
+    adj_recon_loss = F.binary_cross_entropy_with_logits(
+        adj_recon_logits,
+        adj_labels,
         pos_weight=pos_weight)
+    return adj_recon_loss
 
+
+def compute_kl_loss(mu, logstd, n_nodes):
+        kl_loss = (-0.5 / n_nodes) * torch.mean(
+        torch.sum(1 + 2 * logstd - mu ** 2 - torch.exp(logstd) ** 2, 1))
+        return kl_loss
 
 
 def compute_vgae_loss(
-        A_rec_logits: torch.Tensor,
-        A_label: torch.Tensor,
+        adj_recon_logits: torch.Tensor,
+        edge_label_index: torch.Tensor,
+        pos_weight: torch.Tensor,
         mu: torch.Tensor,
         logstd: torch.Tensor,
         n_nodes: int,
-        norm_factor: float,
-        pos_weight: torch.Tensor,
-        debug: bool=False):
+        norm_factor: float):
     """
     Compute the Variational Graph Autoencoder loss which consists of the
     weighted binary cross entropy loss (reconstruction loss), where sparse 
@@ -53,25 +63,13 @@ def compute_vgae_loss(
         Variational Graph Autoencoder loss composed of reconstruction and 
         regularization loss.
     """
-
-    weighted_bce_loss = norm_factor * F.binary_cross_entropy_with_logits(
-        A_rec_logits,
-        A_label,
-        pos_weight=pos_weight)
-
-    kl_divergence = (-0.5 / n_nodes) * torch.mean(
-        torch.sum(1 + 2 * logstd - mu ** 2 - torch.exp(logstd) ** 2, 1))
-
-    if debug:
-        print(f"Weighted BCE: {weighted_bce_loss}")
-        print(f"KLD: {kl_divergence}", "\n")
-
-    vgae_loss = weighted_bce_loss + kl_divergence
-    vgae_loss = weighted_bce_loss
+    adj_recon_loss = compute_adj_recon_loss(adj_recon_logits, edge_label_index, pos_weight)
+    kl_loss = compute_kl_loss(mu, logstd, n_nodes)
+    vgae_loss = norm_factor * adj_recon_loss + kl_loss
     return vgae_loss
 
 
-def compute_vgae_loss_parameters(A_label):
+def compute_vgae_loss_parameters(edge_label_index):
     """
     Compute parameters for the vgae loss function as per 
     https://github.com/tkipf/gae.git. A small adjustment is that adjacency 
@@ -89,8 +87,9 @@ def compute_vgae_loss_parameters(A_label):
     vgae_loss_pos_weight:
         Weight with which loss for positive labels (Aij = 1) is reweighted.
     """
-    n_all_labels = A_label.shape[0] ** 2
-    n_pos_labels = A_label.sum()
+    adj_labels = to_dense_adj(add_self_loops(edge_label_index)[0])[0]
+    n_all_labels = adj_labels.shape[0] ** 2
+    n_pos_labels = adj_labels.sum()
     n_neg_labels = n_all_labels - n_pos_labels
     neg_to_pos_label_ratio = n_neg_labels / n_pos_labels
 
@@ -148,9 +147,13 @@ def plot_loss(loss):
     ax = plt.figure().gca()
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
-    plt.plot(loss, label = "Loss")
+    # Plot loss
+    plt.plot(loss, label = "loss")
     plt.title("Training loss")
     plt.ylabel("loss")
     plt.xlabel("epoch")
-    plt.legend(loc = "upper left")
-    plt.savefig("images/training_loss.png")
+    plt.legend(loc = "upper right")
+
+    # Retrieve figure
+    fig = plt.gcf()
+    return fig

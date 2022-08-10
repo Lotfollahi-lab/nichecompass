@@ -1,8 +1,6 @@
 import numpy as np
 from torch_geometric.data import Data
 from torch_geometric.transforms import RandomLinkSplit
-from torch_geometric.utils import add_self_loops
-from torch_geometric.utils import to_dense_adj
 
 from autotalker.data import SpatialAnnDataset
 
@@ -28,12 +26,12 @@ class EarlyStopping:
     metric_improvement_threshold:
         The minimum value which counts as metric_improvement.
     patience:
-        Number of n_epochs which are allowed to have no metric_improvement until the training is stopped.
+        Number of epochs which are allowed to have no metric_improvement until the training is stopped.
     reduce_lr_on_plateau:
-        If "True", the learning rate gets adjusted by "lr_factor" after a given number of n_epochs with no
+        If "True", the learning rate gets adjusted by "lr_factor" after a given number of epochs with no
         metric_improvement.
     lr_patience:
-        Number of n_epochs which are allowed to have no metric_improvement until the learning rate is adjusted.
+        Number of epochs which are allowed to have no metric_improvement until the learning rate is adjusted.
     lr_factor:
         Scaling factor for adjusting the learning rate.
      """
@@ -52,30 +50,30 @@ class EarlyStopping:
         self.lr_patience = lr_patience
         self.lr_factor = lr_factor
 
-        self.n_epochs = 0
-        self.n_epochs_not_improved = 0
-        self.n_epochs_not_improved_lr = 0
+        self.epochs = 0
+        self.epochs_not_improved = 0
+        self.epochs_not_improved_lr = 0
 
         self.current_performance = np.inf
         self.best_performance = np.inf
         self.best_performance_state = np.inf
 
     def update(self, current_metric):
-        self.n_epochs += 1
+        self.epochs += 1
         # Determine whether to continue training
-        if self.n_epochs < self.patience:
+        if self.epochs < self.patience:
             continue_training = True
             reduce_lr = False
-        elif self.n_epochs_not_improved >= self.patience:
+        elif self.epochs_not_improved >= self.patience:
             continue_training = False
             reduce_lr = False
         # Determine whether to reduce the learning rate
         else:
             if self.reduce_lr_on_plateau == False:
                 reduce_lr = False
-            elif self.n_epochs_not_improved_lr >= self.lr_patience:
+            elif self.epochs_not_improved_lr >= self.lr_patience:
                 reduce_lr = True
-                self.n_epochs_not_improved_lr = 0
+                self.epochs_not_improved_lr = 0
             else:
                 reduce_lr = False
             
@@ -88,13 +86,13 @@ class EarlyStopping:
             if metric_improvement > 0:
                 self.best_performance = self.current_performance
 
-            # Updating n_epochs not improved
+            # Updating epochs not improved
             if metric_improvement < self.metric_improvement_threshold:
-                self.n_epochs_not_improved += 1
-                self.n_epochs_not_improved_lr += 1
+                self.epochs_not_improved += 1
+                self.epochs_not_improved_lr += 1
             else:
-                self.n_epochs_not_improved = 0
-                self.n_epochs_not_improved_lr = 0
+                self.epochs_not_improved = 0
+                self.epochs_not_improved_lr = 0
 
             continue_training = True
 
@@ -129,6 +127,4 @@ def prepare_data(
 
     train_data, val_data, test_data = transform(data)
 
-    train_adj_labels = to_dense_adj(add_self_loops(train_data.edge_index)[0])[0]
-
-    return train_data, val_data, test_data, train_adj_labels
+    return train_data, val_data, test_data

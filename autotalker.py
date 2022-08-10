@@ -120,11 +120,10 @@ def main(args):
 
     print("Initializing and preprocessing dataset...")
 
-    train_data, val_data, test_data, train_adj_labels = prepare_data(adata)
+    train_data, val_data, test_data = prepare_data(adata)
     train_data = train_data.to(device)
     val_data = val_data.to(device)
     test_data = test_data.to(device)
-    train_adj_labels = train_adj_labels.to(device)
     print(train_data)
 
     print("Dataset initialized and preprocessed...")
@@ -132,7 +131,7 @@ def main(args):
     print("Calculating VGAE loss parameters:")
 
     vgae_loss_norm_factor, vgae_loss_pos_weight = compute_vgae_loss_parameters(
-        train_adj_labels)
+        train_data.edge_index)
 
     # vgae_loss_norm_factor = 200
 
@@ -166,18 +165,17 @@ def main(args):
 
     for epoch in range(args.n_epochs):
  
-        adj_rec_logits, mu, logstd = model(train_data.x, train_data.edge_index)
+        adj_recon_logits, mu, logstd = model(train_data.x, train_data.edge_index)
         # A_rec_logits, mu, logstd = model(X, A_norm)
 
         loss = compute_vgae_loss(
-            A_rec_logits = adj_rec_logits,
-            A_label = train_adj_labels,
+            adj_recon_logits = adj_recon_logits,
+            edge_label_index = train_data.edge_index,
+            pos_weight = vgae_loss_pos_weight,
             mu = mu,
             logstd = logstd,
             n_nodes = train_data.x.size(0),
-            norm_factor = vgae_loss_norm_factor,
-            pos_weight = vgae_loss_pos_weight,
-            debug = False)
+            norm_factor = vgae_loss_norm_factor)
 
         losses.append(loss.item())
 
@@ -217,10 +215,10 @@ def main(args):
                         "best_acc": best_acc_scores_val,
                         "best_f1": best_f1_scores_val}
 
-    plot_loss(losses)
-    mlflow.log_artifact("images/training_loss.png")
-    plot_eval_metrics(eval_metrics_val)               
-    mlflow.log_artifact("images/eval_metrics.png")
+    fig = plot_loss(losses)
+    mlflow.log_figure(fig, "train_loss.png")
+    fig = plot_eval_metrics(eval_metrics_val)  
+    mlflow.log_figure(fig, "val_eval_metrics.png")           
 
     auroc_score_test, auprc_score_test, best_acc_score_test, best_f1_score_test = get_eval_metrics(
         A_rec_probs,
