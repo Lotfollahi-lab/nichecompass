@@ -140,7 +140,10 @@ def compute_adversarial_loss(preds_real,
 
 def plot_loss(loss):
     """
-    Plot the evaluation metrics.
+    Plot loss curve.
+
+    Parameters
+    ----------
     """
 
     # Plot epochs as integers
@@ -149,7 +152,7 @@ def plot_loss(loss):
 
     # Plot loss
     plt.plot(loss, label = "loss")
-    plt.title("Training loss")
+    plt.title(f"Training loss curve")
     plt.ylabel("loss")
     plt.xlabel("epoch")
     plt.legend(loc = "upper right")

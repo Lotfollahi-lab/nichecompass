@@ -102,33 +102,39 @@ class Trainer:
     def train(self,
               n_epochs: int = 200,
               lr: float = 0.01,
-              eps: float = 0.01):
+              dropout_rate: float = 0.,
+              weight_decay: float = 0):
+
+        self.n_epochs = n_epochs
+        self.lr = lr
+        self.dropout_rate = dropout_rate
+        self.weight_decay = weight_decay
 
         start_time = time.time()
         self.model.train()
-        self.n_epochs = n_epochs
 
         params = filter(lambda p: p.requires_grad, self.model.parameters())
-        self.optimizer = torch.optim.Adam(params, lr = lr, eps = eps, weight_decay = self.weight_decay)
+        self.optimizer = torch.optim.Adam(params, lr = lr, weight_decay = weight_decay)
 
         self.on_training_start()
 
-        for self.epoch in range(n_epochs):
-            self.on_epoch_start(lr, eps)
-            self.iter_logs = defaultdict(list)
+        for epoch in range(n_epochs):
+            self.on_epoch_start()
 
-            # Validation of Model, Monitoring, Early Stopping
+            self.adj_recon_logits, self.mu, self.logstd = self.model(
+                self.train_data.x, self.train_data.edge_index)
 
-        # Calculate Loss depending on Trainer/Model
-        self.current_loss = loss = self.loss()
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
+            train_loss = self.loss(self.adj_recon_logits, self.train_data, self.mu, self.logstd)
+            self.train_losses.append(train_loss)
 
-            self.on_epoch_end()
-            if self.use_early_stopping:
-                if not self.check_early_stop():
-                    break
+            self.optimizer.zero_grad()
+            train_loss.backward()
+            self.optimizer.step()
+
+        self.on_epoch_end()
+        if self.use_early_stopping:
+            if not self.check_early_stop():
+                break
 
         if self.best_state_dict is not None and self.reload_best:
             print("Saving best state of the network...")
@@ -141,9 +147,14 @@ class Trainer:
         self.training_time += (time.time() - start_time)
 
     def on_training_start(self):
-        pass
+        mlflow.set_experiment("autotalker")
+        mlflow.log_param("n_epochs", self.n_epochs)
+        mlflow.log_param("n_hidden", self.model.n_hidden)
+        mlflow.log_param("n_latent", self.model.n_latent)
+        mlflow.log_param("lr", self.lr)
+        mlflow.log_param("dropout_rate", self.dropout_rate)
 
-    def on_epoch_start(self, lr, eps):
+    def on_epoch_start(self):
         pass
 
     def on_training_end(self):
@@ -154,25 +165,21 @@ class Trainer:
                             "best_acc": self.best_acc_scores_val,
                             "best_f1": self.best_f1_scores_val}
     
-        plot_loss(self.losses)
-        mlflow.log_artifact("images/training_loss.png")
-        plot_eval_metrics(eval_metrics_val)               
-        mlflow.log_artifact("images/eval_metrics.png")
+        fig = plot_loss(self.losses)
+        mlflow.log_figure(fig, "train_loss.png")
+        fig = plot_eval_metrics(eval_metrics_val)  
+        mlflow.log_figure(fig, "val_eval_metrics.png") 
     
         auroc_score_test, auprc_score_test, best_acc_score_test, best_f1_score_test = get_eval_metrics(
             self.adj_recon_probs,
             self.test_data.pos_edge_label_index,
             self.test_data.neg_edge_label_index)
 
-        print(f"Test (balanced) AUROC score: {auroc_score_test}")
-        print(f"Test (balanced) AUPRC score: {auprc_score_test}")
-        print(f"Test (balanced) best ACC score: {best_acc_score_test}")
-        print(f"Test (balanced) best F1 score: {best_f1_score_test}")
-    
         mlflow.log_metric("auroc_score_test", auroc_score_test)
         mlflow.log_metric("auprc_score_test", auprc_score_test)
         mlflow.log_metric("best_acc_score_test", best_acc_score_test)
         mlflow.log_metric("best_f1_score_test", best_f1_score_test)
+
 
     def on_epoch_end(self):
         # Get Train Epoch Logs
@@ -187,22 +194,24 @@ class Trainer:
         if self.monitor:
             print_progress(self.epoch, self.logs, self.n_epochs, self.monitor_only_val)
 
+
     @torch.no_grad()
     def validate(self):
         self.model.eval()
-        self.iter_logs = defaultdict(list)
-        # Calculate Validation Losses
-        for val_iter, batch_data in enumerate(self.dataloader_valid):
-            for key, batch in batch_data.items():
-                batch_data[key] = batch.to(self.device)
-
-            val_loss = self.loss(batch_data)
-
-        # Get Validation Logs
-        for key in self.iter_logs:
-            self.logs["val_" + key].append(np.array(self.iter_logs[key]).mean())
+       
+        val_loss = self.loss(self.adj_recon_logits, self.val_data, self.mu, self.logstd)
+        auroc_score_val, auprc_score_val, best_acc_score_val, best_f1_score_val = get_eval_metrics(
+        self.adj_recon_probs,
+        self.val_data.pos_edge_label_index,
+        self.val_data.neg_edge_label_index)
+        self.val_loss.append(val_loss)
+        self.auroc_scores_val.append(auroc_score_val)
+        self.auprc_scores_val.append(auprc_score_val)
+        self.best_acc_scores_val.append(best_acc_score_val)
+        self.best_f1_scores_val.append(best_f1_score_val)
 
         self.model.train()
+
 
     def check_early_stop(self):
         # Calculate Early Stopping and best state

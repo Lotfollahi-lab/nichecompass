@@ -215,7 +215,7 @@ def main(args):
                         "best_acc": best_acc_scores_val,
                         "best_f1": best_f1_scores_val}
 
-    fig = plot_loss(losses)
+    fig = plot_loss(losses, "training")
     mlflow.log_figure(fig, "train_loss.png")
     fig = plot_eval_metrics(eval_metrics_val)  
     mlflow.log_figure(fig, "val_eval_metrics.png")           
