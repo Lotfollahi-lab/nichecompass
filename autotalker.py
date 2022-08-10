@@ -182,8 +182,8 @@ def main(args):
                 print(f"Train loss: {loss.item()}")
                 print(f"Train (balanced) AUROC score: {auroc_score_train}")
                 print(f"Train (balanced) AUPRC score: {auprc_score_train}")
-                print(f"Train (balanced) ACC score: {acc_score_train}")
-                print(f"Train (balanced) F1 score: {f1_score_train}")
+                print(f"Train (balanced) best ACC score: {acc_score_train}")
+                print(f"Train (balanced) best F1 score: {f1_score_train}")
                 print(f"Elapsed training time: {time.time() - start_time}")
     
     print("--------------------")
@@ -199,8 +199,8 @@ def main(args):
     f1_score_test = eval_metrics_test[3]
     print(f"Test (balanced) AUROC score: {auroc_score_test}")
     print(f"Test (balanced) AUPRC score: {auprc_score_test}")
-    print(f"Test (balanced) ACC score: {acc_score_test}")
-    print(f"Test (balanced) F1 score: {f1_score_test}")
+    print(f"Test (balanced) best ACC score: {acc_score_test}")
+    print(f"Test (balanced) best F1 score: {f1_score_test}")
 
 
 if __name__ == '__main__':
