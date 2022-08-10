@@ -138,9 +138,9 @@ def compute_adversarial_loss(preds_real,
     return dc_bce, gen_bce
 
 
-def plot_loss(loss):
+def plot_loss_curves(loss_dict):
     """
-    Plot loss curve.
+    Plot loss curves.
 
     Parameters
     ----------
@@ -151,8 +151,9 @@ def plot_loss(loss):
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
     # Plot loss
-    plt.plot(loss, label = "loss")
-    plt.title(f"Training loss curve")
+    for loss_key, loss in loss_dict.items():
+        plt.plot(loss, label = loss_key) 
+    plt.title(f"Loss curve")
     plt.ylabel("loss")
     plt.xlabel("epoch")
     plt.legend(loc = "upper right")
