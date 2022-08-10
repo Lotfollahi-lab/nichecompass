@@ -1,8 +1,10 @@
 import copy
 
+import matplotlib.pyplot as plt
 import numpy as np
 import sklearn.metrics as skm
 import torch
+from matplotlib.ticker import MaxNLocator
 
 
 def get_eval_metrics(
@@ -81,9 +83,22 @@ def get_eval_metrics(
     return auroc_score, auprc_score, best_acc_score, best_f1_score
 
 
-def plot_eval_metrics(eval_scores):
-    
+def plot_eval_metrics(eval_scores_dict):
+    """
+    Plot the evaluation metrics.
+    """
 
+    # Plot epochs as integers
+    ax = plt.figure().gca()
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+
+    for metric_key, metric_scores in eval_scores_dict.items():
+        plt.plot(metric_scores, label = metric_key)
+    plt.title("Evaluation metrics validation dataset")
+    plt.ylabel("metric score")
+    plt.xlabel("epoch")
+    plt.legend(loc = "lower right")
+    plt.savefig("images/eval_metrics.png")
 
 
 def reduce_edges_per_node(A_rec_logits,

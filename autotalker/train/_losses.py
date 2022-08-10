@@ -1,5 +1,7 @@
+import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
+from matplotlib.ticker import MaxNLocator
 
 
 def compute_adj_recon_loss(adj_recon_logits, adj_labels, pos_weight):
@@ -135,3 +137,20 @@ def compute_adversarial_loss(preds_real,
     gen_bce = F.binary_cross_entropy_with_logits(preds_fake, gen_labels)
 
     return dc_bce, gen_bce
+
+
+def plot_loss(loss):
+    """
+    Plot the evaluation metrics.
+    """
+
+    # Plot epochs as integers
+    ax = plt.figure().gca()
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+
+    plt.plot(loss, label = "Loss")
+    plt.title("Training loss")
+    plt.ylabel("loss")
+    plt.xlabel("epoch")
+    plt.legend(loc = "upper left")
+    plt.savefig("images/training_loss.png")

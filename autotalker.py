@@ -2,6 +2,8 @@ import argparse
 import sys
 import time
 
+import matplotlib.pyplot as plt
+import mlflow
 import numpy as np
 import squidpy as sq
 import torch
@@ -13,7 +15,9 @@ from autotalker.data import simulate_spatial_adata
 from autotalker.modules import VGAE
 from autotalker.train import compute_vgae_loss_parameters
 from autotalker.train import compute_vgae_loss
+from autotalker.train import plot_loss
 from autotalker.train import get_eval_metrics
+from autotalker.train import plot_eval_metrics
 from autotalker.train import prepare_data
 
 
@@ -44,7 +48,7 @@ parser.add_argument(
     default = 0.01, # 0.0004 for visium
     help = "Initial learning rate.")
 parser.add_argument(
-    "--dropout",
+    "--dropout_rate",
     type = float,
     default = 0.,
     help = "Dropout rate (1 - keep probability).")
@@ -52,6 +56,16 @@ args = parser.parse_args()
 
 
 def main(args):
+
+    mlflow.set_experiment("autotalker")
+
+    # Logging hyperparameters
+    mlflow.log_param("dataset", args.dataset)
+    mlflow.log_param("n_epochs", args.n_epochs)
+    mlflow.log_param("n_hidden", args.n_hidden)
+    mlflow.log_param("n_latent", args.n_latent)
+    mlflow.log_param("lr", args.lr)
+    mlflow.log_param("dropout_rate", args.dropout_rate)
 
     # Configure PyTorch GPU device if available
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -133,7 +147,7 @@ def main(args):
         train_data.x.size(1),
         args.n_hidden,
         args.n_latent,
-        args.dropout)
+        args.dropout_rate)
     model = model.to(device)
     
     optimizer = torch.optim.Adam(model.parameters(), lr = args.lr)
@@ -143,6 +157,12 @@ def main(args):
     print("Starting model training...")
 
     start_time = time.time()
+
+    auroc_scores_val = []
+    auprc_scores_val = []
+    best_acc_scores_val = []
+    best_f1_scores_val = []
+    losses = []
 
     for epoch in range(args.n_epochs):
  
@@ -159,6 +179,8 @@ def main(args):
             pos_weight = vgae_loss_pos_weight,
             debug = False)
 
+        losses.append(loss.item())
+
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -167,40 +189,52 @@ def main(args):
             A_rec_logits_mu = torch.mm(mu, mu.t())
             A_rec_probs = torch.sigmoid(A_rec_logits_mu)
 
-            eval_metrics_train = get_eval_metrics(
+            auroc_score_val, auprc_score_val, best_acc_score_val, best_f1_score_val  = get_eval_metrics(
                 A_rec_probs,
-                train_data.pos_edge_label_index,
-                train_data.neg_edge_label_index)
+                val_data.pos_edge_label_index,
+                val_data.neg_edge_label_index)
 
-            auroc_score_train = eval_metrics_train[0]
-            auprc_score_train = eval_metrics_train[1]
-            acc_score_train = eval_metrics_train[2]
-            f1_score_train = eval_metrics_train[3]
+            auroc_scores_val.append(auroc_score_val)
+            auprc_scores_val.append(auprc_score_val)
+            best_acc_scores_val.append(best_acc_score_val)
+            best_f1_scores_val.append(best_f1_score_val)
+
             if epoch == 0 or (epoch + 1) % 10 == 0:
                 print("--------------------")
                 print(f"Epoch: {epoch+1}")
                 print(f"Train loss: {loss.item()}")
-                print(f"Train (balanced) AUROC score: {auroc_score_train}")
-                print(f"Train (balanced) AUPRC score: {auprc_score_train}")
-                print(f"Train (balanced) best ACC score: {acc_score_train}")
-                print(f"Train (balanced) best F1 score: {f1_score_train}")
+                print(f"Val (balanced) AUROC score: {auroc_score_val}")
+                print(f"Val (balanced) AUPRC score: {auprc_score_val}")
+                print(f"Val (balanced) best ACC score: {best_acc_score_val}")
+                print(f"Val (balanced) best F1 score: {best_f1_score_val}")
                 print(f"Elapsed training time: {time.time() - start_time}")
     
     print("--------------------")
     print("Model training finished...")
 
-    eval_metrics_test = get_eval_metrics(
+    eval_metrics_val = {"auroc": auroc_scores_val,
+                        "auprc": auprc_scores_val,
+                        "best_acc": best_acc_scores_val,
+                        "best_f1": best_f1_scores_val}
+
+    plot_loss(losses)
+    mlflow.log_artifact("images/training_loss.png")
+    plot_eval_metrics(eval_metrics_val)               
+    mlflow.log_artifact("images/eval_metrics.png")
+
+    auroc_score_test, auprc_score_test, best_acc_score_test, best_f1_score_test = get_eval_metrics(
         A_rec_probs,
-        val_data.pos_edge_label_index,
-        val_data.neg_edge_label_index)
-    auroc_score_test = eval_metrics_test[0]
-    auprc_score_test = eval_metrics_test[1]
-    acc_score_test = eval_metrics_test[2]
-    f1_score_test = eval_metrics_test[3]
+        test_data.pos_edge_label_index,
+        test_data.neg_edge_label_index)
     print(f"Test (balanced) AUROC score: {auroc_score_test}")
     print(f"Test (balanced) AUPRC score: {auprc_score_test}")
-    print(f"Test (balanced) best ACC score: {acc_score_test}")
-    print(f"Test (balanced) best F1 score: {f1_score_test}")
+    print(f"Test (balanced) best ACC score: {best_acc_score_test}")
+    print(f"Test (balanced) best F1 score: {best_f1_score_test}")
+
+    mlflow.log_metric("auroc_score_test", auroc_score_test)
+    mlflow.log_metric("auprc_score_test", auprc_score_test)
+    mlflow.log_metric("best_acc_score_test", best_acc_score_test)
+    mlflow.log_metric("best_f1_score_test", best_f1_score_test)
 
 
 if __name__ == '__main__':

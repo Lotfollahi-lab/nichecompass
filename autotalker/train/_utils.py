@@ -116,7 +116,7 @@ class EarlyStopping:
 def prepare_data(
     adata,
     val_frac: float = 0.1,
-    test_frac: float = 0):
+    test_frac: float = 0.05):
 
     dataset = SpatialAnnDataset(adata)
     data = Data(x = dataset.x, edge_index = dataset.edge_index, adj = dataset.adj)
