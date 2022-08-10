@@ -1,1 +1,4 @@
-from .models import VGAE
+from ._base_components import (
+    GCNEncoder,
+    DotProductDecoder,
+    FCLayer)
