@@ -1,8 +1,7 @@
 import numpy as np
+import sys
 from torch_geometric.data import Data
 from torch_geometric.transforms import RandomLinkSplit
-from torch_geometric.utils import add_self_loops
-from torch_geometric.utils import to_dense_adj
 
 from autotalker.data import SpatialAnnDataset
 
@@ -28,17 +27,17 @@ class EarlyStopping:
     metric_improvement_threshold:
         The minimum value which counts as metric_improvement.
     patience:
-        Number of n_epochs which are allowed to have no metric_improvement until the training is stopped.
+        Number of epochs which are allowed to have no metric_improvement until the training is stopped.
     reduce_lr_on_plateau:
-        If "True", the learning rate gets adjusted by "lr_factor" after a given number of n_epochs with no
+        If "True", the learning rate gets adjusted by "lr_factor" after a given number of epochs with no
         metric_improvement.
     lr_patience:
-        Number of n_epochs which are allowed to have no metric_improvement until the learning rate is adjusted.
+        Number of epochs which are allowed to have no metric_improvement until the learning rate is adjusted.
     lr_factor:
         Scaling factor for adjusting the learning rate.
      """
     def __init__(self,
-                 early_stopping_metric: str = None,
+                 early_stopping_metric: str = "valid_losses",
                  metric_improvement_threshold: float = 0,
                  patience: int = 15,
                  reduce_lr_on_plateau: bool = True,
@@ -52,30 +51,30 @@ class EarlyStopping:
         self.lr_patience = lr_patience
         self.lr_factor = lr_factor
 
-        self.n_epochs = 0
-        self.n_epochs_not_improved = 0
-        self.n_epochs_not_improved_lr = 0
+        self.epochs = 0
+        self.epochs_not_improved = 0
+        self.epochs_not_improved_lr = 0
 
         self.current_performance = np.inf
         self.best_performance = np.inf
         self.best_performance_state = np.inf
 
-    def update(self, current_metric):
-        self.n_epochs += 1
+    def step(self, current_metric):
+        self.epochs += 1
         # Determine whether to continue training
-        if self.n_epochs < self.patience:
+        if self.epochs < self.patience:
             continue_training = True
             reduce_lr = False
-        elif self.n_epochs_not_improved >= self.patience:
+        elif self.epochs_not_improved >= self.patience:
             continue_training = False
             reduce_lr = False
         # Determine whether to reduce the learning rate
         else:
             if self.reduce_lr_on_plateau == False:
                 reduce_lr = False
-            elif self.n_epochs_not_improved_lr >= self.lr_patience:
+            elif self.epochs_not_improved_lr >= self.lr_patience:
                 reduce_lr = True
-                self.n_epochs_not_improved_lr = 0
+                self.epochs_not_improved_lr = 0
             else:
                 reduce_lr = False
             
@@ -88,13 +87,13 @@ class EarlyStopping:
             if metric_improvement > 0:
                 self.best_performance = self.current_performance
 
-            # Updating n_epochs not improved
+            # Updating epochs not improved
             if metric_improvement < self.metric_improvement_threshold:
-                self.n_epochs_not_improved += 1
-                self.n_epochs_not_improved_lr += 1
+                self.epochs_not_improved += 1
+                self.epochs_not_improved_lr += 1
             else:
-                self.n_epochs_not_improved = 0
-                self.n_epochs_not_improved_lr = 0
+                self.epochs_not_improved = 0
+                self.epochs_not_improved_lr = 0
 
             continue_training = True
 
@@ -115,20 +114,71 @@ class EarlyStopping:
 
 def prepare_data(
     adata,
-    val_frac: float = 0.1,
+    valid_frac: float = 0.1,
     test_frac: float = 0.05):
 
     dataset = SpatialAnnDataset(adata)
     data = Data(x = dataset.x, edge_index = dataset.edge_index, adj = dataset.adj)
 
     transform = RandomLinkSplit(
-        num_val = val_frac,
+        num_val = valid_frac,
         num_test = test_frac,
         is_undirected = True,
         split_labels = True)
 
     train_data, val_data, test_data = transform(data)
 
-    train_adj_labels = to_dense_adj(add_self_loops(train_data.edge_index)[0])[0]
+    return train_data, val_data, test_data
 
-    return train_data, val_data, test_data, train_adj_labels
+
+def print_progress(epoch, logs, n_epochs=10000):
+    """
+    Creates Message for '_print_progress_bar'.
+    
+    Parameters
+    ----------
+    epoch: Integer
+         Current epoch.
+    logs: Dict
+         Dictionary with all logs (losses & metrics).
+    n_epochs: Integer
+         Total number of epochs.
+    Returns
+    -------
+    """
+    message = ""
+    for key in logs:
+        message += f" - {key:s}: {logs[key][-1]:7.10f}"
+
+    _print_progress_bar(epoch + 1, n_epochs, prefix='', suffix=message, decimals=1, length=20)
+
+
+def _print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, length=100, fill='█'):
+    """
+    Prints out message with a progress bar.
+    Parameters
+    ----------
+    iteration: Integer
+         Current epoch.
+    total: Integer
+         Maximum value of epochs.
+    prefix: String
+         String before the progress bar.
+    suffix: String
+         String after the progress bar.
+    decimals: Integer
+         Digits after comma for all the losses.
+    length: Integer
+         Length of the progress bar.
+    fill: String
+         Symbol for filling the bar.
+    Returns
+    -------
+    """
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filled_len = int(length * iteration // total)
+    bar = fill * filled_len + '-' * (length - filled_len)
+    sys.stdout.write('\r%s |%s| %s%s %s' % (prefix, bar, percent, '%', suffix)),
+    if iteration == total:
+        sys.stdout.write('\n')
+    sys.stdout.flush()

@@ -92,13 +92,17 @@ def plot_eval_metrics(eval_scores_dict):
     ax = plt.figure().gca()
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
+    # Plot eval metrics
     for metric_key, metric_scores in eval_scores_dict.items():
         plt.plot(metric_scores, label = metric_key)
     plt.title("Evaluation metrics validation dataset")
     plt.ylabel("metric score")
     plt.xlabel("epoch")
     plt.legend(loc = "lower right")
-    plt.savefig("images/eval_metrics.png")
+
+    # Retrieve figure
+    fig = plt.gcf()
+    return fig
 
 
 def reduce_edges_per_node(A_rec_logits,
