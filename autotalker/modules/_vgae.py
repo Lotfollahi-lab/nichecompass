@@ -1,32 +1,24 @@
-# -*- coding: utf-8 -*-
-"""Main module."""
-
-
 import torch
 import torch.nn as nn
-from scvi.module.base import BaseModuleClass
 
-from ..nn._base_components import DotProductDecoder
-from ..nn._base_components import GCNEncoder
-from ..nn._base_components import FCLayer
-
-torch.backends.cudnn.benchmark = True
+from autotalker.nn._base_components import DotProductDecoder
+from autotalker.nn._base_components import GCNEncoder
 
 
-class VGAE(BaseModuleClass):
+class VGAE(nn.Module):
     """
     Variational Graph Autoencoder class as per Kipf, T. N. & Welling, M.
     Variational Graph Auto-Encoders. arXiv [stat.ML] (2016).
 
     Parameters
     ----------
-    n_input
+    n_input:
         Number of nodes in the input layer.
-    n_hidden
-        Number of nodes per hidden layer.
-    n_latent
+    n_hidden:
+        Number of nodes in the hidden layer.
+    n_latent:
         Number of nodes in the latent space.
-    dropout
+    dropout_rate:
         Probability that nodes will be dropped during training.
     """
     def __init__(
@@ -47,7 +39,7 @@ class VGAE(BaseModuleClass):
             dropout_rate = dropout_rate,
             activation = torch.relu)
         
-        self.decoder = DotProductDecoder(dropout_rate = dropout_rate)
+        self.decoder = DotProductDecoder(dropout_rate=dropout_rate)
 
     def reparameterize(self, mu: torch.Tensor, logstd: torch.Tensor):
         if self.training:
@@ -57,8 +49,8 @@ class VGAE(BaseModuleClass):
         else:
             return mu
 
-    def forward(self, X, A):
-        self.mu, self.logstd = self.encoder(X, A)
-        self.Z = self.reparameterize(self.mu, self.logstd)
-        A_rec_logits = self.decoder(self.Z)
-        return A_rec_logits, self.mu, self.logstd
+    def forward(self, x, adj):
+        self.mu, self.logstd = self.encoder(x, adj)
+        self.z = self.reparameterize(self.mu, self.logstd)
+        adj_rec_logits = self.decoder(self.z)
+        return adj_rec_logits, self.mu, self.logstd

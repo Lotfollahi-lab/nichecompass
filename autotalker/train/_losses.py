@@ -7,9 +7,21 @@ from torch_geometric.utils import to_dense_adj
 
 
 def compute_adj_recon_loss(adj_recon_logits, edge_label_index, pos_weight):
+    """
+    Compute adjacency reconstruction loss from logits output by model and edge
+    label indices from data.
 
+    Parameters
+    ----------
+    adj_recon_logits:
+        Tensor containing the reconstructed adjacency matrix with logits.
+    edge_label_index:
+        Tensor containing the edge label indices.
+    pos_weight:
+        Weight with which positive examples (Aij = 1) are reweighted. This
+        reweighting can be benefical for very sparse adjacency matrices.
+    """
     adj_labels = to_dense_adj(add_self_loops(edge_label_index)[0])[0]
-
     adj_recon_loss = F.binary_cross_entropy_with_logits(
         adj_recon_logits,
         adj_labels,
@@ -18,9 +30,13 @@ def compute_adj_recon_loss(adj_recon_logits, edge_label_index, pos_weight):
 
 
 def compute_kl_loss(mu, logstd, n_nodes):
-        kl_loss = (-0.5 / n_nodes) * torch.mean(
-        torch.sum(1 + 2 * logstd - mu ** 2 - torch.exp(logstd) ** 2, 1))
-        return kl_loss
+    """
+    Compute Kullback-Leibler divergence as per Kingma, D. P. & Welling, M. 
+    Auto-Encoding Variational Bayes. arXiv [stat.ML] (2013).
+    """
+    kl_loss = (-0.5 / n_nodes) * torch.mean(
+    torch.sum(1 + 2 * logstd - mu ** 2 - torch.exp(logstd) ** 2, 1))
+    return kl_loss
 
 
 def compute_vgae_loss(
