@@ -35,6 +35,10 @@ class VGAE(BaseModuleClass):
             n_hidden: int,
             n_latent: int,
             dropout_rate: float=0.0):
+        self.n_input = n_input
+        self.n_hidden = n_hidden
+        self.n_latent = n_latent
+        self.dropout_rate = dropout_rate
         super().__init__()
         self.encoder = GCNEncoder(
             n_input = n_input,

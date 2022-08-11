@@ -46,7 +46,8 @@ class Autotalker():
               lr: float = 0.01,
               weight_decay: float = 0,
               val_frac: float = 0.1,
-              test_frac: float = 0.05):
+              test_frac: float = 0.05,
+              **kwargs):
         """
         Train the model.
         

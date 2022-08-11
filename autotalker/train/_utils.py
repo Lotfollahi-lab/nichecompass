@@ -37,7 +37,7 @@ class EarlyStopping:
         Scaling factor for adjusting the learning rate.
      """
     def __init__(self,
-                 early_stopping_metric: str = None,
+                 early_stopping_metric: str = "valid_losses",
                  metric_improvement_threshold: float = 0,
                  patience: int = 15,
                  reduce_lr_on_plateau: bool = True,
@@ -114,14 +114,14 @@ class EarlyStopping:
 
 def prepare_data(
     adata,
-    val_frac: float = 0.1,
+    valid_frac: float = 0.1,
     test_frac: float = 0.05):
 
     dataset = SpatialAnnDataset(adata)
     data = Data(x = dataset.x, edge_index = dataset.edge_index, adj = dataset.adj)
 
     transform = RandomLinkSplit(
-        num_val = val_frac,
+        num_val = valid_frac,
         num_test = test_frac,
         is_undirected = True,
         split_labels = True)
@@ -131,54 +131,49 @@ def prepare_data(
     return train_data, val_data, test_data
 
 
-def print_progress(epoch, logs, n_epochs=10000, only_val_losses=True):
-    """Creates Message for '_print_progress_bar'.
-       Parameters
-       ----------
-       epoch: Integer
-            Current epoch iteration.
-       logs: Dict
-            Dictionary of all current losses.
-       n_epochs: Integer
-            Maximum value of epochs.
-       only_val_losses: Boolean
-            If 'True' only the validation dataset losses are displayed, if 'False' additionally the training dataset
-            losses are displayed.
-       Returns
-       -------
+def print_progress(epoch, logs, n_epochs=10000):
+    """
+    Creates Message for '_print_progress_bar'.
+    
+    Parameters
+    ----------
+    epoch: Integer
+         Current epoch.
+    logs: Dict
+         Dictionary with all logs (losses & metrics).
+    n_epochs: Integer
+         Total number of epochs.
+    Returns
+    -------
     """
     message = ""
     for key in logs:
-        if only_val_losses:
-            if "val_" in key and "unweighted" not in key:
-                message += f" - {key:s}: {logs[key][-1]:7.10f}"
-        else:
-            if "unweighted" not in key:
-                message += f" - {key:s}: {logs[key][-1]:7.10f}"
+        message += f" - {key:s}: {logs[key][-1]:7.10f}"
 
     _print_progress_bar(epoch + 1, n_epochs, prefix='', suffix=message, decimals=1, length=20)
 
 
 def _print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, length=100, fill='█'):
-    """Prints out message with a progress bar.
-       Parameters
-       ----------
-       iteration: Integer
-            Current epoch.
-       total: Integer
-            Maximum value of epochs.
-       prefix: String
-            String before the progress bar.
-       suffix: String
-            String after the progress bar.
-       decimals: Integer
-            Digits after comma for all the losses.
-       length: Integer
-            Length of the progress bar.
-       fill: String
-            Symbol for filling the bar.
-       Returns
-       -------
+    """
+    Prints out message with a progress bar.
+    Parameters
+    ----------
+    iteration: Integer
+         Current epoch.
+    total: Integer
+         Maximum value of epochs.
+    prefix: String
+         String before the progress bar.
+    suffix: String
+         String after the progress bar.
+    decimals: Integer
+         Digits after comma for all the losses.
+    length: Integer
+         Length of the progress bar.
+    fill: String
+         Symbol for filling the bar.
+    Returns
+    -------
     """
     percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
     filled_len = int(length * iteration // total)

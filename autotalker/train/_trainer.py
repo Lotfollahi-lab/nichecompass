@@ -27,17 +27,19 @@ class Trainer:
     def __init__(self,
                  adata,
                  model,
-                 val_frac: float = 0.1,
+                 valid_frac: float = 0.1,
                  test_frac: float = 0.05,
                  use_early_stopping: bool = True,
+                 reload_best: bool = True,
                  early_stopping_kwargs: dict = None,
                  **kwargs):
         self.adata = adata
         self.model = model
-        self.train_frac = 1 - val_frac - test_frac
-        self.val_frac = val_frac
+        self.train_frac = 1 - valid_frac - test_frac
+        self.valid_frac = valid_frac
         self.test_frac = test_frac
         self.use_early_stopping = use_early_stopping
+        self.reload_best = reload_best
         self.seed = kwargs.pop("seed", 0)
         self.monitor = kwargs.pop("monitor", True)
         self.epoch = -1
@@ -58,7 +60,7 @@ class Trainer:
         
         self.train_data, self.valid_data, self.test_data = prepare_data(
             self.adata,
-            val_frac = self.val_frac,
+            valid_frac = self.valid_frac,
             test_frac = self.test_frac)
 
         self.train_data = self.train_data.to(self.device)
@@ -66,8 +68,10 @@ class Trainer:
         self.test_data = self.test_data.to(self.device)
 
 
-    def loss(adj_recon_logits, train_data, mu, logstd):
+    def loss(self, adj_recon_logits, train_data, mu, logstd):
         vgae_loss_norm_factor, vgae_loss_pos_weight = compute_vgae_loss_parameters(train_data.edge_index)
+
+        vgae_loss_pos_weight = vgae_loss_pos_weight.to(self.device)
         
         loss = compute_vgae_loss(
             adj_recon_logits = adj_recon_logits,
@@ -97,14 +101,14 @@ class Trainer:
 
         self.on_training_start()
 
-        for epoch in range(n_epochs):
+        for self.epoch in range(n_epochs):
             self.on_epoch_start()
 
             self.adj_recon_logits, self.mu, self.logstd = self.model(
                 self.train_data.x, self.train_data.edge_index)
 
             train_loss = self.loss(self.adj_recon_logits, self.train_data, self.mu, self.logstd)
-            self.train_losses.append(train_loss)
+            self.logs["train_losses"].append(train_loss.item())
 
             self.optimizer.zero_grad()
             train_loss.backward()
@@ -148,24 +152,24 @@ class Trainer:
 
         # Monitor logs
         if self.monitor:
-            print_progress(self.epoch, self.logs, self.n_epochs, False)
+            print_progress(self.epoch, self.logs, self.n_epochs)
 
 
     def on_training_end(self):
         print("Model training finished...")
 
-        losses = {"train_loss": self.log["train_losses"],
-                  "val_loss": self.log["val_losses"]}
+        losses = {"train_loss": self.logs["train_losses"],
+                  "valid_loss": self.logs["valid_losses"]}
 
-        eval_metrics_val = {"auroc": self.logs["val_auroc_scores"],
-                            "auprc": self.logs["val_auprc_scores"],
-                            "best_acc": self.logs["val_best_acc_scores"],
-                            "best_f1": self.logs["val_best_f1_scores"]}
+        eval_metrics_valid = {"auroc": self.logs["valid_auroc_scores"],
+                              "auprc": self.logs["valid_auprc_scores"],
+                              "best_acc": self.logs["valid_best_acc_scores"],
+                              "best_f1": self.logs["valid_best_f1_scores"]}
     
         fig = plot_loss_curves(losses)
         mlflow.log_figure(fig, "loss_curve.png")
-        fig = plot_eval_metrics(eval_metrics_val)  
-        mlflow.log_figure(fig, "val_eval_metrics.png") 
+        fig = plot_eval_metrics(eval_metrics_valid)  
+        mlflow.log_figure(fig, "valid_eval_metrics.png") 
     
         test_auroc_score, test_auprc_score, test_best_acc_score, test_best_f1_score = get_eval_metrics(
             self.adj_recon_probs,
@@ -174,7 +178,7 @@ class Trainer:
 
         mlflow.log_metric("test_auroc_score", test_auroc_score)
         mlflow.log_metric("test_auprc_score", test_auprc_score)
-        mlflow.log_metric("test_best_acc_score", btest_est_acc_score)
+        mlflow.log_metric("test_best_acc_score", test_best_acc_score)
         mlflow.log_metric("test_best_f1_score", test_best_f1_score)
 
 
@@ -182,17 +186,20 @@ class Trainer:
     def validate(self):
         self.model.eval()
 
-        val_loss = self.loss(self.adj_recon_logits, self.val_data, self.mu, self.logstd)
-        auroc_score_val, auprc_score_val, best_acc_score_val, best_f1_score_val = get_eval_metrics(
+        self.adj_recon_logits_mu = torch.mm(self.mu, self.mu.t())
+        self.adj_recon_probs = torch.sigmoid(self.adj_recon_logits_mu)
+
+        valid_loss = self.loss(self.adj_recon_logits, self.valid_data, self.mu, self.logstd)
+        valid_auroc_score, valid_auprc_score, valid_best_acc_score, valid_best_f1_score = get_eval_metrics(
             self.adj_recon_probs,
-            self.val_data.pos_edge_label_index,
-            self.val_data.neg_edge_label_index)
+            self.valid_data.pos_edge_label_index,
+            self.valid_data.neg_edge_label_index)
         
-        self.logs["val_losses"].append(val_loss)
-        self.logs["auroc_scores_val"].append(auroc_score_val)
-        self.logs["auprc_scores_val"].append(auprc_score_val)
-        self.logs["best_acc_scores_val"].append(best_acc_score_val)
-        self.logs["best_f1_scores_val"].append(best_f1_score_val)
+        self.logs["valid_losses"].append(valid_loss.item())
+        self.logs["valid_auroc_scores"].append(valid_auroc_score)
+        self.logs["valid_auprc_scores"].append(valid_auprc_score)
+        self.logs["valid_best_acc_scores"].append(valid_best_acc_score)
+        self.logs["valid_best_f1_scores"].append(valid_best_f1_score)
         
         self.model.train()
 
