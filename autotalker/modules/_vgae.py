@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 
-from autotalker.nn._base_components import DotProductDecoder
-from autotalker.nn._base_components import GCNEncoder
+from autotalker.nn import DotProductDecoder
+from autotalker.nn import GCNEncoder
 
 
 class VGAE(nn.Module):

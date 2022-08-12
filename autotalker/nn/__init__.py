@@ -4,4 +4,5 @@ from ._base_components import (
     FCLayer)
 
 __all__ = [
-    "VGAE"]
+    "GCNEncoder",
+    "DotProductDecoder"]

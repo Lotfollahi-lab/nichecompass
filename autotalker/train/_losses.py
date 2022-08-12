@@ -57,10 +57,13 @@ def compute_vgae_loss(
 
     Parameters
     ----------
-    A_rec_logits:
+    adj_recon_logits:
         Tensor containing the reconstructed adjacency matrix with logits.
-    A_label:
-        Tensor containing the adjacency matrix with labels.
+    edge_label_index:
+        Tensor containing the edge label indices.
+    pos_weight:
+        Weight with which positive examples (Aij = 1) are reweighted. This
+        reweighting can be benefical for very sparse adjacency matrices.
     mu:
         Expected values of the latent space distribution.
     logstd:
@@ -70,16 +73,16 @@ def compute_vgae_loss(
     norm_factor:
         Factor with which reconstruction loss is weighted compared to Kullback-
         Leibler divergence.
-    pos_weight:
-        Weight with which positive examples (Aij = 1) are reweighted. This
-        reweighting can be benefical for very sparse A.
     Returns
     ----------
     vgae_loss:
         Variational Graph Autoencoder loss composed of reconstruction and 
         regularization loss.
     """
-    adj_recon_loss = compute_adj_recon_loss(adj_recon_logits, edge_label_index, pos_weight)
+    adj_recon_loss = compute_adj_recon_loss(
+        adj_recon_logits,
+         edge_label_index,
+         pos_weight)
     kl_loss = compute_kl_loss(mu, logstd, n_nodes)
     vgae_loss = norm_factor * adj_recon_loss + kl_loss
     return vgae_loss
@@ -94,8 +97,8 @@ def compute_vgae_loss_parameters(edge_label_index):
     
     Parameters
     ----------
-    A_label:
-        Adjacency matrix with labels (1s for training edges and diagonals)
+    edge_label_index:
+        Tensor containing the edge label indices.
     Returns
     ----------
     vgae_loss_norm_factor:
@@ -119,49 +122,15 @@ def compute_vgae_loss_parameters(edge_label_index):
     return vgae_loss_norm_factor, vgae_loss_pos_weight
 
 
-def compute_adversarial_loss(preds_real,
-                             preds_fake):
-    """
-    Compute the Discriminator loss of the adversarial module.
-
-    Parameters
-    ----------
-    preds_real:
-
-    preds_fake:
-
-    Returns
-    ----------
-    dc_bce:
-        Binary cross entropy loss of the discriminator module.
-    gen_bce:
-        Binary cross entropy loss of the generator module.
-    """
-
-    # Adversarial ground truths
-    dc_labels_real = torch.ones_like(preds_real)
-    dc_labels_fake = torch.zeros_like(preds_fake)
-    gen_labels = torch.ones_like(preds_fake)
-
-    # Discriminator loss
-    dc_bce_real = F.binary_cross_entropy_with_logits(preds_real, dc_labels_real)
-    dc_bce_fake = F.binary_cross_entropy_with_logits(preds_fake, dc_labels_fake)
-    dc_bce = dc_bce_real + dc_bce_fake
-
-    # Generator loss
-    gen_bce = F.binary_cross_entropy_with_logits(preds_fake, gen_labels)
-
-    return dc_bce, gen_bce
-
-
 def plot_loss_curves(loss_dict):
     """
     Plot loss curves.
 
     Parameters
     ----------
+    loss_dict:
+        Dictionary containing the training and validation losses.
     """
-
     # Plot epochs as integers
     ax = plt.figure().gca()
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
@@ -169,7 +138,7 @@ def plot_loss_curves(loss_dict):
     # Plot loss
     for loss_key, loss in loss_dict.items():
         plt.plot(loss, label = loss_key) 
-    plt.title(f"Loss curve")
+    plt.title(f"Loss curves")
     plt.ylabel("loss")
     plt.xlabel("epoch")
     plt.legend(loc = "upper right")

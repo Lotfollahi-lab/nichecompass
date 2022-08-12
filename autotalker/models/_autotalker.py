@@ -73,11 +73,11 @@ class Autotalker():
             kwargs for the trainer.
         """
         self.trainer = Trainer(
-                self.adata,
-                self.adj_key,
-                self.model,
-                val_frac,
-                test_frac,
+                adata=self.adata,
+                model=self.model,
+                adj_key=self.adj_key,
+                val_frac=val_frac,
+                test_frac=test_frac,
                 **trainer_kwargs)
         self.trainer.train(n_epochs, lr, weight_decay)
         self.is_trained_ = True
