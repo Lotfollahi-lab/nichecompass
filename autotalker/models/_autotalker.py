@@ -2,6 +2,7 @@ import logging
 
 import anndata as ad
 
+from ._base import BaseModelMixin
 from autotalker.modules import VGAE
 from autotalker.train import Trainer
 
@@ -9,7 +10,7 @@ from autotalker.train import Trainer
 logger = logging.getLogger(__name__)
 
 
-class Autotalker():
+class Autotalker(BaseModelMixin):
     """
     Autotalker model class.
 
