@@ -33,8 +33,10 @@ def get_eval_metrics(
     best_f1_score:
         F1 score under optimal classification threshold.
     """
-    edge_labels = edge_labels.detach().cpu().numpy()
-    edge_label_index = edge_label_index.detach().cpu().numpy()
+    if isinstance(edge_labels, torch.Tensor):
+        edge_labels = edge_labels.detach().cpu().numpy()
+    if isinstance(edge_label_index, torch.Tensor):
+        edge_label_index = edge_label_index.detach().cpu().numpy()
 
     # Collect predictions for each label (positive vs negative edge) separately
     pred_probs = np.array([])

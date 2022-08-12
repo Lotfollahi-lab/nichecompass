@@ -20,6 +20,14 @@ print("Number of edges: "
 dataset = SpatialAnnDataset(adata)
 data = Data(x=dataset.x, edge_index=dataset.edge_index)
 
+transform = RandomLinkSplit(
+    num_val=0.1,
+    num_test=0.1,
+    is_undirected=True,
+    split_labels=True)
+train_data, valid_data, test_data = transform(data)
+print(train_data)
+
 loader = LinkNeighborLoader(
     data,
     # Sample 30 neighbors for each node for 2 iterations

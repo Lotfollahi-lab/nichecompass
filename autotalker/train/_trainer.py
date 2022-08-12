@@ -14,6 +14,7 @@ from ._losses import compute_vgae_loss_parameters
 from ._losses import plot_loss_curves
 from ._utils import EarlyStopping
 from ._utils import print_progress
+from ._utils import transform_test_edge_labels
 
 
 class Trainer:
@@ -240,82 +241,16 @@ class Trainer:
                 self.epoch_logs[key].append(np.array(self.iter_logs[key]).sum()
                                             / self.iter_logs["n_valid_iter"])
 
-        if self.valid_data is not None and False:
-            self.valid_data = self.valid_data.to(self.device)
-            adj_recon_logits, _, _ = self.model(self.valid_data.x,
-                                                self.valid_data.edge_index)
-            adj_recon_probs = torch.sigmoid(adj_recon_logits)
-    
-            valid_eval_metrics = get_eval_metrics(
-                adj_recon_probs,
-                self.valid_data.pos_edge_label_index,
-                self.valid_data.neg_edge_label_index)
-
-            valid_auroc_score = valid_eval_metrics[0]
-            valid_auprc_score = valid_eval_metrics[1]
-            valid_best_acc_score = valid_eval_metrics[2]
-            valid_best_f1_score = valid_eval_metrics[3]
-            
-            self.epoch_logs["valid_auroc_scores"].append(valid_auroc_score)
-            self.epoch_logs["valid_auprc_scores"].append(valid_auprc_score)
-            self.epoch_logs["valid_best_acc_scores"].append(valid_best_acc_score)
-            self.epoch_logs["valid_best_f1_scores"].append(valid_best_f1_score)
-
         # Monitor epoch level logs
         if self.monitor:
             print_progress(self.epoch, self.epoch_logs, self.n_epochs)
-
-
-    @torch.no_grad()
-    def on_training_end(self):
-        print("Model training finished...")
-        self.model = self.model.to("cpu")
-
-        losses = {"train_loss": self.epoch_logs["train_losses"],
-                  "valid_loss": self.epoch_logs["valid_losses"]}
-
-        valid_eval_metrics = {"auroc": self.epoch_logs["valid_auroc_scores"],
-                              "auprc": self.epoch_logs["valid_auprc_scores"],
-                              "best_acc": self.epoch_logs["valid_best_acc_scores"],
-                              "best_f1": self.epoch_logs["valid_best_f1_scores"]}
-    
-        fig = plot_loss_curves(losses)
-        mlflow.log_figure(fig, "loss_curves.png")
-        fig = plot_eval_metrics(valid_eval_metrics)  
-        mlflow.log_figure(fig, "valid_eval_metrics.png") 
-
-        self.adj_recon_logits, self.mu, self.logstd = self.model(
-            self.test_data.x,
-            self.test_data.edge_index)
-        self.adj_recon_probs = torch.sigmoid(self.adj_recon_logits)
-    
-        test_eval_metrics = get_eval_metrics(
-            self.adj_recon_probs,
-            self.test_data.pos_edge_label_index,
-            self.test_data.neg_edge_label_index)
-
-        test_auroc_score = test_eval_metrics[0]
-        test_auprc_score = test_eval_metrics[1]
-        test_best_acc_score = test_eval_metrics[2]
-        test_best_f1_score = test_eval_metrics[3]
-
-        mlflow.log_metric("test_auroc_score", test_auroc_score)
-        mlflow.log_metric("test_auprc_score", test_auprc_score)
-        mlflow.log_metric("test_best_acc_score", test_best_acc_score)
-        mlflow.log_metric("test_best_f1_score", test_best_f1_score)
 
 
     def validate(self):
         self.model.eval()
 
         for valid_data_batch in self.valid_dataloader:
-
             valid_data_batch = valid_data_batch.to(self.device)
-
-            #print(valid_data_batch.edge_index)
-            #print(valid_data_batch.pos_edge_label_index)
-            #print(valid_data_batch.neg_edge_label_index)
-
             
             adj_recon_logits, mu, logstd = self.model(
                 valid_data_batch.x,
@@ -342,6 +277,49 @@ class Trainer:
             self.iter_logs["valid_best_f1_scores"].append(valid_best_f1_score)
         
         self.model.train()
+    
+
+    @torch.no_grad()
+    def on_training_end(self):
+        print("Model training finished...")
+        self.model = self.model.to("cpu")
+
+        losses = {"train_loss": self.epoch_logs["train_losses"],
+                  "valid_loss": self.epoch_logs["valid_losses"]}
+
+        valid_eval_metrics = {"auroc": self.epoch_logs["valid_auroc_scores"],
+                              "auprc": self.epoch_logs["valid_auprc_scores"],
+                              "best_acc": self.epoch_logs["valid_best_acc_scores"],
+                              "best_f1": self.epoch_logs["valid_best_f1_scores"]}
+    
+        fig = plot_loss_curves(losses)
+        mlflow.log_figure(fig, "loss_curves.png")
+        fig = plot_eval_metrics(valid_eval_metrics)  
+        mlflow.log_figure(fig, "valid_eval_metrics.png") 
+
+        self.adj_recon_logits, self.mu, self.logstd = self.model(
+            self.test_data.x,
+            self.test_data.edge_index)
+        self.adj_recon_probs = torch.sigmoid(self.adj_recon_logits)
+
+        test_edge_label_index, test_edge_labels = transform_test_edge_labels(
+            self.test_data.pos_edge_label_index,
+            self.test_data.neg_edge_label_index)
+    
+        test_eval_metrics = get_eval_metrics(
+            self.adj_recon_probs,
+            test_edge_label_index,
+            test_edge_labels)
+
+        test_auroc_score = test_eval_metrics[0]
+        test_auprc_score = test_eval_metrics[1]
+        test_best_acc_score = test_eval_metrics[2]
+        test_best_f1_score = test_eval_metrics[3]
+
+        mlflow.log_metric("test_auroc_score", test_auroc_score)
+        mlflow.log_metric("test_auprc_score", test_auprc_score)
+        mlflow.log_metric("test_best_acc_score", test_best_acc_score)
+        mlflow.log_metric("test_best_f1_score", test_best_f1_score)
 
 
     def is_early_stopping(self):

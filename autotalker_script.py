@@ -21,7 +21,7 @@ parser.add_argument(
 parser.add_argument(
     "--batch_size",
     type=int,
-    default=2000,
+    default=256,
     help="Batch size used for model training.")
 parser.add_argument(
     "--n_hidden",
@@ -74,7 +74,10 @@ def main(args):
         n_hidden=args.n_hidden,
         n_latent=args.n_latent,
         dropout_rate=args.dropout_rate)
-    model.train(batch_size=args.batch_size)
+    model.train(
+        n_epochs=args.n_epochs,
+        lr=args.lr,
+        batch_size=args.batch_size)
 
 
 if __name__ == '__main__':
