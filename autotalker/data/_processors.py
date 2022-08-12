@@ -33,7 +33,7 @@ def prepare_data(
         PyTorch Geometric Data object containing the test data.
     """
     dataset = SpatialAnnDataset(adata, adj_key=adj_key)
-    data = Data(x=dataset.x, edge_index=dataset.edge_index, adj=dataset.adj)
+    data = Data(x=dataset.x, edge_index=dataset.edge_index)
 
     transform = RandomLinkSplit(
         num_val=valid_frac,

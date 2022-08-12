@@ -11,13 +11,18 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--dataset",
     type=str,
-    default="squidpy_slideseqv2",
+    default="deeplinc_seqfish",
     help="Dataset to use for model training.")
 parser.add_argument(
     "--n_epochs",
     type=int,
     default=200,
     help="Number of epochs.")
+parser.add_argument(
+    "--batch_size",
+    type=int,
+    default=2000,
+    help="Batch size used for model training.")
 parser.add_argument(
     "--n_hidden",
     type=int,
@@ -69,7 +74,7 @@ def main(args):
         n_hidden=args.n_hidden,
         n_latent=args.n_latent,
         dropout_rate=args.dropout_rate)
-    model.train()
+    model.train(batch_size=args.batch_size)
 
 
 if __name__ == '__main__':

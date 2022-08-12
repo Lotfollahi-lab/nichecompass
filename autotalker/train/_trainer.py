@@ -56,7 +56,7 @@ class Trainer:
                  adj_key: str="spatial_connectivities",
                  valid_frac: float=0.1,
                  test_frac: float=0.05,
-                 batch_size: int=3000,
+                 batch_size: int=100,
                  use_early_stopping: bool=True,
                  reload_best_model: bool=True,
                  early_stopping_kwargs: dict=None,
@@ -116,18 +116,22 @@ class Trainer:
         #    shuffle=True,
         #    batch_size=self.batch_size,
         #    num_workers=self.n_workers)
-        
-        ### UPDATE to LinkNeighborLoader once released! ###
 
-        self.train_dataloader = torch_geometric.loader.NeighborLoader(
+        self.train_dataloader = torch_geometric.loader.LinkNeighborLoader(
             self.train_data,
-            num_neighbors=[100]*2,
-            batch_size=self.batch_size)
+            num_neighbors=[30]*2,
+            batch_size=self.batch_size,
+            edge_label_index=self.train_data.edge_index,
+            directed=False,
+            neg_sampling_ratio=1)
 
-        self.valid_dataloader = torch_geometric.loader.NeighborLoader(
+        self.valid_dataloader = torch_geometric.loader.LinkNeighborLoader(
             self.valid_data,
-            num_neighbors=[100]*2,
-            batch_size=self.batch_size)     
+            num_neighbors=[30]*2,
+            batch_size=self.batch_size,
+            edge_label_index=self.valid_data.edge_index,
+            directed=False,
+            neg_sampling_ratio=1)
 
 
     def loss(self, adj_recon_logits, train_data, mu, logstd):
@@ -236,7 +240,7 @@ class Trainer:
                 self.epoch_logs[key].append(np.array(self.iter_logs[key]).sum()
                                             / self.iter_logs["n_valid_iter"])
 
-        if self.valid_data is not None:
+        if self.valid_data is not None and False:
             self.valid_data = self.valid_data.to(self.device)
             adj_recon_logits, _, _ = self.model(self.valid_data.x,
                                                 self.valid_data.edge_index)
@@ -305,13 +309,37 @@ class Trainer:
         self.model.eval()
 
         for valid_data_batch in self.valid_dataloader:
+
             valid_data_batch = valid_data_batch.to(self.device)
+
+            #print(valid_data_batch.edge_index)
+            #print(valid_data_batch.pos_edge_label_index)
+            #print(valid_data_batch.neg_edge_label_index)
+
+            
             adj_recon_logits, mu, logstd = self.model(
                 valid_data_batch.x,
                 valid_data_batch.edge_index)
             valid_loss = self.loss(adj_recon_logits, valid_data_batch, mu, logstd)
             self.iter_logs["valid_losses"].append(valid_loss.item())
             self.iter_logs["n_valid_iter"] += 1
+
+            adj_recon_probs = torch.sigmoid(adj_recon_logits)
+    
+            valid_eval_metrics = get_eval_metrics(
+                adj_recon_probs,
+                valid_data_batch.edge_label_index,
+                valid_data_batch.edge_label)
+
+            valid_auroc_score = valid_eval_metrics[0]
+            valid_auprc_score = valid_eval_metrics[1]
+            valid_best_acc_score = valid_eval_metrics[2]
+            valid_best_f1_score = valid_eval_metrics[3]
+            
+            self.iter_logs["valid_auroc_scores"].append(valid_auroc_score)
+            self.iter_logs["valid_auprc_scores"].append(valid_auprc_score)
+            self.iter_logs["valid_best_acc_scores"].append(valid_best_acc_score)
+            self.iter_logs["valid_best_f1_scores"].append(valid_best_f1_score)
         
         self.model.train()
 
