@@ -1,24 +1,34 @@
 import anndata as ad
-import numpy as np
 import scipy.sparse as sp
 import torch
-from torch.utils.data import Dataset
 
 from ._utils import sparse_mx_to_sparse_tensor
 
 
 class SpatialAnnDataset():
+    """
+    SpatialAnnDataset class to extract node features, adjacency matrix and edge
+    indices in a standardized format from an AnnData object.
+
+    Parameters
+    ----------
+    adata:
+        AnnData object with sparse adjacency matrix stored in 
+        adata.obsp[adj_key].
+    adj_key:
+        Key under which the sparse adjacency matrix is stored in adata.obsp.
+    """
     def __init__(
             self,
             adata: ad.AnnData,
-            adj_key: str = "spatial_connectivities"):
+            adj_key: str="spatial_connectivities"):
 
         # Store features in dense format
         if sp.issparse(adata.X): 
             self.x = torch.FloatTensor(adata.X.toarray())
         else:
             self.x = torch.FloatTensor(adata.X)
-
+            
         self.n_node_features = self.x.size(1)
 
         # Store adjacency matrix in sparse tensor format

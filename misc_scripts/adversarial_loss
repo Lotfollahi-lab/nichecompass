@@ -1,0 +1,33 @@
+def compute_adversarial_loss(preds_real,
+                             preds_fake):
+    """
+    Compute the Discriminator loss of the adversarial module.
+
+    Parameters
+    ----------
+    preds_real:
+
+    preds_fake:
+
+    Returns
+    ----------
+    dc_bce:
+        Binary cross entropy loss of the discriminator module.
+    gen_bce:
+        Binary cross entropy loss of the generator module.
+    """
+
+    # Adversarial ground truths
+    dc_labels_real = torch.ones_like(preds_real)
+    dc_labels_fake = torch.zeros_like(preds_fake)
+    gen_labels = torch.ones_like(preds_fake)
+
+    # Discriminator loss
+    dc_bce_real = F.binary_cross_entropy_with_logits(preds_real, dc_labels_real)
+    dc_bce_fake = F.binary_cross_entropy_with_logits(preds_fake, dc_labels_fake)
+    dc_bce = dc_bce_real + dc_bce_fake
+
+    # Generator loss
+    gen_bce = F.binary_cross_entropy_with_logits(preds_fake, gen_labels)
+
+    return dc_bce, gen_bce

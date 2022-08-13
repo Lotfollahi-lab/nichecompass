@@ -8,7 +8,6 @@ import numpy as np
 import squidpy as sq
 import torch
 
-from autotalker.data import SpatialAnnDataPyGDataset
 from autotalker.data import load_benchmark_spatial_adata
 from autotalker.data import load_spatial_adata_from_csv
 from autotalker.data import simulate_spatial_adata
@@ -22,36 +21,12 @@ from autotalker.train import prepare_data
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--dataset",
-    type = str,
-    default = "MERFISH",
-    help = "Dataset to use for model training.")
-parser.add_argument(
-    "--n_epochs",
-    type = int,
-    default = 200,
-    help = "Number of epochs to train.")
-parser.add_argument(
-    "--n_hidden",
-    type = int,
-    default = 32, # 250
-    help = "Number of units in VGAE hidden layer.")
-parser.add_argument(
-    "--n_latent",
-    type = int,
-    default = 16, # 125
-    help = "Number of units in VGAE latent layer.")
-parser.add_argument(
-    "--lr",
-    type = float,
-    default = 0.01, # 0.0004 for visium
-    help = "Initial learning rate.")
-parser.add_argument(
-    "--dropout_rate",
-    type = float,
-    default = 0.,
-    help = "Dropout rate (1 - keep probability).")
+parser.add_argument("--dataset", type = str, default = "squidpy_seqfish", help = "Dataset to use for model training.")
+parser.add_argument("--n_epochs", type = int, default = 200, help = "Number of epochs.")
+parser.add_argument("--n_hidden", type = int, default = 32, help = "Number of units in Autotalker VGAE hidden layer.")
+parser.add_argument("--n_latent", type = int, default = 16, help = "Number of units in Autotalker latent layer.")
+parser.add_argument("--lr", type = float, default = 0.01, help = "Initial learning rate.")
+parser.add_argument("--dropout_rate", type = float, default = 0., help = "Dropout rate (1 - keep probability).")
 args = parser.parse_args()
 
 
@@ -92,6 +67,12 @@ def main(args):
         adata = load_spatial_adata_from_csv(
             "datasets/MERFISH/counts.csv",
             "datasets/MERFISH/adj.csv")
+    elif args.dataset == "squidpy_seqfish":
+        adata = sq.datasets.seqfish()
+        sq.gr.spatial_neighbors(adata, radius = 0.04, coord_type="generic")
+    elif args.dataset == "squidpy_slideseqv2":
+        adata = sq.datasets.slideseqv2()
+        sq.gr.spatial_neighbors(adata, radius = 0.04, coord_type="generic")        
     elif args.dataset == "visium":
         print("visium")
         adata = sq.datasets.visium_fluo_adata()
