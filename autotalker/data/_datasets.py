@@ -21,8 +21,7 @@ class SpatialAnnDataset():
     def __init__(
             self,
             adata: ad.AnnData,
-            adj_key: str="spatial_connectivities",
-            cell_type_keys: str=None):
+            adj_key: str="spatial_connectivities"):
 
         # Store features in dense format
         if sp.issparse(adata.X): 

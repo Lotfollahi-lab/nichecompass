@@ -1,4 +1,5 @@
 import argparse
+import sys
 
 import numpy as np
 import squidpy as sq
@@ -78,6 +79,19 @@ def main(args):
         n_epochs=args.n_epochs,
         lr=args.lr,
         batch_size=args.batch_size)
+    model.save(
+        dir_path="./model_artefacts",
+        overwrite=True,
+        save_adata=True,
+        adata_file_name="adata.h5ad")
+    
+    model_reloaded = Autotalker.load(
+            dir_path="./model_artefacts",
+            adata=None,
+            adata_file_name="adata.h5ad",
+            use_cuda=True)
+
+    print(model_reloaded)
 
 
 if __name__ == '__main__':

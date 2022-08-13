@@ -10,13 +10,12 @@ import torch
 logger = logging.getLogger(__name__)
 
 
-def _load_saved_files(
-        dir_path: str,
-        load_adata: bool,
-        adata_file_name: Optional[str]="adata.h5ad",
-        map_location: Optional[Literal["cpu", "cuda"]]=None):
+def _load_saved_files(dir_path: str,
+                      load_adata: bool,
+                      adata_file_name: Optional[str]="adata.h5ad",
+                      map_location: Optional[Literal["cpu", "cuda"]]=None):
     """
-    Helper to load saved files.
+    Helper to load saved model files.
     
     Adapted from https://github.com/scverse/scvi-tools.
     """
@@ -33,14 +32,27 @@ def _load_saved_files(
     else:
         adata = None
 
+    model_state_dict = torch.load(model_path, map_location=map_location)
     var_names = np.genfromtxt(var_names_path, delimiter=",", dtype=str)
-
     with open(attr_path, "rb") as handle:
         attr_dict = pickle.load(handle)
 
-    model_state_dict = torch.load(model_path, map_location=map_location)
+    return model_state_dict, var_names, attr_dict, adata
 
-    return attr_dict, var_names, model_state_dict, adata
+
+def _validate_var_names(adata, source_var_names):
+    """
+    Helper to validate variable names.
+
+    Adapted from https://github.com/scverse/scvi-tools.
+    """
+    user_var_names = adata.var_names.astype(str)
+    if not np.array_equal(source_var_names, user_var_names):
+        logger.warning(
+            "The var_names of the passed in adata do not match the var_names of "
+            "adata used to train the model. For valid results, the var_names "
+            "need to be the same and in the same order as the adata used to "
+            "train the model.")
 
 
 def _initialize_model(cls, adata, attr_dict, use_cuda):
@@ -65,19 +77,3 @@ def _initialize_model(cls, adata, attr_dict, use_cuda):
     model = cls(adata, **non_kwargs, **kwargs)
 
     return model
-
-
-def _validate_var_names(adata, source_var_names):
-    """
-    Helper to validate variable names.
-
-    Adapted from https://github.com/scverse/scvi-tools.
-    """
-
-    user_var_names = adata.var_names.astype(str)
-    if not np.array_equal(source_var_names, user_var_names):
-        logger.warning(
-            "The var_names of the passed in adata do not match the var_names of "
-            "adata used to train the model. For valid results, the var_names "
-            "need to be the same and in the same order as the adata used to "
-            "train the model.")

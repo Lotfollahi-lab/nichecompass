@@ -96,7 +96,6 @@ class Trainer:
         self.train_data, self.valid_data, self.test_data = prepare_data(
             self.adata,
             self.adj_key,
-            self.cell_type_keys,
             valid_frac = self.valid_frac,
             test_frac = self.test_frac)
 
@@ -229,7 +228,6 @@ class Trainer:
         self.optimizer.step()
 
 
-    @torch.no_grad()
     def on_epoch_end(self):
         # Validate model
         if self.valid_data is not None:
@@ -249,6 +247,7 @@ class Trainer:
             print_progress(self.epoch, self.epoch_logs, self.n_epochs)
 
 
+    @torch.no_grad()
     def validate(self):
         self.model.eval()
 
