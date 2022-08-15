@@ -1,11 +1,9 @@
 import logging
-from typing import Optional
 
 import anndata as ad
-import torch
 
 from ._base_model import BaseModel
-from autotalker.data import SpatialAnnDataset
+from ._vgaemodelmixin import VGAEModelMixin
 from autotalker.modules import VGAE
 from autotalker.train import Trainer
 
@@ -13,7 +11,7 @@ from autotalker.train import Trainer
 logger = logging.getLogger(__name__)
 
 
-class Autotalker(BaseModel):
+class Autotalker(BaseModel, VGAEModelMixin):
     """
     Autotalker model class.
 
@@ -34,12 +32,14 @@ class Autotalker(BaseModel):
     def __init__(self,
                  adata: ad.AnnData,
                  adj_key: str="spatial_connectivities",
+                 cell_type_key: str="cell_type",
                  n_hidden: int=32,
                  n_latent: int=16,
                  dropout_rate: float=0,
                  **model_kwargs):
         self.adata = adata
         self.adj_key_ = adj_key
+        self.cell_type_key_ = cell_type_key
         self.n_input_ = adata.n_vars
         self.n_hidden_ = n_hidden
         self.n_latent_ = n_latent
@@ -83,22 +83,3 @@ class Autotalker(BaseModel):
                                **trainer_kwargs)
         self.trainer.train(n_epochs, lr, weight_decay)
         self.is_trained_ = True
-
-
-    def get_latent_representation(self, 
-                                  x: Optional[torch.Tensor]=None,
-                                  edge_index: Optional[torch.Tensor]=None):
-        self._check_if_trained(warn=False)
-        device = next(self.model.parameters()).device
-
-        if x is not None and edge_index is not None:
-            x = torch.tensor(x, device=device)
-            edge_index = torch.tensor(edge_index, device=device)
-            z = self.model.get_latent_representation(x, edge_index)
-        else:
-            dataset = SpatialAnnDataset(self.adata, self.adj_key_)
-            x = torch.tensor(dataset.x, device=device)
-            edge_index = torch.tensor(dataset.edge_index, device=device)
-
-        z = self.model.get_latent_representation(x, edge_index)
-        return z

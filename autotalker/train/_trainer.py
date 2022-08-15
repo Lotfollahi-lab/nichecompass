@@ -55,7 +55,6 @@ class Trainer:
                  adata,
                  model,
                  adj_key: str="spatial_connectivities",
-                 cell_type_keys: str=None,
                  valid_frac: float=0.1,
                  test_frac: float=0.05,
                  batch_size: int=100,
@@ -66,7 +65,6 @@ class Trainer:
         self.adata = adata
         self.model = model
         self.adj_key = adj_key
-        self.cell_type_keys = cell_type_keys
         self.train_frac = 1 - valid_frac - test_frac
         self.valid_frac = valid_frac
         self.test_frac = test_frac

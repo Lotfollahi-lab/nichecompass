@@ -5,6 +5,7 @@ import mlflow
 import numpy as np
 import squidpy as sq
 
+from autotalker.analysis import plot_labeled_latent_adata
 from autotalker.data import load_spatial_adata_from_csv
 from autotalker.models import Autotalker
 
@@ -47,12 +48,15 @@ def main(args):
     if args.dataset == "deeplinc_seqfish":
         adata = load_spatial_adata_from_csv("datasets/seqFISH/counts.csv",
                                             "datasets/seqFISH/adj.csv")
+        cell_type_key = None
     elif args.dataset == "squidpy_seqfish":
         adata = sq.datasets.seqfish()
         sq.gr.spatial_neighbors(adata, radius = 0.04, coord_type="generic")
+        cell_type_key = "celltype_mapped_refined"
     elif args.dataset == "squidpy_slideseqv2":
         adata = sq.datasets.slideseqv2()
         sq.gr.spatial_neighbors(adata, radius = 30.0, coord_type="generic")
+        cell_type_key = "celltype_mapped_refined"
 
     print(f"Number of nodes: {adata.X.shape[0]}")
     print(f"Number of node features: {adata.X.shape[1]}")
@@ -63,6 +67,7 @@ def main(args):
     print(f"Number of edges: {n_edges}", sep="")
 
     model = Autotalker(adata,
+                       cell_type_key=cell_type_key,
                        n_hidden=args.n_hidden,
                        n_latent=args.n_latent,
                        dropout_rate=args.dropout_rate)
@@ -86,7 +91,11 @@ def main(args):
     print(model)
     print(model.is_trained_)
 
-    print(model.get_latent_representation())
+    labeled_latent_adata = model.get_labeled_latent_adata()
+    print(labeled_latent_adata.obs["cell_type"])
+    plot_labeled_latent_adata(labeled_latent_adata,
+                              save=True,
+                              save_dir_path="analysis_artefacts")
 
 
 if __name__ == '__main__':

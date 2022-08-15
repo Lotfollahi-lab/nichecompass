@@ -1,0 +1,1 @@
+from ._plotting import plot_labeled_latent_adata
