@@ -1,5 +1,6 @@
 import inspect
 import os
+import warnings
 from typing import Optional
 
 import anndata as ad
@@ -153,3 +154,19 @@ class BaseModel():
         model.model.eval()
 
         return model
+
+
+    def _check_if_trained(self,
+                          warn: bool=True):
+        """
+        Check if the model is trained.
+        If not trained and `warn` is True, raise a warning, else raise a 
+        RuntimeError.
+        """
+        message = ("Trying to query inferred values from an untrained model. " +
+                   "Please train the model first.")
+        if not self.is_trained_:
+            if warn:
+                warnings.warn(message)
+            else:
+                raise RuntimeError(message)

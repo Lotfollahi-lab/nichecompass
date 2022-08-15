@@ -1,8 +1,11 @@
 import logging
+from typing import Optional
 
 import anndata as ad
+import torch
 
 from ._base_model import BaseModel
+from autotalker.data import SpatialAnnDataset
 from autotalker.modules import VGAE
 from autotalker.train import Trainer
 
@@ -80,3 +83,22 @@ class Autotalker(BaseModel):
                                **trainer_kwargs)
         self.trainer.train(n_epochs, lr, weight_decay)
         self.is_trained_ = True
+
+
+    def get_latent_representation(self, 
+                                  x: Optional[torch.Tensor]=None,
+                                  edge_index: Optional[torch.Tensor]=None):
+        self._check_if_trained(warn=False)
+        device = next(self.model.parameters()).device
+
+        if x is not None and edge_index is not None:
+            x = torch.tensor(x, device=device)
+            edge_index = torch.tensor(edge_index, device=device)
+            z = self.model.get_latent_representation(x, edge_index)
+        else:
+            dataset = SpatialAnnDataset(self.adata, self.adj_key_)
+            x = torch.tensor(dataset.x, device=device)
+            edge_index = torch.tensor(dataset.edge_index, device=device)
+
+        z = self.model.get_latent_representation(x, edge_index)
+        return z

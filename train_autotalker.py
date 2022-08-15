@@ -86,6 +86,8 @@ def main(args):
     print(model)
     print(model.is_trained_)
 
+    print(model.get_latent_representation())
+
 
 if __name__ == '__main__':
     main(args)

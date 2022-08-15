@@ -3,9 +3,10 @@ import torch.nn as nn
 
 from autotalker.nn import DotProductDecoder
 from autotalker.nn import GCNEncoder
+from ._vgaemodulemixin import VGAEModuleMixin
 
 
-class VGAE(nn.Module):
+class VGAE(nn.Module, VGAEModuleMixin):
     """
     Variational Graph Autoencoder class as per Kipf, T. N. & Welling, M.
     Variational Graph Auto-Encoders. arXiv [stat.ML] (2016).
@@ -41,16 +42,9 @@ class VGAE(nn.Module):
         
         self.decoder = DotProductDecoder(dropout_rate=dropout_rate)
 
-    def reparameterize(self, mu: torch.Tensor, logstd: torch.Tensor):
-        if self.training:
-            std = torch.exp(logstd)
-            eps = torch.randn_like(mu)
-            return eps.mul(std).add(mu)
-        else:
-            return mu
 
-    def forward(self, x, adj):
-        self.mu, self.logstd = self.encoder(x, adj)
+    def forward(self, x, edge_index):
+        self.mu, self.logstd = self.encoder(x, edge_index)
         self.z = self.reparameterize(self.mu, self.logstd)
         adj_rec_logits = self.decoder(self.z)
         return adj_rec_logits, self.mu, self.logstd
