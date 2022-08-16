@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 import anndata as ad
 
@@ -36,6 +37,7 @@ class Autotalker(BaseModel, VGAEModelMixin):
                  n_hidden: int=32,
                  n_latent: int=16,
                  dropout_rate: float=0,
+                 mlflow_experiment_id=None,
                  **model_kwargs):
         self.adata = adata
         self.adj_key_ = adj_key
@@ -60,6 +62,7 @@ class Autotalker(BaseModel, VGAEModelMixin):
               weight_decay: float=0,
               val_frac: float=0.1,
               test_frac: float=0.05,
+              mlflow_experiment_id: Optional[str]=None,
               **trainer_kwargs):
         """
         Train the model.
@@ -80,6 +83,7 @@ class Autotalker(BaseModel, VGAEModelMixin):
                                adj_key=self.adj_key_,
                                val_frac=val_frac,
                                test_frac=test_frac,
+                               mlflow_experiment_id=mlflow_experiment_id,
                                **trainer_kwargs)
         self.trainer.train(n_epochs, lr, weight_decay)
         self.is_trained_ = True

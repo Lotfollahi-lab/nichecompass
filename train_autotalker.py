@@ -66,17 +66,19 @@ def main(args):
     n_edges = int(np.triu(adata.obsp['spatial_connectivities'].toarray()).sum())
     print(f"Number of edges: {n_edges}", sep="")
 
+    mlflow.set_experiment("autotalker")
+    mlflow.log_param("dataset", args.dataset)
+
     model = Autotalker(adata,
                        cell_type_key=cell_type_key,
                        n_hidden=args.n_hidden,
                        n_latent=args.n_latent,
-                       dropout_rate=args.dropout_rate)
+                       dropout_rate=args.dropout_rate
+                       mlflow_experiment_id=None)
 
     model.train(n_epochs=args.n_epochs,
                 lr=args.lr,
                 batch_size=args.batch_size)
-
-    mlflow.log_param("dataset", args.dataset)
 
     model.save(dir_path="./model_artefacts",
                overwrite=True,

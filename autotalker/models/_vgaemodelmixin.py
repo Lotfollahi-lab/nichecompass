@@ -18,13 +18,19 @@ class VGAEModelMixin:
         device = next(self.model.parameters()).device
 
         if x is not None and edge_index is not None:
-            x = torch.tensor(x, device=device)
-            edge_index = torch.tensor(edge_index, device=device)
+            if isinstance(x, torch.Tensor):
+                x = x.to(device)
+            else:
+                x = torch.tensor(x, device=device)
+            if isinstance(edge_index, torch.Tensor):
+                edge_index = edge_index.to(device)
+            else:
+                edge_index = torch.tensor(edge_index, device=device)
             z = self.model.get_latent_representation(x, edge_index)
         else:
             dataset = SpatialAnnDataset(self.adata, self.adj_key_)
-            x = torch.tensor(dataset.x, device=device)
-            edge_index = torch.tensor(dataset.edge_index, device=device)
+            x = dataset.x.to(device)
+            edge_index = dataset.edge_index.to(device)
 
         z = np.array(self.model.get_latent_representation(x, edge_index).cpu())
 

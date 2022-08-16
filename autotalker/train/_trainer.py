@@ -1,5 +1,6 @@
 import time
 from collections import defaultdict
+from typing import Optional
 
 import mlflow
 import numpy as np
@@ -71,18 +72,19 @@ class Trainer:
         self.batch_size = batch_size
         self.use_early_stopping = use_early_stopping
         self.reload_best_model = reload_best_model
+        early_stopping_kwargs = (early_stopping_kwargs if early_stopping_kwargs 
+                                 else {})
+        self.early_stopping = EarlyStopping(**early_stopping_kwargs)
+
         self.seed = trainer_kwargs.pop("seed", 0)
         self.n_workers = trainer_kwargs.pop("n_workers", 0)
         self.monitor = trainer_kwargs.pop("monitor", True)
+
         self.epoch = -1
         self.training_time = 0
         self.optimizer = None
         self.best_epoch = None
         self.best_model_state_dict = None
-
-        early_stopping_kwargs = (early_stopping_kwargs if early_stopping_kwargs 
-                                 else {})
-        self.early_stopping = EarlyStopping(**early_stopping_kwargs)
 
         torch.manual_seed(self.seed)
         if torch.cuda.is_available():
@@ -156,10 +158,12 @@ class Trainer:
     def train(self,
               n_epochs: int=200,
               lr: float=0.01,
-              weight_decay: float=0):
+              weight_decay: float=0,
+              mlflow_experiment_id: Optional[str]=None):
         self.n_epochs = n_epochs
         self.lr = lr
         self.weight_decay = weight_decay
+        self.mlflow_experiment_id = mlflow_experiment_id
 
         start_time = time.time()
         self.model.train()
@@ -201,7 +205,6 @@ class Trainer:
 
 
     def on_training_start(self):
-        mlflow.set_experiment("autotalker")
         mlflow.log_param("n_epochs", self.n_epochs)
         mlflow.log_param("lr", self.lr)
         mlflow.log_param("weight_decay", self.weight_decay)
@@ -320,6 +323,8 @@ class Trainer:
         mlflow.log_metric("test_auprc_score", test_auprc_score)
         mlflow.log_metric("test_best_acc_score", test_best_acc_score)
         mlflow.log_metric("test_best_f1_score", test_best_f1_score)
+
+        mlflow.end_run()
 
 
     def is_early_stopping(self):

@@ -122,6 +122,26 @@ def compute_vgae_loss_parameters(edge_label_index):
     return vgae_loss_norm_factor, vgae_loss_pos_weight
 
 
+def compute_x_recon_loss(x_recon: torch.Tensor, x: torch.Tensor):
+    """
+    Compute MSE loss between reconstructed and ground truth feature matrix.
+
+    Parameters
+    ----------
+    recon_x:
+        Tensor containing reconstructed feature matrix.
+    x:
+        Tensor containing ground truth feature matrix.
+
+    Returns
+    ----------
+    mse_loss:
+        Mean squared error loss.
+    """
+    mse_loss = torch.nn.functional.mse_loss(x_recon, x, reduction="None")
+    return mse_loss
+
+
 def plot_loss_curves(loss_dict):
     """
     Plot loss curves.
@@ -145,4 +165,5 @@ def plot_loss_curves(loss_dict):
 
     # Retrieve figure
     fig = plt.gcf()
+    plt.close()
     return fig
