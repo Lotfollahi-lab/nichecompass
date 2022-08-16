@@ -3,6 +3,9 @@ channels:
   - conda-forge
 dependencies:
   - cudatoolkit=10.2
+  - ipykernel=6.15.1
+  - ipywidgets=7.6.5
+  - jupyterlab=3.4.5
   - mlflow=1.27.0
   - pip=22.2.2
   - python=3.9
