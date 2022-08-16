@@ -9,11 +9,14 @@ from autotalker.data import SpatialAnnDataset
 
 class VGAEModelMixin:
     """
-    
+    Universal VGAE model functionalities.
     """
     def get_latent_representation(self, 
                                   x: Optional[torch.Tensor]=None,
                                   edge_index: Optional[torch.Tensor]=None):
+        """
+        
+        """
         self._check_if_trained(warn=False)
         device = next(self.model.parameters()).device
 
@@ -37,11 +40,10 @@ class VGAEModelMixin:
         return z
 
 
-    def get_labeled_latent_adata(
-            self, 
-            x: Optional[torch.Tensor]=None,
-            edge_index: Optional[torch.Tensor]=None,
-            cell_type_label: Optional[torch.Tensor]=None):
+    def get_labeled_latent_adata(self, 
+                                 x: Optional[torch.Tensor]=None,
+                                 edge_index: Optional[torch.Tensor]=None,
+                                 cell_type_label: Optional[torch.Tensor]=None):
         """
         
         """

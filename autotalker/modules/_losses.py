@@ -1,7 +1,5 @@
-import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
-from matplotlib.ticker import MaxNLocator
 from torch_geometric.utils import add_self_loops
 from torch_geometric.utils import to_dense_adj
 
@@ -73,6 +71,7 @@ def compute_vgae_loss(
     norm_factor:
         Factor with which reconstruction loss is weighted compared to Kullback-
         Leibler divergence.
+        
     Returns
     ----------
     vgae_loss:
@@ -99,6 +98,7 @@ def compute_vgae_loss_parameters(edge_label_index):
     ----------
     edge_label_index:
         Tensor containing the edge label indices.
+
     Returns
     ----------
     vgae_loss_norm_factor:
@@ -140,30 +140,3 @@ def compute_x_recon_loss(x_recon: torch.Tensor, x: torch.Tensor):
     """
     mse_loss = torch.nn.functional.mse_loss(x_recon, x, reduction="None")
     return mse_loss
-
-
-def plot_loss_curves(loss_dict):
-    """
-    Plot loss curves.
-
-    Parameters
-    ----------
-    loss_dict:
-        Dictionary containing the training and validation losses.
-    """
-    # Plot epochs as integers
-    ax = plt.figure().gca()
-    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-
-    # Plot loss
-    for loss_key, loss in loss_dict.items():
-        plt.plot(loss, label = loss_key) 
-    plt.title(f"Loss curves")
-    plt.ylabel("loss")
-    plt.xlabel("epoch")
-    plt.legend(loc = "upper right")
-
-    # Retrieve figure
-    fig = plt.gcf()
-    plt.close()
-    return fig

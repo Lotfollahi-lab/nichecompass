@@ -1,8 +1,9 @@
 import numpy as np
+import scipy.sparse as sp
 import torch
 
 
-def sparse_mx_to_sparse_tensor(sparse_mx):
+def sparse_mx_to_sparse_tensor(sparse_mx: sp.csr_matrix):
     """
     Convert a scipy sparse matrix to a torch sparse tensor.
     """
@@ -11,4 +12,5 @@ def sparse_mx_to_sparse_tensor(sparse_mx):
         np.vstack((sparse_mx.row, sparse_mx.col)).astype(np.int64))
     values = torch.from_numpy(sparse_mx.data)
     shape = torch.Size(sparse_mx.shape)
+
     return torch.sparse.FloatTensor(indices, values, shape)

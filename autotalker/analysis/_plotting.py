@@ -1,17 +1,18 @@
 import os
 from typing import Optional
 
+import anndata as ad
 import matplotlib.pyplot as plt
 import scanpy as sc
 
 
-def plot_latent_umap(adata_latent,
-                     show=True,
-                     save=False,
-                     save_dir_path=None,
-                     n_neighbors=50):
+def plot_latent_umap(adata_latent: ad.AnnData,
+                     show: bool=True,
+                     save: bool=False,
+                     save_dir_path: Optional[str]=None,
+                     n_neighbors: int=50):
     """
-    
+    Plot latent umap from adata object.
     """
     if save:
         if save_dir_path is not None:

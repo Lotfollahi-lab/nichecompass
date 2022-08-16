@@ -10,8 +10,6 @@ logger = logging.getLogger(__name__)
 
 class VGAEModuleMixin:
     """Universal VGAE module functionalities."""
-
-
     def reparameterize(self, mu: torch.Tensor, logstd: torch.Tensor):
         if self.training:
             std = torch.exp(logstd)

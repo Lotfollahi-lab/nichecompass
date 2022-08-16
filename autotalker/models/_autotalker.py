@@ -23,6 +23,8 @@ class Autotalker(BaseModel, VGAEModelMixin):
         data.obsp[adj_key].
     adj_key:
         Key under which the sparse adjacency matrix is stored in adata.obsp.
+    cell_type_key:
+        Key under which the cell types are stored in data.obs.
     n_hidden:
         Number of nodes in the VGAE hidden layer.
     n_latent:
@@ -37,7 +39,7 @@ class Autotalker(BaseModel, VGAEModelMixin):
                  n_hidden: int=32,
                  n_latent: int=16,
                  dropout_rate: float=0,
-                 mlflow_experiment_id=None,
+                 mlflow_experiment_id: Optional[str]=None,
                  **model_kwargs):
         self.adata = adata
         self.adj_key_ = adj_key
@@ -74,9 +76,9 @@ class Autotalker(BaseModel, VGAEModelMixin):
         lr:
             Learning rate.
         weight_decay:
-            Weight decay (L2 penalty) used with optimizer.
+            Weight decay (L2 penalty).
         kwargs:
-            kwargs for the trainer.
+            Kwargs for the trainer.
         """
         self.trainer = Trainer(adata=self.adata,
                                model=self.model,
