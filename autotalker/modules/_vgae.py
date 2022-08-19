@@ -58,7 +58,7 @@ class VGAE(nn.Module, VGAEModuleMixin):
 
         vgae_loss_pos_weight = vgae_loss_pos_weight.to(device)
 
-        loss = compute_vgae_loss(
+        vgae_loss = compute_vgae_loss(
             adj_recon_logits=adj_recon_logits,
             edge_label_index=train_data.edge_index,
             pos_weight=vgae_loss_pos_weight,
@@ -67,4 +67,4 @@ class VGAE(nn.Module, VGAEModuleMixin):
             n_nodes=train_data.x.size(0),
             norm_factor=vgae_loss_norm_factor)
 
-        return loss
+        return vgae_loss

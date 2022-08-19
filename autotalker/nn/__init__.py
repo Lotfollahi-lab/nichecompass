@@ -1,6 +1,7 @@
 from ._base_components import (GCNEncoder,
                                DotProductDecoder,
-                               FCLayer)
+                               MaskedLinearDecoder)
 
 __all__ = ["GCNEncoder",
-           "DotProductDecoder"]
+           "DotProductDecoder",
+           "MaskedLinearDecoder"]

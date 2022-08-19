@@ -1,3 +1,5 @@
+from typing import Literal, Optional
+
 import torch
 import torch.nn as nn
 from torch_geometric.nn import GCNConv
@@ -138,3 +140,69 @@ class FCLayer(nn.Module):
             return self.activation(output)
         else:
             return output
+
+
+class MaskedFCLayer(nn.Linear):
+    """
+    Adapted from https://github.com/theislab/scarches. 
+    """
+    def __init__(self, n_input: int, n_output: int, mask, bias=True):
+        # Mask should have dim n_input x n_output
+        if n_input != mask.shape[0] or n_output != mask.shape[1]:
+            raise ValueError("Incorrect shape of the mask. Mask should have dim"
+                             "n_input x n_output")
+        super().__init__(n_input, n_output, bias)
+        
+        self.register_buffer("mask", mask.t())
+
+        # Zero out weights with the mask
+        # Gradient descent does not consider these zero weights
+        self.weight.data *= self.mask
+
+    def forward(self, x):
+        return nn.functional.linear(input, self.weight * self.mask, self.bias)
+
+
+class MaskedLinearDecoder(nn.Module):
+    """
+    Adapted from https://github.com/theislab/scarches. 
+    """
+    def __init__(
+            self,
+            n_input: int,
+            n_output: int,
+            mask,
+            recon_loss: Literal["mse", "nb"],
+            last_layer_activation: Optional[Literal["softmax", "relu"]]=None):
+        super().__init__()
+
+        if recon_loss == "mse":
+            if last_layer_activation == "softmax":
+                raise ValueError("Can't specify softmax last layer activation "
+                                 "with mse loss.")
+            last_layer_activation = ("identity" if last_layer_activation is None
+                                     else last_layer_activation) 
+        elif recon_loss == "nb":
+            last_layer_activation = ("softmax" if last_layer_activation is None 
+                                     else last_layer_activation)
+        else:
+            raise ValueError("Unrecognized loss. Specify either 'mse' or 'nb' "
+                             "as reconstruction loss")
+
+        self.mfc_l1 = MaskedFCLayer(n_input, n_output, mask, bias=False)
+        if last_layer_activation == "softmax":
+            self.act_l1 = nn.Softmax(dim=-1)
+        elif last_layer_activation == "softplus":
+            self.act_l1 = nn.Softplus()
+        elif last_layer_activation == "exp":
+            self.act_l1 = torch.exp
+        elif last_layer_activation == "relu":
+            self.act_l1 = nn.ReLU()
+        elif last_layer_activation == "identity":
+            self.act_l1 = lambda a: a
+        else:
+            raise ValueError("Unrecognized last layer activation function.")
+
+    def forward(self, z):
+        x_recon = self.act_l1(self.mfc_l1(z))
+        return x_recon
