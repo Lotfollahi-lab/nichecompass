@@ -1,6 +1,4 @@
-from ._losses import (
-    compute_vgae_loss,
-    compute_vgae_loss_parameters,
+from ._utils import (
     plot_loss_curves)
 from ._metrics import (
     get_eval_metrics,

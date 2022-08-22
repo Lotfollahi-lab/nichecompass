@@ -18,11 +18,9 @@ class SpatialAnnDataset():
     adj_key:
         Key under which the sparse adjacency matrix is stored in adata.obsp.
     """
-    def __init__(
-            self,
-            adata: ad.AnnData,
-            adj_key: str="spatial_connectivities"):
-
+    def __init__(self,
+                 adata: ad.AnnData,
+                 adj_key: str="spatial_connectivities"):
         # Store features in dense format
         if sp.issparse(adata.X): 
             self.x = torch.FloatTensor(adata.X.toarray())
@@ -32,8 +30,14 @@ class SpatialAnnDataset():
         self.n_node_features = self.x.size(1)
 
         # Store adjacency matrix in sparse tensor format
-        self.adj = sparse_mx_to_sparse_tensor(adata.obsp[adj_key])
+        if sp.issparse(adata.obsp[adj_key]):
+            self.adj = sparse_mx_to_sparse_tensor(adata.obsp[adj_key])
+        else:
+            self.adj = sparse_mx_to_sparse_tensor(
+                sp.csr_matrix(adata.obsp[adj_key]))
+
+        # Validate adjacency matrix symmetry
         if not (self.adj.to_dense() == self.adj.to_dense().T).all():
-            raise ImportError("The input adjacency matrix is not symmetric.")
+            raise ImportError("The input adjacency matrix has to be symmetric.")
 
         self.edge_index = self.adj._indices()

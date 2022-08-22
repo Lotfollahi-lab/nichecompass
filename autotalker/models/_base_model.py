@@ -9,9 +9,9 @@ import pickle
 import scipy.sparse as sp
 import torch
 
-from ._utils import _validate_var_names
 from ._utils import _initialize_model
 from ._utils import _load_saved_files
+from ._utils import _validate_var_names
 
 
 class BaseModel():
@@ -30,7 +30,9 @@ class BaseModel():
             self, lambda a: not (inspect.isroutine(a)))
         attributes = [a for a in attributes if not (
             a[0].startswith("__") and a[0].endswith("__"))]
+
         return attributes
+
 
     def _get_public_attributes(self):
         """
@@ -39,7 +41,9 @@ class BaseModel():
         """
         public_attributes = self._get_user_attributes()
         public_attributes = {a[0]: a[1] for a in public_attributes if a[0][-1] == "_"}
+
         return public_attributes
+
 
     def _get_init_params(self, locals):
         """
@@ -52,7 +56,9 @@ class BaseModel():
         user_params = {p: locals[p] for p in locals if p in init_params}
         user_params = {k: v for (k, v) in user_params.items() if not 
                        isinstance(v, ad.AnnData)}
+
         return user_params
+
 
     def save(self,
              dir_path: str,
@@ -130,7 +136,8 @@ class BaseModel():
         
         Returns
         -------
-        Model with loaded state dictionaries.
+        model:
+            Model with loaded state dictionaries.
         """
         load_adata = adata is None
         use_cuda = use_cuda and torch.cuda.is_available()
@@ -159,9 +166,8 @@ class BaseModel():
     def _check_if_trained(self,
                           warn: bool=True):
         """
-        Check if the model is trained.
-        If not trained and `warn` is True, raise a warning, else raise a 
-        RuntimeError.
+        Check if the model is trained. If not trained and `warn` is True, raise 
+        a warning, else raise a RuntimeError.
         """
         message = ("Trying to query inferred values from an untrained model. " +
                    "Please train the model first.")

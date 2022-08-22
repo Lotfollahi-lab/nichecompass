@@ -1,7 +1,9 @@
 import sys
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from matplotlib.ticker import MaxNLocator
 
 
 class EarlyStopping:
@@ -32,7 +34,7 @@ class EarlyStopping:
      """
     def __init__(
             self,
-            early_stopping_metric: str="valid_losses",
+            early_stopping_metric: str="valid_loss",
             metric_improvement_threshold: float=0,
             patience: int=15,
             reduce_lr_on_plateau: bool=True,
@@ -178,6 +180,33 @@ def _print_progress_bar(
     if iteration == total:
         sys.stdout.write('\n')
     sys.stdout.flush()
+
+
+def plot_loss_curves(loss_dict):
+    """
+    Plot loss curves.
+
+    Parameters
+    ----------
+    loss_dict:
+        Dictionary containing the training and validation losses.
+    """
+    # Plot epochs as integers
+    ax = plt.figure().gca()
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+
+    # Plot loss
+    for loss_key, loss in loss_dict.items():
+        plt.plot(loss, label = loss_key) 
+    plt.title(f"Loss curves")
+    plt.ylabel("loss")
+    plt.xlabel("epoch")
+    plt.legend(loc = "upper right")
+
+    # Retrieve figure
+    fig = plt.gcf()
+    plt.close()
+    return fig
 
 
 def transform_test_edge_labels(
