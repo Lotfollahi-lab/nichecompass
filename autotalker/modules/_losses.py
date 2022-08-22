@@ -122,7 +122,8 @@ def compute_vgae_loss_parameters(edge_label_index):
     return vgae_loss_norm_factor, vgae_loss_pos_weight
 
 
-def compute_x_recon_loss(x_recon: torch.Tensor, x: torch.Tensor):
+def compute_x_recon_mse_loss(x_recon: torch.Tensor,
+                             x: torch.Tensor):
     """
     Compute MSE loss between reconstructed and ground truth feature matrix.
 
@@ -138,5 +139,42 @@ def compute_x_recon_loss(x_recon: torch.Tensor, x: torch.Tensor):
     mse_loss:
         Mean squared error loss.
     """
-    mse_loss = torch.nn.functional.mse_loss(x_recon, x, reduction="None")
+    mse_loss = torch.nn.functional.mse_loss(x_recon, x)
     return mse_loss
+
+
+def compute_x_recon_nb_loss(x: torch.Tensor,
+                            mu: torch.Tensor,
+                            theta: torch.Tensor,
+                            eps=1e-8):
+    """
+    Computes negative binomial loss. Adapted from 
+    https://github.com/theislab/scarches.
+
+    Parameters
+    ----------
+    x: torch.Tensor
+         Torch Tensor of ground truth data.
+    mu: torch.Tensor
+         Torch Tensor of means of the negative binomial (has to be positive support).
+    theta: torch.Tensor
+         Torch Tensor of inverse dispersion parameter (has to be positive support).
+    eps: Float
+         numerical stability constant.
+    Returns
+    ----------
+    If 'mean' is 'True' NB loss value gets returned, otherwise Torch tensor of losses gets returned.
+    """
+    if theta.ndimension() == 1:
+        theta = theta.view(1, theta.size(0))
+
+    log_theta_mu_eps = torch.log(theta + mu + eps)
+    res = (
+        theta * (torch.log(theta + eps) - log_theta_mu_eps)
+        + x * (torch.log(mu + eps) - log_theta_mu_eps)
+        + torch.lgamma(x + theta)
+        - torch.lgamma(theta)
+        - torch.lgamma(x + 1)
+    )
+
+    return 

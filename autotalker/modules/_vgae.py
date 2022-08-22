@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from autotalker.nn import DotProductDecoder
+from autotalker.nn import DotProductGraphDecoder
 from autotalker.nn import GCNEncoder
 from ._vgaemodulemixin import VGAEModuleMixin
 from ._losses import compute_vgae_loss
@@ -42,7 +42,7 @@ class VGAE(nn.Module, VGAEModuleMixin):
             dropout_rate = dropout_rate,
             activation = torch.relu)
         
-        self.decoder = DotProductDecoder(dropout_rate=dropout_rate)
+        self.decoder = DotProductGraphDecoder(dropout_rate=dropout_rate)
 
 
     def forward(self, x, edge_index):

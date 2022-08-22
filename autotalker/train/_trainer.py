@@ -178,14 +178,16 @@ class Trainer:
 
 
     def on_iteration(self, train_data_batch):
-        adj_recon_logits, mu, logstd = self.model(train_data_batch.x,
-                                                  train_data_batch.edge_index)
-        train_loss = self.model.loss(adj_recon_logits,
-                                     train_data_batch,
-                                     mu,
-                                     logstd,
-                                     self.device)
-        self.iter_logs["train_losses"].append(train_loss.item())
+        adj_recon_logits, x_recon, mu, logstd = self.model(
+            train_data_batch.x,
+            train_data_batch.edge_index)
+        train_loss, _, _ = self.model.loss(adj_recon_logits,
+                                           x_recon,
+                                           train_data_batch,
+                                           mu,
+                                           logstd,
+                                           self.device)
+        self.iter_logs["train_loss"].append(train_loss.item())
         self.iter_logs["n_train_iter"] += 1
         self.optimizer.zero_grad()
         train_loss.backward()
@@ -208,7 +210,9 @@ class Trainer:
 
         # Monitor epoch level logs
         if self.monitor:
-            print_progress(self.epoch, self.epoch_logs, self.n_epochs)
+            monitor_logs = {key: self.epoch_logs[key] for key in self.epoch_logs 
+                            if key != "train_loss"}
+            print_progress(self.epoch, monitor_logs, self.n_epochs)
 
 
     @torch.no_grad()
@@ -218,15 +222,20 @@ class Trainer:
         for valid_data_batch in self.valid_dataloader:
             valid_data_batch = valid_data_batch.to(self.device)
             
-            adj_recon_logits, mu, logstd = self.model(
+            adj_recon_logits, x_recon, mu, logstd = self.model(
                 valid_data_batch.x,
                 valid_data_batch.edge_index)
-            valid_loss = self.model.loss(adj_recon_logits,
-                                         valid_data_batch,
-                                         mu,
-                                         logstd,
-                                         self.device)
-            self.iter_logs["valid_losses"].append(valid_loss.item())
+            valid_loss, valid_vgae_loss, valid_expr_recon_loss = self.model.loss(
+                adj_recon_logits,
+                x_recon,
+                valid_data_batch,
+                mu,
+                logstd,
+                self.device)
+            self.iter_logs["valid_loss"].append(valid_loss.item())
+            self.iter_logs["valid_vgae_loss"].append(valid_vgae_loss.item())
+            self.iter_logs["valid_expr_recon_loss"].append(
+                valid_expr_recon_loss.item())
             self.iter_logs["n_valid_iter"] += 1
 
             adj_recon_probs = torch.sigmoid(adj_recon_logits)
@@ -241,10 +250,10 @@ class Trainer:
             valid_best_acc_score = valid_eval_metrics[2]
             valid_best_f1_score = valid_eval_metrics[3]
             
-            self.iter_logs["valid_auroc_scores"].append(valid_auroc_score)
-            self.iter_logs["valid_auprc_scores"].append(valid_auprc_score)
-            self.iter_logs["valid_best_acc_scores"].append(valid_best_acc_score)
-            self.iter_logs["valid_best_f1_scores"].append(valid_best_f1_score)
+            self.iter_logs["valid_auroc_score"].append(valid_auroc_score)
+            self.iter_logs["valid_auprc_score"].append(valid_auprc_score)
+            self.iter_logs["valid_best_acc_score"].append(valid_best_acc_score)
+            self.iter_logs["valid_best_f1_score"].append(valid_best_f1_score)
         
         self.model.train()
     
@@ -254,20 +263,20 @@ class Trainer:
         print("Model training finished...")
         self.model = self.model.to("cpu")
 
-        losses = {"train_loss": self.epoch_logs["train_losses"],
-                  "valid_loss": self.epoch_logs["valid_losses"]}
+        losses = {"train_loss": self.epoch_logs["train_loss"],
+                  "valid_loss": self.epoch_logs["valid_loss"]}
 
-        valid_eval_metrics = {"auroc": self.epoch_logs["valid_auroc_scores"],
-                              "auprc": self.epoch_logs["valid_auprc_scores"],
-                              "best_acc": self.epoch_logs["valid_best_acc_scores"],
-                              "best_f1": self.epoch_logs["valid_best_f1_scores"]}
+        valid_eval_metrics = {"auroc": self.epoch_logs["valid_auroc_score"],
+                              "auprc": self.epoch_logs["valid_auprc_score"],
+                              "best_acc": self.epoch_logs["valid_best_acc_score"],
+                              "best_f1": self.epoch_logs["valid_best_f1_score"]}
     
         fig = plot_loss_curves(losses)
         mlflow.log_figure(fig, "loss_curves.png")
         fig = plot_eval_metrics(valid_eval_metrics)  
         mlflow.log_figure(fig, "valid_eval_metrics.png") 
 
-        self.adj_recon_logits, self.mu, self.logstd = self.model(
+        self.adj_recon_logits, self.x_recon, self.mu, self.logstd = self.model(
             self.test_data.x,
             self.test_data.edge_index)
         self.adj_recon_probs = torch.sigmoid(self.adj_recon_logits)

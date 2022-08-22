@@ -34,7 +34,7 @@ class EarlyStopping:
      """
     def __init__(
             self,
-            early_stopping_metric: str="valid_losses",
+            early_stopping_metric: str="valid_loss",
             metric_improvement_threshold: float=0,
             patience: int=15,
             reduce_lr_on_plateau: bool=True,

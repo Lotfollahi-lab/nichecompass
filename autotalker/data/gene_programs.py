@@ -1,4 +1,5 @@
 import anndata as ad
+import numpy as np
 import pandas as pd
 import pyreadr
 
@@ -7,12 +8,28 @@ from ._utils import load_R_file_as_df
 
 def download_nichenet_ligand_target_mx(
         save_path: str="ligand_target_matrix.csv"):
+    """
+        
+    """
     url = "https://zenodo.org/record/3260758/files/ligand_target_matrix.rds"
     load_R_file_as_df(
         R_file_path="ligand_target_matrix.rds",
         url="https://zenodo.org/record/3260758/files/ligand_target_matrix.rds",
         save_df_to_disk=True,
         df_save_path=save_path)
+
+
+def extract_mask_from_ligand_target_mx(path: str, n_genes_per_ligand: int=10):
+    """
+    
+    """
+    df = pd.read_csv(path)
+    idx_targets_sorted = np.argsort(-df.values, axis=1)[:, :n_genes_per_ligand]
+    df_sorted = pd.DataFrame(df.columns.values[idx_targets_sorted],
+                             index=df.index + "_ligand")
+
+
+
 
 
 # add binary I of size n_vars x number of annotated terms in files
