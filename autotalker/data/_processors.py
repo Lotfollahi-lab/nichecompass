@@ -7,6 +7,8 @@ from ._datasets import SpatialAnnDataset
 
 
 def prepare_data(adata: ad.AnnData,
+                 condition_key: str,
+                 condition_label_dict: dict,
                  adj_key: str="spatial_connectivities",
                  valid_frac: float=0.1,
                  test_frac: float=0.05):

@@ -1,9 +1,11 @@
-from typing import Literal
+from typing import Literal, Optional
 
+import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-from ._layers import MaskedFCLayer
+from ._layers import MaskedCondExtLayer
 
 
 class DotProductGraphDecoder(nn.Module):
@@ -44,9 +46,9 @@ class MaskedLinearExprDecoder(nn.Module):
 
     Parameters
     ----------
-    n_input:
+    n_inputs:
         Number of input nodes to the decoder (latent space dimensionality).
-    n_output:
+    n_outputs:
         Number of output nodes from the decoder (feature space x dimensionality).
     mask:
         Mask that determines which input nodes / latent features can contribute
@@ -55,22 +57,58 @@ class MaskedLinearExprDecoder(nn.Module):
         Loss used for the reconstruction.
     """
     def __init__(self,
-                 n_input: int,
-                 n_output: int,
+                 n_inputs: int,
+                 n_outputs: int,
                  mask: torch.Tensor,
-                 recon_loss: Literal["nb", "mse"]):
+                 extension_mask: Optional[torch.Tensor]=None,
+                 n_conditions: int=0,
+                 n_extensions_unmasked: int=0,
+                 n_extensions_masked: int=0,
+                 recon_loss: Literal["nb", "mse"]="nb"):
         super().__init__()
+        self.n_extensions_unmasked = n_extensions_unmasked
+        self.n_extensions_masked = n_extensions_masked
+        self.n_conditions = n_conditions
 
-        print(f"MASKED LINEAR EXPRESSION DECODER - n_input: {n_input}, n_output"
-              f": {n_output}, recon_loss: {recon_loss}")
+        print(f"MASKED LINEAR EXPRESSION DECODER - n_inputs: {n_inputs}, n_outputs"
+              f": {n_outputs}, n_conditions: {n_conditions}, "
+              f"n_extensions_unmasked: {n_extensions_unmasked}, "
+              f"n_extensions_masked: {n_extensions_masked}, recon_loss: "
+              f"{recon_loss}")
 
-        self.mfc_l1 = MaskedFCLayer(n_input, n_output, mask, bias=False)
+        self.mce_l0 = MaskedCondExtLayer(
+            n_inputs=n_inputs,
+            n_outputs=n_outputs,
+            n_conditions=n_conditions,
+            n_extensions_unmasked=n_extensions_unmasked,
+            n_extensions_masked=n_extensions_masked,
+            mask=mask,
+            extension_mask=extension_mask)
 
         if recon_loss == "nb":
-            self.act_l1 = nn.Softmax(dim=-1) # softmax activation
+            self.activation_l0 = nn.Softmax(dim=-1) # softmax activation
         elif recon_loss == "mse":
-            self.act_l1 = lambda a: a # identity activation
+            self.activation_l0 = lambda a: a # identity activation
 
-    def forward(self, z):
-        x_recon = self.act_l1(self.mfc_l1(z))
-        return x_recon
+    def forward(self, inputs, conditions=None):
+        if conditions is not None:
+            # Add one-hot-encoded condition nodes to inputs
+            conditions_ohe = F.one_hot(conditions, self.n_conditions)
+            inputs = torch.cat((inputs, conditions_ohe), dim=-1)
+        decoder_latents = self.mce_l0(inputs)    
+        outputs = self.activation_l0(decoder_latents)
+        return outputs, decoder_latents
+
+    def non_zero_gene_program_node_mask(self):
+        gp_nodes_weights = self.mce_l0.input_l.weight.data
+        # Check if sum of absolute values of gp node weights > 0 (per node)
+        non_zero_mask = (gp_nodes_weights.norm(p=1, dim=0) > 0).cpu().numpy()
+        non_zero_mask = np.append(non_zero_mask,
+                                  np.full(self.n_extensions_unmasked, True))
+        non_zero_mask = np.append(non_zero_mask,
+                                  np.full(self.n_extensions_masked, True))
+        return non_zero_mask
+
+    def n_inactive_gene_program_nodes(self):
+        n = (~self.non_zero_gene_program_node_mask()).sum()
+        return int(n)

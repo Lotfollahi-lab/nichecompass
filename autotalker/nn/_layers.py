@@ -47,38 +47,22 @@ class GCNLayer(nn.Module):
         return self.activation(output)
 
 
-class FCLayer(nn.Module):
-    """
-    Fully connected layer class.
-
-    Parameters
-    ----------
-    n_input:
-        Number of input nodes to the FC Layer.
-    n_output:
-        Number of output nodes from the FC layer.
-    activation:
-        Activation function used in the FC layer.
-    """
-    def __init__(self, n_input: int, n_output: int, activation=nn.ReLU):
-        super(FCLayer, self).__init__()
-        self.activation = activation
-        self.linear = nn.Linear(n_input, n_output)
-
-    def forward(self, input: torch.Tensor):
-        output = self.linear(input)
-        if self.activation is not None:
-            return self.activation(output)
-        else:
-            return output
-
-
 class MaskedCondExtLayer(nn.Module):
     """
     Masked conditional extension layer adapted from 
     https://github.com/theislab/scarches. Takes input nodes plus optionally
     condition nodes, unmasked extension nodes and masked extension nodes and
     computes a linear transformation with masks for the masked parts.
+
+    Parameters
+    ----------
+    n_input:
+    n_output:
+    n_condition:
+    n_extension_unmasked:
+    n_extension_masked:
+    mask:
+    extension_mask:
     """
     def __init__(self,
                  n_input: int,
@@ -95,27 +79,30 @@ class MaskedCondExtLayer(nn.Module):
         
         # Creating layer components
         if mask is None:
-            self.input_l0 = nn.Linear(n_input, n_output, bias=True)
+            self.input_l = nn.Linear(n_input, n_output, bias=False)
         else:
-            self.input_l0 = MaskedLinear(n_input, n_output, mask, bias=True)
+            self.input_l = MaskedLinear(n_input,
+                                             n_output,
+                                             mask,
+                                             bias=False)
 
         if self.n_condition != 0:
-            self.condition_l0 = nn.Linear(self.n_condition,
+            self.condition_l = nn.Linear(self.n_condition,
                                           n_output,
                                           bias=False)
 
         if self.n_extension_unmasked != 0:
-            self.extension_unmasked_l0 = nn.Linear(self.n_extension_unmasked,
+            self.extension_unmasked_l = nn.Linear(self.n_extension_unmasked,
                                                    n_output,
                                                    bias=False)
 
         if self.n_extension_masked != 0:
             if extension_mask is None:
-                self.extension_masked_l0 = nn.Linear(self.n_extension_masked,
+                self.extension_masked_l = nn.Linear(self.n_extension_masked,
                                                      n_output,
                                                      bias=False)
             else:
-                self.extension_masked_l0 = MaskedLinear(
+                self.extension_masked_l = MaskedLinear(
                     self.n_extension_masked,
                     n_output,
                     bias=False)
@@ -146,13 +133,12 @@ class MaskedCondExtLayer(nn.Module):
                         self.extension_masked],
                 dim=1)
 
-        # Forward pass
-        output = self.input_l0(input)
+        # Forward pass with different layer components
+        output = self.input_l(input)
         if extension_unmasked is not None:
-            output = output + self.extension_unmasked_l0(extension_unmasked)
+            output = output + self.extension_unmasked_l(extension_unmasked)
         if extension_masked is not None:
-            output = output + self.extension_masked_l0(extension_masked)
+            output = output + self.extension_masked_l(extension_masked)
         if condition is not None:
-            output = output + self.condition_l0(condition)
+            output = output + self.condition_l(condition)
         return output
-

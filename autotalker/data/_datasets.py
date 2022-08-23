@@ -6,6 +6,7 @@ import scipy.sparse as sp
 import torch
 
 from ._utils import sparse_mx_to_sparse_tensor
+from ._utils import label_encoder
 
 
 class SpatialAnnDataset():
@@ -24,8 +25,12 @@ class SpatialAnnDataset():
     def __init__(self,
                  adata: ad.AnnData,
                  adj_key: str="spatial_connectivities",
-                 size_factor_key: str="autotalker_size_factors"
-                 condition_key: Optional[str]=None):
+                 size_factor_key: str="autotalker_size_factors",
+                 condition_key: Optional[str]=None,
+                 condition_label_dict: dict=None):
+        self.condition_key = condition_key
+        self.condition_label_dict = condition_label_dict
+        
         # Store features in dense format
         if sp.issparse(adata.X): 
             self.x = torch.FloatTensor(adata.X.toarray())
@@ -58,7 +63,17 @@ class SpatialAnnDataset():
         if self.condition_key is not None:
             self.conditions = label_encoder(
                 adata,
-                encoder=self.condition_encoder,
-                condition_key=condition_key,
-            )
+                condition_label_dict=self.condition_label_dict,
+                condition_key=condition_key)
             self.conditions = torch.tensor(self.conditions, dtype=torch.long)
+        else:
+            self.conditions = torch.zeros(len(adata.obs))
+
+    @property
+    def condition_label_dict(self) -> dict:
+        return self.condition_label_dict
+
+    @condition_label_dict.setter
+    def condition_label_dict(self, value: dict):
+        if value is not None:
+            self.condition_label_dict = value

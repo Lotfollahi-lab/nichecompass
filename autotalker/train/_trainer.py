@@ -55,6 +55,7 @@ class Trainer:
     def __init__(self,
                  adata: ad.AnnData,
                  model: VGAE,
+                 condition_key: str,
                  adj_key: str="spatial_connectivities",
                  valid_frac: float=0.1,
                  test_frac: float=0.05,
@@ -66,6 +67,7 @@ class Trainer:
         self.adata = adata
         self.model = model
         self.adj_key = adj_key
+        self.condition_key = condition_key
         self.train_frac = 1 - valid_frac - test_frac
         self.valid_frac = valid_frac
         self.test_frac = test_frac
@@ -94,10 +96,12 @@ class Trainer:
                                    "cpu")
         
         self.train_data, self.valid_data, self.test_data = prepare_data(
-            self.adata,
-            self.adj_key,
-            valid_frac = self.valid_frac,
-            test_frac = self.test_frac)
+            adata=self.adata,
+            condition_key=self.condition_key,
+            condition_label_dict=self.model.condition_label_dict,
+            adj_key=self.adj_key,
+            valid_frac=self.valid_frac,
+            test_frac=self.test_frac)
 
         self.train_dataloader = torch_geometric.loader.LinkNeighborLoader(
             self.train_data,

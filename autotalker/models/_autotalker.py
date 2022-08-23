@@ -60,7 +60,7 @@ class Autotalker(BaseModel, VGAEModelMixin):
             if condition_key is not None:
                 self.conditions_ = adata.obs[condition_key].unique().tolist()
             else:
-                self.conditions_ = []
+                self.conditions_ = ["default_condition"]
         else:
             self.conditions_ = conditions
 
@@ -119,6 +119,7 @@ class Autotalker(BaseModel, VGAEModelMixin):
         """
         self.trainer = Trainer(adata=self.adata,
                                model=self.model,
+                               condition_key=self.condition_key_,
                                adj_key=self.adj_key_,
                                val_frac=val_frac,
                                test_frac=test_frac,

@@ -12,6 +12,7 @@ from ._losses import compute_vgae_loss
 from ._losses import compute_vgae_loss_parameters
 from ._losses import compute_x_recon_mse_loss
 from ._losses import compute_x_recon_nb_loss
+from ._utils import one_hot_encoder
 
 
 class IVGAE(nn.Module, VGAEModuleMixin):
@@ -44,9 +45,9 @@ class IVGAE(nn.Module, VGAEModuleMixin):
         self.n_input = encoder_layer_sizes[0]
         self.n_hidden = encoder_layer_sizes[1]
         self.n_latent = encoder_layer_sizes[2]
-        self.n_conditions = len(conditions)
+        self.n_condition = len(conditions)
         self.conditions = conditions
-        self.condition_encoder = {k: v for k, v in zip(conditions, range(len(conditions)))}
+        self.condition_label_dict = {k: v for k, v in zip(conditions, range(len(conditions)))}
         self.dropout_rate = encoder_dropout_rate
         self.encoder = GCNEncoder(
             n_input = encoder_layer_sizes[0],
@@ -61,12 +62,12 @@ class IVGAE(nn.Module, VGAEModuleMixin):
             n_input=expr_decoder_layer_sizes[0],
             n_output=expr_decoder_layer_sizes[1],
             mask=expr_decoder_mask,
-            n_conditions=self.n_conditions,
+            n_condition=self.n_condition,
             recon_loss=expr_decoder_recon_loss)
         self.expr_decoder_recon_loss = expr_decoder_recon_loss
         
         if expr_decoder_recon_loss in ["nb"]:
-            self.theta = torch.nn.Parameter(torch.randn(self.n_input, self.n_conditions))
+            self.theta = torch.nn.Parameter(torch.randn(self.n_input, self.n_condition))
         else:
             self.theta = None
 
@@ -95,10 +96,13 @@ class IVGAE(nn.Module, VGAEModuleMixin):
             norm_factor=vgae_loss_norm_factor)
 
         if self.expr_decoder_recon_loss == "nb": ### FIX ####
+            ### Log FORWARD PASS ??? ###
             dec_mean_gamma = expr_decoder_output
             size_factors = train_data.size_factors.unsqueeze(1).expand(
                 dec_mean_gamma.size(0), dec_mean_gamma.size(1))
-            dispersion = torch.exp(F.linear(torch.tensor([1.0], device=device),
+            print(train_data.conditions)
+            print(self.n_condition)
+            dispersion = torch.exp(F.linear(one_hot_encoder(train_data.conditions, self.n_condition),
                                             self.theta))
             dec_mean = dec_mean_gamma * size_factors
             expr_recon_loss = compute_x_recon_nb_loss(x=train_data.x,
