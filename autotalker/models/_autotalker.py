@@ -40,6 +40,8 @@ class Autotalker(BaseModel, VGAEModelMixin):
                  mask: Optional[Union[np.ndarray, list]]=None,
                  mask_key: str="I",
                  adj_key: str="spatial_connectivities",
+                 condition_key: Optional[str]=None,
+                 conditions: Optional[list]=None,
                  cell_type_key: str="cell_type",
                  n_hidden: int=32,
                  dropout_rate: float=0.0,
@@ -54,10 +56,19 @@ class Autotalker(BaseModel, VGAEModelMixin):
                 raise ValueError("Please provide a mask or specify an adquate "
                                  "mask key.")
 
+        if conditions is None:
+            if condition_key is not None:
+                self.conditions_ = adata.obs[condition_key].unique().tolist()
+            else:
+                self.conditions_ = []
+        else:
+            self.conditions_ = conditions
+
         self.adata = adata
         self.mask_ = torch.tensor(mask).float()
         self.mask_key_ = mask_key
         self.adj_key_ = adj_key
+        self.condition_key_ = condition_key
         self.n_latent_ = len(self.mask_)
         self.cell_type_key_ = cell_type_key
         self.n_input_ = adata.n_vars
@@ -76,6 +87,7 @@ class Autotalker(BaseModel, VGAEModelMixin):
                            expr_decoder_layer_sizes=self.expr_decoder_layer_sizes_,
                            expr_decoder_recon_loss=self.expr_decoder_recon_loss_,
                            expr_decoder_mask=self.mask_,
+                           conditions=self.conditions_,
                            encoder_dropout_rate=self.dropout_rate,
                            graph_decoder_dropout_rate=self.dropout_rate)
 

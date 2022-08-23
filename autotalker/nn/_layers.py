@@ -1,5 +1,9 @@
+from typing import Optional
+
 import torch
 import torch.nn as nn
+
+from ._layer_components import MaskedLinear
 
 
 class GCNLayer(nn.Module):
@@ -69,22 +73,86 @@ class FCLayer(nn.Module):
             return output
 
 
-class MaskedFCLayer(nn.Linear):
+class MaskedCondExtLayer(nn.Module):
     """
-    Adapted from https://github.com/theislab/scarches. 
+    Masked conditional extension layer adapted from 
+    https://github.com/theislab/scarches. Takes input nodes plus optionally
+    condition nodes, unmasked extension nodes and masked extension nodes and
+    computes a linear transformation with masks for the masked parts.
     """
-    def __init__(self, n_input: int, n_output: int, mask, bias=True):
-        # Mask should have dim n_input x n_output
-        if n_input != mask.shape[0] or n_output != mask.shape[1]:
-            raise ValueError("Incorrect shape of the mask. Mask should have dim"
-                             "n_input x n_output")
-        super().__init__(n_input, n_output, bias)
+    def __init__(self,
+                 n_input: int,
+                 n_output: int,
+                 n_condition: int,
+                 n_extension_unmasked: int,
+                 n_extension_masked: int,
+                 mask: Optional[torch.Tensor]=None,
+                 extension_mask: Optional[torch.Tensor]=None):
+        super().__init__()
+        self.n_condition = n_condition
+        self.n_extension_unmasked = n_extension_unmasked
+        self.n_extension_masked = n_extension_masked
         
-        self.register_buffer("mask", mask.t())
+        # Creating layer components
+        if mask is None:
+            self.input_l0 = nn.Linear(n_input, n_output, bias=True)
+        else:
+            self.input_l0 = MaskedLinear(n_input, n_output, mask, bias=True)
 
-        # Zero out weights with the mask
-        # Gradient descent does not consider these zero weights
-        self.weight.data *= self.mask
+        if self.n_condition != 0:
+            self.condition_l0 = nn.Linear(self.n_condition,
+                                          n_output,
+                                          bias=False)
 
-    def forward(self, x):
-        return nn.functional.linear(x, self.weight * self.mask, self.bias)
+        if self.n_extension_unmasked != 0:
+            self.extension_unmasked_l0 = nn.Linear(self.n_extension_unmasked,
+                                                   n_output,
+                                                   bias=False)
+
+        if self.n_extension_masked != 0:
+            if extension_mask is None:
+                self.extension_masked_l0 = nn.Linear(self.n_extension_masked,
+                                                     n_output,
+                                                     bias=False)
+            else:
+                self.extension_masked_l0 = MaskedLinear(
+                    self.n_extension_masked,
+                    n_output,
+                    bias=False)
+
+    def forward(self, input: torch.Tensor):
+        # Split input into its components to be fed separately into different
+        # layer components
+        if self.n_condition == 0:
+            input, condition = input, None
+        else:
+            input, condition = torch.split(
+                input, [input.shape[1] - self.n_condition, self.n_condition],
+                dim=1)
+
+        if self.n_extension_unmasked == 0:
+            extension_unmasked = None
+        else:
+            input, extension_unmasked = torch.split(
+                input, [input.shape[1] - self.n_extension_unmasked,
+                        self.n_extension_unmasked],
+                dim=1)
+
+        if self.n_extension_masked == 0:
+            extension_masked = None
+        else:
+            input, extension_masked = torch.split(
+                input, [input.shape[1] - self.extension_masked,
+                        self.extension_masked],
+                dim=1)
+
+        # Forward pass
+        output = self.input_l0(input)
+        if extension_unmasked is not None:
+            output = output + self.extension_unmasked_l0(extension_unmasked)
+        if extension_masked is not None:
+            output = output + self.extension_masked_l0(extension_masked)
+        if condition is not None:
+            output = output + self.condition_l0(condition)
+        return output
+

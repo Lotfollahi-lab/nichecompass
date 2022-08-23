@@ -35,7 +35,10 @@ def prepare_data(adata: ad.AnnData,
         PyG Data object containing the test data.
     """
     dataset = SpatialAnnDataset(adata, adj_key=adj_key)
-    data = Data(x=dataset.x, edge_index=dataset.edge_index)
+    data = Data(x=dataset.x,
+                edge_index=dataset.edge_index,
+                conditions=dataset.conditions,
+                size_factors=dataset.size_factors)
 
     # Split data on edge level
     transform = RandomLinkSplit(num_val=valid_frac,

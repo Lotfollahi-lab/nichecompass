@@ -169,12 +169,10 @@ def compute_x_recon_nb_loss(x: torch.Tensor,
         theta = theta.view(1, theta.size(0))
 
     log_theta_mu_eps = torch.log(theta + mu + eps)
-    res = (
-        theta * (torch.log(theta + eps) - log_theta_mu_eps)
-        + x * (torch.log(mu + eps) - log_theta_mu_eps)
-        + torch.lgamma(x + theta)
-        - torch.lgamma(theta)
-        - torch.lgamma(x + 1)
-    )
+    res = (theta * (torch.log(theta + eps) - log_theta_mu_eps)
+           + x * (torch.log(mu + eps) - log_theta_mu_eps)
+           + torch.lgamma(x + theta)
+           - torch.lgamma(theta)
+           - torch.lgamma(x + 1))
 
-    return 
+    return -(res.sum(dim=-1).mean())
