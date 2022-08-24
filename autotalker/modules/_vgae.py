@@ -64,8 +64,8 @@ class VGAE(nn.Module, VGAEModuleMixin):
 
         vgae_loss = compute_vgae_loss(
             adj_recon_logits=adj_recon_logits,
-            edge_label_index=data_batch.edge_index,
-            pos_weight=vgae_loss_pos_weight,
+            edge_label_index=data_batch.edge_label_index,
+            edge_labels=data_batch.edge_label,
             mu=mu,
             logstd=logstd,
             n_nodes=data_batch.x.size(0),

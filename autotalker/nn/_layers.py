@@ -3,7 +3,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from ._layer_components import MaskedLinear
+from ._layercomponents import MaskedLinear
 
 
 class GCNLayer(nn.Module):

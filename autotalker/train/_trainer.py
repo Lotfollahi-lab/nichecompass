@@ -97,10 +97,13 @@ class Trainer:
         self.device = torch.device("cuda" if torch.cuda.is_available() else 
                                    "cpu")
         
+        # remove later
+        condition_label_dict = {}
+
         data = prepare_data(
             adata=self.adata,
             condition_key=self.condition_key,
-            condition_label_dict=self.model.condition_label_dict,
+            condition_label_dict=condition_label_dict,
             adj_key=self.adj_key,
             valid_frac=self.valid_frac,
             test_frac=self.test_frac)
@@ -110,8 +113,12 @@ class Trainer:
         self.valid_data = data_link_splits[1]
         self.test_data = data_link_splits[2]
 
-        self.train_dataloader = initialize_link_level_dataloader(self.train_data)
-        self.valid_dataloader = initialize_link_level_dataloader(self.valid_data)
+        self.train_dataloader = initialize_link_level_dataloader(
+            data=self.train_data,
+            batch_size=self.batch_size)
+        self.valid_dataloader = initialize_link_level_dataloader(
+            data=self.valid_data,
+            batch_size=self.batch_size)
 
     def train(self,
               n_epochs: int=200,

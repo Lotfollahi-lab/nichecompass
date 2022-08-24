@@ -5,7 +5,7 @@ import anndata as ad
 import numpy as np
 import torch
 
-from ._base_model import BaseModel
+from ._basemodel import BaseModel
 from ._vgaemodelmixin import VGAEModelMixin
 from autotalker.modules import IVGAE
 from autotalker.modules import VGAE
@@ -74,7 +74,7 @@ class Autotalker(BaseModel, VGAEModelMixin):
         self.n_input_ = adata.n_vars
         self.n_output_ = adata.n_vars
         self.n_hidden_ = n_hidden
-        self.dropout_rate = dropout_rate
+        self.dropout_rate_ = dropout_rate
         self.expr_decoder_recon_loss_ = expr_decoder_recon_loss
 
         self.encoder_layer_sizes_ = [self.n_input_,
@@ -83,13 +83,18 @@ class Autotalker(BaseModel, VGAEModelMixin):
         self.expr_decoder_layer_sizes_ = [self.n_latent_,
                                           self.n_output_]
 
-        self.model = IVGAE(encoder_layer_sizes=self.encoder_layer_sizes_,
-                           expr_decoder_layer_sizes=self.expr_decoder_layer_sizes_,
-                           expr_decoder_recon_loss=self.expr_decoder_recon_loss_,
-                           expr_decoder_mask=self.mask_,
-                           conditions=self.conditions_,
-                           encoder_dropout_rate=self.dropout_rate,
-                           graph_decoder_dropout_rate=self.dropout_rate)
+        self.model = VGAE(n_input = self.n_input_,
+                          n_hidden = self.n_hidden_,
+                          n_latent = self.n_latent_,
+                          dropout_rate = self.dropout_rate_)
+
+        # self.model = IVGAE(encoder_layer_sizes=self.encoder_layer_sizes_,
+        #                    expr_decoder_layer_sizes=self.expr_decoder_layer_sizes_,
+        #                    expr_decoder_recon_loss=self.expr_decoder_recon_loss_,
+        #                    expr_decoder_mask=self.mask_,
+        #                    conditions=self.conditions_,
+        #                    encoder_dropout_rate=self.dropout_rate,
+        #                    graph_decoder_dropout_rate=self.dropout_rate)
 
         self.is_trained_ = False
         self.init_params_ = self._get_init_params(locals())
