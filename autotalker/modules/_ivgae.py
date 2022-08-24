@@ -9,10 +9,6 @@ from autotalker.nn import GCNEncoder
 from autotalker.nn import MaskedLinearExprDecoder
 from ._vgaemodulemixin import VGAEModuleMixin
 from ._losses import compute_vgae_loss
-from ._losses import compute_vgae_loss_parameters
-from ._losses import compute_x_recon_mse_loss
-from ._losses import compute_x_recon_nb_loss
-
 
 class IVGAE(nn.Module, VGAEModuleMixin):
     """

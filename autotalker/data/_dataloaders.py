@@ -1,9 +1,10 @@
 import torch_geometric
 
+
 def initialize_link_level_dataloader(data: torch_geometric.data.Data,
                                      batch_size: int,
                                      n_direct_neighbors: int=-1,
-                                     n_neighbor_iters: int=2,
+                                     n_neighbor_iters: int=3,
                                      directed=False,
                                      neg_sampling_ratio=1.0):
     """

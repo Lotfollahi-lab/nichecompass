@@ -5,10 +5,9 @@ import torch
 from matplotlib.ticker import MaxNLocator
 
 
-def get_eval_metrics(
-        adj_rec_probs: torch.Tensor,
-        edge_label_index: torch.Tensor,
-        edge_labels: torch.Tensor):
+def get_eval_metrics(adj_rec_probs: torch.Tensor,
+                     edge_label_index: torch.Tensor,
+                     edge_labels: torch.Tensor):
     """
     Get the evaluation metrics for a (balanced) sample of positive and negative 
     edges.
@@ -38,7 +37,6 @@ def get_eval_metrics(
     if isinstance(edge_label_index, torch.Tensor):
         edge_label_index = edge_label_index.detach().cpu().numpy()
 
-    # Collect predictions for each label (positive vs negative edge) separately
     pred_probs = np.array([])
     for edge in zip(edge_label_index[0], edge_label_index[1]):
         pred_probs = np.append(

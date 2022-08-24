@@ -5,7 +5,6 @@ from autotalker.nn import DotProductGraphDecoder
 from autotalker.nn import GCNEncoder
 from ._vgaemodulemixin import VGAEModuleMixin
 from ._losses import compute_vgae_loss
-from ._losses import compute_vgae_loss_parameters
 
 
 class VGAE(nn.Module, VGAEModuleMixin):
@@ -24,12 +23,11 @@ class VGAE(nn.Module, VGAEModuleMixin):
     dropout_rate:
         Probability that nodes will be dropped during training.
     """
-    def __init__(
-            self,
-            n_input: int,
-            n_hidden: int,
-            n_latent: int,
-            dropout_rate: float=0.0):
+    def __init__(self,
+                 n_input: int,
+                 n_hidden: int,
+                 n_latent: int,
+                 dropout_rate: float=0.0):
         self.n_input = n_input
         self.n_hidden = n_hidden
         self.n_latent = n_latent
@@ -46,21 +44,17 @@ class VGAE(nn.Module, VGAEModuleMixin):
 
 
     def forward(self, x, edge_index):
-        print(f"X size {x.size()}")
-        print(f"edge index size {edge_index.size()}")
         self.mu, self.logstd = self.encoder(x, edge_index)
         self.z = self.reparameterize(self.mu, self.logstd)
         adj_recon_logits = self.decoder(self.z)
-        print(f"adj_recon_logits size {adj_recon_logits.size()}")
         return adj_recon_logits, self.mu, self.logstd
 
 
-    def loss(self, adj_recon_logits, data_batch, mu, logstd, device):
-        # Does this make sense on batch level?
-        vgae_loss_params = compute_vgae_loss_parameters(data_batch.edge_index)
-        vgae_loss_norm_factor, vgae_loss_pos_weight = vgae_loss_params
-        vgae_loss_pos_weight = vgae_loss_pos_weight.to(device)
-        print(f"VGAE loss pos weight {vgae_loss_pos_weight}")
+    def loss(self, adj_recon_logits, data_batch, mu, logstd):
+        
+        n_possible_edges = data_batch.x.shape[0] ** 2
+        n_neg_edges = (data_batch.edge_label == 0).sum()
+        edge_recon_loss_norm_factor = n_possible_edges / n_neg_edges
 
         vgae_loss = compute_vgae_loss(
             adj_recon_logits=adj_recon_logits,
@@ -69,6 +63,6 @@ class VGAE(nn.Module, VGAEModuleMixin):
             mu=mu,
             logstd=logstd,
             n_nodes=data_batch.x.size(0),
-            norm_factor=vgae_loss_norm_factor)
+            edge_recon_loss_norm_factor=edge_recon_loss_norm_factor)
 
         return vgae_loss

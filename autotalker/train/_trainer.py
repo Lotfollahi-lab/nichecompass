@@ -119,6 +119,9 @@ class Trainer:
         self.valid_dataloader = initialize_link_level_dataloader(
             data=self.valid_data,
             batch_size=self.batch_size)
+        self.test_dataloader = initialize_link_level_dataloader(
+            data=self.test_data,
+            batch_size=self.batch_size)
 
     def train(self,
               n_epochs: int=200,
@@ -183,15 +186,13 @@ class Trainer:
 
 
     def on_iteration(self, train_data_batch):
-        adj_recon_logits, x_recon, mu, logstd = self.model(
+        adj_recon_logits, mu, logstd = self.model(
             train_data_batch.x,
             train_data_batch.edge_index)
-        train_loss, _, _ = self.model.loss(adj_recon_logits,
-                                           x_recon,
+        train_loss = self.model.loss(adj_recon_logits,
                                            train_data_batch,
                                            mu,
-                                           logstd,
-                                           self.device)
+                                           logstd)
         self.iter_logs["train_loss"].append(train_loss.item())
         self.iter_logs["n_train_iter"] += 1
         self.optimizer.zero_grad()
@@ -215,9 +216,12 @@ class Trainer:
 
         # Monitor epoch level logs
         if self.monitor:
-            monitor_logs = {key: self.epoch_logs[key] for key in self.epoch_logs 
-                            if key != "train_loss"}
+            monitor_logs = self.epoch_logs
+            # monitor_logs = {key: self.epoch_logs[key] for key in self.epoch_logs 
+            #                 if key != "train_loss"}
             print_progress(self.epoch, monitor_logs, self.n_epochs)
+
+        print("Epoch end")
 
 
     @torch.no_grad()
@@ -227,20 +231,15 @@ class Trainer:
         for valid_data_batch in self.valid_dataloader:
             valid_data_batch = valid_data_batch.to(self.device)
             
-            adj_recon_logits, x_recon, mu, logstd = self.model(
+            adj_recon_logits, mu, logstd = self.model(
                 valid_data_batch.x,
                 valid_data_batch.edge_index)
-            valid_loss, valid_vgae_loss, valid_expr_recon_loss = self.model.loss(
+            valid_loss = self.model.loss(
                 adj_recon_logits,
-                x_recon,
                 valid_data_batch,
                 mu,
-                logstd,
-                self.device)
+                logstd)
             self.iter_logs["valid_loss"].append(valid_loss.item())
-            self.iter_logs["valid_vgae_loss"].append(valid_vgae_loss.item())
-            self.iter_logs["valid_expr_recon_loss"].append(
-                valid_expr_recon_loss.item())
             self.iter_logs["n_valid_iter"] += 1
 
             adj_recon_probs = torch.sigmoid(adj_recon_logits)
@@ -281,24 +280,47 @@ class Trainer:
         fig = plot_eval_metrics(valid_eval_metrics)  
         mlflow.log_figure(fig, "valid_eval_metrics.png") 
 
-        self.adj_recon_logits, self.x_recon, self.mu, self.logstd = self.model(
+        self.adj_recon_logits, self.mu, self.logstd = self.model(
             self.test_data.x,
             self.test_data.edge_index)
         self.adj_recon_probs = torch.sigmoid(self.adj_recon_logits)
 
-        test_edge_label_index, test_edge_labels = transform_test_edge_labels(
-            self.test_data.pos_edge_label_index,
-            self.test_data.neg_edge_label_index)
-    
-        test_eval_metrics = get_eval_metrics(
-            self.adj_recon_probs,
-            test_edge_label_index,
-            test_edge_labels)
+        test_auroc_scores_running = 0
+        test_auprc_scores_running = 0
+        test_best_acc_scores_running = 0
+        test_best_f1_scores_running = 0
 
-        test_auroc_score = test_eval_metrics[0]
-        test_auprc_score = test_eval_metrics[1]
-        test_best_acc_score = test_eval_metrics[2]
-        test_best_f1_score = test_eval_metrics[3]
+        # test_edge_label_index, test_edge_labels = transform_test_edge_labels(
+        #     self.test_data.pos_edge_label_index,
+        #     self.test_data.neg_edge_label_index)
+        for n_test_iter, test_data_batch in enumerate(self.test_dataloader):
+            test_data_batch = test_data_batch.to(self.device)
+
+            adj_recon_logits, mu, logstd = self.model(
+                    test_data_batch.x,
+                    test_data_batch.edge_index)
+    
+            adj_recon_probs = torch.sigmoid(adj_recon_logits)
+        
+            test_eval_metrics = get_eval_metrics(
+                    adj_recon_probs,
+                    test_data_batch.edge_label_index,
+                    test_data_batch.edge_label)
+    
+            test_auroc_scores_running += test_eval_metrics[0]
+            test_auprc_scores_running += test_eval_metrics[1]
+            test_best_acc_scores_running += test_eval_metrics[2]
+            test_best_f1_scores_running += test_eval_metrics[3]
+
+        test_auroc_score = test_auroc_scores_running / n_test_iter
+        test_auprc_score = test_auprc_scores_running / n_test_iter
+        test_best_acc_score = test_best_acc_scores_running / n_test_iter
+        test_best_f1_score = test_best_f1_scores_running / n_test_iter
+
+        print(f"Average test AUROC score: {test_auroc_score}")
+        print(f"Average test AUPRC score: {test_auprc_score}")
+        print(f"Average test best acc score: {test_best_acc_score}")
+        print(f"Average test best f1 score: {test_best_f1_score}")
 
         mlflow.log_metric("test_auroc_score", test_auroc_score)
         mlflow.log_metric("test_auprc_score", test_auprc_score)
