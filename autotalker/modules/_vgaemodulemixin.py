@@ -11,6 +11,9 @@ logger = logging.getLogger(__name__)
 class VGAEModuleMixin:
     """Universal VGAE module functionalities."""
     def reparameterize(self, mu: torch.Tensor, logstd: torch.Tensor):
+        """
+        Reparameterization trick for latent space normal distribution.
+        """
         if self.training:
             std = torch.exp(logstd)
             eps = torch.randn_like(mu)

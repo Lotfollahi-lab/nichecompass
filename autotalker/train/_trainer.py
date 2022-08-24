@@ -6,9 +6,11 @@ import anndata as ad
 import mlflow
 import numpy as np
 import torch
-import torch_geometric
 
 from autotalker.data import prepare_data
+from autotalker.data import train_valid_test_node_level_mask
+from autotalker.data import train_valid_test_link_level_split
+from autotalker.data import initialize_link_level_dataloader
 from autotalker.modules import VGAE
 from ._metrics import get_eval_metrics
 from ._metrics import plot_eval_metrics
@@ -95,7 +97,7 @@ class Trainer:
         self.device = torch.device("cuda" if torch.cuda.is_available() else 
                                    "cpu")
         
-        self.train_data, self.valid_data, self.test_data = prepare_data(
+        data = prepare_data(
             adata=self.adata,
             condition_key=self.condition_key,
             condition_label_dict=self.model.condition_label_dict,
@@ -103,22 +105,13 @@ class Trainer:
             valid_frac=self.valid_frac,
             test_frac=self.test_frac)
 
-        self.train_dataloader = torch_geometric.loader.LinkNeighborLoader(
-            self.train_data,
-            num_neighbors=[30] * 2,
-            batch_size=self.batch_size,
-            edge_label_index=self.train_data.edge_index,
-            directed=False,
-            neg_sampling_ratio=1)
+        data_link_splits = train_valid_test_link_level_split(data)
+        self.train_data = data_link_splits[0]
+        self.valid_data = data_link_splits[1]
+        self.test_data = data_link_splits[2]
 
-        self.valid_dataloader = torch_geometric.loader.LinkNeighborLoader(
-            self.valid_data,
-            num_neighbors=[30] * 2,
-            batch_size=self.batch_size,
-            edge_label_index=self.valid_data.edge_index,
-            directed=False,
-            neg_sampling_ratio=1)
-
+        self.train_dataloader = initialize_link_level_dataloader(self.train_data)
+        self.valid_dataloader = initialize_link_level_dataloader(self.valid_data)
 
     def train(self,
               n_epochs: int=200,
@@ -149,6 +142,7 @@ class Trainer:
             self.on_epoch_start()
             
             for train_data_batch in self.train_dataloader:
+                train_data_batch = train_valid_test_node_level_mask(train_data_batch)
                 train_data_batch = train_data_batch.to(self.device)
                 self.on_iteration(train_data_batch)
 

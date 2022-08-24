@@ -46,25 +46,29 @@ class VGAE(nn.Module, VGAEModuleMixin):
 
 
     def forward(self, x, edge_index):
+        print(f"X size {x.size()}")
+        print(f"edge index size {edge_index.size()}")
         self.mu, self.logstd = self.encoder(x, edge_index)
         self.z = self.reparameterize(self.mu, self.logstd)
         adj_recon_logits = self.decoder(self.z)
+        print(f"adj_recon_logits size {adj_recon_logits.size()}")
         return adj_recon_logits, self.mu, self.logstd
 
 
-    def loss(self, adj_recon_logits, train_data, mu, logstd, device):
-        vgae_loss_norm_factor, vgae_loss_pos_weight = \
-        compute_vgae_loss_parameters(train_data.edge_index)
-
+    def loss(self, adj_recon_logits, data_batch, mu, logstd, device):
+        # Does this make sense on batch level?
+        vgae_loss_params = compute_vgae_loss_parameters(data_batch.edge_index)
+        vgae_loss_norm_factor, vgae_loss_pos_weight = vgae_loss_params
         vgae_loss_pos_weight = vgae_loss_pos_weight.to(device)
+        print(f"VGAE loss pos weight {vgae_loss_pos_weight}")
 
         vgae_loss = compute_vgae_loss(
             adj_recon_logits=adj_recon_logits,
-            edge_label_index=train_data.edge_index,
+            edge_label_index=data_batch.edge_index,
             pos_weight=vgae_loss_pos_weight,
             mu=mu,
             logstd=logstd,
-            n_nodes=train_data.x.size(0),
+            n_nodes=data_batch.x.size(0),
             norm_factor=vgae_loss_norm_factor)
 
         return vgae_loss

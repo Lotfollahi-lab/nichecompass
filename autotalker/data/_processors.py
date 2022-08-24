@@ -1,7 +1,7 @@
 import anndata as ad
 
+import torch_geometric
 from torch_geometric.data import Data
-from torch_geometric.transforms import RandomLinkSplit
 
 from ._datasets import SpatialAnnDataset
 
@@ -38,15 +38,8 @@ def prepare_data(adata: ad.AnnData,
     """
     dataset = SpatialAnnDataset(adata, adj_key=adj_key)
     data = Data(x=dataset.x,
-                edge_index=dataset.edge_index,
+                edge_index=dataset.edge_index, # 2 edge index pairs for one edge because of symmetry
                 conditions=dataset.conditions,
                 size_factors=dataset.size_factors)
 
-    # Split data on edge level
-    transform = RandomLinkSplit(num_val=valid_frac,
-                                num_test=test_frac,
-                                is_undirected=True,
-                                split_labels=True)
-    train_data, valid_data, test_data = transform(data)
-
-    return train_data, valid_data, test_data
+    return data

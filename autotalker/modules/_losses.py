@@ -3,8 +3,39 @@ import torch.nn.functional as F
 from torch_geometric.utils import add_self_loops
 from torch_geometric.utils import to_dense_adj
 
+def compute_edge_recon_loss(adj_recon_logits,
+                            edge_labels,
+                            edge_label_index):
+    """
 
-def compute_adj_recon_loss(adj_recon_logits, edge_label_index, pos_weight):
+
+    Parameters
+    ----------
+    adj_recon_logits:
+    edge_labels:
+    edge_label_index:
+
+    Returns
+    ----------
+    edge_recon_loss:
+        aa
+    """
+    # Create mask to retrieve values at edge_label_index from adj_recon_logits 
+    mask = torch.squeeze(to_dense_adj(edge_label_index)) > 0
+
+    # Pad mask on right and bottom to have same dimension as adj_recon_logits
+    pad_dim = (torch.tensor(adj_recon_logits.shape[0]) - 
+               torch.tensor(mask.shape[0])).item()
+    padded_mask = F.pad(mask, (0, pad_dim, 0, pad_dim), "constant", False)
+    predicted_edge_logits = torch.masked_select(adj_recon_logits, padded_mask)
+
+    # Compute cross entropy loss
+    edge_recon_loss = F.binary_cross_entropy_with_logits(predicted_edge_logits,
+                                                         edge_labels)
+    return edge_recon_loss
+
+
+def compute_adj_recon_loss_old(adj_recon_logits, edge_label_index, pos_weight):
     """
     Compute adjacency reconstruction loss from logits output by model and edge
     label indices from data.
@@ -80,8 +111,8 @@ def compute_vgae_loss(
     """
     adj_recon_loss = compute_adj_recon_loss(
         adj_recon_logits,
-         edge_label_index,
-         pos_weight)
+        edge_label_index,
+        pos_weight)
     kl_loss = compute_kl_loss(mu, logstd, n_nodes)
     vgae_loss = norm_factor * adj_recon_loss + kl_loss
     return vgae_loss

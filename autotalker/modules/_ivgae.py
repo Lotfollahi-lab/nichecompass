@@ -12,7 +12,6 @@ from ._losses import compute_vgae_loss
 from ._losses import compute_vgae_loss_parameters
 from ._losses import compute_x_recon_mse_loss
 from ._losses import compute_x_recon_nb_loss
-from ._utils import one_hot_encoder
 
 
 class IVGAE(nn.Module, VGAEModuleMixin):
@@ -80,38 +79,35 @@ class IVGAE(nn.Module, VGAEModuleMixin):
         return adj_recon_logits, expr_decoder_output, self.mu, self.logstd
 
 
-    def loss(self, adj_recon_logits, expr_decoder_output, train_data, mu, logstd, device):
+    def loss(self, adj_recon_logits, expr_decoder_output, data_batch, mu, logstd, device):
         vgae_loss_norm_factor, vgae_loss_pos_weight = \
-        compute_vgae_loss_parameters(train_data.edge_index)
+        compute_vgae_loss_parameters(data_batch.edge_index)
 
         vgae_loss_pos_weight = vgae_loss_pos_weight.to(device)
 
         vgae_loss = compute_vgae_loss(
             adj_recon_logits=adj_recon_logits,
-            edge_label_index=train_data.edge_index,
+            edge_label_index=data_batch.edge_label_index,
             pos_weight=vgae_loss_pos_weight,
             mu=mu,
             logstd=logstd,
-            n_nodes=train_data.x.size(0),
+            n_nodes=data_batch.x.size(0),
             norm_factor=vgae_loss_norm_factor)
 
         if self.expr_decoder_recon_loss == "nb": ### FIX ####
             ### Log FORWARD PASS ??? ###
             dec_mean_gamma = expr_decoder_output
-            size_factors = train_data.size_factors.unsqueeze(1).expand(
+            size_factors = data_batch.size_factors.unsqueeze(1).expand(
                 dec_mean_gamma.size(0), dec_mean_gamma.size(1))
-            print(train_data.conditions)
-            print(self.n_condition)
-            dispersion = torch.exp(F.linear(one_hot_encoder(train_data.conditions, self.n_condition),
-                                            self.theta))
+            dispersion = torch.exp(F.linear(self.theta))
             dec_mean = dec_mean_gamma * size_factors
-            expr_recon_loss = compute_x_recon_nb_loss(x=train_data.x,
+            expr_recon_loss = compute_x_recon_nb_loss(x=data_batch.x,
                                                       mu=dec_mean,
                                                       theta=dispersion)
         elif self.expr_decoder_recon_loss == "mse":
             x_recon = expr_decoder_output
             expr_recon_loss = compute_x_recon_mse_loss(x_recon=x_recon,
-                                                       x=train_data.x)
+                                                       x=data_batch.x)
 
         ivgae_loss = vgae_loss + expr_recon_loss
 
