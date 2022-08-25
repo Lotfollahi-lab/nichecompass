@@ -138,6 +138,21 @@ def compute_vgae_loss(adj_recon_logits: torch.Tensor,
     return vgae_loss
 
 
+def vgae_loss_parameters(data_batch, device):
+    """
+    Parameters
+    ----------
+
+    Returns
+    ----------
+    """
+    n_possible_edges = data_batch.x.shape[0] ** 2
+    n_neg_edges = (data_batch.edge_label == 0).sum()
+    edge_recon_loss_norm_factor = n_possible_edges / n_neg_edges
+    edge_recon_loss_pos_weight = torch.Tensor([1]).to(device)
+    return edge_recon_loss_norm_factor, edge_recon_loss_pos_weight
+
+
 def compute_feature_recon_mse_loss(x_recon: torch.Tensor,
                                    x: torch.Tensor):
     """
@@ -162,7 +177,7 @@ def compute_feature_recon_mse_loss(x_recon: torch.Tensor,
 def compute_feature_recon_nb_loss(x: torch.Tensor,
                                   mu: torch.Tensor,
                                   theta: torch.Tensor,
-                                  eps=1e-8):
+                                  eps: float=1e-8):
     """
     Compute negative binomial loss. Adapted from 
     https://github.com/theislab/scarches.

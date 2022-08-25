@@ -10,7 +10,7 @@ class EarlyStopping:
     """
     EarlyStopping class for early stopping of Autotalker training.
 
-    This early stopping class was inspired by 
+    This early stopping class was adapted from 
     https://github.com/YosefLab/scvi-tools.
     
     Parameters
@@ -32,14 +32,13 @@ class EarlyStopping:
     lr_factor:
         Scaling factor for adjusting the learning rate.
      """
-    def __init__(
-            self,
-            early_stopping_metric: str="valid_loss",
-            metric_improvement_threshold: float=0,
-            patience: int=15,
-            reduce_lr_on_plateau: bool=True,
-            lr_patience: int=13,
-            lr_factor: float=0.1):
+    def __init__(self,
+                 early_stopping_metric: str="valid_loss",
+                 metric_improvement_threshold: float=0,
+                 patience: int=15,
+                 reduce_lr_on_plateau: bool=True,
+                 lr_patience: int=13,
+                 lr_factor: float=0.1):
         
         self.early_stopping_metric = early_stopping_metric
         self.metric_improvement_threshold = metric_improvement_threshold
@@ -78,7 +77,8 @@ class EarlyStopping:
             
             # Calculate metric improvement
             self.current_performance = current_metric
-            metric_improvement = self.best_performance - self.current_performance
+            metric_improvement = (self.best_performance - 
+                                  self.current_performance)
             
             # Update best performance
             if metric_improvement > 0:
@@ -114,7 +114,7 @@ def print_progress(epoch, logs, n_epochs=10000):
     """
     Creates Message for '_print_progress_bar'.
 
-    This function was inspired by https://github.com/theislab/scarches.
+    This function was adapted from https://github.com/theislab/scarches.
     
     Parameters
     ----------
@@ -151,7 +151,7 @@ def _print_progress_bar(
     """
     Prints out message with a progress bar.
 
-    This function was inspired by https://github.com/theislab/scarches.
+    This function was adapted from https://github.com/theislab/scarches.
 
     Parameters
     ----------
@@ -207,40 +207,3 @@ def plot_loss_curves(loss_dict):
     fig = plt.gcf()
     plt.close()
     return fig
-
-
-def transform_test_edge_labels(
-        pos_edge_label_index: torch.Tensor,
-        neg_edge_label_index: torch.Tensor):
-    """
-    Get the evaluation metrics for a (balanced) sample of positive and negative 
-    edges.
-
-    Parameters
-    ----------
-    adj_rec_probs:
-        Tensor containing reconstructed adjacency matrix with edge 
-        probabilities.
-    pos_edge_label_index:
-        Tensor containing node indices of positive edges.
-    neg_edge_label_index:
-        Tensor containing node indices of negative edges.
-    Returns
-    ----------
-    auroc_score:
-        Area under the receiver operating characteristic curve.
-    auprc_score:
-        Area under the precision-recall curve.
-    best_acc_score:
-        Accuracy under optimal classification threshold.
-    best_f1_score:
-        F1 score under optimal classification threshold.
-    """
-    edge_label_index = torch.hstack([pos_edge_label_index,
-                                     neg_edge_label_index])
-    
-    # Create vector with label-ordered ground truth labels
-    edge_labels = torch.hstack([torch.ones(len(pos_edge_label_index[0])), 
-                                torch.zeros(len(neg_edge_label_index[0]))])
-
-    return edge_label_index, edge_labels

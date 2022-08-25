@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ._layers import MaskedCondExtLayer
+from ._layers import MaskedFCLayer
 
 
 class DotProductGraphDecoder(nn.Module):
@@ -26,7 +26,7 @@ class DotProductGraphDecoder(nn.Module):
     def __init__(self, dropout_rate: float=0.0):
         super().__init__()
 
-        print(f"DOT PRODUCT GRAPH DECODER - dropout_rate: {dropout_rate}")
+        print(f"DOT PRODUCT GRAPH DECODER -> dropout_rate: {dropout_rate}")
 
         self.dropout = nn.Dropout(dropout_rate)
 
@@ -36,10 +36,9 @@ class DotProductGraphDecoder(nn.Module):
         return adj_rec_logits
 
 
-class MaskedLinearExprDecoder(nn.Module):
+class MaskedFCExprDecoder(nn.Module):
     """
-    Masked linear expression decoder class adapted from 
-    https://github.com/theislab/scarches. 
+    Masked fully connected expression decoder class.
 
     Takes the latent space features z as input, transforms them with a masked
     FC layer and returns the reconstructed input space features x.
@@ -53,51 +52,30 @@ class MaskedLinearExprDecoder(nn.Module):
     mask:
         Mask that determines which input nodes / latent features can contribute
         to the reconstruction of which genes.
-    recon_loss:
-        Loss used for the reconstruction.
     """
     def __init__(self,
-                 n_inputs: int,
-                 n_outputs: int,
+                 n_input: int,
+                 n_output: int,
                  mask: torch.Tensor,
-                 extension_mask: Optional[torch.Tensor]=None,
-                 n_conditions: int=0,
-                 n_extensions_unmasked: int=0,
-                 n_extensions_masked: int=0,
-                 recon_loss: Literal["nb", "mse"]="nb"):
+                 dropout_rate: float=0.0):
         super().__init__()
-        self.n_extensions_unmasked = n_extensions_unmasked
-        self.n_extensions_masked = n_extensions_masked
-        self.n_conditions = n_conditions
 
-        print(f"MASKED LINEAR EXPRESSION DECODER - n_inputs: {n_inputs}, n_outputs"
-              f": {n_outputs}, n_conditions: {n_conditions}, "
-              f"n_extensions_unmasked: {n_extensions_unmasked}, "
-              f"n_extensions_masked: {n_extensions_masked}, recon_loss: "
-              f"{recon_loss}")
+        print(f"MASKED FULLY CONNECTED EXPRESSION DECODER -> n_input: {n_input}"
+              f", n_output: {n_output}")
 
-        self.mce_l0 = MaskedCondExtLayer(
-            n_inputs=n_inputs,
-            n_outputs=n_outputs,
-            n_conditions=n_conditions,
-            n_extensions_unmasked=n_extensions_unmasked,
-            n_extensions_masked=n_extensions_masked,
-            mask=mask,
-            extension_mask=extension_mask)
+        self.mfc_l0 = MaskedFCLayer(
+            n_input=n_input,
+            n_output=n_output,
+            dropout_rate=dropout_rate,
+            use_batch_norm=True,
+            use_layer_norm=False,
+            bias=True,
+            activation=nn.Softmax(dim=-1),
+            mask=mask)
 
-        if recon_loss == "nb":
-            self.activation_l0 = nn.Softmax(dim=-1) # softmax activation
-        elif recon_loss == "mse":
-            self.activation_l0 = lambda a: a # identity activation
-
-    def forward(self, inputs, conditions=None):
-        if conditions is not None:
-            # Add one-hot-encoded condition nodes to inputs
-            conditions_ohe = F.one_hot(conditions, self.n_conditions)
-            inputs = torch.cat((inputs, conditions_ohe), dim=-1)
-        decoder_latents = self.mce_l0(inputs)    
-        outputs = self.activation_l0(decoder_latents)
-        return outputs, decoder_latents
+    def forward(self, z: torch.Tensor):
+        mean_gamma = self.mfc_l0(z)
+        return mean_gamma
 
     def non_zero_gene_program_node_mask(self):
         gp_nodes_weights = self.mce_l0.input_l.weight.data

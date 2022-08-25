@@ -2,11 +2,9 @@ import torch
 
 
 class VGAEModuleMixin:
-    """Universal VGAE module functionalities."""
+    """Mixin class containing universal VGAE module functionalities."""
     def reparameterize(self, mu: torch.Tensor, logstd: torch.Tensor):
-        """
-        Reparameterization trick for latent space normal distribution.
-        """
+        """Reparameterization trick for latent space normal distribution."""
         if self.training:
             std = torch.exp(logstd)
             eps = torch.randn_like(mu)
@@ -19,15 +17,16 @@ class VGAEModuleMixin:
                                   x: torch.Tensor,
                                   edge_index: torch.Tensor):
         """
-        Map input features x and edge index into the latent space z and return 
-        z.
+        Encode input features x and edge index into the latent space normal 
+        distribution parameters and return z. If the module is not in training
+        mode, mu will be returned.
            
         Parameters
         ----------
         x:
-            Feature matrix to be mapped into latent space.
+            Feature matrix to be encoded into latent space.
         edge_index:
-            Corresponding edge index of the graph.
+            Edge index of the graph.
 
         Returns
         -------
@@ -37,4 +36,3 @@ class VGAEModuleMixin:
         mu, logstd = self.encoder(x, edge_index)
         z = self.reparameterize(mu, logstd)
         return z
-

@@ -1,9 +1,10 @@
 import torch
 import torch.nn as nn
 
-from autotalker.nn import DotProductGraphDecoder
 from autotalker.nn import GCNEncoder
+from autotalker.nn import DotProductGraphDecoder
 from ._losses import compute_vgae_loss
+from ._losses import vgae_loss_parameters
 from ._vgaemodulemixin import VGAEModuleMixin
 
 
@@ -28,11 +29,13 @@ class VGAE(nn.Module, VGAEModuleMixin):
                  n_hidden: int,
                  n_latent: int,
                  dropout_rate: float=0.0):
+        super().__init__()
         self.n_input = n_input
         self.n_hidden = n_hidden
         self.n_latent = n_latent
         self.dropout_rate = dropout_rate
-        super().__init__()
+
+        print("--- INITIALIZING NEW NETWORK MODULE: VGAE ---")
 
         self.encoder = GCNEncoder(n_input=n_input,
                                   n_hidden=n_hidden,
@@ -49,10 +52,10 @@ class VGAE(nn.Module, VGAEModuleMixin):
         return adj_recon_logits, mu, logstd
 
     def loss(self, adj_recon_logits, data_batch, mu, logstd, device):
-        n_possible_edges = data_batch.x.shape[0] ** 2
-        n_neg_edges = (data_batch.edge_label == 0).sum()
-        edge_recon_loss_norm_factor = n_possible_edges / n_neg_edges
-        edge_recon_loss_pos_weight = torch.Tensor([1]).to(device)
+        vgae_loss_params = vgae_loss_parameters(data_batch=data_batch,
+                                                device=device)
+        edge_recon_loss_norm_factor = vgae_loss_params[0]
+        edge_recon_loss_pos_weight = vgae_loss_params[1]
 
         vgae_loss = compute_vgae_loss(
             adj_recon_logits=adj_recon_logits,

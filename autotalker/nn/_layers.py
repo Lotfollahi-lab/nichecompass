@@ -23,12 +23,11 @@ class GCNLayer(nn.Module):
     activation:
         Activation function used in the GCN layer.
     """
-    def __init__(
-            self,
-            n_input: int,
-            n_output: int,
-            dropout_rate: float=0.0,
-            activation=torch.relu):
+    def __init__(self,
+                 n_input: int,
+                 n_output: int,
+                 dropout_rate: float=0.0,
+                 activation=torch.relu):
         super().__init__()
         self.dropout_rate = dropout_rate
         self.dropout = nn.Dropout(dropout_rate)
@@ -142,3 +141,44 @@ class MaskedCondExtLayer(nn.Module):
         if condition is not None:
             output = output + self.condition_l(condition)
         return output
+
+
+class MaskedFCLayer(nn.Module):
+    """
+    Masked fully connected layer class.
+
+    Parameters
+    ----------
+    n_input:
+    n_output:
+    dropout_rate:
+    use_batch_norm:
+    use_layer_norm:
+    bias:
+    activation:
+    mask:
+    """
+    def __init__(self,
+                 n_input: int,
+                 n_output: int,
+                 dropout_rate: float=0.0,
+                 use_batch_norm: bool=True,
+                 use_layer_norm: bool=False,
+                 bias: bool=True,
+                 activation: nn.Module=nn.ReLU,
+                 mask: Optional[torch.Tensor]=None):
+        super().__init__()
+
+        self.mfc_l = nn.Sequential(
+            MaskedLinear(n_input, n_output, mask, bias) if mask is not None
+            else nn.Linear(n_input, n_output, bias),
+            nn.BatchNorm1d(n_output, momentum=0.01, eps=0.001) if use_batch_norm
+            else None,
+            nn.LayerNorm(n_output, elementwise_affine=False) if use_layer_norm
+            else None,
+            activation,
+            nn.Dropout(p=dropout_rate) if dropout_rate > 0 else None)
+
+        def forward(self, input: torch.Tensor):
+            output = self.mfc_l(input)
+            return output
