@@ -1,27 +1,30 @@
 import torch
 import torch.nn.functional as F
-from torch_geometric.utils import add_self_loops
-from torch_geometric.utils import add_remaining_self_loops
 from torch_geometric.utils import to_dense_adj
+
+from ._utils import unique_sorted_index
 
 
 def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
                             edge_labels: torch.Tensor,
-                            edge_label_index: torch.Tensor):
+                            edge_label_index: torch.Tensor,
+                            pos_weight: torch.Tensor):
     """
-    Compute edge reconstruction binary cross entropy loss with logits using edge
-    labels and predicted edge logits (retrieved from the reconstructed logits
-    adjacency matrix).
+    Compute edge reconstruction weighted binary cross entropy loss with logits 
+    using ground truth edge labels and predicted edge logits (retrieved from the
+    reconstructed logits adjacency matrix).
 
     Parameters
     ----------
     adj_recon_logits:
         Adjacency matrix containing the predicted edge logits.
     edge_labels:
-        Edge ground truth labels. Should contain equal number of 1s and
-        negatively sampled 0s.
+        Edge ground truth labels for both positive and negatively sampled edges.
     edge_label_index:
         Index with edge labels for both positive and negatively sampled edges.
+    pos_weight:
+        Weight with which positive examples are reweighted in the loss 
+        calculation. Should be 1 if negative sampling ratio is 1.
 
     Returns
     ----------
@@ -30,49 +33,32 @@ def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
         probabilities (calculated from logits for numerical stability in
         backpropagation).
     """
-    neg_sampling_double_edges = True
-    pos_weight = torch.Tensor([1])
+    # Create mask to retrieve values as given in ´edge_label_index´ from 
+    # ´adj_recon_logits´
+    n_nodes = adj_recon_logits.shape[0]
+    adj_labels = to_dense_adj(edge_label_index, max_num_nodes=n_nodes)
+    mask = torch.squeeze(adj_labels > 0)
     
-    if neg_sampling_double_edges:
-        # this works even in the case of double edges from neg sampling
-        for i, edge in enumerate(zip(edge_label_index[0], edge_label_index[1])):
-            if i == 0:
-                edge_recon_logits = torch.unsqueeze(
-                    adj_recon_logits[edge[0], edge[1]], dim=-1)
-            else:
-                edge_recon_logits = torch.cat((
-                    edge_recon_logits,
-                    torch.unsqueeze(adj_recon_logits[edge[0], edge[1]], dim=-1)))
+    # Retrieve logits
+    edge_recon_logits = torch.masked_select(adj_recon_logits, mask)
     
-        # Compute cross entropy loss
-        edge_recon_loss = F.binary_cross_entropy_with_logits(edge_recon_logits,
-                                                             edge_labels,
-                                                             pos_weight=pos_weight)
-    
-    else:
-        # Create mask to retrieve values at ´edge_label_index´ from 
-        # ´adj_recon_logits´
-        n_nodes = adj_recon_logits.shape[0]
-        adj_labels = to_dense_adj(edge_label_index, max_num_nodes=n_nodes)
-        mask = torch.squeeze(adj_labels > 0)
-    
-        # Retrieve logits for edges from ´adj_recon_logits´
-        edge_recon_logits = torch.masked_select(adj_recon_logits, mask)
-    
-        # Order edge labels based on sorted edge_label_index to align order with
-        # masked retrieval from adjacency matrix
-        sort_index = edge_label_index[0].sort(dim=-1).indices
-        edge_labels_sorted = edge_labels[sort_index]
-    
-        # Compute cross entropy loss
-        edge_recon_loss = F.binary_cross_entropy_with_logits(edge_recon_logits,
-                                                             edge_labels_sorted,
-                                                             pos_weight=pos_weight)
+    # Sort ´edge_labels´ to align order with masked retrieval from adjacency 
+    # matrix. In addition, remove entries in ´edge_labels´ that are due to 
+    # duplicates in ´edge_label_index´, which can happen because of the 
+    # approximate negative sampling implementation in PyG LinkNeighborLoader. 
+    sort_index = unique_sorted_index(edge_label_index)
+    edge_labels_sorted = edge_labels[sort_index]
+
+    # Compute weighted cross entropy loss
+    edge_recon_loss = F.binary_cross_entropy_with_logits(edge_recon_logits,
+                                                         edge_labels_sorted,
+                                                         pos_weight=pos_weight)
     return edge_recon_loss
 
 
-
-def compute_kl_loss(mu, logstd, n_nodes):
+def compute_kl_loss(mu: torch.Tensor,
+                    logstd: torch.Tensor,
+                    n_nodes: int):
     """
     Compute Kullback-Leibler divergence as per Kingma, D. P. & Welling, M. 
     Auto-Encoding Variational Bayes. arXiv [stat.ML] (2013).
@@ -80,8 +66,11 @@ def compute_kl_loss(mu, logstd, n_nodes):
     Parameters
     ----------
     mu:
+        Expected values of the latent space distribution.
     logstd:
+        Log of standard deviations of the latent space distribution.
     n_nodes:
+        Number of nodes in the graph.
 
     Returns
     ----------
@@ -96,43 +85,52 @@ def compute_kl_loss(mu, logstd, n_nodes):
 def compute_vgae_loss(adj_recon_logits: torch.Tensor,
                       edge_labels: torch.Tensor,
                       edge_label_index: torch.Tensor,
+                      edge_recon_loss_pos_weight: torch.Tensor,
+                      edge_recon_loss_norm_factor: float,
                       mu: torch.Tensor,
                       logstd: torch.Tensor,
-                      n_nodes: int,
-                      edge_recon_loss_norm_factor: float):
+                      n_nodes: int):
     """
     Compute the Variational Graph Autoencoder loss which consists of the
-    weighted binary cross entropy loss (reconstruction loss), where sparse 
-    positive examples (Aij = 1) are reweighted, as well as the Kullback-Leibler
-    divergence (regularization loss) as per Kingma, D. P. & Welling, M.
-    Auto-Encoding Variational Bayes. arXiv [stat.ML] (2013). The reconstruction
-    loss is normalized to bring it on the same scale as the regularization loss.
+    weighted binary cross entropy loss (edge reconstruction loss), where sparse 
+    positive examples (Aij = 1) can be reweighted in case of imbalanced negative
+    sampling, as well as the Kullback-Leibler divergence (regularization loss) 
+    as per Kingma, D. P. & Welling, M. Auto-Encoding Variational Bayes. arXiv 
+    [stat.ML] (2013). The edge reconstruction loss is weighted with a 
+    normalization factor compared to the regularization loss.
 
     Parameters
     ----------
     adj_recon_logits:
-        Tensor containing the reconstructed adjacency matrix with logits.
+        Adjacency matrix containing the predicted edge logits.
+    edge_labels:
+        Edge ground truth labels for both positive and negatively sampled edges.
     edge_label_index:
-        Tensor containing the edge label indices.
+        Index with edge labels for both positive and negatively sampled edges.
+    edge_recon_loss_pos_weight:
+        Weight with which positive examples are reweighted in the reconstruction
+        loss calculation. Should be 1 if negative sampling ratio is 1.
+    edge_recon_loss_norm_factor:
+        Factor with which edge reconstruction loss is weighted compared to 
+        Kullback-Leibler divergence.
     mu:
         Expected values of the latent space distribution.
     logstd:
-        Log standard deviations of the latent space distribution.
+        Log of standard deviations of the latent space distribution.
     n_nodes:
-        Number of nodes.
-    edge_recon_loss_norm_factor:
-        Factor with which reconstruction loss is weighted compared to Kullback-
-        Leibler divergence.
+        Number of nodes in the graph.
         
     Returns
     ----------
     vgae_loss:
-        Variational Graph Autoencoder loss composed of reconstruction and 
+        Variational Graph Autoencoder loss composed of edge reconstruction and 
         regularization loss.
     """
-    edge_recon_loss = compute_edge_recon_loss(adj_recon_logits,
-                                              edge_labels,
-                                              edge_label_index)
+    edge_recon_loss = compute_edge_recon_loss(
+        adj_recon_logits,
+        edge_labels,
+        edge_label_index,
+        pos_weight=edge_recon_loss_pos_weight)
 
     kl_loss = compute_kl_loss(mu, logstd, n_nodes)
 
@@ -148,9 +146,9 @@ def compute_feature_recon_mse_loss(x_recon: torch.Tensor,
     Parameters
     ----------
     recon_x:
-        Tensor containing reconstructed feature matrix.
+        Reconstructed feature matrix.
     x:
-        Tensor containing ground truth feature matrix.
+        Ground truth feature matrix.
 
     Returns
     ----------
@@ -166,7 +164,7 @@ def compute_feature_recon_nb_loss(x: torch.Tensor,
                                   theta: torch.Tensor,
                                   eps=1e-8):
     """
-    Computes negative binomial loss. Adapted from 
+    Compute negative binomial loss. Adapted from 
     https://github.com/theislab/scarches.
 
     Parameters

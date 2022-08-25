@@ -50,19 +50,22 @@ class VGAE(nn.Module, VGAEModuleMixin):
         return adj_recon_logits, self.mu, self.logstd
 
 
-    def loss(self, adj_recon_logits, data_batch, mu, logstd):
+    def loss(self, adj_recon_logits, data_batch, mu, logstd, device):
         
         n_possible_edges = data_batch.x.shape[0] ** 2
         n_neg_edges = (data_batch.edge_label == 0).sum()
+
         edge_recon_loss_norm_factor = n_possible_edges / n_neg_edges
+        edge_recon_loss_pos_weight = torch.Tensor([1]).to(device)
 
         vgae_loss = compute_vgae_loss(
             adj_recon_logits=adj_recon_logits,
             edge_label_index=data_batch.edge_label_index,
             edge_labels=data_batch.edge_label,
+            edge_recon_loss_pos_weight=edge_recon_loss_pos_weight,
+            edge_recon_loss_norm_factor=edge_recon_loss_norm_factor,
             mu=mu,
             logstd=logstd,
-            n_nodes=data_batch.x.size(0),
-            edge_recon_loss_norm_factor=edge_recon_loss_norm_factor)
+            n_nodes=data_batch.x.size(0))
 
         return vgae_loss

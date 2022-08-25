@@ -194,7 +194,8 @@ class Trainer:
         train_loss = self.model.loss(adj_recon_logits,
                                            train_data_batch,
                                            mu,
-                                           logstd)
+                                           logstd,
+                                           device=self.device)
         self.iter_logs["train_loss"].append(train_loss.item())
         self.iter_logs["n_train_iter"] += 1
         self.optimizer.zero_grad()
@@ -240,7 +241,8 @@ class Trainer:
                 adj_recon_logits,
                 valid_data_batch,
                 mu,
-                logstd)
+                logstd,
+                device=self.device)
             self.iter_logs["valid_loss"].append(valid_loss.item())
             self.iter_logs["n_valid_iter"] += 1
 
