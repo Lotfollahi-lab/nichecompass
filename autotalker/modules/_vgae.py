@@ -33,15 +33,14 @@ class VGAE(nn.Module, VGAEModuleMixin):
         self.n_latent = n_latent
         self.dropout_rate = dropout_rate
         super().__init__()
-        self.encoder = GCNEncoder(
-            n_input = n_input,
-            n_hidden = n_hidden,
-            n_latent = n_latent,
-            dropout_rate = dropout_rate,
-            activation = torch.relu)
+
+        self.encoder = GCNEncoder(n_input = n_input,
+                                  n_hidden = n_hidden,
+                                  n_latent = n_latent,
+                                  dropout_rate = dropout_rate,
+                                  activation = torch.relu)
         
         self.decoder = DotProductGraphDecoder(dropout_rate=dropout_rate)
-
 
     def forward(self, x, edge_index):
         self.mu, self.logstd = self.encoder(x, edge_index)
@@ -49,12 +48,9 @@ class VGAE(nn.Module, VGAEModuleMixin):
         adj_recon_logits = self.decoder(self.z)
         return adj_recon_logits, self.mu, self.logstd
 
-
     def loss(self, adj_recon_logits, data_batch, mu, logstd, device):
-        
         n_possible_edges = data_batch.x.shape[0] ** 2
         n_neg_edges = (data_batch.edge_label == 0).sum()
-
         edge_recon_loss_norm_factor = n_possible_edges / n_neg_edges
         edge_recon_loss_pos_weight = torch.Tensor([1]).to(device)
 
@@ -67,5 +63,4 @@ class VGAE(nn.Module, VGAEModuleMixin):
             mu=mu,
             logstd=logstd,
             n_nodes=data_batch.x.size(0))
-
         return vgae_loss
