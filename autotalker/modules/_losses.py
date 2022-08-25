@@ -30,15 +30,14 @@ def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
         probabilities (calculated from logits for numerical stability in
         backpropagation).
     """
-
-    # Create mask to retrieve values at edge_label_index from adj_recon_logits
-    mask = torch.squeeze(to_dense_adj(edge_label_index)) > 0
-
-    # Pad mask on right and bottom to have same dimension as adj_recon_logits
-    pad_dim = (torch.tensor(adj_recon_logits.shape[0]) - 
-               torch.tensor(mask.shape[0])).item()
-    padded_mask = F.pad(mask, (0, pad_dim, 0, pad_dim), "constant", False)
-    edge_recon_logits = torch.masked_select(adj_recon_logits, padded_mask)
+    for i, edge in enumerate(zip(edge_label_index[0], edge_label_index[1])):
+        if i == 0:
+            edge_recon_logits = torch.unsqueeze(
+                adj_recon_logits[edge[0], edge[1]], dim=-1)
+        else:
+            edge_recon_logits = torch.cat((
+                edge_recon_logits,
+                torch.unsqueeze(adj_recon_logits[edge[0], edge[1]], dim=-1)))
 
     # Compute cross entropy loss
     edge_recon_loss = F.binary_cross_entropy_with_logits(edge_recon_logits,

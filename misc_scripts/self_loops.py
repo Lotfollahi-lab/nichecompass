@@ -10,3 +10,18 @@ if self_loops:
     If ´True´ include self-loops as positive edges in edge reconstruction 
     loss.
 """
+
+    """
+    adj_labels = to_dense_adj(edge_label_index, max_num_nodes=n_nodes)
+    
+    # Create mask to retrieve values at edge_label_index from ´adj_recon_logits´
+    mask = torch.squeeze(adj_labels > 0)
+
+    # Retrieve logits for edges from ´adj_recon_logits´
+    edge_recon_logits = torch.masked_select(adj_recon_logits, mask)
+
+    if mask.sum().item() == 127.:
+        print((adj_labels == 2).nonzero(as_tuple=True))
+        print(adj_labels[0,193,196:198])
+        print(edge_label_index.T)
+    """
