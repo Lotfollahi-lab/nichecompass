@@ -1,138 +1,154 @@
 import torch
 import torch.nn.functional as F
-from torch_geometric.utils import add_self_loops
 from torch_geometric.utils import to_dense_adj
 
+from ._utils import unique_sorted_index
 
-def compute_adj_recon_loss(adj_recon_logits, edge_label_index, pos_weight):
+
+def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
+                            edge_labels: torch.Tensor,
+                            edge_label_index: torch.Tensor,
+                            pos_weight: torch.Tensor):
     """
-    Compute adjacency reconstruction loss from logits output by model and edge
-    label indices from data.
+    Compute edge reconstruction weighted binary cross entropy loss with logits 
+    using ground truth edge labels and predicted edge logits (retrieved from the
+    reconstructed logits adjacency matrix).
 
     Parameters
     ----------
     adj_recon_logits:
-        Tensor containing the reconstructed adjacency matrix with logits.
+        Adjacency matrix containing the predicted edge logits.
+    edge_labels:
+        Edge ground truth labels for both positive and negatively sampled edges.
     edge_label_index:
-        Tensor containing the edge label indices.
+        Index with edge labels for both positive and negatively sampled edges.
     pos_weight:
-        Weight with which positive examples (Aij = 1) are reweighted. This
-        reweighting can be benefical for very sparse adjacency matrices.
+        Weight with which positive examples are reweighted in the loss 
+        calculation. Should be 1 if negative sampling ratio is 1.
+
+    Returns
+    ----------
+    edge_recon_loss:
+        Binary cross entropy loss between edge labels and predicted edge
+        probabilities (calculated from logits for numerical stability in
+        backpropagation).
     """
-    adj_labels = to_dense_adj(add_self_loops(edge_label_index)[0])[0]
-    adj_recon_loss = F.binary_cross_entropy_with_logits(
-        adj_recon_logits,
-        adj_labels,
-        pos_weight=pos_weight)
-    return adj_recon_loss
+    # Create mask to retrieve values as given in ´edge_label_index´ from 
+    # ´adj_recon_logits´
+    n_nodes = adj_recon_logits.shape[0]
+    adj_labels = to_dense_adj(edge_label_index, max_num_nodes=n_nodes)
+    mask = torch.squeeze(adj_labels > 0)
+    
+    # Retrieve logits
+    edge_recon_logits = torch.masked_select(adj_recon_logits, mask)
+    
+    # Sort ´edge_labels´ to align order with masked retrieval from adjacency 
+    # matrix. In addition, remove entries in ´edge_labels´ that are due to 
+    # duplicates in ´edge_label_index´, which can happen because of the 
+    # approximate negative sampling implementation in PyG LinkNeighborLoader. 
+    sort_index = unique_sorted_index(edge_label_index)
+    edge_labels_sorted = edge_labels[sort_index]
+
+    # Compute weighted cross entropy loss
+    edge_recon_loss = F.binary_cross_entropy_with_logits(edge_recon_logits,
+                                                         edge_labels_sorted,
+                                                         pos_weight=pos_weight)
+    return edge_recon_loss
 
 
-def compute_kl_loss(mu, logstd, n_nodes):
+def compute_kl_loss(mu: torch.Tensor,
+                    logstd: torch.Tensor,
+                    n_nodes: int):
     """
     Compute Kullback-Leibler divergence as per Kingma, D. P. & Welling, M. 
     Auto-Encoding Variational Bayes. arXiv [stat.ML] (2013).
+
+    Parameters
+    ----------
+    mu:
+        Expected values of the latent space distribution.
+    logstd:
+        Log of standard deviations of the latent space distribution.
+    n_nodes:
+        Number of nodes in the graph.
+
+    Returns
+    ----------
+    kl_loss:
+        Kullback-Leibler divergence.
     """
     kl_loss = (-0.5 / n_nodes) * torch.mean(
     torch.sum(1 + 2 * logstd - mu ** 2 - torch.exp(logstd) ** 2, 1))
     return kl_loss
 
 
-def compute_vgae_loss(
-        adj_recon_logits: torch.Tensor,
-        edge_label_index: torch.Tensor,
-        pos_weight: torch.Tensor,
-        mu: torch.Tensor,
-        logstd: torch.Tensor,
-        n_nodes: int,
-        norm_factor: float):
+def compute_vgae_loss(adj_recon_logits: torch.Tensor,
+                      edge_labels: torch.Tensor,
+                      edge_label_index: torch.Tensor,
+                      edge_recon_loss_pos_weight: torch.Tensor,
+                      edge_recon_loss_norm_factor: float,
+                      mu: torch.Tensor,
+                      logstd: torch.Tensor,
+                      n_nodes: int):
     """
     Compute the Variational Graph Autoencoder loss which consists of the
-    weighted binary cross entropy loss (reconstruction loss), where sparse 
-    positive examples (Aij = 1) are reweighted, as well as the Kullback-Leibler
-    divergence (regularization loss) as per Kingma, D. P. & Welling, M.
-    Auto-Encoding Variational Bayes. arXiv [stat.ML] (2013). The reconstruction
-    loss is normalized to bring it on the same scale as the regularization loss.
+    weighted binary cross entropy loss (edge reconstruction loss), where sparse 
+    positive examples (Aij = 1) can be reweighted in case of imbalanced negative
+    sampling, as well as the Kullback-Leibler divergence (regularization loss) 
+    as per Kingma, D. P. & Welling, M. Auto-Encoding Variational Bayes. arXiv 
+    [stat.ML] (2013). The edge reconstruction loss is weighted with a 
+    normalization factor compared to the regularization loss.
 
     Parameters
     ----------
     adj_recon_logits:
-        Tensor containing the reconstructed adjacency matrix with logits.
+        Adjacency matrix containing the predicted edge logits.
+    edge_labels:
+        Edge ground truth labels for both positive and negatively sampled edges.
     edge_label_index:
-        Tensor containing the edge label indices.
-    pos_weight:
-        Weight with which positive examples (Aij = 1) are reweighted. This
-        reweighting can be benefical for very sparse adjacency matrices.
+        Index with edge labels for both positive and negatively sampled edges.
+    edge_recon_loss_pos_weight:
+        Weight with which positive examples are reweighted in the reconstruction
+        loss calculation. Should be 1 if negative sampling ratio is 1.
+    edge_recon_loss_norm_factor:
+        Factor with which edge reconstruction loss is weighted compared to 
+        Kullback-Leibler divergence.
     mu:
         Expected values of the latent space distribution.
     logstd:
-        Log standard deviations of the latent space distribution.
+        Log of standard deviations of the latent space distribution.
     n_nodes:
-        Number of nodes.
-    norm_factor:
-        Factor with which reconstruction loss is weighted compared to Kullback-
-        Leibler divergence.
+        Number of nodes in the graph.
         
     Returns
     ----------
     vgae_loss:
-        Variational Graph Autoencoder loss composed of reconstruction and 
+        Variational Graph Autoencoder loss composed of edge reconstruction and 
         regularization loss.
     """
-    adj_recon_loss = compute_adj_recon_loss(
+    edge_recon_loss = compute_edge_recon_loss(
         adj_recon_logits,
-         edge_label_index,
-         pos_weight)
+        edge_labels,
+        edge_label_index,
+        pos_weight=edge_recon_loss_pos_weight)
+
     kl_loss = compute_kl_loss(mu, logstd, n_nodes)
-    vgae_loss = norm_factor * adj_recon_loss + kl_loss
+
+    vgae_loss = edge_recon_loss_norm_factor * edge_recon_loss + kl_loss
     return vgae_loss
 
 
-def compute_vgae_loss_parameters(edge_label_index):
-    """
-    Compute parameters for the vgae loss function as per 
-    https://github.com/tkipf/gae.git. A small adjustment is that adjacency 
-    matrix with 1s on the diagonal is used to reflect real labels used for
-    training. 
-    
-    Parameters
-    ----------
-    edge_label_index:
-        Tensor containing the edge label indices.
-
-    Returns
-    ----------
-    vgae_loss_norm_factor:
-        Weight of reconstruction loss compared to Kullback-Leibler divergence.
-    vgae_loss_pos_weight:
-        Weight with which loss for positive labels (Aij = 1) is reweighted.
-    """
-    adj_labels = to_dense_adj(add_self_loops(edge_label_index)[0])[0]
-    n_all_labels = adj_labels.shape[0] ** 2
-    n_pos_labels = adj_labels.sum()
-    n_neg_labels = n_all_labels - n_pos_labels
-    neg_to_pos_label_ratio = n_neg_labels / n_pos_labels
-
-    vgae_loss_norm_factor = n_all_labels / float(n_neg_labels * 2)
-
-    # Reweight positive examples of edges (Aij = 1) in loss calculation 
-    # using the proportion of negative examples relative to positive ones to
-    # achieve equal total weighting of negative and positive examples
-    vgae_loss_pos_weight = torch.FloatTensor([neg_to_pos_label_ratio])
-
-    return vgae_loss_norm_factor, vgae_loss_pos_weight
-
-
-def compute_x_recon_mse_loss(x_recon: torch.Tensor,
-                             x: torch.Tensor):
+def compute_feature_recon_mse_loss(x_recon: torch.Tensor,
+                                   x: torch.Tensor):
     """
     Compute MSE loss between reconstructed and ground truth feature matrix.
 
     Parameters
     ----------
     recon_x:
-        Tensor containing reconstructed feature matrix.
+        Reconstructed feature matrix.
     x:
-        Tensor containing ground truth feature matrix.
+        Ground truth feature matrix.
 
     Returns
     ----------
@@ -143,12 +159,12 @@ def compute_x_recon_mse_loss(x_recon: torch.Tensor,
     return mse_loss
 
 
-def compute_x_recon_nb_loss(x: torch.Tensor,
-                            mu: torch.Tensor,
-                            theta: torch.Tensor,
-                            eps=1e-8):
+def compute_feature_recon_nb_loss(x: torch.Tensor,
+                                  mu: torch.Tensor,
+                                  theta: torch.Tensor,
+                                  eps=1e-8):
     """
-    Computes negative binomial loss. Adapted from 
+    Compute negative binomial loss. Adapted from 
     https://github.com/theislab/scarches.
 
     Parameters
@@ -169,12 +185,10 @@ def compute_x_recon_nb_loss(x: torch.Tensor,
         theta = theta.view(1, theta.size(0))
 
     log_theta_mu_eps = torch.log(theta + mu + eps)
-    res = (
-        theta * (torch.log(theta + eps) - log_theta_mu_eps)
-        + x * (torch.log(mu + eps) - log_theta_mu_eps)
-        + torch.lgamma(x + theta)
-        - torch.lgamma(theta)
-        - torch.lgamma(x + 1)
-    )
+    res = (theta * (torch.log(theta + eps) - log_theta_mu_eps)
+           + x * (torch.log(mu + eps) - log_theta_mu_eps)
+           + torch.lgamma(x + theta)
+           - torch.lgamma(theta)
+           - torch.lgamma(x + 1))
 
-    return 
+    return -(res.sum(dim=-1).mean())

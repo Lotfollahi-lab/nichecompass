@@ -5,7 +5,7 @@ import anndata as ad
 import numpy as np
 import torch
 
-from ._base_model import BaseModel
+from ._basemodel import BaseModel
 from ._vgaemodelmixin import VGAEModelMixin
 from autotalker.modules import IVGAE
 from autotalker.modules import VGAE
@@ -40,6 +40,8 @@ class Autotalker(BaseModel, VGAEModelMixin):
                  mask: Optional[Union[np.ndarray, list]]=None,
                  mask_key: str="I",
                  adj_key: str="spatial_connectivities",
+                 condition_key: Optional[str]=None,
+                 conditions: Optional[list]=None,
                  cell_type_key: str="cell_type",
                  n_hidden: int=32,
                  dropout_rate: float=0.0,
@@ -54,16 +56,25 @@ class Autotalker(BaseModel, VGAEModelMixin):
                 raise ValueError("Please provide a mask or specify an adquate "
                                  "mask key.")
 
+        if conditions is None:
+            if condition_key is not None:
+                self.conditions_ = adata.obs[condition_key].unique().tolist()
+            else:
+                self.conditions_ = ["default_condition"]
+        else:
+            self.conditions_ = conditions
+
         self.adata = adata
         self.mask_ = torch.tensor(mask).float()
         self.mask_key_ = mask_key
         self.adj_key_ = adj_key
+        self.condition_key_ = condition_key
         self.n_latent_ = len(self.mask_)
         self.cell_type_key_ = cell_type_key
         self.n_input_ = adata.n_vars
         self.n_output_ = adata.n_vars
         self.n_hidden_ = n_hidden
-        self.dropout_rate = dropout_rate
+        self.dropout_rate_ = dropout_rate
         self.expr_decoder_recon_loss_ = expr_decoder_recon_loss
 
         self.encoder_layer_sizes_ = [self.n_input_,
@@ -72,12 +83,18 @@ class Autotalker(BaseModel, VGAEModelMixin):
         self.expr_decoder_layer_sizes_ = [self.n_latent_,
                                           self.n_output_]
 
-        self.model = IVGAE(encoder_layer_sizes=self.encoder_layer_sizes_,
-                           expr_decoder_layer_sizes=self.expr_decoder_layer_sizes_,
-                           expr_decoder_recon_loss=self.expr_decoder_recon_loss_,
-                           expr_decoder_mask=self.mask_,
-                           encoder_dropout_rate=self.dropout_rate,
-                           graph_decoder_dropout_rate=self.dropout_rate)
+        self.model = VGAE(n_input = self.n_input_,
+                          n_hidden = self.n_hidden_,
+                          n_latent = self.n_latent_,
+                          dropout_rate = self.dropout_rate_)
+
+        # self.model = IVGAE(encoder_layer_sizes=self.encoder_layer_sizes_,
+        #                    expr_decoder_layer_sizes=self.expr_decoder_layer_sizes_,
+        #                    expr_decoder_recon_loss=self.expr_decoder_recon_loss_,
+        #                    expr_decoder_mask=self.mask_,
+        #                    conditions=self.conditions_,
+        #                    encoder_dropout_rate=self.dropout_rate,
+        #                    graph_decoder_dropout_rate=self.dropout_rate)
 
         self.is_trained_ = False
         self.init_params_ = self._get_init_params(locals())
@@ -107,6 +124,7 @@ class Autotalker(BaseModel, VGAEModelMixin):
         """
         self.trainer = Trainer(adata=self.adata,
                                model=self.model,
+                               condition_key=self.condition_key_,
                                adj_key=self.adj_key_,
                                val_frac=val_frac,
                                test_frac=test_frac,

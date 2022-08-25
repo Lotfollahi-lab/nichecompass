@@ -46,4 +46,41 @@ def load_R_file_as_df(R_file_path: str,
 
     return df
 
+
+def label_encoder(adata, condition_label_dict, condition_key):
+    """
+    Encode labels of Annotated `adata` matrix. Adapted from 
+    https://github.com/theislab/scarches.
+    
+    Parameters
+    ----------
+    adata: : `~anndata.AnnData`
+         Annotated data matrix.
+    condition_label_dict: Dict
+         dictionary of encoded labels.
+    condition_key: String
+         column name of conditions in `adata.obs` data frame.
+    
+    Returns
+    -------
+    labels: `~numpy.ndarray`
+         Array of encoded labels
+    label_encoder: Dict
+         dictionary with labels and encoded labels as key, value pairs.
+    """
+    unique_conditions = list(np.unique(adata.obs[condition_key]))
+    labels = np.zeros(adata.shape[0])
+
+    if not set(unique_conditions).issubset(set(condition_label_dict.keys())):
+        print(f"Warning: Some conditions in adata.obs[{condition_key}] are not "
+              "part of the condition label dict!")
+        print("Therefore integer value of those labels is set to -1")
+        for data_cond in unique_conditions:
+            if data_cond not in condition_label_dict.keys():
+                labels[adata.obs[condition_key] == data_cond] = -1
+
+    for condition, label in condition_label_dict.items():
+        labels[adata.obs[condition_key] == condition] = label
+    return labels
+
     

@@ -1,10 +1,9 @@
 from ._decoders import DotProductGraphDecoder, MaskedLinearExprDecoder
 from ._encoders import GCNEncoder
-from ._layers import FCLayer, GCNLayer, MaskedFCLayer 
+from ._layers import GCNLayer, MaskedCondExtLayer 
 
-__all__ = ["FCLayer",
-           "GCNEncoder",
+__all__ = ["GCNEncoder",
            "GCNLayer",
            "DotProductGraphDecoder",
-           "MaskedFCLayer",
+           "MaskedCondExtLayer",
            "MaskedLinearExprDecoder"]

@@ -1,5 +1,9 @@
+from typing import Optional
+
 import torch
 import torch.nn as nn
+
+from ._layercomponents import MaskedLinear
 
 
 class GCNLayer(nn.Module):
@@ -43,48 +47,98 @@ class GCNLayer(nn.Module):
         return self.activation(output)
 
 
-class FCLayer(nn.Module):
+class MaskedCondExtLayer(nn.Module):
     """
-    Fully connected layer class.
+    Masked conditional extension layer adapted from 
+    https://github.com/theislab/scarches. Takes input nodes plus optionally
+    condition nodes, unmasked extension nodes and masked extension nodes and
+    computes a linear transformation with masks for the masked parts.
 
     Parameters
     ----------
     n_input:
-        Number of input nodes to the FC Layer.
     n_output:
-        Number of output nodes from the FC layer.
-    activation:
-        Activation function used in the FC layer.
+    n_condition:
+    n_extension_unmasked:
+    n_extension_masked:
+    mask:
+    extension_mask:
     """
-    def __init__(self, n_input: int, n_output: int, activation=nn.ReLU):
-        super(FCLayer, self).__init__()
-        self.activation = activation
-        self.linear = nn.Linear(n_input, n_output)
+    def __init__(self,
+                 n_input: int,
+                 n_output: int,
+                 n_condition: int,
+                 n_extension_unmasked: int,
+                 n_extension_masked: int,
+                 mask: Optional[torch.Tensor]=None,
+                 extension_mask: Optional[torch.Tensor]=None):
+        super().__init__()
+        self.n_condition = n_condition
+        self.n_extension_unmasked = n_extension_unmasked
+        self.n_extension_masked = n_extension_masked
+        
+        # Creating layer components
+        if mask is None:
+            self.input_l = nn.Linear(n_input, n_output, bias=False)
+        else:
+            self.input_l = MaskedLinear(n_input,
+                                             n_output,
+                                             mask,
+                                             bias=False)
+
+        if self.n_condition != 0:
+            self.condition_l = nn.Linear(self.n_condition,
+                                          n_output,
+                                          bias=False)
+
+        if self.n_extension_unmasked != 0:
+            self.extension_unmasked_l = nn.Linear(self.n_extension_unmasked,
+                                                   n_output,
+                                                   bias=False)
+
+        if self.n_extension_masked != 0:
+            if extension_mask is None:
+                self.extension_masked_l = nn.Linear(self.n_extension_masked,
+                                                     n_output,
+                                                     bias=False)
+            else:
+                self.extension_masked_l = MaskedLinear(
+                    self.n_extension_masked,
+                    n_output,
+                    bias=False)
 
     def forward(self, input: torch.Tensor):
-        output = self.linear(input)
-        if self.activation is not None:
-            return self.activation(output)
+        # Split input into its components to be fed separately into different
+        # layer components
+        if self.n_condition == 0:
+            input, condition = input, None
         else:
-            return output
+            input, condition = torch.split(
+                input, [input.shape[1] - self.n_condition, self.n_condition],
+                dim=1)
 
+        if self.n_extension_unmasked == 0:
+            extension_unmasked = None
+        else:
+            input, extension_unmasked = torch.split(
+                input, [input.shape[1] - self.n_extension_unmasked,
+                        self.n_extension_unmasked],
+                dim=1)
 
-class MaskedFCLayer(nn.Linear):
-    """
-    Adapted from https://github.com/theislab/scarches. 
-    """
-    def __init__(self, n_input: int, n_output: int, mask, bias=True):
-        # Mask should have dim n_input x n_output
-        if n_input != mask.shape[0] or n_output != mask.shape[1]:
-            raise ValueError("Incorrect shape of the mask. Mask should have dim"
-                             "n_input x n_output")
-        super().__init__(n_input, n_output, bias)
-        
-        self.register_buffer("mask", mask.t())
+        if self.n_extension_masked == 0:
+            extension_masked = None
+        else:
+            input, extension_masked = torch.split(
+                input, [input.shape[1] - self.extension_masked,
+                        self.extension_masked],
+                dim=1)
 
-        # Zero out weights with the mask
-        # Gradient descent does not consider these zero weights
-        self.weight.data *= self.mask
-
-    def forward(self, x):
-        return nn.functional.linear(x, self.weight * self.mask, self.bias)
+        # Forward pass with different layer components
+        output = self.input_l(input)
+        if extension_unmasked is not None:
+            output = output + self.extension_unmasked_l(extension_unmasked)
+        if extension_masked is not None:
+            output = output + self.extension_masked_l(extension_masked)
+        if condition is not None:
+            output = output + self.condition_l(condition)
+        return output
