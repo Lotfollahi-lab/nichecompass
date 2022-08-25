@@ -170,6 +170,8 @@ class Trainer:
         self.model.eval()
         self.on_training_end()
         self.training_time += (time.time() - start_time)
+        minutes, seconds = divmod(self.training_time, 60)
+        print(f"Training time: {int(minutes)} min {int(seconds)} sec.")
 
 
     def on_training_start(self):

@@ -30,18 +30,44 @@ def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
         probabilities (calculated from logits for numerical stability in
         backpropagation).
     """
-    for i, edge in enumerate(zip(edge_label_index[0], edge_label_index[1])):
-        if i == 0:
-            edge_recon_logits = torch.unsqueeze(
-                adj_recon_logits[edge[0], edge[1]], dim=-1)
-        else:
-            edge_recon_logits = torch.cat((
-                edge_recon_logits,
-                torch.unsqueeze(adj_recon_logits[edge[0], edge[1]], dim=-1)))
-
-    # Compute cross entropy loss
-    edge_recon_loss = F.binary_cross_entropy_with_logits(edge_recon_logits,
-                                                         edge_labels)
+    neg_sampling_double_edges = True
+    pos_weight = torch.Tensor([1])
+    
+    if neg_sampling_double_edges:
+        # this works even in the case of double edges from neg sampling
+        for i, edge in enumerate(zip(edge_label_index[0], edge_label_index[1])):
+            if i == 0:
+                edge_recon_logits = torch.unsqueeze(
+                    adj_recon_logits[edge[0], edge[1]], dim=-1)
+            else:
+                edge_recon_logits = torch.cat((
+                    edge_recon_logits,
+                    torch.unsqueeze(adj_recon_logits[edge[0], edge[1]], dim=-1)))
+    
+        # Compute cross entropy loss
+        edge_recon_loss = F.binary_cross_entropy_with_logits(edge_recon_logits,
+                                                             edge_labels,
+                                                             pos_weight=pos_weight)
+    
+    else:
+        # Create mask to retrieve values at ´edge_label_index´ from 
+        # ´adj_recon_logits´
+        n_nodes = adj_recon_logits.shape[0]
+        adj_labels = to_dense_adj(edge_label_index, max_num_nodes=n_nodes)
+        mask = torch.squeeze(adj_labels > 0)
+    
+        # Retrieve logits for edges from ´adj_recon_logits´
+        edge_recon_logits = torch.masked_select(adj_recon_logits, mask)
+    
+        # Order edge labels based on sorted edge_label_index to align order with
+        # masked retrieval from adjacency matrix
+        sort_index = edge_label_index[0].sort(dim=-1).indices
+        edge_labels_sorted = edge_labels[sort_index]
+    
+        # Compute cross entropy loss
+        edge_recon_loss = F.binary_cross_entropy_with_logits(edge_recon_logits,
+                                                             edge_labels_sorted,
+                                                             pos_weight=pos_weight)
     return edge_recon_loss
 
 
