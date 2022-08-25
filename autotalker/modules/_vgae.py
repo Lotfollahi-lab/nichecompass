@@ -3,8 +3,8 @@ import torch.nn as nn
 
 from autotalker.nn import DotProductGraphDecoder
 from autotalker.nn import GCNEncoder
-from ._vgaemodulemixin import VGAEModuleMixin
 from ._losses import compute_vgae_loss
+from ._vgaemodulemixin import VGAEModuleMixin
 
 
 class VGAE(nn.Module, VGAEModuleMixin):
@@ -34,19 +34,19 @@ class VGAE(nn.Module, VGAEModuleMixin):
         self.dropout_rate = dropout_rate
         super().__init__()
 
-        self.encoder = GCNEncoder(n_input = n_input,
-                                  n_hidden = n_hidden,
-                                  n_latent = n_latent,
-                                  dropout_rate = dropout_rate,
-                                  activation = torch.relu)
+        self.encoder = GCNEncoder(n_input=n_input,
+                                  n_hidden=n_hidden,
+                                  n_latent=n_latent,
+                                  dropout_rate=dropout_rate,
+                                  activation=torch.relu)
         
         self.decoder = DotProductGraphDecoder(dropout_rate=dropout_rate)
 
     def forward(self, x, edge_index):
-        self.mu, self.logstd = self.encoder(x, edge_index)
-        self.z = self.reparameterize(self.mu, self.logstd)
-        adj_recon_logits = self.decoder(self.z)
-        return adj_recon_logits, self.mu, self.logstd
+        mu, logstd = self.encoder(x, edge_index)
+        z = self.reparameterize(mu, logstd)
+        adj_recon_logits = self.decoder(z)
+        return adj_recon_logits, mu, logstd
 
     def loss(self, adj_recon_logits, data_batch, mu, logstd, device):
         n_possible_edges = data_batch.x.shape[0] ** 2

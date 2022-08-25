@@ -1,11 +1,4 @@
-import logging
-from typing import Optional
-
-import numpy as np
 import torch
-
-
-logger = logging.getLogger(__name__)
 
 
 class VGAEModuleMixin:
@@ -21,11 +14,13 @@ class VGAEModuleMixin:
         else:
             return mu
 
-
     @torch.no_grad()
-    def get_latent_representation(self, x, edge_index):
+    def get_latent_representation(self,
+                                  x: torch.Tensor,
+                                  edge_index: torch.Tensor):
         """
-        Map input x and edge index into the latent space z and return z.
+        Map input features x and edge index into the latent space z and return 
+        z.
            
         Parameters
         ----------
@@ -37,7 +32,7 @@ class VGAEModuleMixin:
         Returns
         -------
         z:
-            Tensor containing latent space encoding z.
+            Latent space encoding.
         """
         mu, logstd = self.encoder(x, edge_index)
         z = self.reparameterize(mu, logstd)
