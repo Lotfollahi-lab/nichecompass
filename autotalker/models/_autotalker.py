@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Union
+from typing import Literal, Optional, Union
 
 import anndata as ad
 import numpy as np
@@ -36,13 +36,13 @@ class Autotalker(BaseModel, VGAEModelMixin):
     """
     def __init__(self,
                  adata: ad.AnnData,
+                 module: Literal["VGAE", "VGPGAE"]="VGAE",
                  mask: Optional[Union[np.ndarray, list]]=None,
                  mask_key: str="I",
                  adj_key: str="spatial_connectivities",
                  cell_type_key: str="cell_type",
                  n_hidden: int=32,
                  dropout_rate: float=0.0,
-                 expr_decoder_recon_loss: str="mse",
                  mlflow_experiment_id: Optional[str]=None,
                  **model_kwargs):
 
@@ -54,6 +54,7 @@ class Autotalker(BaseModel, VGAEModelMixin):
                                  "mask key.")
 
         self.adata = adata
+        self.module = module
         self.mask_ = torch.tensor(mask).float()
         self.mask_key_ = mask_key
         self.adj_key_ = adj_key
@@ -63,7 +64,6 @@ class Autotalker(BaseModel, VGAEModelMixin):
         self.n_output_ = adata.n_vars
         self.n_hidden_ = n_hidden
         self.dropout_rate_ = dropout_rate
-        self.expr_decoder_recon_loss_ = expr_decoder_recon_loss
 
         self.encoder_layer_sizes_ = [self.n_input_,
                                      self.n_hidden_,
@@ -71,10 +71,17 @@ class Autotalker(BaseModel, VGAEModelMixin):
         self.expr_decoder_layer_sizes_ = [self.n_latent_,
                                           self.n_output_]
 
-        self.model = VGAE(n_input=self.n_input_,
-                          n_hidden=self.n_hidden_,
-                          n_latent=self.n_latent_,
-                          dropout_rate=self.dropout_rate_)
+        if self.module == "VGAE":
+            self.model = VGAE(n_input=self.n_input_,
+                              n_hidden=self.n_hidden_,
+                              n_latent=self.n_latent_,
+                              dropout_rate=self.dropout_rate_)
+        elif self.module == "VGPGAE":
+            self.model = VGPGAE(
+                encoder_layer_sizes=self.encoder_layer_sizes_,
+                expr_decoder_layer_sizes=self.expr_decoder_layer_sizes_,
+                expr_decoder_mask=self.mask_,
+                dropout_rate=self.dropout_rate_)
 
         self.is_trained_ = False
         self.init_params_ = self._get_init_params(locals())
@@ -102,12 +109,23 @@ class Autotalker(BaseModel, VGAEModelMixin):
         kwargs:
             Kwargs for the trainer.
         """
-        self.trainer = VGAETrainer(adata=self.adata,
-                                   model=self.model,
-                                   adj_key=self.adj_key_,
-                                   val_frac=val_frac,
-                                   test_frac=test_frac,
-                                   mlflow_experiment_id=mlflow_experiment_id,
-                                   **trainer_kwargs)
+        if self.module == "VGAE":
+            self.trainer = VGAETrainer(adata=self.adata,
+                                       model=self.model,
+                                       adj_key=self.adj_key_,
+                                       val_frac=val_frac,
+                                       test_frac=test_frac,
+                                       mlflow_experiment_id=mlflow_experiment_id,
+                                       **trainer_kwargs)
+        elif self.module == "VGPGAE":
+            self.trainer = VGPGAETrainer(
+                adata=self.adata,
+                model=self.model,
+                adj_key=self.adj_key_,
+                val_frac=val_frac,
+                test_frac=test_frac,
+                mlflow_experiment_id=mlflow_experiment_id,
+                **trainer_kwargs)
+                                    
         self.trainer.train(n_epochs, lr, weight_decay)
         self.is_trained_ = True

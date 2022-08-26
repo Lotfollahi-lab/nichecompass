@@ -3,9 +3,9 @@ import torch.nn as nn
 
 from autotalker.nn import GCNEncoder
 from autotalker.nn import DotProductGraphDecoder
-from autotalker.nn import MaskedFCExprDecoder
+from autotalker.nn import MaskedGeneExprDecoder
 from ._vgaemodulemixin import VGAEModuleMixin
-from ._losses import compute_feature_recon_nb_loss
+from ._losses import compute_gene_expr_recon_zinb_loss
 from ._losses import compute_vgae_loss
 from ._losses import vgae_loss_parameters
 
@@ -22,6 +22,8 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         Number of nodes in the hidden layer.
     n_latent:
         Number of nodes in the latent space.
+    use_size_factor_key:
+        If `True` use size factors under key. If `False` use observed lib size.
     dropout_rate:
         Probability that nodes will be dropped during training.
     """
@@ -46,23 +48,27 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         
         self.graph_decoder = DotProductGraphDecoder(dropout_rate=dropout_rate)
 
-        self.expr_decoder = MaskedFCExprDecoder(
+        self.expr_decoder = MaskedGeneExprDecoder(
             n_input=expr_decoder_layer_sizes[0],
             n_output=expr_decoder_layer_sizes[1],
             mask=expr_decoder_mask)
         
+        # Gene-specific inverse dispersion parameters
         self.theta = torch.nn.Parameter(torch.randn(self.n_input))
 
     def forward(self, x, edge_index):
+        log_library_size = torch.log(x.sum(1)).unsqueeze(1)
         self.mu, self.logstd = self.encoder(x, edge_index)
         self.z = self.reparameterize(self.mu, self.logstd)
         adj_recon_logits = self.graph_decoder(self.z)
-        expr_decoder_output = self.expr_decoder(self.z)
-        return adj_recon_logits, expr_decoder_output, self.mu, self.logstd
+        zinb_parameters = self.expr_decoder(self.z)
+        outputs = (adj_recon_logits, zinb_parameters, log_library_size, self.mu,
+                   self.logstd)
+        return outputs
 
     def loss(self,
              adj_recon_logits,
-             expr_decoder_output,
+             zinb_parameters,
              data_batch,
              mu,
              logstd,
@@ -82,14 +88,16 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
             logstd=logstd,
             n_nodes=data_batch.x.size(0))
 
-        mean_gamma = expr_decoder_output
-        size_factors = data_batch.size_factors.unsqueeze(1).expand(
-            mean_gamma.size(0), mean_gamma.size(1))
-        dispersion = torch.exp(self.theta)
-        mean_gamma_size_factors = mean_gamma * size_factors
-        expr_recon_loss = compute_feature_recon_nb_loss(x=data_batch.x,
-                                                        mu=mean_gamma_size_factors,
-                                                        theta=dispersion)
+        nb_mean, zi_prob_logits = zinb_parameters
 
-        vgpgae_loss = vgae_loss + expr_recon_loss
-        return vgpgae_loss, vgae_loss, expr_recon_loss
+        # Inverse dispersion
+        theta = torch.exp(self.theta)
+
+        gene_expr_recon_loss = compute_gene_expr_recon_zinb_loss(
+            x=data_batch.x,
+            mu=nb_mean,
+            theta=theta,
+            zi_prob_logits=zi_prob_logits)
+
+        vgpgae_loss = vgae_loss + gene_expr_recon_loss
+        return vgpgae_loss, vgae_loss, gene_expr_recon_loss

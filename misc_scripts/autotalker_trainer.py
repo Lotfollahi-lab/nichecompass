@@ -1,5 +1,5 @@
 from lib2to3.pytree import Base
-from ..autotalker.train._trainer import BaseTrainer
+from ..autotalker.train._basetrainer import BaseTrainer
 
 class AutotalkerTrainer(BaseTrainer):
     def __init__(

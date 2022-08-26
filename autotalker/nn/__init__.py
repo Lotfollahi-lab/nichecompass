@@ -1,9 +1,8 @@
-from ._decoders import DotProductGraphDecoder, MaskedFCExprDecoder
+from ._decoders import DotProductGraphDecoder, MaskedGeneExprDecoder
 from ._encoders import GCNEncoder
-from ._layers import GCNLayer, MaskedCondExtLayer 
+from ._layers import GCNLayer
 
 __all__ = ["GCNEncoder",
            "GCNLayer",
            "DotProductGraphDecoder",
-           "MaskedCondExtLayer",
-           "MaskedFCExprDecoder"]
+           "MaskedGeneExprDecoder"]
