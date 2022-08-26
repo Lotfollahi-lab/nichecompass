@@ -46,7 +46,7 @@ class GCNLayer(nn.Module):
         return self.activation(output)
 
 
-class MaskedFCLayer(nn.Module):
+class MaskedLayer(nn.Module):
     """
     Masked fully connected layer class.
 
@@ -67,12 +67,12 @@ class MaskedFCLayer(nn.Module):
         super().__init__()
         
         if mask is None:
-            self.mfc_l = nn.Sequential(
-                nn.Linear(n_input, n_output, bias=bias), activation)
+            self.mfc_l = nn.Linear(n_input, n_output, bias=bias)
         else:
-            self.mfc_l = nn.Sequential(
-                MaskedLinear(n_input, n_output, mask, bias=bias), activation)
+            self.mfc_l = MaskedLinear(n_input, n_output, mask, bias=bias)
+
+        self.activation = activation
 
     def forward(self, input: torch.Tensor):
-        output = self.mfc_l(input)
+        output = self.activation(self.mfc_l(input))
         return output

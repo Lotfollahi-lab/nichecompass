@@ -49,21 +49,24 @@ class VGAE(nn.Module, VGAEModuleMixin):
         mu, logstd = self.encoder(x, edge_index)
         z = self.reparameterize(mu, logstd)
         adj_recon_logits = self.decoder(z)
-        return adj_recon_logits, mu, logstd
+        output = dict(adj_recon_logits=adj_recon_logits,
+                      mu=mu,
+                      logstd=logstd)
+        return output
 
-    def loss(self, adj_recon_logits, data_batch, mu, logstd, device):
+    def loss(self, model_output, data_batch, device):
         vgae_loss_params = vgae_loss_parameters(data_batch=data_batch,
                                                 device=device)
         edge_recon_loss_norm_factor = vgae_loss_params[0]
         edge_recon_loss_pos_weight = vgae_loss_params[1]
 
-        vgae_loss = compute_vgae_loss(
-            adj_recon_logits=adj_recon_logits,
+        loss = compute_vgae_loss(
+            adj_recon_logits=model_output["adj_recon_logits"],
             edge_label_index=data_batch.edge_label_index,
             edge_labels=data_batch.edge_label,
             edge_recon_loss_pos_weight=edge_recon_loss_pos_weight,
             edge_recon_loss_norm_factor=edge_recon_loss_norm_factor,
-            mu=mu,
-            logstd=logstd,
+            mu=model_output["mu"],
+            logstd=model_output["logstd"],
             n_nodes=data_batch.x.size(0))
-        return vgae_loss
+        return loss

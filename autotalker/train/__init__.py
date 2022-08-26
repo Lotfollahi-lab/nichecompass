@@ -3,9 +3,7 @@ from ._utils import (
 from ._metrics import (
     get_eval_metrics,
     plot_eval_metrics)
-from ._basetrainer import BaseTrainer
-from ._vgaetrainer import VGAETrainer
-from ._vgpgaetrainer import VGPGAETrainer
+from ._trainer import Trainer
 
 __all__ = [
     "compute_vgae_loss",
@@ -13,6 +11,4 @@ __all__ = [
     "plot_loss_curves",
     "get_eval_metrics",
     "plot_eval_metrics",
-    "BaseTrainer",
-    "VGAETrainer",
-    "VGPGAETrainer"]
+    "Trainer"]

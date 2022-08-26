@@ -8,7 +8,7 @@ import torch
 from ._basemodel import BaseModel
 from ._vgaemodelmixin import VGAEModelMixin
 from autotalker.modules import VGAE, VGPGAE
-from autotalker.train import VGAETrainer, VGPGAETrainer
+from autotalker.train import Trainer
 
 
 logger = logging.getLogger(__name__)
@@ -65,23 +65,17 @@ class Autotalker(BaseModel, VGAEModelMixin):
         self.n_hidden_ = n_hidden
         self.dropout_rate_ = dropout_rate
 
-        self.encoder_layer_sizes_ = [self.n_input_,
-                                     self.n_hidden_,
-                                     self.n_latent_]
-        self.expr_decoder_layer_sizes_ = [self.n_latent_,
-                                          self.n_output_]
-
         if self.module == "VGAE":
             self.model = VGAE(n_input=self.n_input_,
                               n_hidden=self.n_hidden_,
                               n_latent=self.n_latent_,
                               dropout_rate=self.dropout_rate_)
         elif self.module == "VGPGAE":
-            self.model = VGPGAE(
-                encoder_layer_sizes=self.encoder_layer_sizes_,
-                expr_decoder_layer_sizes=self.expr_decoder_layer_sizes_,
-                expr_decoder_mask=self.mask_,
-                dropout_rate=self.dropout_rate_)
+            self.model = VGPGAE(n_input=self.n_input_,
+                                n_hidden=self.n_hidden_,
+                                n_latent=self.n_latent_,
+                                gene_expr_decoder_mask=self.mask_,
+                                dropout_rate=self.dropout_rate_)
 
         self.is_trained_ = False
         self.init_params_ = self._get_init_params(locals())
@@ -109,23 +103,13 @@ class Autotalker(BaseModel, VGAEModelMixin):
         kwargs:
             Kwargs for the trainer.
         """
-        if self.module == "VGAE":
-            self.trainer = VGAETrainer(adata=self.adata,
-                                       model=self.model,
-                                       adj_key=self.adj_key_,
-                                       val_frac=val_frac,
-                                       test_frac=test_frac,
-                                       mlflow_experiment_id=mlflow_experiment_id,
-                                       **trainer_kwargs)
-        elif self.module == "VGPGAE":
-            self.trainer = VGPGAETrainer(
-                adata=self.adata,
-                model=self.model,
-                adj_key=self.adj_key_,
-                val_frac=val_frac,
-                test_frac=test_frac,
-                mlflow_experiment_id=mlflow_experiment_id,
-                **trainer_kwargs)
+        self.trainer = Trainer(adata=self.adata,
+                               model=self.model,
+                               adj_key=self.adj_key_,
+                               val_frac=val_frac,
+                               test_frac=test_frac,
+                               mlflow_experiment_id=mlflow_experiment_id,
+                               **trainer_kwargs)
                                     
         self.trainer.train(n_epochs, lr, weight_decay)
         self.is_trained_ = True

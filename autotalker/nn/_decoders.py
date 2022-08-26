@@ -59,7 +59,7 @@ class MaskedGeneExprDecoder(nn.Module):
                  mask: torch.Tensor):
         super().__init__()
 
-        print(f"MASKED FULLY CONNECTED EXPRESSION DECODER -> n_input: {n_input}"
+        print(f"MASKED GENE EXPRESSION DECODER -> n_input: {n_input}"
               f", n_output: {n_output}")
 
         self.nb_means_normalized_decoder = MaskedLayer(
@@ -73,7 +73,7 @@ class MaskedGeneExprDecoder(nn.Module):
             n_input=n_input,
             n_output=n_output,
             bias=False,
-            activation=nn.ReLU,
+            activation=nn.ReLU(),
             mask=mask)
 
     def forward(self, z: torch.Tensor, log_library_size: torch.Tensor):
@@ -85,8 +85,8 @@ class MaskedGeneExprDecoder(nn.Module):
         zinb_parameters:
             Parameters for the ZINB distribution to model gene expression.
         """
-        nb_mean_normalized = self.nb_mean_normalized_decoder(z)
-        nb_mean = torch.exp(log_library_size) * nb_mean_normalized # log?
+        nb_means_normalized = self.nb_means_normalized_decoder(z)
+        nb_means = torch.exp(log_library_size) * nb_means_normalized # log?
         zi_prob_logits = self.zi_prob_logits_decoder(z)
-        zinb_parameters = (nb_mean, zi_prob_logits)
+        zinb_parameters = (nb_means, zi_prob_logits)
         return zinb_parameters

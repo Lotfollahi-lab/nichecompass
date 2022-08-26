@@ -210,5 +210,7 @@ def compute_gene_expr_recon_zinb_loss(x: torch.Tensor,
     mul_case_non_zero = torch.mul((x > eps).type(torch.float32), case_non_zero)
 
     log_likehood_zinb = mul_case_zero + mul_case_non_zero
+    print(log_likehood_zinb.shape)
+    print(log_likehood_zinb)
     zinb_loss = -log_likehood_zinb.sum(-1)
     return zinb_loss
