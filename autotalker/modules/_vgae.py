@@ -26,24 +26,27 @@ class VGAE(nn.Module, VGAEModuleMixin):
     """
     def __init__(self,
                  n_input: int,
-                 n_hidden: int,
+                 n_hidden_encoder: int,
                  n_latent: int,
-                 dropout_rate: float=0.0):
+                 dropout_rate_encoder: float=0.0,
+                 dropout_rate_graph_decoder: float=0.0):
         super().__init__()
         self.n_input = n_input
-        self.n_hidden = n_hidden
+        self.n_hidden_encoder = n_hidden_encoder
         self.n_latent = n_latent
-        self.dropout_rate = dropout_rate
+        self.dropout_rate_encoder = dropout_rate_encoder
+        self.dropout_rate_graph_decoder = dropout_rate_graph_decoder
 
         print("--- INITIALIZING NEW NETWORK MODULE: VGAE ---")
 
         self.encoder = GCNEncoder(n_input=n_input,
-                                  n_hidden=n_hidden,
+                                  n_hidden=n_hidden_encoder,
                                   n_latent=n_latent,
-                                  dropout_rate=dropout_rate,
+                                  dropout_rate=dropout_rate_encoder,
                                   activation=torch.relu)
         
-        self.decoder = DotProductGraphDecoder(dropout_rate=dropout_rate)
+        self.decoder = DotProductGraphDecoder(
+            dropout_rate=dropout_rate_graph_decoder)
 
     def forward(self, x, edge_index):
         mu, logstd = self.encoder(x, edge_index)

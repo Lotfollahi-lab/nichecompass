@@ -158,7 +158,6 @@ class Trainer:
                 train_loss = self.model.loss(model_output,
                                              train_data_batch,
                                              device=self.device)
-                print(train_loss)
         
                 self.iter_logs["train_loss"].append(train_loss.item())
                 self.iter_logs["n_train_iter"] += 1

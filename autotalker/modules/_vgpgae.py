@@ -32,25 +32,28 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
     """
     def __init__(self,
                  n_input: int,
-                 n_hidden: int,
+                 n_hidden_encoder: int,
                  n_latent: int,
                  gene_expr_decoder_mask: torch.Tensor,
-                 dropout_rate: float=0.0):
+                 dropout_rate_encoder: float=0.0,
+                 dropout_rate_graph_decoder: float=0.0):
         super().__init__()
         self.n_input = n_input
-        self.n_hidden = n_hidden
+        self.n_hidden = n_hidden_encoder
         self.n_latent = n_latent
-        self.dropout_rate = dropout_rate
+        self.dropout_rate_encoder = dropout_rate_encoder
+        self.dropout_rate_graph_decoder = dropout_rate_graph_decoder
 
         print("--- INITIALIZING NEW NETWORK MODULE: VGPGAE ---")
 
         self.encoder = GCNEncoder(n_input=n_input,
-                                  n_hidden=n_hidden,
+                                  n_hidden=n_hidden_encoder,
                                   n_latent=n_latent,
-                                  dropout_rate=dropout_rate,
+                                  dropout_rate=dropout_rate_encoder,
                                   activation=torch.relu)
         
-        self.graph_decoder = DotProductGraphDecoder(dropout_rate=dropout_rate)
+        self.graph_decoder = DotProductGraphDecoder(
+            dropout_rate=dropout_rate_graph_decoder)
 
         self.gene_expr_decoder = MaskedGeneExprDecoder(
             n_input=n_latent,
