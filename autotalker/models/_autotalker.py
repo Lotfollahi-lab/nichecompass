@@ -1,21 +1,20 @@
 import logging
-from typing import Optional, Union
+from typing import Literal, Optional, Union
 
 import anndata as ad
 import numpy as np
 import torch
 
-from ._basemodel import BaseModel
+from ._basemodelmixin import BaseModelMixin
 from ._vgaemodelmixin import VGAEModelMixin
-from autotalker.modules import IVGAE
-from autotalker.modules import VGAE
+from autotalker.modules import VGAE, VGPGAE
 from autotalker.train import Trainer
 
 
 logger = logging.getLogger(__name__)
 
 
-class Autotalker(BaseModel, VGAEModelMixin):
+class Autotalker(BaseModelMixin, VGAEModelMixin):
     """
     Autotalker model class.
 
@@ -23,78 +22,80 @@ class Autotalker(BaseModel, VGAEModelMixin):
     ----------
     adata:
         AnnData object with sparse adjacency matrix stored in 
-        data.obsp[adj_key].
+        adata.obsp[adj_key] and binary gene program mask stored in 
+        adata.varm[gp_mask_key] (unless gene program mask is passed directly to
+        the model).
+    autotalker_module:
+        Autotalker module that is used for model training.
+    n_hidden_encoder:
+        Number of nodes in the encoder hidden layer.
+    dropout_rate_encoder:
+        Probability that nodes will be dropped in the encoder during training.
+    gp_mask:
+        Gene program mask that is directly passed to the model (if not None, 
+        this mask will have prevalence over a gene program mask stored in 
+        adata.varm[gp_mask_key]).
+    gp_mask_key:
+        Key under which the gene program mask is stored in adata.varm. This mask
+        will only be used if no mask is passed directly to the model.
     adj_key:
         Key under which the sparse adjacency matrix is stored in adata.obsp.
-    cell_type_key:
-        Key under which the cell types are stored in data.obs.
-    n_hidden:
-        Number of nodes in the VGAE hidden layer.
-    n_latent:
-        Number of nodes in the latent space.
-    dropout_rate:
-        Probability that nodes will be dropped during training.
+    mlflow_experiment_id:
+        ID of the mlflow experiment if tracking of model training is desired.
     """
     def __init__(self,
                  adata: ad.AnnData,
-                 mask: Optional[Union[np.ndarray, list]]=None,
-                 mask_key: str="I",
+                 autotalker_module: Literal["VGAE", "VGPGAE"]="VGPGAE",
+                 n_hidden_encoder: int=32,
+                 dropout_rate_encoder: float=0.0,
+                 dropout_rate_graph_decoder: float=0.0,
+                 gp_mask: Optional[Union[np.ndarray, list]]=None,
+                 gp_mask_key: str="autotalker_gp_mask",
                  adj_key: str="spatial_connectivities",
-                 condition_key: Optional[str]=None,
-                 conditions: Optional[list]=None,
-                 cell_type_key: str="cell_type",
-                 n_hidden: int=32,
-                 dropout_rate: float=0.0,
-                 expr_decoder_recon_loss: str="mse",
                  mlflow_experiment_id: Optional[str]=None,
                  **model_kwargs):
-
-        if mask is None:
-            if mask_key in adata.varm:
-                mask = adata.varm[mask_key].T
-            else:
-                raise ValueError("Please provide a mask or specify an adquate "
-                                 "mask key.")
-
-        if conditions is None:
-            if condition_key is not None:
-                self.conditions_ = adata.obs[condition_key].unique().tolist()
-            else:
-                self.conditions_ = ["default_condition"]
-        else:
-            self.conditions_ = conditions
-
         self.adata = adata
-        self.mask_ = torch.tensor(mask).float()
-        self.mask_key_ = mask_key
-        self.adj_key_ = adj_key
-        self.condition_key_ = condition_key
-        self.n_latent_ = len(self.mask_)
-        self.cell_type_key_ = cell_type_key
+        self.autotalker_module_ = autotalker_module
         self.n_input_ = adata.n_vars
         self.n_output_ = adata.n_vars
-        self.n_hidden_ = n_hidden
-        self.dropout_rate_ = dropout_rate
-        self.expr_decoder_recon_loss_ = expr_decoder_recon_loss
+        self.n_hidden_encoder_ = n_hidden_encoder
+        self.dropout_rate_encoder_ = dropout_rate_encoder
+        self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
+        self.gp_mask_key_ = gp_mask_key
+        self.adj_key_ = adj_key
 
-        self.encoder_layer_sizes_ = [self.n_input_,
-                                     self.n_hidden_,
-                                     self.n_latent_]
-        self.expr_decoder_layer_sizes_ = [self.n_latent_,
-                                          self.n_output_]
+        # Retrieve gene program mask
+        if gp_mask is None:
+            if gp_mask_key in adata.varm:
+                gp_mask = adata.varm[gp_mask_key].T
+            else:
+                raise ValueError("Please directly provide a gene program mask "
+                                 "to the model or specify an adquate mask key "
+                                 "for your adata object. If you do not want to "
+                                 "mask gene expression reconstruction, you can "
+                                 "create a mask of 1s that allows all gene "
+                                 "programs (latent nodes) to reconstruct all "
+                                 "genes by passing a mask created with ´mask "
+                                 "= np.ones((n_latent, len(adata.var)))´).")
 
-        self.model = VGAE(n_input = self.n_input_,
-                          n_hidden = self.n_hidden_,
-                          n_latent = self.n_latent_,
-                          dropout_rate = self.dropout_rate_)
+        self.gp_mask_ = torch.tensor(gp_mask, dtype=torch.float32)
+        self.n_latent_ = len(self.gp_mask_)
 
-        # self.model = IVGAE(encoder_layer_sizes=self.encoder_layer_sizes_,
-        #                    expr_decoder_layer_sizes=self.expr_decoder_layer_sizes_,
-        #                    expr_decoder_recon_loss=self.expr_decoder_recon_loss_,
-        #                    expr_decoder_mask=self.mask_,
-        #                    conditions=self.conditions_,
-        #                    encoder_dropout_rate=self.dropout_rate,
-        #                    graph_decoder_dropout_rate=self.dropout_rate)
+        if self.autotalker_module_ == "VGAE":
+            self.model = VGAE(
+                n_input=self.n_input_,
+                n_hidden_encoder=self.n_hidden_encoder_,
+                n_latent=self.n_latent_,
+                dropout_rate_encoder=self.dropout_rate_encoder_,
+                dropout_rate_graph_decoder=self.dropout_rate_graph_decoder_)
+        elif self.autotalker_module_ == "VGPGAE":
+            self.model = VGPGAE(
+                n_input=self.n_input_,
+                n_hidden_encoder=self.n_hidden_encoder_,
+                n_latent=self.n_latent_,
+                gene_expr_decoder_mask=self.gp_mask_,
+                dropout_rate_encoder=self.dropout_rate_encoder_,
+                dropout_rate_graph_decoder=self.dropout_rate_graph_decoder_)
 
         self.is_trained_ = False
         self.init_params_ = self._get_init_params(locals())
@@ -124,11 +125,11 @@ class Autotalker(BaseModel, VGAEModelMixin):
         """
         self.trainer = Trainer(adata=self.adata,
                                model=self.model,
-                               condition_key=self.condition_key_,
                                adj_key=self.adj_key_,
                                val_frac=val_frac,
                                test_frac=test_frac,
                                mlflow_experiment_id=mlflow_experiment_id,
                                **trainer_kwargs)
+                                    
         self.trainer.train(n_epochs, lr, weight_decay)
         self.is_trained_ = True

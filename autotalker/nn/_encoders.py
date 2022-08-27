@@ -33,8 +33,8 @@ class GCNEncoder(nn.Module):
                  activation: nn.Module=nn.ReLU):
         super().__init__()
 
-        print(f"GCN ENCODER - n_input: {n_input}, n_hidden: {n_hidden}, n_latent"
-              f": {n_latent}, dropout_rate: {dropout_rate}")
+        print(f"GCN ENCODER -> n_input: {n_input}, n_hidden: {n_hidden}, " 
+              f"n_latent: {n_latent}, dropout_rate: {dropout_rate}")
 
         self.gcn_l1 = GCNConv(n_input, n_hidden)
         self.gcn_mu = GCNConv(n_hidden, n_latent)

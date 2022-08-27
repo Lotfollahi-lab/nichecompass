@@ -1,4 +1,4 @@
-from ._ivgae import IVGAE
+from ._vgpgae import VGPGAE
 from ._vgae import VGAE
 
-__all__ = ["IVGAE", "VGAE"]
+__all__ = ["VGPGAE", "VGAE"]

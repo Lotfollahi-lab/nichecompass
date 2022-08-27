@@ -14,7 +14,7 @@ from ._utils import _load_saved_files
 from ._utils import _validate_var_names
 
 
-class BaseModel():
+class BaseModelMixin():
     """
     BaseModel class for basic model functionalities. 
     

@@ -135,4 +135,4 @@ dmypy.json
 .vscode/settings.json
 
 # data
-/data
+/datasets

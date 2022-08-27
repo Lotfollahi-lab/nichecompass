@@ -23,12 +23,11 @@ class GCNLayer(nn.Module):
     activation:
         Activation function used in the GCN layer.
     """
-    def __init__(
-            self,
-            n_input: int,
-            n_output: int,
-            dropout_rate: float=0.0,
-            activation=torch.relu):
+    def __init__(self,
+                 n_input: int,
+                 n_output: int,
+                 dropout_rate: float=0.0,
+                 activation=torch.relu):
         super().__init__()
         self.dropout_rate = dropout_rate
         self.dropout = nn.Dropout(dropout_rate)
@@ -47,98 +46,33 @@ class GCNLayer(nn.Module):
         return self.activation(output)
 
 
-class MaskedCondExtLayer(nn.Module):
+class MaskedLayer(nn.Module):
     """
-    Masked conditional extension layer adapted from 
-    https://github.com/theislab/scarches. Takes input nodes plus optionally
-    condition nodes, unmasked extension nodes and masked extension nodes and
-    computes a linear transformation with masks for the masked parts.
+    Masked fully connected layer class.
 
     Parameters
     ----------
     n_input:
     n_output:
-    n_condition:
-    n_extension_unmasked:
-    n_extension_masked:
+    bias:
     mask:
-    extension_mask:
+    activation:
     """
     def __init__(self,
                  n_input: int,
                  n_output: int,
-                 n_condition: int,
-                 n_extension_unmasked: int,
-                 n_extension_masked: int,
+                 bias: bool=False,
                  mask: Optional[torch.Tensor]=None,
-                 extension_mask: Optional[torch.Tensor]=None):
+                 activation: nn.Module=nn.ReLU):
         super().__init__()
-        self.n_condition = n_condition
-        self.n_extension_unmasked = n_extension_unmasked
-        self.n_extension_masked = n_extension_masked
         
-        # Creating layer components
         if mask is None:
-            self.input_l = nn.Linear(n_input, n_output, bias=False)
+            self.mfc_l = nn.Linear(n_input, n_output, bias=bias)
         else:
-            self.input_l = MaskedLinear(n_input,
-                                             n_output,
-                                             mask,
-                                             bias=False)
+            self.mfc_l = MaskedLinear(n_input, n_output, mask, bias=bias)
 
-        if self.n_condition != 0:
-            self.condition_l = nn.Linear(self.n_condition,
-                                          n_output,
-                                          bias=False)
-
-        if self.n_extension_unmasked != 0:
-            self.extension_unmasked_l = nn.Linear(self.n_extension_unmasked,
-                                                   n_output,
-                                                   bias=False)
-
-        if self.n_extension_masked != 0:
-            if extension_mask is None:
-                self.extension_masked_l = nn.Linear(self.n_extension_masked,
-                                                     n_output,
-                                                     bias=False)
-            else:
-                self.extension_masked_l = MaskedLinear(
-                    self.n_extension_masked,
-                    n_output,
-                    bias=False)
+        self.activation = activation
 
     def forward(self, input: torch.Tensor):
-        # Split input into its components to be fed separately into different
-        # layer components
-        if self.n_condition == 0:
-            input, condition = input, None
-        else:
-            input, condition = torch.split(
-                input, [input.shape[1] - self.n_condition, self.n_condition],
-                dim=1)
-
-        if self.n_extension_unmasked == 0:
-            extension_unmasked = None
-        else:
-            input, extension_unmasked = torch.split(
-                input, [input.shape[1] - self.n_extension_unmasked,
-                        self.n_extension_unmasked],
-                dim=1)
-
-        if self.n_extension_masked == 0:
-            extension_masked = None
-        else:
-            input, extension_masked = torch.split(
-                input, [input.shape[1] - self.extension_masked,
-                        self.extension_masked],
-                dim=1)
-
-        # Forward pass with different layer components
-        output = self.input_l(input)
-        if extension_unmasked is not None:
-            output = output + self.extension_unmasked_l(extension_unmasked)
-        if extension_masked is not None:
-            output = output + self.extension_masked_l(extension_masked)
-        if condition is not None:
-            output = output + self.condition_l(condition)
+        output = self.activation(self.mfc_l(input))
         return output
