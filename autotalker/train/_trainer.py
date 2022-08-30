@@ -9,9 +9,7 @@ import torch
 import torch.nn as nn
 
 from autotalker.data import prepare_data
-from autotalker.data import train_valid_test_node_level_mask
-from autotalker.data import train_valid_test_link_level_split
-from autotalker.data import initialize_link_level_dataloader
+from autotalker.data import initialize_dataloaders
 from ._metrics import get_eval_metrics
 from ._metrics import plot_eval_metrics
 from ._utils import EarlyStopping
@@ -32,12 +30,19 @@ class Trainer:
         An Autotalker model.
     adj_key:
         Key under which the sparse adjacency matrix is stored in adata.obsp.
-    valid_frac:
-        Fraction of the data that is used for validation.
-    test_frac:
-        Fraction of the data that is used for testing.
-    batch_size:
+    edge_val_ratio:
+
+    edge_test_ratio:
+
+    edge_batch_size:
         Batch size per iteration.
+        
+    node_val_ratio:
+
+    node_test_ratio:
+        
+    node_batch_size:
+
     use_early_stopping:
         If "True", the EarlyStopping class is used to prevent overfitting.
     reload_best_model:
@@ -57,9 +62,12 @@ class Trainer:
                  adata: ad.AnnData,
                  model: nn.Module,
                  adj_key: str="spatial_connectivities",
-                 valid_frac: float=0.1,
-                 test_frac: float=0.05,
-                 batch_size: int=128,
+                 edge_val_ratio: float=0.1,
+                 edge_test_ratio: float=0.05,
+                 edge_batch_size: int=128,
+                 node_val_ratio: float=0.1,
+                 node_test_ratio: float=0.0,
+                 node_batch_size: int=32,
                  use_early_stopping: bool=True,
                  reload_best_model: bool=True,
                  early_stopping_kwargs: Optional[dict]=None,
@@ -67,16 +75,19 @@ class Trainer:
         self.adata = adata
         self.model = model
         self.adj_key = adj_key
-        self.train_frac = 1 - valid_frac - test_frac
-        self.valid_frac = valid_frac
-        self.test_frac = test_frac
-        self.batch_size = batch_size
+        self.edge_train_ratio = 1 - edge_val_ratio - edge_test_ratio
+        self.edge_val_ratio = edge_val_ratio
+        self.edge_test_ratio = edge_test_ratio
+        self.edge_batch_size = edge_batch_size
+        self.node_train_ratio = 1 - node_val_ratio - node_test_ratio
+        self.node_val_ratio = node_val_ratio
+        self.node_test_ratio = node_test_ratio
+        self.node_batch_size = node_batch_size
         self.use_early_stopping = use_early_stopping
         self.reload_best_model = reload_best_model
         early_stopping_kwargs = (early_stopping_kwargs if early_stopping_kwargs 
                                  else {})
         self.early_stopping = EarlyStopping(**early_stopping_kwargs)
-
         self.seed = kwargs.pop("seed", 0)
         self.n_workers = kwargs.pop("n_workers", 0)
         self.monitor = kwargs.pop("monitor", True)
@@ -94,26 +105,18 @@ class Trainer:
         self.device = torch.device("cuda" if torch.cuda.is_available() else 
                                    "cpu")
 
-        data = prepare_data(
-            adata=self.adata,
-            adj_key=self.adj_key,
-            valid_frac=self.valid_frac,
-            test_frac=self.test_frac)
+        data_dict = prepare_data(
+            adata=adata,
+            adj_key="spatial_connectivities",
+            edge_val_ratio=self.edge_val_ratio,
+            edge_test_ratio=self.edge_test_ratio,
+            node_val_ratio=self.node_val_ratio,
+            node_test_ratio=self.node_test_ratio)
 
-        data_link_splits = train_valid_test_link_level_split(data)
-        self.train_data = data_link_splits[0]
-        self.valid_data = data_link_splits[1]
-        self.test_data = data_link_splits[2]
-
-        self.train_dataloader = initialize_link_level_dataloader(
-            data=self.train_data,
-            batch_size=self.batch_size)
-        self.valid_dataloader = initialize_link_level_dataloader(
-            data=self.valid_data,
-            batch_size=self.batch_size)
-        self.test_dataloader = initialize_link_level_dataloader(
-            data=self.test_data,
-            batch_size=self.batch_size)
+        self.node_masked_data = data_dict["node_masked_data"]
+        self.edge_train_data = data_dict["edge_train_data"]
+        self.edge_val_data = data_dict.pop("edge_val_data", None)
+        self.edge_test_data = data_dict.pop("edge_test_data", None)
 
     def train(self,
               n_epochs: int=200,
@@ -131,7 +134,29 @@ class Trainer:
             mlflow.log_param("weight_decay", self.weight_decay)
             mlflow.log_param("n_hidden", self.model.n_hidden)
             mlflow.log_param("n_latent", self.model.n_latent)
-            mlflow.log_param("dropout_rate", self.model.dropout_rate)
+            mlflow.log_param("dropout_rate_encoder", 
+                             self.model.dropout_rate_encoder)
+            mlflow.log_param("dropout_rate_graph_decoder", 
+                             self.model.dropout_rate_graph_decoder)                 
+
+        loader_dict = initialize_dataloaders(
+            node_masked_data=self.node_masked_data,
+            edge_train_data=self.edge_train_data,
+            edge_val_data=self.edge_val_data,
+            edge_test_data=self.edge_test_data,
+            node_batch_size=4,
+            edge_batch_size=32,
+            n_direct_neighbors=-1,
+            n_hops=3,
+            directed=False,
+            neg_edge_sampling_ratio=1.0)
+
+        self.edge_train_loader = loader_dict.pop("edge_train_loader", None)
+        self.edge_val_loader = loader_dict.pop("edge_val_loader", None)
+        self.edge_test_loader = loader_dict.pop("edge_test_loader", None)
+        self.node_train_loader = loader_dict.pop("node_train_loader", None)
+        self.node_val_loader = loader_dict.pop("node_val_loader", None)
+        self.node_test_loader = loader_dict.pop("node_test_loader", None)
 
         start_time = time.time()
         self.epoch_logs = defaultdict(list)
@@ -145,29 +170,51 @@ class Trainer:
         for self.epoch in range(n_epochs):
             self.iter_logs = defaultdict(list)
             self.iter_logs["n_train_iter"] = 0
-            self.iter_logs["n_valid_iter"] = 0
+            self.iter_logs["n_val_iter"] = 0
             
-            for train_data_batch in self.train_dataloader:
-                train_data_batch = train_valid_test_node_level_mask(
-                    train_data_batch)
-                train_data_batch = train_data_batch.to(self.device)
+            # Jointly loop through edge and node level batches
+            for edge_train_data_batch, node_train_data_batch in zip(
+                    self.edge_train_loader, self.node_train_loader):
+                edge_train_data_batch = edge_train_data_batch.to(self.device)
+                node_train_data_batch = node_train_data_batch.to(self.device)
 
-                model_output = self.model(train_data_batch.x,
-                                          train_data_batch.edge_index)
+                # Forward pass edge level batch
+                edge_train_model_output = self.model(
+                    edge_train_data_batch.x,
+                    edge_train_data_batch.edge_index)
 
-                train_loss = self.model.loss(model_output,
-                                             train_data_batch,
-                                             device=self.device)
-        
+                # Forward pass node level batch
+                node_train_model_output = self.model(
+                    node_train_data_batch.x,
+                    node_train_data_batch.edge_index)
+                    
+                # Calculate training loss (edge reconstruction loss + gene 
+                # expression reconstruction loss)
+                train_loss_dict = self.model.loss(
+                    edge_data_batch=edge_train_data_batch,
+                    edge_model_output=edge_train_model_output,
+                    node_data_batch=node_train_data_batch,
+                    node_model_output=node_train_model_output,
+                    device=self.device)
+                train_loss = train_loss_dict["loss"]
+                train_edge_recon_loss = train_loss_dict["edge_recon_loss"]
+                train_gene_expr_recon_loss = train_loss_dict[
+                    "gene_expr_recon_loss"]
                 self.iter_logs["train_loss"].append(train_loss.item())
+                self.iter_logs["train_edge_recon_loss"].append(
+                    train_edge_recon_loss.item())
+                self.iter_logs["train_gene_expr_recon_loss"].append(
+                    train_gene_expr_recon_loss.item())
                 self.iter_logs["n_train_iter"] += 1
         
+                # Optimize for training loss
                 self.optimizer.zero_grad()
                 train_loss.backward()
                 self.optimizer.step()
 
             # Validate model
-            if self.valid_data is not None:
+            if (self.edge_val_loader is not None and 
+                    self.node_val_loader is not None):
                 self.validate()
     
             # Convert iteration level logs into epoch level logs
@@ -176,15 +223,16 @@ class Trainer:
                     self.epoch_logs[key].append(
                         np.array(self.iter_logs[key]).sum() / 
                         self.iter_logs["n_train_iter"])
-                if key.startswith("valid"):
+                if key.startswith("val"):
                     self.epoch_logs[key].append(
                         np.array(self.iter_logs[key]).sum() /
-                        self.iter_logs["n_valid_iter"])
+                        self.iter_logs["n_val_iter"])
     
             # Monitor epoch level logs
             if self.monitor:
                 print_progress(self.epoch, self.epoch_logs, self.n_epochs)
 
+            # Check early stopping
             if self.use_early_stopping:
                 if self.is_early_stopping():
                     break
@@ -202,59 +250,78 @@ class Trainer:
         self.model.eval()
 
         losses = {"train_loss": self.epoch_logs["train_loss"],
-                  "valid_loss": self.epoch_logs["valid_loss"]}
+                  "val_loss": self.epoch_logs["val_loss"]}
 
-        valid_eval_metrics = {
-            "auroc": self.epoch_logs["valid_auroc_score"],
-            "auprc": self.epoch_logs["valid_auprc_score"],
-            "best_acc": self.epoch_logs["valid_best_acc_score"],
-            "best_f1": self.epoch_logs["valid_best_f1_score"]}
+        val_eval_metrics = {
+            "auroc": self.epoch_logs["val_auroc_score"],
+            "auprc": self.epoch_logs["val_auprc_score"],
+            "best_acc": self.epoch_logs["val_best_acc_score"],
+            "best_f1": self.epoch_logs["val_best_f1_score"]}
     
         fig = plot_loss_curves(losses)
         if self.mlflow_experiment_id is not None:
             mlflow.log_figure(fig, "loss_curves.png")
-        fig = plot_eval_metrics(valid_eval_metrics)  
+        fig = plot_eval_metrics(val_eval_metrics)  
         if self.mlflow_experiment_id is not None:
-            mlflow.log_figure(fig, "valid_eval_metrics.png") 
+            mlflow.log_figure(fig, "val_eval_metrics.png") 
 
         # Test model
-        if self.test_data is not None:
+        if self.edge_test_loader is not None:
             self.test()
 
     @torch.no_grad()
     def validate(self):
         self.model.eval()
+        
+        # Jointly loop through edge and node level batches
+        for edge_val_data_batch, node_val_data_batch in zip(
+                self.edge_val_loader, self.node_val_loader):
+            edge_val_data_batch = edge_val_data_batch.to(self.device)
+            node_val_data_batch = node_val_data_batch.to(self.device)
 
-        for valid_data_batch in self.valid_dataloader:
-            valid_data_batch = valid_data_batch.to(self.device)
+            # Forward pass edge level batch
+            edge_val_model_output = self.model(
+                edge_val_data_batch.x,
+                edge_val_data_batch.edge_index)
+
+            # Forward pass node level batch
+            node_val_model_output = self.model(
+                node_val_data_batch.x,
+                node_val_data_batch.edge_index)
             
-            model_output = self.model(
-                valid_data_batch.x,
-                valid_data_batch.edge_index)
-                
-            valid_loss = self.model.loss(model_output,
-                                         valid_data_batch,
-                                         device=self.device)
-
-            self.iter_logs["valid_loss"].append(valid_loss.item())
-            self.iter_logs["n_valid_iter"] += 1
-
-            adj_recon_probs = torch.sigmoid(model_output["adj_recon_logits"])
-    
-            valid_eval_metrics = get_eval_metrics(
+            # Calculate validation loss (edge reconstruction loss + gene 
+            # expression reconstruction loss)
+            val_loss_dict = self.model.loss(
+                    edge_data_batch=edge_val_data_batch,
+                    edge_model_output=edge_val_model_output,
+                    node_data_batch=node_val_data_batch,
+                    node_model_output=node_val_model_output,
+                    device=self.device)
+            val_loss = val_loss_dict["loss"]
+            val_edge_recon_loss = val_loss_dict["edge_recon_loss"]
+            val_gene_expr_recon_loss = val_loss_dict["gene_expr_recon_loss"]
+            self.iter_logs["val_loss"].append(val_loss.item())
+            self.iter_logs["val_edge_recon_loss"].append(
+                val_edge_recon_loss.item())
+            self.iter_logs["val_gene_expr_recon_loss"].append(
+                val_gene_expr_recon_loss.item())
+            self.iter_logs["n_val_iter"] += 1
+            
+            # Calculate evaluation metrics
+            adj_recon_probs = torch.sigmoid(
+                edge_val_model_output["adj_recon_logits"])
+            val_eval_metrics = get_eval_metrics(
                 adj_recon_probs,
-                valid_data_batch.edge_label_index,
-                valid_data_batch.edge_label)
-
-            valid_auroc_score = valid_eval_metrics[0]
-            valid_auprc_score = valid_eval_metrics[1]
-            valid_best_acc_score = valid_eval_metrics[2]
-            valid_best_f1_score = valid_eval_metrics[3]
-            
-            self.iter_logs["valid_auroc_score"].append(valid_auroc_score)
-            self.iter_logs["valid_auprc_score"].append(valid_auprc_score)
-            self.iter_logs["valid_best_acc_score"].append(valid_best_acc_score)
-            self.iter_logs["valid_best_f1_score"].append(valid_best_f1_score)
+                edge_val_data_batch.edge_label_index,
+                edge_val_data_batch.edge_label)
+            val_auroc_score = val_eval_metrics[0]
+            val_auprc_score = val_eval_metrics[1]
+            val_best_acc_score = val_eval_metrics[2]
+            val_best_f1_score = val_eval_metrics[3]
+            self.iter_logs["val_auroc_score"].append(val_auroc_score)
+            self.iter_logs["val_auprc_score"].append(val_auprc_score)
+            self.iter_logs["val_best_acc_score"].append(val_best_acc_score)
+            self.iter_logs["val_best_f1_score"].append(val_best_f1_score)
         
         self.model.train()
 
@@ -267,20 +334,20 @@ class Trainer:
         test_best_acc_scores_running = 0
         test_best_f1_scores_running = 0
 
-        for n_test_iter, test_data_batch in enumerate(self.test_dataloader):
-            test_data_batch = test_data_batch.to(self.device)
+        for n_test_iter, edge_test_data_batch in enumerate(
+                self.edge_test_loader):
+            edge_test_data_batch = edge_test_data_batch.to(self.device)
 
-            model_output = self.model(test_data_batch.x,
-                                      test_data_batch.edge_index)
+            edge_test_model_output = self.model(edge_test_data_batch.x,
+                                                edge_test_data_batch.edge_index)
     
+            # Calculate evaluation metrics
             adj_recon_probs = torch.sigmoid(
-                model_output["adj_recon_logits"])
-        
+                edge_test_model_output["adj_recon_logits"])
             test_eval_metrics = get_eval_metrics(
                     adj_recon_probs,
-                    test_data_batch.edge_label_index,
-                    test_data_batch.edge_label)
-    
+                    edge_test_data_batch.edge_label_index,
+                    edge_test_data_batch.edge_label)
             test_auroc_scores_running += test_eval_metrics[0]
             test_auprc_scores_running += test_eval_metrics[1]
             test_best_acc_scores_running += test_eval_metrics[2]
@@ -290,6 +357,8 @@ class Trainer:
         test_auprc_score = test_auprc_scores_running / n_test_iter
         test_best_acc_score = test_best_acc_scores_running / n_test_iter
         test_best_f1_score = test_best_f1_scores_running / n_test_iter
+
+        # Log evaluation metrics
         print("--- MODEL EVALUATION ---")
         print(f"Average test AUROC score: {test_auroc_score}")
         print(f"Average test AUPRC score: {test_auprc_score}")

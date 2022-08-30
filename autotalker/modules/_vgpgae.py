@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Literal, Tuple
 
 import torch
 import torch.nn as nn
@@ -76,34 +76,41 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         return output
 
     def loss(self,
-             model_output: dict,
-             data_batch: torch_geometric.data.Data,
+             edge_data_batch: torch_geometric.data.Data,
+             edge_model_output: dict,
+             node_data_batch: torch_geometric.data.Data,
+             node_model_output: dict,
              device: str):
-        vgae_loss_params = vgae_loss_parameters(data_batch=data_batch,
-                                                device=device)
+        loss_dict = {}
+
+        vgae_loss_params = vgae_loss_parameters(
+            data_batch=edge_data_batch,
+            device=device)
         edge_recon_loss_norm_factor = vgae_loss_params[0]
         edge_recon_loss_pos_weight = vgae_loss_params[1]
 
-        vgae_loss = compute_vgae_loss(
-            adj_recon_logits=model_output["adj_recon_logits"],
-            edge_label_index=data_batch.edge_label_index,
-            edge_labels=data_batch.edge_label,
+        loss_dict["edge_recon_loss"] = compute_vgae_loss(
+            adj_recon_logits=edge_model_output["adj_recon_logits"],
+            edge_label_index=edge_data_batch.edge_label_index,
+            edge_labels=edge_data_batch.edge_label,
             edge_recon_loss_pos_weight=edge_recon_loss_pos_weight,
             edge_recon_loss_norm_factor=edge_recon_loss_norm_factor,
-            mu=model_output["mu"],
-            logstd=model_output["logstd"],
-            n_nodes=data_batch.x.size(0))
+            mu=edge_model_output["mu"],
+            logstd=edge_model_output["logstd"],
+            n_nodes=edge_data_batch.x.size(0))
 
-        nb_means, zi_prob_logits = model_output["zinb_parameters"]
+        nb_means, zi_prob_logits = node_model_output["zinb_parameters"]
 
         # Gene-specific inverse dispersion
         theta = torch.exp(self.theta)
 
-        gene_expr_recon_loss = compute_gene_expr_recon_zinb_loss(
-            x=data_batch.x,
+        loss_dict["gene_expr_recon_loss"] = compute_gene_expr_recon_zinb_loss(
+            x=node_data_batch.x,
             mu=nb_means,
             theta=theta,
             zi_prob_logits=zi_prob_logits)
 
-        loss = vgae_loss + gene_expr_recon_loss
-        return loss
+        loss_dict["loss"] = (loss_dict["edge_recon_loss"] + 
+                             loss_dict["gene_expr_recon_loss"])
+
+        return loss_dict

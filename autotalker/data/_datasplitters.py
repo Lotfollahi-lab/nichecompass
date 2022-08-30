@@ -1,8 +1,9 @@
 import torch_geometric
 
-def train_valid_test_node_level_mask(data: torch_geometric.data.Data,
-                                     valid_ratio: float=0.1,
-                                     test_ratio: float=0.0):
+
+def node_level_split_mask(data: torch_geometric.data.Data,
+                          val_ratio: float=0.1,
+                          test_ratio: float=0.0):
     """
     Split data into training, validation and test sets on node-level by adding
     node-level masks (train_mask, val_mask, test_mask) to the PyG Data object.
@@ -21,7 +22,7 @@ def train_valid_test_node_level_mask(data: torch_geometric.data.Data,
         PyG Data object with train_mask, val_mask and test_mask attributes 
         added.
     """
-    node_split = torch_geometric.transforms.RandomNodeSplit(num_val=valid_ratio,
+    node_split = torch_geometric.transforms.RandomNodeSplit(num_val=val_ratio,
                                                             num_test=test_ratio,
                                                             key="x")
 
@@ -30,11 +31,11 @@ def train_valid_test_node_level_mask(data: torch_geometric.data.Data,
     return data
     
 
-def train_valid_test_link_level_split(data: torch_geometric.data.Data,
-                                      valid_ratio: float=0.1,
-                                      test_ratio: float=0.1,
-                                      is_undirected: bool=True,
-                                      neg_sampling_ratio: float=0.0):
+def edge_level_split(data: torch_geometric.data.Data,
+                     val_ratio: float=0.1,
+                     test_ratio: float=0.1,
+                     is_undirected: bool=True,
+                     neg_sampling_ratio: float=0.0):
     """
     Split PyG Data object into train, validation and test PyG Data objects using
     a link/edge level split, i.e. training split does not include edges in 
@@ -68,11 +69,11 @@ def train_valid_test_link_level_split(data: torch_geometric.data.Data,
     """            
     
     link_split = torch_geometric.transforms.RandomLinkSplit(
-        num_val=valid_ratio,
+        num_val=val_ratio,
         num_test=test_ratio,
         is_undirected=is_undirected, 
         neg_sampling_ratio=neg_sampling_ratio)
 
-    train_data, valid_data, test_data = link_split(data)
+    train_data, val_data, test_data = link_split(data)
 
-    return train_data, valid_data, test_data
+    return train_data, val_data, test_data

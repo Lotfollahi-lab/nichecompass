@@ -105,8 +105,12 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
               n_epochs: int=200,
               lr: float=0.01,
               weight_decay: float=0,
-              val_frac: float=0.1,
-              test_frac: float=0.05,
+              edge_val_ratio: float=0.1,
+              edge_test_ratio: float=0.05,
+              edge_batch_size: int=128,
+              node_val_ratio: float=0.1,
+              node_test_ratio: float=0.0,
+              node_batch_size: int=32,
               mlflow_experiment_id: Optional[str]=None,
               **trainer_kwargs):
         """
@@ -126,10 +130,16 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         self.trainer = Trainer(adata=self.adata,
                                model=self.model,
                                adj_key=self.adj_key_,
-                               val_frac=val_frac,
-                               test_frac=test_frac,
-                               mlflow_experiment_id=mlflow_experiment_id,
+                               edge_val_ratio=edge_val_ratio,
+                               edge_test_ratio=edge_test_ratio,
+                               edge_batch_size=edge_batch_size,
+                               node_val_ratio=node_val_ratio,
+                               node_test_ratio=node_test_ratio,
+                               node_batch_size=node_batch_size,
                                **trainer_kwargs)
                                     
-        self.trainer.train(n_epochs, lr, weight_decay)
+        self.trainer.train(n_epochs=n_epochs,
+                           lr=lr,
+                           weight_decay=weight_decay,
+                           mlflow_experiment_id=mlflow_experiment_id,)
         self.is_trained_ = True

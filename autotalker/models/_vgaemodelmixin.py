@@ -3,7 +3,7 @@ from typing import Optional
 import anndata as ad
 import numpy as np
 
-from autotalker.data import SpatialAnnDataset
+from autotalker.data import SpatialAnnTorchDataset
 
 
 class VGAEModelMixin:
@@ -20,9 +20,9 @@ class VGAEModelMixin:
         device = next(self.model.parameters()).device
 
         if adata is not None:
-            dataset = SpatialAnnDataset(adata, adj_key)
+            dataset = SpatialAnnTorchDataset(adata, adj_key)
         else:
-            dataset = SpatialAnnDataset(self.adata, self.adj_key_)
+            dataset = SpatialAnnTorchDataset(self.adata, self.adj_key_)
 
         x = dataset.x.to(device)
         edge_index = dataset.edge_index.to(device) 
