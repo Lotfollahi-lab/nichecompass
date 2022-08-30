@@ -17,21 +17,22 @@ def get_eval_metrics(adj_rec_probs: torch.Tensor,
     adj_rec_probs:
         Tensor containing reconstructed adjacency matrix with edge 
         probabilities.
-    pos_edge_label_index:
-        Tensor containing node indices of positive edges.
-    neg_edge_label_index:
-        Tensor containing node indices of negative edges.
+    edge_label_index:
+        Tensor containing node indices of edges.
+    edge_labels:
+        Tensor containing labels of edges.
+
     Returns
     ----------
-    auroc_score:
-        Area under the receiver operating characteristic curve.
-    auprc_score:
-        Area under the precision-recall curve.
-    best_acc_score:
-        Accuracy under optimal classification threshold.
-    best_f1_score:
-        F1 score under optimal classification threshold.
+    eval_dict:
+        Dictionary containing the evaluation metrics ´auroc_score´ (area under 
+        the  receiver operating characteristic curve), ´auprc score´ (area under
+        the precision-recall curve), ´best_acc_score´ (accuracy under optimal 
+        classification threshold) and ´best_f1_score´ (F1 score under optimal 
+        classification threshold).
     """
+    eval_dict = {}
+
     if isinstance(edge_labels, torch.Tensor):
         edge_labels = edge_labels.detach().cpu().numpy()
     if isinstance(edge_label_index, torch.Tensor):
@@ -44,8 +45,9 @@ def get_eval_metrics(adj_rec_probs: torch.Tensor,
             adj_rec_probs[edge[0], edge[1]].item())   
 
     # Calculate threshold independent metrics
-    auroc_score = skm.roc_auc_score(edge_labels, pred_probs)
-    auprc_score = skm.average_precision_score(edge_labels, pred_probs)
+    eval_dict["auroc_score"] = skm.roc_auc_score(edge_labels, pred_probs)
+    eval_dict["auprc_score"] = skm.average_precision_score(
+        edge_labels, pred_probs)
         
     # Get the optimal classification probability threshold above which an edge 
     # is classified as positive so that the threshold bestimizes the accuracy 
@@ -58,6 +60,7 @@ def get_eval_metrics(adj_rec_probs: torch.Tensor,
         all_acc_score[threshold] = acc_score
         if acc_score > best_acc_score:
             best_acc_score = acc_score
+    eval_dict["best_acc_score"] = best_acc_score
 
     # Get the optimal classification probability threshold above which an edge 
     # is classified as positive so that the threshold bestimizes the f1 score 
@@ -70,8 +73,9 @@ def get_eval_metrics(adj_rec_probs: torch.Tensor,
         all_f1_score[threshold] = f1_score
         if f1_score > best_f1_score:
             best_f1_score = f1_score
+    eval_dict["best_f1_score"] = best_f1_score
     
-    return auroc_score, auprc_score, best_acc_score, best_f1_score
+    return eval_dict
 
 
 def plot_eval_metrics(eval_scores_dict):
@@ -82,6 +86,11 @@ def plot_eval_metrics(eval_scores_dict):
     ----------
     eval_scores_dict:
         Dictionary containing the eval metric scores to be plotted.
+
+    Returns
+    ----------
+    fig:
+        Matplotlib figure containing plot of evaluation metrics.
     """
 
     # Plot epochs as integers

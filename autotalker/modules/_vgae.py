@@ -1,5 +1,9 @@
+from typing import Literal
+
+import mlflow
 import torch
 import torch.nn as nn
+from torch_geometric.data import Data
 
 from autotalker.nn import GCNEncoder
 from autotalker.nn import DotProductGraphDecoder
@@ -17,12 +21,15 @@ class VGAE(nn.Module, VGAEModuleMixin):
     ----------
     n_input:
         Number of nodes in the input layer.
-    n_hidden:
-        Number of nodes in the hidden layer.
+    n_hidden_encoder:
+        Number of nodes in the encoder hidden layer.
     n_latent:
         Number of nodes in the latent space.
-    dropout_rate:
-        Probability that nodes will be dropped during training.
+    dropout_rate_encoder:
+        Probability that nodes will be dropped in the encoder during training.
+    dropout_rate_graph_decoder:
+        Probability that nodes will be dropped in the graph decoder during 
+        training.
     """
     def __init__(self,
                  n_input: int,
@@ -48,7 +55,23 @@ class VGAE(nn.Module, VGAEModuleMixin):
         self.decoder = DotProductGraphDecoder(
             dropout_rate=dropout_rate_graph_decoder)
 
-    def forward(self, x, edge_index):
+    def forward(self, x: torch.Tensor, edge_index: torch.Tensor):
+        """
+        Forward pass of the VGAE module.
+
+        Parameters
+        ----------
+        x:
+            Tensor containing gene expression.
+        edge_index:
+            Tensor containing indeces of edges.
+
+        Returns
+        ----------
+        output:
+            Dictionary containing reconstructed adjacency matrix logits, mu and 
+            logstd from the latent space distribution.
+        """
         mu, logstd = self.encoder(x, edge_index)
         z = self.reparameterize(mu, logstd)
         adj_recon_logits = self.decoder(z)
@@ -57,7 +80,28 @@ class VGAE(nn.Module, VGAEModuleMixin):
                       logstd=logstd)
         return output
 
-    def loss(self, model_output, data_batch, device):
+    def loss(self,
+             model_output: dict,
+             data_batch: Data,
+             device: Literal["cpu", "cuda"]):
+        """
+        Calculate loss of the VGAE module.
+
+        Parameters
+        ----------
+        model_output:
+            Output of the forward pass.
+        data_batch:
+            PyG Data object containing a batch.
+        device:
+            Device wheere to send the loss parameters.
+
+        Returns
+        ----------
+        loss:
+            VGAE loss.
+        """
+
         vgae_loss_params = vgae_loss_parameters(data_batch=data_batch,
                                                 device=device)
         edge_recon_loss_norm_factor = vgae_loss_params[0]
@@ -73,3 +117,12 @@ class VGAE(nn.Module, VGAEModuleMixin):
             logstd=model_output["logstd"],
             n_nodes=data_batch.x.size(0))
         return loss
+
+    def log_module_hyperparams_to_mlflow(self):
+        """Log module hyperparameters to Mlflow."""
+        mlflow.log_param("n_hidden", self.n_hidden_encoder)
+        mlflow.log_param("n_latent", self.n_latent)
+        mlflow.log_param("dropout_rate_encoder", 
+                         self.dropout_rate_encoder)
+        mlflow.log_param("dropout_rate_graph_decoder", 
+                         self.dropout_rate_graph_decoder) 

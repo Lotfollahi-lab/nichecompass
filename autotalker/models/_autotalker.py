@@ -1,9 +1,9 @@
 import logging
 from typing import Literal, Optional, Union
 
-import anndata as ad
-import numpy as np
 import torch
+from anndata import AnnData
+from numpy import ndarray
 
 from ._basemodelmixin import BaseModelMixin
 from ._vgaemodelmixin import VGAEModelMixin
@@ -31,6 +31,9 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         Number of nodes in the encoder hidden layer.
     dropout_rate_encoder:
         Probability that nodes will be dropped in the encoder during training.
+    dropout_rate_graph_decoder:
+        Probability that nodes will be dropped in the graph decoder during 
+        training.
     gp_mask:
         Gene program mask that is directly passed to the model (if not None, 
         this mask will have prevalence over a gene program mask stored in 
@@ -40,20 +43,16 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         will only be used if no mask is passed directly to the model.
     adj_key:
         Key under which the sparse adjacency matrix is stored in adata.obsp.
-    mlflow_experiment_id:
-        ID of the mlflow experiment if tracking of model training is desired.
     """
     def __init__(self,
-                 adata: ad.AnnData,
+                 adata: AnnData,
                  autotalker_module: Literal["VGAE", "VGPGAE"]="VGPGAE",
                  n_hidden_encoder: int=32,
                  dropout_rate_encoder: float=0.0,
                  dropout_rate_graph_decoder: float=0.0,
-                 gp_mask: Optional[Union[np.ndarray, list]]=None,
+                 gp_mask: Optional[Union[ndarray, list]]=None,
                  gp_mask_key: str="autotalker_gp_mask",
-                 adj_key: str="spatial_connectivities",
-                 mlflow_experiment_id: Optional[str]=None,
-                 **model_kwargs):
+                 adj_key: str="spatial_connectivities"):
         self.adata = adata
         self.autotalker_module_ = autotalker_module
         self.n_input_ = adata.n_vars
@@ -77,10 +76,10 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                                  "programs (latent nodes) to reconstruct all "
                                  "genes by passing a mask created with ´mask "
                                  "= np.ones((n_latent, len(adata.var)))´).")
-
         self.gp_mask_ = torch.tensor(gp_mask, dtype=torch.float32)
         self.n_latent_ = len(self.gp_mask_)
-
+        
+        # Initialize model with module
         if self.autotalker_module_ == "VGAE":
             self.model = VGAE(
                 n_input=self.n_input_,
@@ -98,8 +97,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                 dropout_rate_graph_decoder=self.dropout_rate_graph_decoder_)
 
         self.is_trained_ = False
+        # Store init params for saving and loading
         self.init_params_ = self._get_init_params(locals())
-
 
     def train(self,
               n_epochs: int=200,
@@ -119,13 +118,28 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         Parameters
         ----------
         n_epochs:
-            Number of epochs.
+            Number of epochs for model training.
         lr:
-            Learning rate.
+            Learning rate for model training.
         weight_decay:
-            Weight decay (L2 penalty).
-        kwargs:
-            Kwargs for the trainer.
+            Weight decay (L2 penalty) for model training.
+        edge_val_ratio:
+            Fraction of the data that is used as validation set on edge-level.
+        edge_test_ratio:
+            Fraction of the data that is used as test set on edge-level.
+        edge_batch_size:
+            Batch size for the edge-level dataloaders.
+        node_val_ratio:
+            Fraction of the data that is used as validation set on node-level.
+        node_test_ratio:
+            Fraction of the data that is used as test set on node-level.
+        node_batch_size:
+            Batch size for the node-level dataloaders.
+        mlflow_experiment_id:
+            ID of the Mlflow experiment used for tracking training parameters
+            and metrics.
+        trainer_kawrgs:
+            Kwargs for the model Trainer.
         """
         self.trainer = Trainer(adata=self.adata,
                                model=self.model,
@@ -137,9 +151,10 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                                node_test_ratio=node_test_ratio,
                                node_batch_size=node_batch_size,
                                **trainer_kwargs)
-                                    
+
         self.trainer.train(n_epochs=n_epochs,
                            lr=lr,
                            weight_decay=weight_decay,
                            mlflow_experiment_id=mlflow_experiment_id,)
+        
         self.is_trained_ = True

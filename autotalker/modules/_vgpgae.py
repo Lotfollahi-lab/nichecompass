@@ -1,16 +1,19 @@
-from typing import Literal, Tuple
+from typing import Literal
 
+import mlflow
 import torch
 import torch.nn as nn
-import torch_geometric
+from torch_geometric.data import Data
 
 from autotalker.nn import DotProductGraphDecoder
 from autotalker.nn import GCNEncoder
 from autotalker.nn import MaskedGeneExprDecoder
-from ._vgaemodulemixin import VGAEModuleMixin
+from ._losses import compute_edge_recon_loss
 from ._losses import compute_gene_expr_recon_zinb_loss
+from ._losses import compute_kl_loss
 from ._losses import compute_vgae_loss
 from ._losses import vgae_loss_parameters
+from ._vgaemodulemixin import VGAEModuleMixin
 
 
 class VGPGAE(nn.Module, VGAEModuleMixin):
@@ -21,14 +24,17 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
     ----------
     n_input:
         Number of nodes in the input layer.
-    n_hidden:
-        Number of nodes in the hidden layer.
+    n_hidden_encoder:
+        Number of nodes in the encoder hidden layer.
     n_latent:
         Number of nodes in the latent space.
-    use_size_factor_key:
-        If `True` use size factors under key. If `False` use observed lib size.
-    dropout_rate:
-        Probability that nodes will be dropped during training.
+    gene_expr_decoder_mask:
+        Gene program mask for the gene expression decoder.
+    dropout_rate_encoder:
+        Probability that nodes will be dropped in the encoder during training.
+    dropout_rate_graph_decoder:
+        Probability that nodes will be dropped in the graph decoder during 
+        training.
     """
     def __init__(self,
                  n_input: int,
@@ -39,7 +45,7 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
                  dropout_rate_graph_decoder: float=0.0):
         super().__init__()
         self.n_input = n_input
-        self.n_hidden = n_hidden_encoder
+        self.n_hidden_encoder = n_hidden_encoder
         self.n_latent = n_latent
         self.dropout_rate_encoder = dropout_rate_encoder
         self.dropout_rate_graph_decoder = dropout_rate_graph_decoder
@@ -64,6 +70,23 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         self.theta = torch.nn.Parameter(torch.randn(self.n_input))
 
     def forward(self, x: torch.Tensor, edge_index: torch.Tensor):
+        """
+        Forward pass of the VGPGAE module.
+
+        Parameters
+        ----------
+        x:
+            Tensor containing gene expression.
+        edge_index:
+            Tensor containing indeces of edges.
+
+        Returns
+        ----------
+        output:
+            Dictionary containing reconstructed adjacency matrix logits, ZINB
+            parameters for gene expression reconstruction, mu and logstd from
+            the latent space distribution.
+        """
         log_library_size = torch.log(x.sum(1)).unsqueeze(1)
         self.mu, self.logstd = self.encoder(x, edge_index)
         self.z = self.reparameterize(self.mu, self.logstd)
@@ -76,11 +99,33 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         return output
 
     def loss(self,
-             edge_data_batch: torch_geometric.data.Data,
+             edge_data_batch: Data,
              edge_model_output: dict,
-             node_data_batch: torch_geometric.data.Data,
+             node_data_batch: Data,
              node_model_output: dict,
-             device: str):
+             device: Literal["cpu", "cuda"]):
+        """
+        Calculate loss of the VGPGAE module.
+
+        Parameters
+        ----------
+        edge_data_batch:
+            PyG Data object containing an edge-level batch.
+        edge_model_output:
+            Output of the forward pass for edge reconstruction.
+        node_data_batch:
+            PyG Data object containing a node-level batch.
+        node_model_output:
+            Output of the forward pass for gene expression reconstruction. 
+        device:
+            Device wheere to send the loss parameters.
+
+        Returns
+        ----------
+        loss_dict:
+            Dictionary containing loss, edge reconstruction loss and gene
+            expression reconstruction loss.
+        """
         loss_dict = {}
 
         vgae_loss_params = vgae_loss_parameters(
@@ -89,6 +134,18 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         edge_recon_loss_norm_factor = vgae_loss_params[0]
         edge_recon_loss_pos_weight = vgae_loss_params[1]
 
+        loss_dict["edge_recon_loss"] = compute_edge_recon_loss(
+            adj_recon_logits=edge_model_output["adj_recon_logits"],
+            edge_labels=edge_data_batch.edge_label,
+            edge_label_index=edge_data_batch.edge_label_index,
+            pos_weight=edge_recon_loss_pos_weight)
+
+        loss_dict["kl_loss"] = compute_kl_loss(
+            mu=edge_model_output["mu"],
+            logstd=edge_model_output["logstd"],
+            n_nodes=edge_data_batch.x.size(0))
+        
+        """
         loss_dict["edge_recon_loss"] = compute_vgae_loss(
             adj_recon_logits=edge_model_output["adj_recon_logits"],
             edge_label_index=edge_data_batch.edge_label_index,
@@ -98,6 +155,7 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
             mu=edge_model_output["mu"],
             logstd=edge_model_output["logstd"],
             n_nodes=edge_data_batch.x.size(0))
+        """
 
         nb_means, zi_prob_logits = node_model_output["zinb_parameters"]
 
@@ -111,6 +169,15 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
             zi_prob_logits=zi_prob_logits)
 
         loss_dict["loss"] = (loss_dict["edge_recon_loss"] + 
+                             loss_dict["kl_loss"] +
                              loss_dict["gene_expr_recon_loss"])
-
         return loss_dict
+
+    def log_module_hyperparams_to_mlflow(self):
+        """Log module hyperparameters to Mlflow."""
+        mlflow.log_param("n_hidden", self.n_hidden_encoder)
+        mlflow.log_param("n_latent", self.n_latent)
+        mlflow.log_param("dropout_rate_encoder", 
+                         self.dropout_rate_encoder)
+        mlflow.log_param("dropout_rate_graph_decoder", 
+                         self.dropout_rate_graph_decoder) 

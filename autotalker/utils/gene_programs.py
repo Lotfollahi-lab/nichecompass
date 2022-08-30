@@ -1,9 +1,8 @@
-import anndata as ad
 import numpy as np
 import pandas as pd
-import pyreadr
+from anndata import AnnData
 
-from ..data._utils import load_R_file_as_df
+from ._utils import _load_R_file_as_df
 
 
 def download_nichenet_ligand_target_mx(
@@ -12,9 +11,13 @@ def download_nichenet_ligand_target_mx(
     Download NicheNet ligand target matrix as described in Browaeys, R., 
     Saelens, W. & Saeys, Y. NicheNet: modeling intercellular communication by 
     linking ligands to target genes. Nat. Methods 17, 159–162 (2020).
+
+    Parameters
+    ----------
+    save_path:
+        Path where to store the ligand target matrix csv file.
     """
-    url = "https://zenodo.org/record/3260758/files/ligand_target_matrix.rds"
-    load_R_file_as_df(
+    _load_R_file_as_df(
         R_file_path="ligand_target_matrix.rds",
         url="https://zenodo.org/record/3260758/files/ligand_target_matrix.rds",
         save_df_to_disk=True,
@@ -25,6 +28,18 @@ def extract_gps_from_ligand_target_mx(path: str,
                                       keep_target_ratio: float=0.1):
     """
     Extract gene programs from a ligand target matrix stored in a csv file.
+
+    Parameters
+    ----------
+    path:
+        Path where the ligand target matrix is stored.
+    keep_target_ratio:
+        Ration of target genes that are kept compared to total target genes.
+
+    Returns
+    ----------
+    ligand_target_dict:
+        Dictionary containing the ligand target gene programs.
     """
     ligand_target_df = pd.read_csv(path, index_col=0)
     all_target_gene_scores = np.squeeze(ligand_target_df.values).flatten()
@@ -42,21 +57,17 @@ def extract_gps_from_ligand_target_mx(path: str,
     return ligand_target_dict
 
 
-
-
-
-# add binary I of size n_vars x number of annotated terms in files
-# if I[i,j]=1 then gene i is active in annotation j
-def mask_adata_with_gp_dict(adata: ad.AnnData,
-                              gp_dict: dict,
-                              min_genes=0,
-                              max_genes=None,
-                              varm_key="I",
-                              uns_key="gene_programs",
-                              clean=True,
-                              genes_uppercase=True):
+def mask_adata_with_gp_dict(adata: AnnData,
+                            gp_dict: dict,
+                            min_genes=0,
+                            max_genes=None,
+                            varm_key="autotalker_",
+                            uns_key="gene_programs",
+                            clean=True,
+                            genes_uppercase=True):
     """
-    Adapted from https://github.com/theislab/scarches.
+    Adapted from 
+    https://github.com/theislab/scarches/blob/master/scarches/utils/annotations.py#L5.
     """
 
     adata_genes = adata.var_names.str.upper() if genes_uppercase else adata.var_names

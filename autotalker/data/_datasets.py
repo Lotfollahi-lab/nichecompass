@@ -1,17 +1,15 @@
 from typing import Optional
 
-import anndata as ad
-import numpy as np
 import scipy.sparse as sp
 import torch
+from anndata import AnnData
 
-from ._utils import sparse_mx_to_sparse_tensor
-from ._utils import label_encoder
+from ._utils import _sparse_mx_to_sparse_tensor
 
 
 class SpatialAnnTorchDataset():
     """
-    Spatial annotated torch dataset class to extract node features, adjacency 
+    Spatially annotated torch dataset class to extract node features, adjacency 
     matrix and edge indices in a standardized format from an AnnData object.
 
     Parameters
@@ -23,20 +21,19 @@ class SpatialAnnTorchDataset():
         Key under which the sparse adjacency matrix is stored in adata.obsp.
     """
     def __init__(self,
-                 adata: ad.AnnData,
+                 adata: AnnData,
                  adj_key: str="spatial_connectivities"):
-        
         # Store features in dense format
         if sp.issparse(adata.X): 
             self.x = torch.tensor(adata.X.toarray())
         else:
             self.x = torch.tensor(adata.X)
 
-        # Store adjacency matrix in sparse tensor format
+        # Store adjacency matrix in sparse torch tensor format
         if sp.issparse(adata.obsp[adj_key]):
-            self.adj = sparse_mx_to_sparse_tensor(adata.obsp[adj_key])
+            self.adj = _sparse_mx_to_sparse_tensor(adata.obsp[adj_key])
         else:
-            self.adj = sparse_mx_to_sparse_tensor(
+            self.adj = _sparse_mx_to_sparse_tensor(
                 sp.csr_matrix(adata.obsp[adj_key]))
 
         # Validate adjacency matrix symmetry

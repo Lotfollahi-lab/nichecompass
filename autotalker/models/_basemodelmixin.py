@@ -3,11 +3,11 @@ import os
 import warnings
 from typing import Optional
 
-import anndata as ad
 import numpy as np
 import pickle
 import scipy.sparse as sp
 import torch
+from anndata import AnnData
 
 from ._utils import _initialize_model
 from ._utils import _load_saved_files
@@ -16,49 +16,63 @@ from ._utils import _validate_var_names
 
 class BaseModelMixin():
     """
-    BaseModel class for basic model functionalities. 
-    
-    Adapted from https://github.com/theislab/scarches and 
-    https://github.com/scverse/scvi-tools.
+    Base model mix in class for universal model functionalities. Adapted from
+    https://github.com/theislab/scarches/blob/master/scarches/models/base/_base.py#L15
+    and 
+    https://github.com/scverse/scvi-tools/blob/master/scvi/model/base/_base_model.py#L63.
     """
     def _get_user_attributes(self):
         """
         Get all the attributes defined in a model instance, for example 
         self.is_trained_.
+
+        Returns
+        ----------
+        attributes:
+            Attributes defined in a model instance.
         """
         attributes = inspect.getmembers(
             self, lambda a: not (inspect.isroutine(a)))
         attributes = [a for a in attributes if not (
             a[0].startswith("__") and a[0].endswith("__"))]
-
         return attributes
-
 
     def _get_public_attributes(self):
         """
         Get only public attributes defined in a model instance. By convention
         public attributes have a trailing underscore.
+
+        Returns
+        ----------
+        public_attributes:
+            Public attributes defined in a model instance.
         """
         public_attributes = self._get_user_attributes()
         public_attributes = {a[0]: a[1] for a in public_attributes if a[0][-1] == "_"}
-
         return public_attributes
 
-
-    def _get_init_params(self, locals):
+    def _get_init_params(self, locals: dict):
         """
         Get the model init signature with associated passed in values from 
-        locals (except the anndata object passed in).
+        locals (except the AnnData object passed in).
+
+        Parameters
+        ----------
+        locals:
+            Dictionary returned by calling the ´locals()´ method.
+
+        Returns
+        ----------
+        user_params:
+            Model initialization attributes defined in a model instance.
         """
         init = self.__init__
         sig = inspect.signature(init)
         init_params = [p for p in sig.parameters]
         user_params = {p: locals[p] for p in locals if p in init_params}
         user_params = {k: v for (k, v) in user_params.items() if not 
-                       isinstance(v, ad.AnnData)}
-
+                       isinstance(v, AnnData)}
         return user_params
-
 
     def save(self,
              dir_path: str,
@@ -67,23 +81,21 @@ class BaseModelMixin():
              adata_file_name: str="adata.h5ad",
              **anndata_write_kwargs):
         """
-        Save a model. 
-        
-        The trainer optimizer state is not saved.
+        Save model to disk (the Trainer optimizer state is not saved).
 
         Parameters
         ----------
         dir_path:
-            Path of the directory where the model is saved.
+            Path of the directory where the model will be saved.
         overwrite:
-            If `True` overwrite existing data. If `False` and directory
+            If `True`, overwrite existing data. If `False` and directory
             already exists at `dir_path`, error will be raised.
-        save_anndata:
+        save_adata:
             If `True`, also saves the AnnData object.
-        anndata_file_name:
+        adata_file_name:
             File name under which the AnnData object will be saved.
-        anndata_write_kwargs:
-            Kwargs for anndata write function.
+        adata_write_kwargs:
+            Kwargs for adata write function.
         """
         if not os.path.exists(dir_path) or overwrite:
             os.makedirs(dir_path, exist_ok=overwrite)
@@ -112,13 +124,12 @@ class BaseModelMixin():
         with open(attr_save_path, "wb") as f:
             pickle.dump(public_attributes, f)
 
-
     @classmethod
     def load(cls,
-            dir_path: str,
-            adata: Optional[ad.AnnData]=None,
-            adata_file_name: str="adata.h5ad",
-            use_cuda: bool=False):
+             dir_path: str,
+             adata: Optional[AnnData]=None,
+             adata_file_name: str="adata.h5ad",
+             use_cuda: bool=False):
         """
         Instantiate a model from saved output.
         
@@ -127,12 +138,12 @@ class BaseModelMixin():
         dir_path:
             Path to saved outputs.
         adata:
-            AnnData organized in the same way as data used to train model.
-            If None, will check for and load anndata saved with the model.
-        anndata_file_name:
+            AnnData organized in the same way as data used to train the model.
+            If ´None´, will check for and load adata saved with the model.
+        adata_file_name:
             File name of the AnnData object to be loaded.
         use_cuda:
-            If `True` load model on GPU.
+            If `True`, load model on GPU.
         
         Returns
         -------
@@ -157,17 +168,19 @@ class BaseModelMixin():
         model.model.load_state_dict(model_state_dict)
         if use_cuda:
             model.model.cuda()
-
         model.model.eval()
-
         return model
-
 
     def _check_if_trained(self,
                           warn: bool=True):
         """
-        Check if the model is trained. If not trained and `warn` is True, raise 
-        a warning, else raise a RuntimeError.
+        Check if the model is trained.
+
+        Parameters
+        -------
+        warn:
+             If not trained and `warn` is True, raise a warning, else raise a 
+             RuntimeError.
         """
         message = ("Trying to query inferred values from an untrained model. " +
                    "Please train the model first.")

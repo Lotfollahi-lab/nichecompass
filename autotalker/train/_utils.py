@@ -39,7 +39,6 @@ class EarlyStopping:
                  reduce_lr_on_plateau: bool=True,
                  lr_patience: int=13,
                  lr_factor: float=0.1):
-        
         self.early_stopping_metric = early_stopping_metric
         self.metric_improvement_threshold = metric_improvement_threshold
         self.patience = patience

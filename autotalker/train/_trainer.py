@@ -2,24 +2,27 @@ import time
 from collections import defaultdict
 from typing import Optional
 
-import anndata as ad
 import mlflow
 import numpy as np
 import torch
 import torch.nn as nn
+from anndata import AnnData
 
-from autotalker.data import prepare_data
-from autotalker.data import initialize_dataloaders
 from ._metrics import get_eval_metrics
 from ._metrics import plot_eval_metrics
-from ._utils import EarlyStopping
 from ._utils import plot_loss_curves
 from ._utils import print_progress
+from ._utils import EarlyStopping
+from autotalker.data import initialize_dataloaders
+from autotalker.data import prepare_data
 
 
 class Trainer:
     """
-    Trainer class.
+    Trainer class. Adapted from 
+    https://github.com/theislab/scarches/blob/master/scarches/trainers/trvae/trainer.py#L13.
+
+    Encapsulates all logic for model training preparation and model training.
     
     Parameters
     ----------
@@ -27,39 +30,35 @@ class Trainer:
         AnnData object with sparse adjacency matrix stored in 
         adata.obsp[adj_key].
     model:
-        An Autotalker model.
+        An Autotalker module model instance.
     adj_key:
         Key under which the sparse adjacency matrix is stored in adata.obsp.
     edge_val_ratio:
-
+        Fraction of the data that is used as validation set on edge-level.
     edge_test_ratio:
-
+        Fraction of the data that is used as test set on edge-level.
     edge_batch_size:
-        Batch size per iteration.
-        
+        Batch size for the edge-level dataloaders.
     node_val_ratio:
-
+        Fraction of the data that is used as validation set on node-level.
     node_test_ratio:
-        
+        Fraction of the data that is used as test set on node-level.
     node_batch_size:
-
+        Batch size for the node-level dataloaders.
     use_early_stopping:
-        If "True", the EarlyStopping class is used to prevent overfitting.
+        If `True`, the EarlyStopping class is used to prevent overfitting.
     reload_best_model:
-        If "True", the best state of the model with respect to the early
+        If `True`, the best state of the model with respect to the early
         stopping criterion is reloaded at the end of training.
     early_stopping_kwargs:
-        Custom parameters for the EarlyStopping class.
+        Kwargs for the EarlyStopping class.
     seed:
         Random seed to get reproducible results.
-    n_workers:
-        Parameter n_workers of the torch dataloaders.
     monitor:
-        If "True", the progress of the training will be printed after each 
-        epoch.
+        If ´True´, the progress of training will be printed after each epoch.
     """
     def __init__(self,
-                 adata: ad.AnnData,
+                 adata: AnnData,
                  model: nn.Module,
                  adj_key: str="spatial_connectivities",
                  edge_val_ratio: float=0.1,
@@ -89,9 +88,10 @@ class Trainer:
                                  else {})
         self.early_stopping = EarlyStopping(**early_stopping_kwargs)
         self.seed = kwargs.pop("seed", 0)
-        self.n_workers = kwargs.pop("n_workers", 0)
         self.monitor = kwargs.pop("monitor", True)
-
+        self.loaders_n_direct_neighbors = kwargs.pop(
+            "loaders_n_direct_neighbors", -1)
+        self.loaders_n_hops = kwargs.pop("loaders_n_hops", 3)
         self.epoch = -1
         self.training_time = 0
         self.optimizer = None
@@ -105,14 +105,14 @@ class Trainer:
         self.device = torch.device("cuda" if torch.cuda.is_available() else 
                                    "cpu")
 
-        data_dict = prepare_data(
-            adata=adata,
-            adj_key="spatial_connectivities",
-            edge_val_ratio=self.edge_val_ratio,
-            edge_test_ratio=self.edge_test_ratio,
-            node_val_ratio=self.node_val_ratio,
-            node_test_ratio=self.node_test_ratio)
-
+        # Prepare data and get node-level and edge-level training, validation
+        # and test splits
+        data_dict = prepare_data(adata=adata,
+                                 adj_key="spatial_connectivities",
+                                 edge_val_ratio=self.edge_val_ratio,
+                                 edge_test_ratio=self.edge_test_ratio,
+                                 node_val_ratio=self.node_val_ratio,
+                                 node_test_ratio=self.node_test_ratio)
         self.node_masked_data = data_dict["node_masked_data"]
         self.edge_train_data = data_dict["edge_train_data"]
         self.edge_val_data = data_dict.pop("edge_val_data", None)
@@ -123,6 +123,21 @@ class Trainer:
               lr: float=0.01,
               weight_decay: float=0,
               mlflow_experiment_id: Optional[str]=None):
+        """
+        Train the model.
+
+        Parameters
+        ----------
+        n_epochs:
+            Number of epochs for model training.
+        lr:
+            Learning rate for model training.
+        weight_decay:
+            Weight decay (L2 penalty) for model training.
+        mlflow_experiment_id:
+            ID of the Mlflow experiment used for tracking training parameters
+            and metrics.
+        """
         self.n_epochs = n_epochs
         self.lr = lr
         self.weight_decay = weight_decay
@@ -132,35 +147,29 @@ class Trainer:
             mlflow.log_param("n_epochs", self.n_epochs)
             mlflow.log_param("lr", self.lr)
             mlflow.log_param("weight_decay", self.weight_decay)
-            mlflow.log_param("n_hidden", self.model.n_hidden)
-            mlflow.log_param("n_latent", self.model.n_latent)
-            mlflow.log_param("dropout_rate_encoder", 
-                             self.model.dropout_rate_encoder)
-            mlflow.log_param("dropout_rate_graph_decoder", 
-                             self.model.dropout_rate_graph_decoder)                 
+            self.model.log_module_hyperparams_to_mlflow()                
 
+        # Initialize node-level and edge-level dataloaders
         loader_dict = initialize_dataloaders(
             node_masked_data=self.node_masked_data,
             edge_train_data=self.edge_train_data,
             edge_val_data=self.edge_val_data,
             edge_test_data=self.edge_test_data,
-            node_batch_size=4,
-            edge_batch_size=32,
-            n_direct_neighbors=-1,
-            n_hops=3,
-            directed=False,
+            node_batch_size=self.node_batch_size,
+            edge_batch_size=self.edge_batch_size,
+            n_direct_neighbors=self.loaders_n_direct_neighbors,
+            n_hops=self.loaders_n_hops,
+            edges_directed=False,
             neg_edge_sampling_ratio=1.0)
-
-        self.edge_train_loader = loader_dict.pop("edge_train_loader", None)
+        self.edge_train_loader = loader_dict["edge_train_loader"]
         self.edge_val_loader = loader_dict.pop("edge_val_loader", None)
         self.edge_test_loader = loader_dict.pop("edge_test_loader", None)
-        self.node_train_loader = loader_dict.pop("node_train_loader", None)
+        self.node_train_loader = loader_dict["node_train_loader"]
         self.node_val_loader = loader_dict.pop("node_val_loader", None)
         self.node_test_loader = loader_dict.pop("node_test_loader", None)
 
         start_time = time.time()
         self.epoch_logs = defaultdict(list)
-
         self.model.train()
         params = filter(lambda p: p.requires_grad, self.model.parameters())
         self.optimizer = torch.optim.Adam(params,
@@ -172,18 +181,18 @@ class Trainer:
             self.iter_logs["n_train_iter"] = 0
             self.iter_logs["n_val_iter"] = 0
             
-            # Jointly loop through edge and node level batches
+            # Jointly loop through edge- and node-level batches
             for edge_train_data_batch, node_train_data_batch in zip(
                     self.edge_train_loader, self.node_train_loader):
                 edge_train_data_batch = edge_train_data_batch.to(self.device)
                 node_train_data_batch = node_train_data_batch.to(self.device)
 
-                # Forward pass edge level batch
+                # Forward pass edge-level batch
                 edge_train_model_output = self.model(
                     edge_train_data_batch.x,
                     edge_train_data_batch.edge_index)
 
-                # Forward pass node level batch
+                # Forward pass node-level batch
                 node_train_model_output = self.model(
                     node_train_data_batch.x,
                     node_train_data_batch.edge_index)
@@ -198,11 +207,14 @@ class Trainer:
                     device=self.device)
                 train_loss = train_loss_dict["loss"]
                 train_edge_recon_loss = train_loss_dict["edge_recon_loss"]
+                train_kl_loss = train_loss_dict["kl_loss"]
                 train_gene_expr_recon_loss = train_loss_dict[
                     "gene_expr_recon_loss"]
                 self.iter_logs["train_loss"].append(train_loss.item())
                 self.iter_logs["train_edge_recon_loss"].append(
                     train_edge_recon_loss.item())
+                self.iter_logs["train_kl_loss"].append(
+                    train_kl_loss.item())    
                 self.iter_logs["train_gene_expr_recon_loss"].append(
                     train_gene_expr_recon_loss.item())
                 self.iter_logs["n_train_iter"] += 1
@@ -299,10 +311,13 @@ class Trainer:
                     device=self.device)
             val_loss = val_loss_dict["loss"]
             val_edge_recon_loss = val_loss_dict["edge_recon_loss"]
+            val_kl_loss = val_loss_dict["kl_loss"]
             val_gene_expr_recon_loss = val_loss_dict["gene_expr_recon_loss"]
             self.iter_logs["val_loss"].append(val_loss.item())
             self.iter_logs["val_edge_recon_loss"].append(
                 val_edge_recon_loss.item())
+            self.iter_logs["val_kl_loss"].append(
+                    val_kl_loss.item())    
             self.iter_logs["val_gene_expr_recon_loss"].append(
                 val_gene_expr_recon_loss.item())
             self.iter_logs["n_val_iter"] += 1
@@ -310,14 +325,14 @@ class Trainer:
             # Calculate evaluation metrics
             adj_recon_probs = torch.sigmoid(
                 edge_val_model_output["adj_recon_logits"])
-            val_eval_metrics = get_eval_metrics(
+            val_eval_dict = get_eval_metrics(
                 adj_recon_probs,
                 edge_val_data_batch.edge_label_index,
                 edge_val_data_batch.edge_label)
-            val_auroc_score = val_eval_metrics[0]
-            val_auprc_score = val_eval_metrics[1]
-            val_best_acc_score = val_eval_metrics[2]
-            val_best_f1_score = val_eval_metrics[3]
+            val_auroc_score = val_eval_dict["auroc_score"]
+            val_auprc_score = val_eval_dict["auprc_score"]
+            val_best_acc_score = val_eval_dict["best_acc_score"]
+            val_best_f1_score = val_eval_dict["best_f1_score"]
             self.iter_logs["val_auroc_score"].append(val_auroc_score)
             self.iter_logs["val_auprc_score"].append(val_auprc_score)
             self.iter_logs["val_best_acc_score"].append(val_best_acc_score)
@@ -344,14 +359,14 @@ class Trainer:
             # Calculate evaluation metrics
             adj_recon_probs = torch.sigmoid(
                 edge_test_model_output["adj_recon_logits"])
-            test_eval_metrics = get_eval_metrics(
+            test_eval_dict = get_eval_metrics(
                     adj_recon_probs,
                     edge_test_data_batch.edge_label_index,
                     edge_test_data_batch.edge_label)
-            test_auroc_scores_running += test_eval_metrics[0]
-            test_auprc_scores_running += test_eval_metrics[1]
-            test_best_acc_scores_running += test_eval_metrics[2]
-            test_best_f1_scores_running += test_eval_metrics[3]
+            test_auroc_scores_running += test_eval_dict["auroc_score"]
+            test_auprc_scores_running += test_eval_dict["auprc_score"]
+            test_best_acc_scores_running += test_eval_dict["best_acc_score"]
+            test_best_f1_scores_running += test_eval_dict["best_f1_score"]
 
         test_auroc_score = test_auroc_scores_running / n_test_iter
         test_auprc_score = test_auprc_scores_running / n_test_iter
