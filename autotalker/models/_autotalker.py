@@ -109,6 +109,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
               node_val_ratio: float=0.1,
               node_test_ratio: float=0.0,
               edge_batch_size: int=64,
+              include_edge_recon_loss: bool=True,
+              include_gene_expr_recon_loss: bool=True,
               mlflow_experiment_id: Optional[str]=None,
               **trainer_kwargs):
         """
@@ -132,21 +134,30 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             Fraction of the data that is used as test set on node-level.
         edge_batch_size:
             Batch size for the edge-level dataloaders.
+        include_edge_recon_loss:
+            If `True` include the redge reconstruction loss in the loss 
+            optimization.
+        include_gene_expr_recon_loss:
+            If `True`, include the gene expression reconstruction loss in the 
+            loss optimization.
         mlflow_experiment_id:
             ID of the Mlflow experiment used for tracking training parameters
             and metrics.
         trainer_kawrgs:
             Kwargs for the model Trainer.
         """
-        self.trainer = Trainer(adata=self.adata,
-                               model=self.model,
-                               adj_key=self.adj_key_,
-                               edge_val_ratio=edge_val_ratio,
-                               edge_test_ratio=edge_test_ratio,
-                               node_val_ratio=node_val_ratio,
-                               node_test_ratio=node_test_ratio,
-                               edge_batch_size=edge_batch_size,
-                               **trainer_kwargs)
+        self.trainer = Trainer(
+            adata=self.adata,
+            model=self.model,
+            adj_key=self.adj_key_,
+            edge_val_ratio=edge_val_ratio,
+            edge_test_ratio=edge_test_ratio,
+            node_val_ratio=node_val_ratio,
+            node_test_ratio=node_test_ratio,
+            edge_batch_size=edge_batch_size,                 
+            include_edge_recon_loss=include_edge_recon_loss,
+            include_gene_expr_recon_loss=include_gene_expr_recon_loss,
+            **trainer_kwargs)
 
         self.trainer.train(n_epochs=n_epochs,
                            lr=lr,

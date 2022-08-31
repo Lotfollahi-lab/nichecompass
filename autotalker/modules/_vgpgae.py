@@ -1,3 +1,4 @@
+from pickletools import optimize
 from typing import Literal
 
 import mlflow
@@ -69,7 +70,10 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         # Gene-specific inverse dispersion parameters
         self.theta = torch.nn.Parameter(torch.randn(self.n_input))
 
-    def forward(self, x: torch.Tensor, edge_index: torch.Tensor):
+    def forward(self,
+                x: torch.Tensor,
+                edge_index: torch.Tensor,
+                decoder: Literal["graph", "gene_expr"]="graph"):
         """
         Forward pass of the VGPGAE module.
 
@@ -79,6 +83,9 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
             Tensor containing gene expression.
         edge_index:
             Tensor containing indeces of edges.
+        decoder:
+            Which decoder to use for the forward pass, either "graph" for edge
+            reconstruction or "gene_expr" for gene expression reconstruction.
 
         Returns
         ----------
@@ -87,15 +94,15 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
             parameters for gene expression reconstruction, mu and logstd from
             the latent space distribution.
         """
+        output = {}
         log_library_size = torch.log(x.sum(1)).unsqueeze(1)
-        self.mu, self.logstd = self.encoder(x, edge_index)
-        self.z = self.reparameterize(self.mu, self.logstd)
-        adj_recon_logits = self.graph_decoder(self.z)
-        zinb_parameters = self.gene_expr_decoder(self.z, log_library_size)
-        output = dict(adj_recon_logits=adj_recon_logits,
-                      zinb_parameters=zinb_parameters,
-                      mu=self.mu,
-                      logstd=self.logstd)
+        output["mu"], output["logstd"] = self.encoder(x, edge_index)
+        z = self.reparameterize(output["mu"], output["logstd"])
+        if decoder == "graph":
+            output["adj_recon_logits"] = self.graph_decoder(z)
+        elif decoder == "gene_expr":
+            output["zinb_parameters"] = self.gene_expr_decoder(z,
+                                                               log_library_size)
         return output
 
     def loss(self,
@@ -103,7 +110,9 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
              edge_model_output: dict,
              node_data_batch: Data,
              node_model_output: dict,
-             device: Literal["cpu", "cuda"]):
+             device: Literal["cpu", "cuda"],
+             include_edge_recon_loss: bool=True,
+             include_gene_expr_recon_loss: bool=True):
         """
         Calculate loss of the VGPGAE module.
 
@@ -116,9 +125,15 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         node_data_batch:
             PyG Data object containing a node-level batch.
         node_model_output:
-            Output of the forward pass for gene expression reconstruction. 
+            Output of the forward pass for gene expression reconstruction.
         device:
-            Device wheere to send the loss parameters.
+            Device where to send the loss parameters.
+        include_edge_recon_loss:
+            If `True` include the redge reconstruction loss in the loss 
+            optimization.
+        include_gene_expr_recon_loss:
+            If `True`, include the gene expression reconstruction loss in the 
+            loss optimization.
 
         Returns
         ----------
@@ -157,9 +172,14 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
             theta=theta,
             zi_prob_logits=zi_prob_logits)
 
-        loss_dict["loss"] = (loss_dict["edge_recon_loss"] + 
-                             loss_dict["kl_loss"] +
-                             loss_dict["gene_expr_recon_loss"])
+        loss_dict["loss"] = 0
+        loss_dict["loss"] += loss_dict["kl_loss"]
+
+        if include_edge_recon_loss:
+            loss_dict["loss"] += loss_dict["edge_recon_loss"]
+
+        if include_gene_expr_recon_loss:
+            loss_dict["loss"] += loss_dict["gene_expr_recon_loss"]
         return loss_dict
 
     def log_module_hyperparams_to_mlflow(self):
