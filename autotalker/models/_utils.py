@@ -104,7 +104,7 @@ def _initialize_model(cls,
     init_params = attr_dict.pop("init_params_")
 
     # Update use_cuda from the saved model
-    init_params["use_cuda"] = use_cuda
+    # init_params["use_cuda"] = use_cuda
 
     # Grab all the parameters except for kwargs (is a dict)
     non_kwargs = {k: v for k, v in init_params.items() if not isinstance(v, dict)}

@@ -66,7 +66,7 @@ def mask_adata_with_gp_dict(adata: AnnData,
                             clean=True,
                             genes_uppercase=True):
     """
-    Adapted from 
+    Add a gene program mask (dictionary) to an AnnData object. Adapted from
     https://github.com/theislab/scarches/blob/master/scarches/utils/annotations.py#L5.
     """
 

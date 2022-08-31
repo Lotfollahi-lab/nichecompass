@@ -211,7 +211,7 @@ def vgae_loss_parameters(data_batch: Data, device: Literal["cpu", "cuda"]):
     data_batch:
         PyG Data object containing a batch of data.
     device:
-        Device wheere to send the loss parameters.
+        Device where to send the loss parameters.
 
     Returns
     ----------
@@ -223,7 +223,7 @@ def vgae_loss_parameters(data_batch: Data, device: Literal["cpu", "cuda"]):
         loss calculation. Should be 1 if negative sampling ratio is 1.     
     """
     n_possible_edges = data_batch.x.shape[0] ** 2
-    n_neg_edges = (data_batch.edge_label == 0).sum()
-    edge_recon_loss_norm_factor = n_possible_edges / n_neg_edges
+    n_neg_edges = n_possible_edges - data_batch.edge_index.shape[1]
+    edge_recon_loss_norm_factor = n_possible_edges / (n_neg_edges * 2)
     edge_recon_loss_pos_weight = torch.Tensor([1]).to(device)
     return edge_recon_loss_norm_factor, edge_recon_loss_pos_weight

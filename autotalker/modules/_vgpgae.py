@@ -134,28 +134,17 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         edge_recon_loss_norm_factor = vgae_loss_params[0]
         edge_recon_loss_pos_weight = vgae_loss_params[1]
 
-        loss_dict["edge_recon_loss"] = compute_edge_recon_loss(
+        loss_dict["edge_recon_loss"] = (edge_recon_loss_norm_factor * 
+        compute_edge_recon_loss(
             adj_recon_logits=edge_model_output["adj_recon_logits"],
             edge_labels=edge_data_batch.edge_label,
             edge_label_index=edge_data_batch.edge_label_index,
-            pos_weight=edge_recon_loss_pos_weight)
+            pos_weight=edge_recon_loss_pos_weight))
 
         loss_dict["kl_loss"] = compute_kl_loss(
             mu=edge_model_output["mu"],
             logstd=edge_model_output["logstd"],
             n_nodes=edge_data_batch.x.size(0))
-        
-        """
-        loss_dict["edge_recon_loss"] = compute_vgae_loss(
-            adj_recon_logits=edge_model_output["adj_recon_logits"],
-            edge_label_index=edge_data_batch.edge_label_index,
-            edge_labels=edge_data_batch.edge_label,
-            edge_recon_loss_pos_weight=edge_recon_loss_pos_weight,
-            edge_recon_loss_norm_factor=edge_recon_loss_norm_factor,
-            mu=edge_model_output["mu"],
-            logstd=edge_model_output["logstd"],
-            n_nodes=edge_data_batch.x.size(0))
-        """
 
         nb_means, zi_prob_logits = node_model_output["zinb_parameters"]
 
