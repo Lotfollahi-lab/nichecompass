@@ -15,7 +15,7 @@ from autotalker.modules import VGAE
 from autotalker.train import compute_vgae_loss_parameters
 from autotalker.train import compute_vgae_loss
 from autotalker.train import plot_loss
-from autotalker.train import get_eval_metrics
+from autotalker.train import eval_metrics
 from autotalker.train import plot_eval_metrics
 from autotalker.train import prepare_data
 
@@ -168,7 +168,7 @@ def main(args):
             A_rec_logits_mu = torch.mm(mu, mu.t())
             A_rec_probs = torch.sigmoid(A_rec_logits_mu)
 
-            auroc_score_val, auprc_score_val, best_acc_score_val, best_f1_score_val  = get_eval_metrics(
+            auroc_score_val, auprc_score_val, best_acc_score_val, best_f1_score_val  = eval_metrics(
                 A_rec_probs,
                 val_data.pos_edge_label_index,
                 val_data.neg_edge_label_index)
@@ -201,7 +201,7 @@ def main(args):
     fig = plot_eval_metrics(eval_metrics_val)  
     mlflow.log_figure(fig, "val_eval_metrics.png")           
 
-    auroc_score_test, auprc_score_test, best_acc_score_test, best_f1_score_test = get_eval_metrics(
+    auroc_score_test, auprc_score_test, best_acc_score_test, best_f1_score_test = eval_metrics(
         A_rec_probs,
         test_data.pos_edge_label_index,
         test_data.neg_edge_label_index)

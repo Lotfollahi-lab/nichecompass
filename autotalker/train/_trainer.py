@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 from anndata import AnnData
 
-from ._metrics import get_eval_metrics
+from ._metrics import eval_metrics
 from ._metrics import plot_eval_metrics
 from ._utils import plot_loss_curves
 from ._utils import print_progress
@@ -379,7 +379,7 @@ class Trainer:
             # Calculate evaluation metrics
             adj_recon_probs = torch.sigmoid(
                 edge_val_model_output["adj_recon_logits"])
-            val_eval_dict = get_eval_metrics(
+            val_eval_dict = eval_metrics(
                 adj_recon_probs,
                 edge_val_data_batch.edge_label_index,
                 edge_val_data_batch.edge_label)
@@ -413,7 +413,7 @@ class Trainer:
             # Calculate evaluation metrics
             adj_recon_probs = torch.sigmoid(
                 edge_test_model_output["adj_recon_logits"])
-            test_eval_dict = get_eval_metrics(
+            test_eval_dict = eval_metrics(
                     adj_recon_probs,
                     edge_test_data_batch.edge_label_index,
                     edge_test_data_batch.edge_label)
