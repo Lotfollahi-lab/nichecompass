@@ -1,8 +1,11 @@
+from typing import Literal
+
 import torch
 import torch.nn.functional as F
+from torch_geometric.data import Data
 from torch_geometric.utils import to_dense_adj
 
-from ._utils import unique_sorted_index
+from ._utils import _unique_sorted_index
 
 
 def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
@@ -46,7 +49,7 @@ def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
     # matrix. In addition, remove entries in ´edge_labels´ that are due to 
     # duplicates in ´edge_label_index´, which can happen because of the 
     # approximate negative sampling implementation in PyG LinkNeighborLoader. 
-    sort_index = unique_sorted_index(edge_label_index)
+    sort_index = _unique_sorted_index(edge_label_index)
     edge_labels_sorted = edge_labels[sort_index]
 
     # Compute weighted cross entropy loss
@@ -54,6 +57,67 @@ def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
                                                          edge_labels_sorted,
                                                          pos_weight=pos_weight)
     return edge_recon_loss
+
+
+def compute_gene_expr_recon_zinb_loss(x: torch.Tensor,
+                                      mu: torch.Tensor,
+                                      theta: torch.Tensor,
+                                      zi_prob_logits: torch.Tensor,
+                                      eps=1e-8):
+    """
+    Gene expression reconstruction loss according to a ZINB gene expression 
+    model, which is used to model scRNA-seq count data due to its capacity of 
+    modeling excess zeros and overdispersion. The source code is adapted from
+    https://github.com/scverse/scvi-tools/blob/master/scvi/distributions/_negative_binomial.py#L22.
+    The Bernoulli distribution is parameterized using logits, hence the use of a
+    softplus function.
+
+    Parameters
+    ----------
+    x:
+        Reconstructed feature matrix.
+    mu:
+        Mean of the negative binomial with positive support.
+        (shape: batch_size x n_genes)
+    theta:
+        Inverse dispersion parameter with positive support.
+        (shape: batch_size x n_genes)
+    zi_prob_logits:
+        Logits of the zero inflation probability with real support.
+        (shape: batch_size x n_genes)
+    eps:
+        Numerical stability constant.
+
+    Returns
+    ----------
+    zinb_loss:
+        Gene expression reconstruction loss using a ZINB gene expression model.
+    """
+    # Reshape theta for broadcasting
+    theta = theta.view(1, theta.size(0))
+
+    # Uses log(sigmoid(x)) = -softplus(-x)
+    softplus_zi_prob_logits = F.softplus(-zi_prob_logits)
+    log_theta_eps = torch.log(theta + eps)
+    log_theta_mu_eps = torch.log(theta + mu + eps)
+    zi_prob_logits_theta_log = -zi_prob_logits + theta * (log_theta_eps - 
+                                                          log_theta_mu_eps)
+
+    case_zero = F.softplus(zi_prob_logits_theta_log) - softplus_zi_prob_logits
+    mul_case_zero = torch.mul((x < eps).type(torch.float32), case_zero)
+
+    case_non_zero = (-softplus_zi_prob_logits
+                     + zi_prob_logits_theta_log
+                     + x * (torch.log(mu + eps) - log_theta_mu_eps)
+                     + torch.lgamma(x + theta)
+                     - torch.lgamma(theta)
+                     - torch.lgamma(x + 1))
+                     
+    mul_case_non_zero = torch.mul((x > eps).type(torch.float32), case_non_zero)
+
+    log_likehood_zinb = mul_case_zero + mul_case_non_zero
+    zinb_loss = torch.mean(-log_likehood_zinb.sum(-1))
+    return zinb_loss
 
 
 def compute_kl_loss(mu: torch.Tensor,
@@ -138,77 +202,28 @@ def compute_vgae_loss(adj_recon_logits: torch.Tensor,
     return vgae_loss
 
 
-def vgae_loss_parameters(data_batch, device):
+def vgae_loss_parameters(data_batch: Data, device: Literal["cpu", "cuda"]):
     """
+    Compute the parameters for the vgae loss calculation.
+
     Parameters
     ----------
+    data_batch:
+        PyG Data object containing a batch of data.
+    device:
+        Device where to send the loss parameters.
 
     Returns
     ----------
+    edge_recon_loss_norm_factor:
+        Factor with which edge reconstruction loss is weighted compared to 
+        Kullback-Leibler divergence.
+    edge_recon_loss_pos_weight:
+        Weight with which positive examples are reweighted in the reconstruction
+        loss calculation. Should be 1 if negative sampling ratio is 1.     
     """
     n_possible_edges = data_batch.x.shape[0] ** 2
-    n_neg_edges = (data_batch.edge_label == 0).sum()
-    edge_recon_loss_norm_factor = n_possible_edges / n_neg_edges
+    n_neg_edges = n_possible_edges - data_batch.edge_index.shape[1]
+    edge_recon_loss_norm_factor = n_possible_edges / (n_neg_edges * 2)
     edge_recon_loss_pos_weight = torch.Tensor([1]).to(device)
     return edge_recon_loss_norm_factor, edge_recon_loss_pos_weight
-
-
-def compute_gene_expr_recon_zinb_loss(x: torch.Tensor,
-                                      mu: torch.Tensor,
-                                      theta: torch.Tensor,
-                                      zi_prob_logits: torch.Tensor,
-                                      eps=1e-8):
-    """
-    Gene expression reconstruction loss according to a ZINB gene expression 
-    model, which is used to model scRNA-seq count data due to its capacity of 
-    modeling excess zeros and overdispersion. The source code is adapted from
-    https://github.com/scverse/scvi-tools/blob/master/scvi/distributions/_negative_binomial.py#L22.
-    The Bernoulli distribution is parameterized using logits, hence the use of a
-    softplus function.
-
-    Parameters
-    ----------
-    x:
-        Reconstructed feature matrix.
-    mu:
-        Mean of the negative binomial with positive support.
-        (shape: batch_size x n_genes)
-    theta:
-        Inverse dispersion parameter with positive support.
-        (shape: batch_size x n_genes)
-    zi_prob_logits:
-        Logits of the zero inflation probability with real support.
-        (shape: batch_size x n_genes)
-    eps:
-        Numerical stability constant.
-
-    Returns
-    ----------
-    zinb_loss:
-        Gene expression reconstruction loss using a ZINB gene expression model.
-    """
-    # Reshape theta for broadcasting
-    theta = theta.view(1, theta.size(0))
-
-    # Uses log(sigmoid(x)) = -softplus(-x)
-    softplus_zi_prob_logits = F.softplus(-zi_prob_logits)
-    log_theta_eps = torch.log(theta + eps)
-    log_theta_mu_eps = torch.log(theta + mu + eps)
-    zi_prob_logits_theta_log = -zi_prob_logits + theta * (log_theta_eps - 
-                                                          log_theta_mu_eps)
-
-    case_zero = F.softplus(zi_prob_logits_theta_log) - softplus_zi_prob_logits
-    mul_case_zero = torch.mul((x < eps).type(torch.float32), case_zero)
-
-    case_non_zero = (-softplus_zi_prob_logits
-                     + zi_prob_logits_theta_log
-                     + x * (torch.log(mu + eps) - log_theta_mu_eps)
-                     + torch.lgamma(x + theta)
-                     - torch.lgamma(theta)
-                     - torch.lgamma(x + 1))
-                     
-    mul_case_non_zero = torch.mul((x > eps).type(torch.float32), case_non_zero)
-
-    log_likehood_zinb = mul_case_zero + mul_case_non_zero
-    zinb_loss = torch.mean(-log_likehood_zinb.sum(-1))
-    return zinb_loss

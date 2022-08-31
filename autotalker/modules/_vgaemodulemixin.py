@@ -2,15 +2,34 @@ import torch
 
 
 class VGAEModuleMixin:
-    """Mixin class containing universal VGAE module functionalities."""
+    """
+    VGAE module mix in class containing universal VGAE module 
+    functionalities.
+    """
     def reparameterize(self, mu: torch.Tensor, logstd: torch.Tensor):
-        """Reparameterization trick for latent space normal distribution."""
+        """
+        Reparameterization trick for latent space normal distribution.
+        
+        Parameters
+        ----------
+        mu:
+            Expected values of the latent space distribution.
+        logstd:
+            Log standard deviations of the latent space distribution.
+
+        Returns
+        ----------
+        rep:
+            Reparameterized latent space values.
+        """
         if self.training:
             std = torch.exp(logstd)
             eps = torch.randn_like(mu)
-            return eps.mul(std).add(mu)
+            rep = eps.mul(std).add(mu)
+            return rep
         else:
-            return mu
+            rep = mu
+            return rep
 
     @torch.no_grad()
     def get_latent_representation(self,

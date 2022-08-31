@@ -1,6 +1,3 @@
-from typing import Literal, Optional
-
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,8 +7,8 @@ from ._layers import MaskedLayer
 
 class DotProductGraphDecoder(nn.Module):
     """
-    Dot product decoder class as per Kipf, T. N. & Welling, M. Variational Graph
-    Auto-Encoders. arXiv [stat.ML] (2016).
+    Dot product graph decoder class as per Kipf, T. N. & Welling, M. Variational 
+    Graph Auto-Encoders. arXiv [stat.ML] (2016).
 
     Takes the latent space features z as input, calculates their dot product
     to return the reconstructed adjacency matrix with logits `adj_rec_logits`.
@@ -30,7 +27,20 @@ class DotProductGraphDecoder(nn.Module):
 
         self.dropout = nn.Dropout(dropout_rate)
 
-    def forward(self, z):
+    def forward(self, z: torch.Tensor):
+        """
+        Forward pass of the dot product graph decoder.
+
+        Parameters
+        ----------
+        z:
+            Tensor containing the latent space features.
+
+        Returns
+        ----------
+        adj_rec_logits:
+            Tensor containing the reconstructed adjacency matrix with logits.
+        """
         z = self.dropout(z)
         adj_rec_logits = torch.mm(z, z.t())
         return adj_rec_logits
@@ -80,8 +90,15 @@ class MaskedGeneExprDecoder(nn.Module):
         """
         Forward pass of the masked gene expression decoder.
 
+        Parameters
+        ----------
+        z:
+            Tensor containing the latent space features.
+        log_library_size:
+            Tensor containing the log library size of the nodes.
+
         Returns
-        -------
+        ----------
         zinb_parameters:
             Parameters for the ZINB distribution to model gene expression.
         """

@@ -36,27 +36,49 @@ class GCNLayer(nn.Module):
         self.initialize_weights()
 
     def initialize_weights(self):
-        # Glorot weight initialization
+        """Initialize weights with Glorot weight initialization"""
         torch.nn.init.xavier_uniform_(self.weights)
 
-    def forward(self, input, adj):
+    def forward(self, input: torch.Tensor, adj :torch.Tensor):
+        """
+        Forward pass of the GCN layer.
+
+        Parameters
+        ----------
+        input:
+            Tensor containing gene expression.
+        adj:
+            Sparse tensor containing adjacency matrix.
+
+        Returns
+        ----------
+        output:
+            Output of the GCN layer.
+        """
         output = self.dropout(input)
         output = torch.mm(output, self.weights)
         output = torch.sparse.mm(adj, output)
-        return self.activation(output)
+        output = self.activation(output)
+        return output
 
 
 class MaskedLayer(nn.Module):
     """
-    Masked fully connected layer class.
+    Masked layer class.
 
     Parameters
     ----------
     n_input:
+        Number of input nodes to the masked layer.
     n_output:
+        Number of output nodes from the masked layer.
     bias:
+        If ´True´, use a bias.
     mask:
+        Mask that is used to mask the node connections from the input layer to
+        the output layer.
     activation:
+        Activation function used at the end of the masked layer.
     """
     def __init__(self,
                  n_input: int,
@@ -74,5 +96,18 @@ class MaskedLayer(nn.Module):
         self.activation = activation
 
     def forward(self, input: torch.Tensor):
+        """
+        Forward pass of the masked layer.
+
+        Parameters
+        ----------
+        input:
+            Input features to the masked layer (latent space features).
+
+        Returns
+        ----------
+        output:
+            Output of the masked layer.
+        """
         output = self.activation(self.mfc_l(input))
         return output
