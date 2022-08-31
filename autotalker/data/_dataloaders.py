@@ -9,7 +9,9 @@ def initialize_dataloaders(node_masked_data: Data,
                            edge_train_data: Data,
                            edge_val_data: Optional[Data]=None,
                            edge_test_data: Optional[Data]=None,
-                           node_batch_size: int=4,
+                           node_batch_size_train: int=8,
+                           node_batch_size_val: int=8,
+                           node_batch_size_test: int=8,
                            edge_batch_size: int=32,
                            n_direct_neighbors: int=-1,
                            n_hops: int=3,
@@ -27,8 +29,12 @@ def initialize_dataloaders(node_masked_data: Data,
         PyG Data object containing the edge-level training set.
     edge_val_data:
         PyG Data object containing the edge-level validation set.
-    node_batch_size:
-        Batch size for the node-level dataloaders.
+    node_batch_size_train:
+        Batch size for the node-level train dataloader.
+    node_batch_size_val:
+        Batch size for the node-level validation dataloader.
+    node_batch_size_test:
+        Batch size for the node-level test dataloader.
     edge_batch_size:
         Batch size for the edge-level dataloaders.
     n_direct_neighbors:
@@ -57,7 +63,7 @@ def initialize_dataloaders(node_masked_data: Data,
     loader_dict["node_train_loader"] = NeighborLoader(
         node_masked_data,
         num_neighbors=[n_direct_neighbors] * n_hops,
-        batch_size=node_batch_size,
+        batch_size=node_batch_size_train,
         directed=False,
         shuffle=True,
         input_nodes=node_masked_data.train_mask)
@@ -66,7 +72,7 @@ def initialize_dataloaders(node_masked_data: Data,
         loader_dict["node_val_loader"] = NeighborLoader(
             node_masked_data,
             num_neighbors=[n_direct_neighbors] * n_hops,
-            batch_size=node_batch_size,
+            batch_size=node_batch_size_val,
             directed=False,
             shuffle=True,
             input_nodes=node_masked_data.val_mask)
@@ -75,7 +81,7 @@ def initialize_dataloaders(node_masked_data: Data,
         loader_dict["node_test_loader"] = NeighborLoader(
             node_masked_data,
             num_neighbors=[n_direct_neighbors] * n_hops,
-            batch_size=node_batch_size,
+            batch_size=node_batch_size_test,
             directed=False,
             shuffle=True,
             input_nodes=node_masked_data.test_mask)
@@ -85,7 +91,8 @@ def initialize_dataloaders(node_masked_data: Data,
         num_neighbors=[n_direct_neighbors] * n_hops,
         batch_size=edge_batch_size,
         edge_label_index=edge_train_data.edge_label_index,
-        directed=edges_directed, 
+        directed=edges_directed,
+        shuffle=True,
         neg_sampling_ratio=neg_edge_sampling_ratio)
 
     if edge_val_data.edge_label.sum() != 0:
@@ -94,7 +101,8 @@ def initialize_dataloaders(node_masked_data: Data,
             num_neighbors=[n_direct_neighbors] * n_hops,
             batch_size=edge_batch_size,
             edge_label_index=edge_val_data.edge_label_index,
-            directed=edges_directed, 
+            directed=edges_directed,
+            shuffle=True,
             neg_sampling_ratio=neg_edge_sampling_ratio)
             
     if edge_test_data.edge_label.sum() != 0:
@@ -103,7 +111,8 @@ def initialize_dataloaders(node_masked_data: Data,
             num_neighbors=[n_direct_neighbors] * n_hops,
             batch_size=edge_batch_size,
             edge_label_index=edge_test_data.edge_label_index,
-            directed=edges_directed, 
+            directed=edges_directed,
+            shuffle=True,
             neg_sampling_ratio=neg_edge_sampling_ratio)
 
     return loader_dict

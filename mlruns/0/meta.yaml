@@ -1,4 +1,4 @@
-artifact_location: file:///Users/sebastian.birk/workspace/projects/autotalker/mlruns/0
+artifact_location: file:///home/cartalop/sebastianbirk/autotalker/mlruns/0
 experiment_id: '0'
 lifecycle_stage: active
 name: autotalker

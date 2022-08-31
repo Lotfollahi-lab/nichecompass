@@ -22,7 +22,8 @@ class Trainer:
     Trainer class. Adapted from 
     https://github.com/theislab/scarches/blob/master/scarches/trainers/trvae/trainer.py#L13.
 
-    Encapsulates all logic for model training preparation and model training.
+    Encapsulates all logic for Autotalker model training preparation and model 
+    training.
     
     Parameters
     ----------
@@ -37,14 +38,14 @@ class Trainer:
         Fraction of the data that is used as validation set on edge-level.
     edge_test_ratio:
         Fraction of the data that is used as test set on edge-level.
-    edge_batch_size:
-        Batch size for the edge-level dataloaders.
     node_val_ratio:
         Fraction of the data that is used as validation set on node-level.
     node_test_ratio:
         Fraction of the data that is used as test set on node-level.
-    node_batch_size:
-        Batch size for the node-level dataloaders.
+    edge_batch_size:
+        Batch size for the edge-level dataloaders (the batch size for the node-
+        level dataloaders will be calculated automatically to match the number
+        of iterations between edge-level and node-level dataloaders).
     use_early_stopping:
         If `True`, the EarlyStopping class is used to prevent overfitting.
     reload_best_model:
@@ -63,13 +64,14 @@ class Trainer:
                  adj_key: str="spatial_connectivities",
                  edge_val_ratio: float=0.1,
                  edge_test_ratio: float=0.05,
-                 edge_batch_size: int=128,
                  node_val_ratio: float=0.1,
                  node_test_ratio: float=0.0,
-                 node_batch_size: int=32,
+                 edge_batch_size: int=64,
                  use_early_stopping: bool=True,
                  reload_best_model: bool=True,
                  early_stopping_kwargs: Optional[dict]=None,
+                 seed: int=0,
+                 monitor: bool=True,
                  **kwargs):
         self.adata = adata
         self.model = model
@@ -77,18 +79,17 @@ class Trainer:
         self.edge_train_ratio = 1 - edge_val_ratio - edge_test_ratio
         self.edge_val_ratio = edge_val_ratio
         self.edge_test_ratio = edge_test_ratio
-        self.edge_batch_size = edge_batch_size
         self.node_train_ratio = 1 - node_val_ratio - node_test_ratio
         self.node_val_ratio = node_val_ratio
         self.node_test_ratio = node_test_ratio
-        self.node_batch_size = node_batch_size
+        self.edge_batch_size = edge_batch_size
         self.use_early_stopping = use_early_stopping
         self.reload_best_model = reload_best_model
         early_stopping_kwargs = (early_stopping_kwargs if early_stopping_kwargs 
                                  else {})
         self.early_stopping = EarlyStopping(**early_stopping_kwargs)
-        self.seed = kwargs.pop("seed", 0)
-        self.monitor = kwargs.pop("monitor", True)
+        self.seed = seed
+        self.monitor = monitor
         self.loaders_n_direct_neighbors = kwargs.pop(
             "loaders_n_direct_neighbors", -1)
         self.loaders_n_hops = kwargs.pop("loaders_n_hops", 3)
@@ -98,6 +99,9 @@ class Trainer:
         self.best_epoch = None
         self.best_model_state_dict = None
 
+        print("--- INITIALIZING TRAINER ---")
+        
+        # Use GPU if available
         torch.manual_seed(self.seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed(self.seed)
@@ -117,6 +121,60 @@ class Trainer:
         self.edge_train_data = data_dict["edge_train_data"]
         self.edge_val_data = data_dict.pop("edge_val_data", None)
         self.edge_test_data = data_dict.pop("edge_test_data", None)
+
+        self.n_nodes_train = self.node_masked_data.train_mask.sum().item()
+        self.n_nodes_val = self.node_masked_data.val_mask.sum().item()
+        self.n_nodes_test = self.node_masked_data.test_mask.sum().item()
+        self.n_edges_train = self.edge_train_data.edge_label_index.size(1)
+        self.n_edges_val = self.edge_val_data.edge_label_index.size(1)
+        self.n_edges_test = self.edge_test_data.edge_label_index.size(1)
+        print(f"Number of training nodes: {self.n_nodes_train}")
+        print(f"Number of validation nodes: {self.n_nodes_val}")
+        print(f"Number of test nodes: {self.n_nodes_test}")
+        print(f"Number of training edges: {self.n_edges_train}")
+        print(f"Number of validation edges: {self.n_edges_val}")
+        print(f"Number of test edges: {self.n_edges_test}")
+
+        # Calculate node-level batch sizes so that number of iterations of 
+        # node-level dataloaders match number of iterations of edge-level 
+        # dataloaders (or are as close as possible but with node-level 
+        # dataloaders having slightly more iterations, in which case some of 
+        # their iterations will be cut off by the zipping in the joint iteration
+        # loop; this is fine, however, since we use random shuffling so we will
+        # use different nodes in different epochs)
+        edge_train_loader_n_iter = int(np.ceil(
+            self.n_edges_train / edge_batch_size))
+        edge_val_loader_n_iter = int(np.ceil(
+            self.n_edges_val / edge_batch_size))
+        edge_test_loader_n_iter = int(np.ceil(
+            self.n_edges_test / edge_batch_size))
+        self.node_batch_size_train = int(np.floor(
+            self.n_nodes_train / edge_train_loader_n_iter))
+        self.node_batch_size_val = int(np.floor(
+            self.n_nodes_val / edge_val_loader_n_iter))
+        self.node_batch_size_test = int(np.floor(
+            self.n_nodes_test / edge_test_loader_n_iter))
+        
+        # Initialize node-level and edge-level dataloaders
+        loader_dict = initialize_dataloaders(
+            node_masked_data=self.node_masked_data,
+            edge_train_data=self.edge_train_data,
+            edge_val_data=self.edge_val_data,
+            edge_test_data=self.edge_test_data,
+            node_batch_size_train=self.node_batch_size_train,
+            node_batch_size_val=self.node_batch_size_val,
+            node_batch_size_test=self.node_batch_size_test,
+            edge_batch_size=self.edge_batch_size,
+            n_direct_neighbors=self.loaders_n_direct_neighbors,
+            n_hops=self.loaders_n_hops,
+            edges_directed=False,
+            neg_edge_sampling_ratio=1.0)
+        self.edge_train_loader = loader_dict["edge_train_loader"]
+        self.edge_val_loader = loader_dict.pop("edge_val_loader", None)
+        self.edge_test_loader = loader_dict.pop("edge_test_loader", None)
+        self.node_train_loader = loader_dict["node_train_loader"]
+        self.node_val_loader = loader_dict.pop("node_val_loader", None)
+        self.node_test_loader = loader_dict.pop("node_test_loader", None)
 
     def train(self,
               n_epochs: int=200,
@@ -149,24 +207,7 @@ class Trainer:
             mlflow.log_param("weight_decay", self.weight_decay)
             self.model.log_module_hyperparams_to_mlflow()                
 
-        # Initialize node-level and edge-level dataloaders
-        loader_dict = initialize_dataloaders(
-            node_masked_data=self.node_masked_data,
-            edge_train_data=self.edge_train_data,
-            edge_val_data=self.edge_val_data,
-            edge_test_data=self.edge_test_data,
-            node_batch_size=self.node_batch_size,
-            edge_batch_size=self.edge_batch_size,
-            n_direct_neighbors=self.loaders_n_direct_neighbors,
-            n_hops=self.loaders_n_hops,
-            edges_directed=False,
-            neg_edge_sampling_ratio=1.0)
-        self.edge_train_loader = loader_dict["edge_train_loader"]
-        self.edge_val_loader = loader_dict.pop("edge_val_loader", None)
-        self.edge_test_loader = loader_dict.pop("edge_test_loader", None)
-        self.node_train_loader = loader_dict["node_train_loader"]
-        self.node_val_loader = loader_dict.pop("node_val_loader", None)
-        self.node_test_loader = loader_dict.pop("node_test_loader", None)
+        print("--- MODEL TRAINING ---")
 
         start_time = time.time()
         self.epoch_logs = defaultdict(list)
