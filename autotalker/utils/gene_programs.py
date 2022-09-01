@@ -61,7 +61,7 @@ def mask_adata_with_gp_dict(adata: AnnData,
                             gp_dict: dict,
                             min_genes=0,
                             max_genes=None,
-                            varm_key="autotalker_",
+                            varm_key="autotalker_gps",
                             uns_key="gene_programs",
                             clean=True,
                             genes_uppercase=True):
