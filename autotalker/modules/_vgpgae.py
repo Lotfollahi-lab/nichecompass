@@ -95,6 +95,8 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
             the latent space distribution.
         """
         output = {}
+        # Use observed library size as scaling factor in mean of ZINB 
+        # distribution
         log_library_size = torch.log(x.sum(1)).unsqueeze(1)
         output["mu"], output["logstd"] = self.encoder(x, edge_index)
         z = self.reparameterize(output["mu"], output["logstd"])
