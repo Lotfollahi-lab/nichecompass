@@ -3,9 +3,8 @@ from typing import Literal
 import torch
 import torch.nn.functional as F
 from torch_geometric.data import Data
-from torch_geometric.utils import to_dense_adj
 
-from ._utils import _unique_sorted_index
+from ._utils import edge_values_and_sorted_labels
 
 
 def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
@@ -36,21 +35,10 @@ def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
         probabilities (calculated from logits for numerical stability in
         backpropagation).
     """
-    # Create mask to retrieve values as given in ´edge_label_index´ from 
-    # ´adj_recon_logits´
-    n_nodes = adj_recon_logits.shape[0]
-    adj_labels = to_dense_adj(edge_label_index, max_num_nodes=n_nodes)
-    mask = torch.squeeze(adj_labels > 0)
-    
-    # Retrieve logits
-    edge_recon_logits = torch.masked_select(adj_recon_logits, mask)
-    
-    # Sort ´edge_labels´ to align order with masked retrieval from adjacency 
-    # matrix. In addition, remove entries in ´edge_labels´ that are due to 
-    # duplicates in ´edge_label_index´, which can happen because of the 
-    # approximate negative sampling implementation in PyG LinkNeighborLoader. 
-    sort_index = _unique_sorted_index(edge_label_index)
-    edge_labels_sorted = edge_labels[sort_index]
+    edge_recon_logits, edge_labels_sorted = edge_values_and_sorted_labels(
+        adj=adj_recon_logits,
+        edge_label_index=edge_label_index,
+        edge_labels=edge_labels)
 
     # Compute weighted cross entropy loss
     edge_recon_loss = F.binary_cross_entropy_with_logits(edge_recon_logits,

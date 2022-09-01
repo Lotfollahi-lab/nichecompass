@@ -135,7 +135,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         edge_batch_size:
             Batch size for the edge-level dataloaders.
         include_edge_recon_loss:
-            If `True` include the redge reconstruction loss in the loss 
+            If `True` include the edge reconstruction loss in the loss 
             optimization.
         include_gene_expr_recon_loss:
             If `True`, include the gene expression reconstruction loss in the 
