@@ -11,7 +11,7 @@ import torch.nn as nn
 from autotalker.data import prepare_data
 from autotalker.data import train_valid_test_node_level_mask
 from autotalker.data import initialize_edge_level_dataloader
-from ._metrics import get_eval_metrics
+from ._metrics import eval_metrics
 from ._metrics import plot_eval_metrics
 from ._utils import EarlyStopping
 from ._utils import plot_loss_curves
@@ -266,7 +266,7 @@ class Trainer:
 
             adj_recon_probs = torch.sigmoid(model_output["adj_recon_logits"])
     
-            valid_eval_metrics = get_eval_metrics(
+            valid_eval_metrics = eval_metrics(
                 adj_recon_probs,
                 valid_data_batch.edge_label_index,
                 valid_data_batch.edge_label)
@@ -301,7 +301,7 @@ class Trainer:
             adj_recon_probs = torch.sigmoid(
                 model_output["adj_recon_logits"])
         
-            test_eval_metrics = get_eval_metrics(
+            test_eval_metrics = eval_metrics(
                     adj_recon_probs,
                     test_data_batch.edge_label_index,
                     test_data_batch.edge_label)

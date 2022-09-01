@@ -139,3 +139,6 @@ dmypy.json
 
 # mlflow artefacts
 /mlruns
+
+# model artefacts
+/model_artefacts

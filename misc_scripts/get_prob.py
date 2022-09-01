@@ -9,7 +9,7 @@ from sklearn.metrics import average_precision_score
 from sklearn.metrics import f1_score
 from sklearn.metrics import roc_auc_score
 
-from deeplinc.train.metrics import get_eval_metrics
+from deeplinc.train.metrics import eval_metrics
 
 # 5 nodes, 2 dimensions latent space simulation
 torch.manual_seed(0)
