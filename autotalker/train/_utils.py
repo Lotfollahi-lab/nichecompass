@@ -109,74 +109,67 @@ class EarlyStopping:
         return improved
 
 
-def print_progress(epoch, logs, n_epochs=10000):
+def print_progress(epoch: int, logs: dict, n_epochs: int):
     """
-    Creates Message for '_print_progress_bar'.
-
-    This function was adapted from https://github.com/theislab/scarches.
+    Utility function to create message for '_print_progress_bar()'. Adapted from
+    https://github.com/theislab/scarches/blob/master/scarches/trainers/trvae/_utils.py#L11.
     
     Parameters
     ----------
-    epoch: Integer
+    epoch:
          Current epoch.
-    logs: Dict
+    logs:
          Dictionary with all logs (losses & metrics).
-    n_epochs: Integer
+    n_epochs:
          Total number of epochs.
-    Returns
-    -------
     """
     message = ""
     for key in logs:
-        message += f" - {key:s}: {logs[key][-1]:7.10f}"
+        message += f"{key:s}: {logs[key][-1]:.4f}; "
+    message = message[:-2] + "\n"
 
-    _print_progress_bar(
-        epoch + 1,
-        n_epochs,
-        prefix='',
-        suffix=message,
-        decimals=1,
-        length=20)
+    _print_progress_bar(epoch + 1,
+                        n_epochs,
+                        prefix=f"Epoch {epoch + 1}/{n_epochs}",
+                        suffix=message,
+                        decimals=1,
+                        length=20)
 
 
-def _print_progress_bar(
-    iteration,
-    total,
-    prefix="",
-    suffix="",
-    decimals=1,
-    length=100,
-    fill="█"):
+def _print_progress_bar(epoch: int,
+                        n_epochs: int,
+                        prefix: str="",
+                        suffix: str="",
+                        decimals: int=1,
+                        length: int=100,
+                        fill: str="█"):
     """
-    Prints out message with a progress bar.
-
-    This function was adapted from https://github.com/theislab/scarches.
+    Utility function to print out message with a progress bar. Adapted from
+    https://github.com/theislab/scarches/blob/master/scarches/trainers/trvae/_utils.py#L41.
 
     Parameters
     ----------
-    iteration: Integer
+    epoch:
          Current epoch.
-    total: Integer
-         Maximum value of epochs.
-    prefix: String
+    n_epochs:
+         Total number of epochs.
+    prefix:
          String before the progress bar.
-    suffix: String
+    suffix:
          String after the progress bar.
-    decimals: Integer
-         Digits after comma for all the losses.
-    length: Integer
+    decimals:
+         Digits after comma for the percent display.
+    length:
          Length of the progress bar.
-    fill: String
+    fill:
          Symbol for filling the bar.
-    Returns
-    -------
     """
     percent = ("{0:." + str(decimals) + "f}").format(100 * (
-        iteration / float(total)))
-    filled_len = int(length * iteration // total)
+        epoch / float(n_epochs)))
+    filled_len = int(length * epoch // n_epochs)
     bar = fill * filled_len + '-' * (length - filled_len)
     sys.stdout.write('\r%s |%s| %s%s %s' % (prefix, bar, percent, '%', suffix)),
-    if iteration == total:
+    if epoch == n_epochs:
         sys.stdout.write('\n')
     sys.stdout.flush()
 

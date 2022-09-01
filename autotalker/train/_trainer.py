@@ -211,7 +211,7 @@ class Trainer:
         self.weight_decay = weight_decay
         self.mlflow_experiment_id = mlflow_experiment_id
 
-        print("--- MODEL TRAINING ---")
+        print("\n--- MODEL TRAINING ---")
         
         # Log hyperparameters
         if self.mlflow_experiment_id is not None:
@@ -312,7 +312,7 @@ class Trainer:
 
         if self.best_model_state_dict is not None and self.reload_best_model:
             print("Saving best model state, which was in epoch "
-                  f"{self.best_epoch}.")
+                  f"{self.best_epoch + 1}.")
             self.model.load_state_dict(self.best_model_state_dict)
 
         self.model.eval()
@@ -447,7 +447,7 @@ class Trainer:
             edge_recon_probs=edge_recon_probs_test_accumulated,
             edge_labels=edge_labels_test_accumulated)
 
-        print("--- MODEL EVALUATION ---")
+        print("\n--- MODEL EVALUATION ---")
         print(f"Test AUROC score: {test_eval_dict['auroc_score']:.4f}")
         print(f"Test AUPRC score: {test_eval_dict['auprc_score']:.4f}")
         print(f"Test best accuracy score: {test_eval_dict['best_acc_score']:.4f}")
