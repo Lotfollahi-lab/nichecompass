@@ -1,10 +1,56 @@
 from typing import Optional
 
 import numpy as np
+import omnipath as op
 import pandas as pd
 from anndata import AnnData
 
 from ._utils import _load_R_file_as_df
+
+
+def retrieve_omnipath_lr_interactions(min_curation_effort: int=0,
+                                      return_only_gene_symbols: bool=True):
+    """
+    Retrieve ligand-receptor interactions from OmniPath, a database of molecular
+    biology prior knowledge that combines intercellular communication data from
+    many different resources (all resources for intercellular communication 
+    included in omnipath can be queried via 
+    ´op.requests.Intercell.resources()´).
+
+    Parameters
+    ----------
+    min_curation_effort: 
+        Indicates how many times an interaction has to be described in a 
+        paper and mentioned in a database to be included in the retrieval.
+    keep_only_gene_symbols:
+        If ´True´, return only gene symbols of ligand and target and drop all
+        other columns.
+
+    Returns
+    ----------
+    lr_interactions:
+        DataFrame containing ligand-receptor interactions.
+    """
+    # Define intercell_network categories to be retrieved
+    intercell = op.interactions.import_intercell_network(
+        include=['omnipath', 'pathwayextra', 'ligrecextra'])
+
+    # Set transmitters to be ligands and receivers to be receptors
+    lr_interactions = intercell[
+        (intercell["category_intercell_source"] == "ligand") &
+        (intercell["category_intercell_target"] == "receptor")]
+
+    # Filter as per ´min_curation_effort´
+    lr_interactions = lr_interactions[
+        lr_interactions["curation_effort"] >= min_curation_effort]
+
+    if return_only_gene_symbols:
+        lr_interactions = lr_interactions[
+            ["genesymbol_intercell_source", "genesymbol_intercell_target"]]
+
+    return lr_interactions
+
+
 
 
 def download_nichenet_ligand_target_mx(

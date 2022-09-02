@@ -13,6 +13,7 @@ dependencies:
   - pytorch=1.12.1
   - scanpy=1.7.2
   - pip:
+    - omnipath==1.0.5
     - squidpy==1.1.0
     - torch-scatter -f https://data.pyg.org/whl/torch-1.12.1+cu102.html
     - torch-sparse -f https://data.pyg.org/whl/torch-1.12.1+cu102.html
