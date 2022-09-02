@@ -8,8 +8,8 @@ from anndata import AnnData
 from ._utils import _load_R_file_as_df
 
 
-def retrieve_omnipath_lr_interactions(min_curation_effort: int=0,
-                                      return_only_gene_symbols: bool=True):
+def extract_gps_from_omnipath_lr_interactions(
+        min_curation_effort: int=0):
     """
     Retrieve ligand-receptor interactions from OmniPath, a database of molecular
     biology prior knowledge that combines intercellular communication data from
@@ -22,33 +22,41 @@ def retrieve_omnipath_lr_interactions(min_curation_effort: int=0,
     min_curation_effort: 
         Indicates how many times an interaction has to be described in a 
         paper and mentioned in a database to be included in the retrieval.
-    keep_only_gene_symbols:
-        If ´True´, return only gene symbols of ligand and target and drop all
-        other columns.
 
     Returns
     ----------
-    lr_interactions:
-        DataFrame containing ligand-receptor interactions.
+    lr_interaction_dict:
+        Dictionary containing ligand-receptor interactions.
     """
     # Define intercell_network categories to be retrieved
-    intercell = op.interactions.import_intercell_network(
+    intercell_df = op.interactions.import_intercell_network(
         include=['omnipath', 'pathwayextra', 'ligrecextra'])
 
     # Set transmitters to be ligands and receivers to be receptors
-    lr_interactions = intercell[
-        (intercell["category_intercell_source"] == "ligand") &
-        (intercell["category_intercell_target"] == "receptor")]
+    lr_interaction_df = intercell_df[
+        (intercell_df["category_intercell_source"] == "ligand") &
+        (intercell_df["category_intercell_target"] == "receptor")]
+
+    # Split COMPLEX receptors
+
 
     # Filter as per ´min_curation_effort´
-    lr_interactions = lr_interactions[
-        lr_interactions["curation_effort"] >= min_curation_effort]
+    lr_interaction_df = lr_interaction_df[
+        lr_interaction_df["curation_effort"] >= min_curation_effort]
+        
+    lr_interaction_df = lr_interaction_df[
+        ["genesymbol_intercell_source", "genesymbol_intercell_target"]]
 
-    if return_only_gene_symbols:
-        lr_interactions = lr_interactions[
-            ["genesymbol_intercell_source", "genesymbol_intercell_target"]]
+    lr_gp_dict = lr_interaction_df.set_index(
+        "genesymbol_intercell_source")["genesymbol_intercell_target"].to_dict()
 
-    return lr_interactions
+    # Dictionary comprehension to convert dictionary values to lists and split
+    # "COMPLEX:receptor1_receptor2" into ["receptor1", "receptor2"]
+    lr_gp_dict = {key: ([value] if "COMPLEX:" not in value 
+        else value.removeprefix("COMPLEX:").split("_")) 
+        for key, value in lr_gp_dict.items()}
+    
+    return lr_gp_dict
 
 
 
