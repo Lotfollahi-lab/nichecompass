@@ -29,6 +29,8 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         Number of nodes in the encoder hidden layer.
     n_latent:
         Number of nodes in the latent space.
+    n_output:
+        Number of nodes in the output layer.
     gene_expr_decoder_mask:
         Gene program mask for the gene expression decoder.
     dropout_rate_encoder:
@@ -41,6 +43,7 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
                  n_input: int,
                  n_hidden_encoder: int,
                  n_latent: int,
+                 n_output: int,
                  gene_expr_decoder_mask: torch.Tensor,
                  dropout_rate_encoder: float=0.0,
                  dropout_rate_graph_decoder: float=0.0):
@@ -48,6 +51,7 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         self.n_input = n_input
         self.n_hidden_encoder = n_hidden_encoder
         self.n_latent = n_latent
+        self.n_output = n_output
         self.dropout_rate_encoder = dropout_rate_encoder
         self.dropout_rate_graph_decoder = dropout_rate_graph_decoder
 
@@ -64,11 +68,11 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
 
         self.gene_expr_decoder = MaskedGeneExprDecoder(
             n_input=n_latent,
-            n_output=n_input,
+            n_output=n_output,
             mask=gene_expr_decoder_mask)
         
         # Gene-specific inverse dispersion parameters
-        self.theta = torch.nn.Parameter(torch.randn(self.n_input))
+        self.theta = torch.nn.Parameter(torch.randn(self.n_output))
 
     def forward(self,
                 x: torch.Tensor,
@@ -169,7 +173,7 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         theta = torch.exp(self.theta)
 
         loss_dict["gene_expr_recon_loss"] = compute_gene_expr_recon_zinb_loss(
-            x=node_data_batch.x,
+            x=node_data_batch.node_labels,
             mu=nb_means,
             theta=theta,
             zi_prob_logits=zi_prob_logits)

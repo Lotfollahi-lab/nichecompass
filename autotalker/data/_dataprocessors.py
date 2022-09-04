@@ -1,3 +1,5 @@
+from typing import Literal
+
 from anndata import AnnData
 from torch_geometric.data import Data
 from torch_geometric.transforms import RandomNodeSplit
@@ -88,6 +90,7 @@ def node_level_split_mask(data: Data,
 
 def prepare_data(adata: AnnData,
                  adj_key: str="spatial_connectivities",
+                 node_label_method: Literal["self", "one-hop"]="one-hop",
                  edge_val_ratio: float=0.1,
                  edge_test_ratio: float=0.05,
                  node_val_ratio: float=0.1,
@@ -103,6 +106,12 @@ def prepare_data(adata: AnnData,
         adata.obsp[adj_key].
     adj_key:
         Key under which the sparse adjacency matrix is stored in adata.obsp.
+    node_label_method:
+        Node label method that will be used for gene expression reconstruction. 
+        If ´self´, use only the input features of the node itself as node labels
+        for gene expression reconstruction. If ´one-hop´, use a concatenation of
+        the node's input features with a sum of the input features of all nodes
+        in the node's one-hop neighborhood.
     edge_val_ratio:
         Fraction of the data that is used as validation set on edge-level.
     edge_test_ratio:
@@ -125,10 +134,13 @@ def prepare_data(adata: AnnData,
         attribute and test edge labels in the ´edge_label´ attribute.
     """
     data_dict = {}
-    dataset = SpatialAnnTorchDataset(adata, adj_key=adj_key)
+    dataset = SpatialAnnTorchDataset(adata=adata,
+                                     adj_key=adj_key,
+                                     node_label_method=node_label_method)
     # PyG Data object (has 2 edge index pairs for one edge because of symmetry)
     data = Data(x=dataset.x,
-                edge_index=dataset.edge_index)
+                edge_index=dataset.edge_index,
+                node_labels=dataset.node_labels)
 
     # Edge-level split for edge reconstruction
     edge_train_data, edge_val_data, edge_test_data = edge_level_split(
