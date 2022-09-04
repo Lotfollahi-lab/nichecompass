@@ -30,7 +30,8 @@ class MaskedLinear(nn.Linear):
         # Mask should have dim n_input x n_output
         if n_input != mask.shape[0] or n_output != mask.shape[1]:
             raise ValueError("Incorrect shape of the mask. Mask should have dim"
-                             "n_input x n_output")
+                             " (n_input x n_output). Please provide a mask with"
+                             f" dimensions ({n_input} x {n_output}).")
         super().__init__(n_input, n_output, bias)
         
         self.register_buffer("mask", mask.t())

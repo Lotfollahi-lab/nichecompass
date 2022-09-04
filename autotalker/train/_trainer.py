@@ -1,6 +1,6 @@
 import time
 from collections import defaultdict
-from typing import Optional
+from typing import Literal, Optional
 
 import mlflow
 import numpy as np
@@ -35,6 +35,12 @@ class Trainer:
         An Autotalker module model instance.
     adj_key:
         Key under which the sparse adjacency matrix is stored in adata.obsp.
+    node_label_method:
+        Node label method that will be used for gene expression reconstruction. 
+        If ´self´, use only the input features of the node itself as node labels
+        for gene expression reconstruction. If ´one-hop´, use a concatenation of
+        the node's input features with a sum of the input features of all nodes
+        in the node's one-hop neighborhood.
     edge_val_ratio:
         Fraction of the data that is used as validation set on edge-level.
     edge_test_ratio:
@@ -68,6 +74,7 @@ class Trainer:
                  adata: AnnData,
                  model: nn.Module,
                  adj_key: str="spatial_connectivities",
+                 node_label_method: Literal["self", "one-hop"]="one-hop",
                  edge_val_ratio: float=0.1,
                  edge_test_ratio: float=0.05,
                  node_val_ratio: float=0.1,
@@ -84,6 +91,7 @@ class Trainer:
         self.adata = adata
         self.model = model
         self.adj_key = adj_key
+        self.node_label_method = node_label_method
         self.edge_train_ratio = 1 - edge_val_ratio - edge_test_ratio
         self.edge_val_ratio = edge_val_ratio
         self.edge_test_ratio = edge_test_ratio
@@ -122,7 +130,8 @@ class Trainer:
         # Prepare data and get node-level and edge-level training, validation
         # and test splits
         data_dict = prepare_data(adata=adata,
-                                 adj_key="spatial_connectivities",
+                                 adj_key=self.adj_key,
+                                 node_label_method=node_label_method,
                                  edge_val_ratio=self.edge_val_ratio,
                                  edge_test_ratio=self.edge_test_ratio,
                                  node_val_ratio=self.node_val_ratio,
