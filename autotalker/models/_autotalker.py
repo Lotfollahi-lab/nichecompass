@@ -58,17 +58,20 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
     def __init__(self,
                  adata: AnnData,
                  adj_key: str="spatial_connectivities",
-                 gp_mask_key: str="autotalker_gp_mask",
+                 gp_targets_mask_key: str="autotalker_gp_targets",
+                 gp_sources_mask_key: str="autotalker_gp_sources",
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
                  node_label_method: Literal["self", "one-hop"]="one-hop",
                  n_hidden_encoder: int=32,
                  dropout_rate_encoder: float=0.0,
                  dropout_rate_graph_decoder: float=0.0,
-                 gp_mask: Optional[Union[ndarray, list]]=None):
+                 gp_targets_mask: Optional[Union[ndarray, list]]=None,
+                 gp_sources_mask: Optional[Union[ndarray, list]]=None):
         self.adata = adata
         self.adj_key_ = adj_key
-        self.gp_mask_key_ = gp_mask_key
+        self.gp_targets_mask_key_ = gp_targets_mask_key
+        self.gp_sources_mask_key_ = gp_sources_mask_key
         self.include_edge_recon_loss = include_edge_recon_loss
         self.include_gene_expr_recon_loss = include_gene_expr_recon_loss
         self.node_label_method = node_label_method
@@ -81,19 +84,33 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
 
         # Retrieve gene program mask
-        if gp_mask is None:
-            if gp_mask_key in adata.varm:
-                gp_mask = adata.varm[gp_mask_key].T
+        if gp_targets_mask is None:
+            if gp_targets_mask_key in adata.varm:
+                gp_targets_mask = adata.varm[gp_targets_mask_key].T
             else:
-                raise ValueError("Please directly provide a gene program mask "
-                                 "to the model or specify an adequate mask key "
-                                 "for your adata object. If you do not want to "
-                                 "mask gene expression reconstruction, you can "
-                                 "create a mask of 1s that allows all gene "
-                                 "programs (latent nodes) to reconstruct all "
-                                 "genes by passing a mask created with ´mask "
-                                 "= np.ones((n_latent, n_output))´).")
-        self.gp_mask_ = torch.tensor(gp_mask, dtype=torch.float32)
+                raise ValueError("Please directly provide a gene program "
+                                 "targets mask to the model or specify an"
+                                 " adequate gp targets mask key for your adata "
+                                 "object. If you do not want to mask gene "
+                                 "expression reconstruction, you can create a "
+                                 "mask of 1s that allows all gene programs "
+                                 "(latent nodes) to reconstruct all genes by "
+                                 "passing a mask created with ´mask = "
+                                 "np.ones((n_latent, n_output))´).")
+        self.gp_mask_ = torch.tensor(gp_targets_mask, dtype=torch.float32)
+        
+        if node_label_method != "self":
+            if gp_sources_mask is None:
+                if gp_sources_mask_key in adata.varm:
+                    gp_sources_mask = adata.varm[gp_sources_mask_key].T
+                else:
+                    raise ValueError("Please directly provida a gene program "
+                                     "sources mask to the model or specify an"
+                                     " adequate gp sources mask key for your "
+                                     "adata object.")
+            self.gp_mask_ = torch.cat(
+                (self.gp_mask_, torch.tensor(gp_sources_mask)), dim=1)
+        
         self.n_latent_ = len(self.gp_mask_)
 
         # Validate adjacency key
