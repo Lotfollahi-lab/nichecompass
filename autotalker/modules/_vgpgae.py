@@ -38,6 +38,12 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
     dropout_rate_graph_decoder:
         Probability that nodes will be dropped in the graph decoder during 
         training.
+    include_edge_recon_loss:
+        If `True`, include the redge reconstruction loss in the loss 
+        optimization.
+    include_gene_expr_recon_loss:
+        If `True`, include the gene expression reconstruction loss in the 
+        loss optimization.
     """
     def __init__(self,
                  n_input: int,
@@ -46,7 +52,9 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
                  n_output: int,
                  gene_expr_decoder_mask: torch.Tensor,
                  dropout_rate_encoder: float=0.0,
-                 dropout_rate_graph_decoder: float=0.0):
+                 dropout_rate_graph_decoder: float=0.0,
+                 include_edge_recon_loss: bool=True,
+                 include_gene_expr_recon_loss: bool=True):
         super().__init__()
         self.n_input = n_input
         self.n_hidden_encoder = n_hidden_encoder
@@ -54,8 +62,12 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         self.n_output = n_output
         self.dropout_rate_encoder = dropout_rate_encoder
         self.dropout_rate_graph_decoder = dropout_rate_graph_decoder
+        self.include_edge_recon_loss = include_edge_recon_loss
+        self.include_gene_expr_recon_loss = include_gene_expr_recon_loss
 
         print("--- INITIALIZING NEW NETWORK MODULE: VGPGAE ---")
+        print(f"LOSS -> include_edge_recon_loss: {include_edge_recon_loss}, "
+              f"include_gene_expr_recon_loss: {include_gene_expr_recon_loss}")
 
         self.encoder = GCNEncoder(n_input=n_input,
                                   n_hidden=n_hidden_encoder,
@@ -116,9 +128,7 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
              edge_model_output: dict,
              node_data_batch: Data,
              node_model_output: dict,
-             device: Literal["cpu", "cuda"],
-             include_edge_recon_loss: bool=True,
-             include_gene_expr_recon_loss: bool=True):
+             device: Literal["cpu", "cuda"]):
         """
         Calculate loss of the VGPGAE module.
 
@@ -134,12 +144,6 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
             Output of the forward pass for gene expression reconstruction.
         device:
             Device where to send the loss parameters.
-        include_edge_recon_loss:
-            If `True`, include the redge reconstruction loss in the loss 
-            optimization.
-        include_gene_expr_recon_loss:
-            If `True`, include the gene expression reconstruction loss in the 
-            loss optimization.
 
         Returns
         ----------
@@ -181,10 +185,10 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         loss_dict["loss"] = 0
         loss_dict["loss"] += loss_dict["kl_loss"]
 
-        if include_edge_recon_loss:
+        if self.include_edge_recon_loss:
             loss_dict["loss"] += loss_dict["edge_recon_loss"]
 
-        if include_gene_expr_recon_loss:
+        if self.include_gene_expr_recon_loss:
             loss_dict["loss"] += loss_dict["gene_expr_recon_loss"]
         return loss_dict
 
@@ -195,4 +199,8 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         mlflow.log_param("dropout_rate_encoder", 
                          self.dropout_rate_encoder)
         mlflow.log_param("dropout_rate_graph_decoder", 
-                         self.dropout_rate_graph_decoder) 
+                         self.dropout_rate_graph_decoder)
+        mlflow.log_param("include_edge_recon_loss", 
+                         self.include_edge_recon_loss)
+        mlflow.log_param("include_gene_expr_recon_loss", 
+                         self.include_gene_expr_recon_loss)                    

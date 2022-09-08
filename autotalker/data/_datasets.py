@@ -2,6 +2,7 @@ from typing import Literal, Optional
 
 import scipy.sparse as sp
 import torch
+import torch_geometric
 from anndata import AnnData
 
 from ._utils import _sparse_mx_to_sparse_tensor
@@ -47,18 +48,23 @@ class SpatialAnnTorchDataset():
         # Validate adjacency matrix symmetry
         if not (self.adj.to_dense() == self.adj.to_dense().T).all():
             raise ImportError("The input adjacency matrix has to be symmetric.")
-        
-        # Store labels for gene expression reconstruction (the node's own gene
-        # expression concatenated with the node's neighbors gene expression
-        # averaged)
-        x_neighbors_avg = (torch.matmul(self.adj, self.x) / 
-                           self.adj.to_dense().sum(axis=-1).unsqueeze(dim=-1))
-        self.x_one_hop = torch.cat((self.x, x_neighbors_avg), dim=-1)
 
+        from torch_sparse import SparseTensor
+        adj = SparseTensor.from_torch_sparse_coo_tensor(self.adj)
+
+        # Store labels for gene expression reconstruction
         if node_label_method == "self":
             self.node_labels = self.x
         elif node_label_method == "one-hop":
-            self.node_labels = self.x_one_hop
+            # One-hop node label method node labels consist of the node's own 
+            # gene expression concatenated with the node's neighbors gene 
+            # expression normalized as per Kipf, T. N. & Welling, M. 
+            # Semi-Supervised Classification with Graph Convolutional Networks. 
+            # arXiv [cs.LG] (2016))
+            gcn_norm = torch_geometric.nn.conv.gcn_conv.gcn_norm
+            adj_norm = gcn_norm(adj, add_self_loops=False)
+            x_neighbors_norm = adj_norm.matmul(self.x)
+            self.node_labels = torch.cat((self.x, x_neighbors_norm), dim=-1)
 
         self.edge_index = self.adj._indices()
         self.n_node_features = self.x.size(1)

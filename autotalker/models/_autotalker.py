@@ -121,7 +121,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                                      "your adata object.")
             # Horizontally concatenate targets and sources masks
             self.gp_mask_ = torch.cat(
-                (self.gp_mask_, torch.tensor(gp_sources_mask)), dim=1)
+                (self.gp_mask_, torch.tensor(gp_sources_mask, 
+                dtype=torch.float32)), dim=1)
         
         self.n_latent_ = len(self.gp_mask_)
         
@@ -137,7 +138,9 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             n_output=self.n_output_,
             gene_expr_decoder_mask=self.gp_mask_,
             dropout_rate_encoder=self.dropout_rate_encoder_,
-            dropout_rate_graph_decoder=self.dropout_rate_graph_decoder_)
+            dropout_rate_graph_decoder=self.dropout_rate_graph_decoder_,
+            include_edge_recon_loss=self.include_edge_recon_loss_,
+            include_gene_expr_recon_loss=self.include_gene_expr_recon_loss_,)
 
         self.is_trained_ = False
         # Store init params for saving and loading
@@ -190,9 +193,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             edge_test_ratio=edge_test_ratio,
             node_val_ratio=node_val_ratio,
             node_test_ratio=0.0,
-            edge_batch_size=edge_batch_size,                 
-            include_edge_recon_loss=self.include_edge_recon_loss_,
-            include_gene_expr_recon_loss=self.include_gene_expr_recon_loss_,
+            edge_batch_size=edge_batch_size,
             **trainer_kwargs)
 
         self.trainer.train(n_epochs=n_epochs,

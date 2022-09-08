@@ -50,12 +50,6 @@ class Trainer:
         Batch size for the edge-level dataloaders (the batch size for the node-
         level dataloaders will be calculated automatically to match the number
         of iterations between edge-level and node-level dataloaders).
-    include_edge_recon_loss:
-        If `True`, include the edge reconstruction loss in the loss 
-        optimization.
-    include_gene_expr_recon_loss:
-        If `True`, include the gene expression reconstruction loss in the loss 
-        optimization.
     use_early_stopping:
         If `True`, the EarlyStopping class is used to prevent overfitting.
     reload_best_model:
@@ -78,8 +72,6 @@ class Trainer:
                  node_val_ratio: float=0.1,
                  node_test_ratio: float=0.0,
                  edge_batch_size: int=64,
-                 include_edge_recon_loss: bool=True,
-                 include_gene_expr_recon_loss: bool=True,
                  use_early_stopping: bool=True,
                  reload_best_model: bool=True,
                  early_stopping_kwargs: Optional[dict]=None,
@@ -97,18 +89,16 @@ class Trainer:
         self.node_val_ratio = node_val_ratio
         self.node_test_ratio = node_test_ratio
         self.edge_batch_size = edge_batch_size
-        self.include_edge_recon_loss = include_edge_recon_loss
-        self.include_gene_expr_recon_loss = include_gene_expr_recon_loss
         self.use_early_stopping = use_early_stopping
         self.reload_best_model = reload_best_model
-        early_stopping_kwargs = (early_stopping_kwargs if early_stopping_kwargs 
-                                 else {})
-        if not "early_stopping_metric" in early_stopping_kwargs:
+        self.early_stopping_kwargs = (early_stopping_kwargs if 
+            early_stopping_kwargs else {})
+        if not "early_stopping_metric" in self.early_stopping_kwargs:
             if edge_val_ratio > 0 and node_val_ratio > 0:
-                early_stopping_kwargs["early_stopping_metric"] = "val_loss"
+                self.early_stopping_kwargs["early_stopping_metric"] = "val_loss"
             else:
-                early_stopping_kwargs["early_stopping_metric"] = "train_loss"
-        self.early_stopping = EarlyStopping(**early_stopping_kwargs)
+                self.early_stopping_kwargs["early_stopping_metric"] = "train_loss"
+        self.early_stopping = EarlyStopping(**self.early_stopping_kwargs)
         self.seed = seed
         self.monitor = monitor
         self.loaders_n_direct_neighbors = kwargs.pop(
@@ -234,6 +224,19 @@ class Trainer:
         
         # Log hyperparameters
         if self.mlflow_experiment_id is not None:
+            mlflow.log_param("node_label_method", self.node_label_method)
+            mlflow.log_param("edge_train_ratio", self.edge_train_ratio)
+            mlflow.log_param("edge_val_ratio", self.edge_val_ratio)
+            mlflow.log_param("edge_test_ratio", self.edge_test_ratio)
+            mlflow.log_param("node_train_ratio", self.node_train_ratio)
+            mlflow.log_param("node_val_ratio", self.node_val_ratio)
+            mlflow.log_param("edge_batch_size", self.edge_batch_size)
+            mlflow.log_param("use_early_stopping", self.use_early_stopping)
+            mlflow.log_param("reload_best_model", self.reload_best_model)
+            mlflow.log_param("early_stopping_kwargs", self.early_stopping_kwargs)
+            mlflow.log_param("seed", self.seed)
+            mlflow.log_param("loaders_n_hops", self.loaders_n_hops)
+            mlflow.log_param("loaders_n_direct_neighbors", self.loaders_n_direct_neighbors)
             mlflow.log_param("n_epochs", self.n_epochs)
             mlflow.log_param("lr", self.lr)
             mlflow.log_param("weight_decay", self.weight_decay)
@@ -277,9 +280,7 @@ class Trainer:
                     edge_model_output=edge_train_model_output,
                     node_data_batch=node_train_data_batch,
                     node_model_output=node_train_model_output,
-                    device=self.device,
-                    include_edge_recon_loss=self.include_edge_recon_loss,
-                    include_gene_expr_recon_loss=self.include_gene_expr_recon_loss)
+                    device=self.device)
                 train_loss = train_loss_dict["loss"]
                 train_edge_recon_loss = train_loss_dict["edge_recon_loss"]
                 train_kl_loss = train_loss_dict["kl_loss"]
@@ -397,9 +398,7 @@ class Trainer:
                     edge_model_output=edge_val_model_output,
                     node_data_batch=node_val_data_batch,
                     node_model_output=node_val_model_output,
-                    device=self.device,
-                    include_edge_recon_loss=self.include_edge_recon_loss,
-                    include_gene_expr_recon_loss=self.include_gene_expr_recon_loss)
+                    device=self.device)
             val_loss = val_loss_dict["loss"]
             val_edge_recon_loss = val_loss_dict["edge_recon_loss"]
             val_kl_loss = val_loss_dict["kl_loss"]
