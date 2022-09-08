@@ -110,8 +110,8 @@ def prepare_data(adata: AnnData,
         Node label method that will be used for gene expression reconstruction. 
         If ´self´, use only the input features of the node itself as node labels
         for gene expression reconstruction. If ´one-hop´, use a concatenation of
-        the node's input features with a sum of the input features of all nodes
-        in the node's one-hop neighborhood.
+        the node's input features with an average of the input features of all 
+        nodes in the node's one-hop neighborhood.
     edge_val_ratio:
         Fraction of the data that is used as validation set on edge-level.
     edge_test_ratio:

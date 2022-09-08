@@ -45,7 +45,7 @@ def initialize_dataloaders(node_masked_data: Data,
         means to not only include direct neighbors of sampled nodes but also the
         neighbors of the direct neighbors.
     edges_directed:
-        If `False` both symmetric edge index pairs are included in the same 
+        If `False`, both symmetric edge index pairs are included in the same 
         edge-level batch (1 edge has 2 symmetric edge index pairs).
     neg_edge_sampling_ratio:
         Negative sampling ratio of edges. This is currently implemented in an

@@ -135,7 +135,7 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         device:
             Device where to send the loss parameters.
         include_edge_recon_loss:
-            If `True` include the redge reconstruction loss in the loss 
+            If `True`, include the redge reconstruction loss in the loss 
             optimization.
         include_gene_expr_recon_loss:
             If `True`, include the gene expression reconstruction loss in the 

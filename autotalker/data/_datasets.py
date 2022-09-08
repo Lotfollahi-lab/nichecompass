@@ -24,8 +24,8 @@ class SpatialAnnTorchDataset():
         Node label method that will be used for gene expression reconstruction. 
         If ´self´, use only the input features of the node itself as node labels
         for gene expression reconstruction. If ´one-hop´, use a concatenation of
-        the node's input features with a sum of the input features of all nodes
-        in the node's one-hop neighborhood.
+        the node's input features with an average of the input features of all 
+        nodes in the node's one-hop neighborhood.
     """
     def __init__(self,
                  adata: AnnData,
@@ -49,10 +49,11 @@ class SpatialAnnTorchDataset():
             raise ImportError("The input adjacency matrix has to be symmetric.")
         
         # Store labels for gene expression reconstruction (the node's own gene
-        # expression concatenated with the node's neighbors feature expression
-        # summed)
-        x_neighbors_summed = torch.matmul(self.adj, self.x)
-        self.x_one_hop = torch.cat((self.x, x_neighbors_summed), dim=-1)
+        # expression concatenated with the node's neighbors gene expression
+        # averaged)
+        x_neighbors_avg = (torch.matmul(self.adj, self.x) / 
+                           self.adj.to_dense().sum(axis=-1).unsqueeze(dim=-1))
+        self.x_one_hop = torch.cat((self.x, x_neighbors_avg), dim=-1)
 
         if node_label_method == "self":
             self.node_labels = self.x

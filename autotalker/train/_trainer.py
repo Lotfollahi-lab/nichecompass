@@ -1,4 +1,5 @@
 import time
+import warnings
 from collections import defaultdict
 from typing import Literal, Optional
 
@@ -8,13 +9,9 @@ import torch
 import torch.nn as nn
 from anndata import AnnData
 
-from ._metrics import eval_metrics
-from ._metrics import plot_eval_metrics
-from ._utils import plot_loss_curves
-from ._utils import print_progress
-from ._utils import EarlyStopping
-from autotalker.data import initialize_dataloaders
-from autotalker.data import prepare_data
+from ._metrics import eval_metrics, plot_eval_metrics
+from ._utils import plot_loss_curves, print_progress, EarlyStopping
+from autotalker.data import initialize_dataloaders, prepare_data
 from autotalker.modules._utils import edge_values_and_sorted_labels
 
 
@@ -39,8 +36,8 @@ class Trainer:
         Node label method that will be used for gene expression reconstruction. 
         If ´self´, use only the input features of the node itself as node labels
         for gene expression reconstruction. If ´one-hop´, use a concatenation of
-        the node's input features with a sum of the input features of all nodes
-        in the node's one-hop neighborhood.
+        the node's input features with an average of the input features of all 
+        nodes in the node's one-hop neighborhood.
     edge_val_ratio:
         Fraction of the data that is used as validation set on edge-level.
     edge_test_ratio:
@@ -54,7 +51,8 @@ class Trainer:
         level dataloaders will be calculated automatically to match the number
         of iterations between edge-level and node-level dataloaders).
     include_edge_recon_loss:
-        If `True` include the edge reconstruction loss in the loss optimization.
+        If `True`, include the edge reconstruction loss in the loss 
+        optimization.
     include_gene_expr_recon_loss:
         If `True`, include the gene expression reconstruction loss in the loss 
         optimization.
@@ -105,6 +103,11 @@ class Trainer:
         self.reload_best_model = reload_best_model
         early_stopping_kwargs = (early_stopping_kwargs if early_stopping_kwargs 
                                  else {})
+        if not "early_stopping_metric" in early_stopping_kwargs:
+            if edge_val_ratio > 0 and node_val_ratio > 0:
+                early_stopping_kwargs["early_stopping_metric"] = "val_loss"
+            else:
+                early_stopping_kwargs["early_stopping_metric"] = "train_loss"
         self.early_stopping = EarlyStopping(**early_stopping_kwargs)
         self.seed = seed
         self.monitor = monitor
@@ -149,7 +152,6 @@ class Trainer:
         self.n_edges_test = self.edge_test_data.edge_label_index.size(1)
         print(f"Number of training nodes: {self.n_nodes_train}")
         print(f"Number of validation nodes: {self.n_nodes_val}")
-        print(f"Number of test nodes: {self.n_nodes_test}")
         print(f"Number of training edges: {self.n_edges_train}")
         print(f"Number of validation edges: {self.n_edges_val}")
         print(f"Number of test edges: {self.n_edges_test}")
@@ -169,10 +171,18 @@ class Trainer:
             self.n_edges_test / edge_batch_size))
         self.node_batch_size_train = int(np.floor(
             self.n_nodes_train / edge_train_loader_n_iter))
-        self.node_batch_size_val = int(np.floor(
-            self.n_nodes_val / edge_val_loader_n_iter))
-        self.node_batch_size_test = int(np.floor(
-            self.n_nodes_test / edge_test_loader_n_iter))
+        if edge_val_loader_n_iter != 0:
+            self.node_batch_size_val = int(np.floor(
+                self.n_nodes_val / edge_val_loader_n_iter))
+        else:
+            # Avoid division by 0 error
+            self.node_batch_size_val = 0
+        if edge_test_loader_n_iter != 0:
+            self.node_batch_size_test = int(np.floor(
+                self.n_nodes_test / edge_test_loader_n_iter))
+        else:
+            # Avoid division by 0 error
+            self.node_batch_size_test = 0
         
         # Initialize node-level and edge-level dataloaders
         loader_dict = initialize_dataloaders(
@@ -293,6 +303,14 @@ class Trainer:
             if (self.edge_val_loader is not None and 
                     self.node_val_loader is not None):
                 self.validate()
+            elif (self.edge_val_loader is None and 
+                    self.node_val_loader is not None):
+                warnings.warn("You have specified a node validation set but no "
+                              "edge validation set. Skipping validation...")
+            elif (self.edge_val_loader is not None and 
+                    self.node_val_loader is None):
+                warnings.warn("You have specified an edge validation set but no"
+                              " node validation set. Skipping validation...")
     
             # Convert iteration level logs into epoch level logs
             for key in self.iter_logs:

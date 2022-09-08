@@ -7,7 +7,7 @@ from numpy import ndarray
 
 from ._basemodelmixin import BaseModelMixin
 from ._vgaemodelmixin import VGAEModelMixin
-from autotalker.modules import VGAE, VGPGAE
+from autotalker.modules import VGPGAE
 from autotalker.train import Trainer
 
 
@@ -22,14 +22,21 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
     ----------
     adata:
         AnnData object with sparse adjacency matrix stored in 
-        adata.obsp[adj_key] and binary gene program mask stored in 
-        adata.varm[gp_mask_key] (unless gene program mask is passed directly to
-        the model).
+        adata.obsp[adj_key] and binary gene program targets and (optionally) 
+        sources masks stored in adata.varm[gp_targets_mask_key] and 
+        adata.varm[gp_sources_mask_key] respectively (unless gene program masks
+        are passed explicitly to the model via parameters ´gp_targets_mask_key´
+        and ´gp_sources_mask_key´).
     adj_key:
         Key under which the sparse adjacency matrix is stored in adata.obsp.
-    gp_mask_key:
-        Key under which the gene program mask is stored in adata.varm. This mask
-        will only be used if no mask is passed directly to the model.
+    gp_targets_mask_key:
+        Key under which the gene program targets mask is stored in adata.varm. 
+        This mask will only be used if no ´gp_targets_mask_key´ is passed 
+        explicitly to the model.
+    gp_sources_mask_key:
+        Key under which the gene program sources mask is stored in adata.varm. 
+        This mask will only be used if no ´gp_sources_mask_key´ is passed 
+        explicitly to the model.    
     include_edge_recon_loss:
         If `True`, include the edge reconstruction loss in the loss 
         optimization of the model.
@@ -38,11 +45,11 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         loss optimization.
     node_label_method:
         Node label method that will be used for gene expression reconstruction 
-        if ´include_gene_exp_recon_loss'is ´True´. If  ´self´, use only the 
+        if ´include_gene_exp_recon_loss'is ´True´. If ´self´, use only the 
         input features of the node itself as node labels for gene expression 
         reconstruction. If ´one-hop´, use a concatenation of the node's input 
-        features with a sum of the input features of all nodes in the node's 
-        one-hop neighborhood.
+        features with an average of the input features of all nodes in the 
+        node's one-hop neighborhood.
     n_hidden_encoder:
         Number of nodes in the encoder hidden layer.
     dropout_rate_encoder:
@@ -50,10 +57,14 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
     dropout_rate_graph_decoder:
         Probability that nodes will be dropped in the graph decoder during 
         training.
-    gp_mask:
-        Gene program mask that is directly passed to the model (if not None, 
-        this mask will have prevalence over a gene program mask stored in 
-        adata.varm[gp_mask_key]).
+    gp_targets_mask:
+        Gene program targets mask that is directly passed to the model (if not 
+        ´None´, this mask will have prevalence over a gene program targets mask
+        stored in adata.varm[gp_targets_mask_key]).
+    gp_sources_mask:
+        Gene program sources mask that is directly passed to the model (if not 
+        ´None´, this mask will have prevalence over a gene program sources mask
+        stored in adata.varm[gp_sources_mask_key]).    
     """
     def __init__(self,
                  adata: AnnData,
@@ -63,7 +74,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
                  node_label_method: Literal["self", "one-hop"]="one-hop",
-                 n_hidden_encoder: int=32,
+                 n_hidden_encoder: int=256,
                  dropout_rate_encoder: float=0.0,
                  dropout_rate_graph_decoder: float=0.0,
                  gp_targets_mask: Optional[Union[ndarray, list]]=None,
@@ -72,9 +83,9 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         self.adj_key_ = adj_key
         self.gp_targets_mask_key_ = gp_targets_mask_key
         self.gp_sources_mask_key_ = gp_sources_mask_key
-        self.include_edge_recon_loss = include_edge_recon_loss
-        self.include_gene_expr_recon_loss = include_gene_expr_recon_loss
-        self.node_label_method = node_label_method
+        self.include_edge_recon_loss_ = include_edge_recon_loss
+        self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
+        self.node_label_method_ = node_label_method
         self.n_input_ = adata.n_vars
         self.n_output_ = adata.n_vars
         if node_label_method == "one-hop":
@@ -83,19 +94,19 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         self.dropout_rate_encoder_ = dropout_rate_encoder
         self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
 
-        # Retrieve gene program mask
+        # Retrieve gene program masks
         if gp_targets_mask is None:
             if gp_targets_mask_key in adata.varm:
                 gp_targets_mask = adata.varm[gp_targets_mask_key].T
             else:
-                raise ValueError("Please directly provide a gene program "
-                                 "targets mask to the model or specify an"
-                                 " adequate gp targets mask key for your adata "
-                                 "object. If you do not want to mask gene "
-                                 "expression reconstruction, you can create a "
-                                 "mask of 1s that allows all gene programs "
-                                 "(latent nodes) to reconstruct all genes by "
-                                 "passing a mask created with ´mask = "
+                raise ValueError("Please explicitly provide a ´gp_targets_mask´"
+                                 " to the model or specify an adequate "
+                                 "´gp_targets_mask_key´ for your adata object. "
+                                 "If you do not want to mask gene expression "
+                                 "reconstruction, you can create a mask of 1s "
+                                 "that allows all gene program latent nodes "
+                                 "to reconstruct all genes by passing a mask "
+                                 "created with ´mask = "
                                  "np.ones((n_latent, n_output))´).")
         self.gp_mask_ = torch.tensor(gp_targets_mask, dtype=torch.float32)
         
@@ -104,18 +115,19 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                 if gp_sources_mask_key in adata.varm:
                     gp_sources_mask = adata.varm[gp_sources_mask_key].T
                 else:
-                    raise ValueError("Please directly provida a gene program "
-                                     "sources mask to the model or specify an"
-                                     " adequate gp sources mask key for your "
-                                     "adata object.")
+                    raise ValueError("Please explicitly provide a "
+                                     "´gp_sources_mask´ to the model or specify"
+                                     " an adequate ´gp_sources_mask_key´ for "
+                                     "your adata object.")
+            # Horizontally concatenate targets and sources masks
             self.gp_mask_ = torch.cat(
                 (self.gp_mask_, torch.tensor(gp_sources_mask)), dim=1)
         
         self.n_latent_ = len(self.gp_mask_)
-
+        
         # Validate adjacency key
         if adj_key not in adata.obsp:
-            raise ValueError("Please specify an adequate adjacency key.")
+            raise ValueError("Please specify an adequate ´adj_key´.")
         
         # Initialize model with module
         self.model = VGPGAE(
@@ -138,12 +150,11 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
               edge_val_ratio: float=0.1,
               edge_test_ratio: float=0.05,
               node_val_ratio: float=0.1,
-              node_test_ratio: float=0.0,
               edge_batch_size: int=64,
               mlflow_experiment_id: Optional[str]=None,
               **trainer_kwargs):
         """
-        Train the model.
+        Train the Autotalker model.
         
         Parameters
         ----------
@@ -155,12 +166,13 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             Weight decay (L2 penalty) for model training.
         edge_val_ratio:
             Fraction of the data that is used as validation set on edge-level.
+            The rest of the data will be used as training or test set (as 
+            defined in edge_test_ratio) on edge-level.
         edge_test_ratio:
             Fraction of the data that is used as test set on edge-level.
         node_val_ratio:
             Fraction of the data that is used as validation set on node-level.
-        node_test_ratio:
-            Fraction of the data that is used as test set on node-level.
+            The rest of the data will be used as training set on node-level.
         edge_batch_size:
             Batch size for the edge-level dataloaders.
         mlflow_experiment_id:
@@ -173,14 +185,14 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             adata=self.adata,
             model=self.model,
             adj_key=self.adj_key_,
-            node_label_method=self.node_label_method,
+            node_label_method=self.node_label_method_,
             edge_val_ratio=edge_val_ratio,
             edge_test_ratio=edge_test_ratio,
             node_val_ratio=node_val_ratio,
-            node_test_ratio=node_test_ratio,
+            node_test_ratio=0.0,
             edge_batch_size=edge_batch_size,                 
-            include_edge_recon_loss=self.include_edge_recon_loss,
-            include_gene_expr_recon_loss=self.include_gene_expr_recon_loss,
+            include_edge_recon_loss=self.include_edge_recon_loss_,
+            include_gene_expr_recon_loss=self.include_gene_expr_recon_loss_,
             **trainer_kwargs)
 
         self.trainer.train(n_epochs=n_epochs,
