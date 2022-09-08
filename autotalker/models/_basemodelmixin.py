@@ -9,9 +9,7 @@ import scipy.sparse as sp
 import torch
 from anndata import AnnData
 
-from ._utils import _initialize_model
-from ._utils import _load_saved_files
-from ._utils import _validate_var_names
+from ._utils import _initialize_model, _load_saved_files, _validate_var_names
 
 
 class BaseModelMixin():
@@ -100,7 +98,7 @@ class BaseModelMixin():
         if not os.path.exists(dir_path) or overwrite:
             os.makedirs(dir_path, exist_ok=overwrite)
         else:
-            raise ValueError(f"{dir_path} already exists."
+            raise ValueError(f"Directory '{dir_path}' already exists."
                              "Please provide another directory for saving.")
 
         model_save_path = os.path.join(dir_path, "model_params.pt")
@@ -110,9 +108,9 @@ class BaseModelMixin():
         if save_adata:
             # Convert storage format of adjacency matrix to be writable by 
             # adata.write()
-            if self.adata.obsp['spatial_connectivities'] is not None:
-                self.adata.obsp['spatial_connectivities'] = sp.csr_matrix(
-                    self.adata.obsp['spatial_connectivities'])
+            if self.adata.obsp["spatial_connectivities"] is not None:
+                self.adata.obsp["spatial_connectivities"] = sp.csr_matrix(
+                    self.adata.obsp["spatial_connectivities"])
             self.adata.write(
                 os.path.join(dir_path, adata_file_name), **anndata_write_kwargs)
 
@@ -159,7 +157,7 @@ class BaseModelMixin():
         adata = new_adata if new_adata is not None else adata
 
         _validate_var_names(adata, var_names)
-        model = _initialize_model(cls, adata, attr_dict, use_cuda)
+        model = _initialize_model(cls, adata, attr_dict)
 
         # set saved attrs for loaded model
         for attr, val in attr_dict.items():
@@ -182,7 +180,7 @@ class BaseModelMixin():
              If not trained and `warn` is True, raise a warning, else raise a 
              RuntimeError.
         """
-        message = ("Trying to query inferred values from an untrained model. " +
+        message = ("Trying to query inferred values from an untrained model. "
                    "Please train the model first.")
         if not self.is_trained_:
             if warn:

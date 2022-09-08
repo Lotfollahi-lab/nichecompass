@@ -1,3 +1,3 @@
-from ._autotalker import Autotalker
+from .autotalker import Autotalker
 
 __all__ = ["Autotalker"]

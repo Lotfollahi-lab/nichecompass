@@ -2,8 +2,7 @@ from typing import Literal
 
 from anndata import AnnData
 from torch_geometric.data import Data
-from torch_geometric.transforms import RandomNodeSplit
-from torch_geometric.transforms import RandomLinkSplit
+from torch_geometric.transforms import RandomNodeSplit, RandomLinkSplit
 
 from ._datasets import SpatialAnnTorchDataset
 
@@ -90,28 +89,35 @@ def node_level_split_mask(data: Data,
 
 def prepare_data(adata: AnnData,
                  adj_key: str="spatial_connectivities",
-                 node_label_method: Literal["self", "one-hop"]="one-hop",
+                 node_label_method: Literal["self",
+                                            "one-hop-sum",
+                                            "one-hop-norm"]="one-hop-norm",
                  edge_val_ratio: float=0.1,
                  edge_test_ratio: float=0.05,
                  node_val_ratio: float=0.1,
                  node_test_ratio: float=0.0):
     """
-    Prepare data for model training including edge-level and node-level train, 
+    Prepare data for model training including edge-level (for edge
+    reconstruction) and node-level (for gene expression reconstruction) train, 
     validation, test splits.
 
     Parameters
     ----------
     adata:
         AnnData object with sparse adjacency matrix stored in 
-        adata.obsp[adj_key].
+        ´adata.obsp[adj_key]´.
     adj_key:
-        Key under which the sparse adjacency matrix is stored in adata.obsp.
+        Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
     node_label_method:
         Node label method that will be used for gene expression reconstruction. 
         If ´self´, use only the input features of the node itself as node labels
-        for gene expression reconstruction. If ´one-hop´, use a concatenation of
-        the node's input features with an average of the input features of all 
-        nodes in the node's one-hop neighborhood.
+        for gene expression reconstruction. If ´one-hop-sum´, use a 
+        concatenation of the node's input features with the sum of the input 
+        features of all nodes in the node's one-hop neighborhood. If 
+        ´one-hop-norm´, use a concatenation of the node`s input features with
+        the node's one-hop neighbors input features normalized as per Kipf, T. 
+        N. & Welling, M. Semi-Supervised Classification with Graph Convolutional
+        Networks. arXiv [cs.LG] (2016))
     edge_val_ratio:
         Fraction of the data that is used as validation set on edge-level.
     edge_test_ratio:
@@ -123,21 +129,20 @@ def prepare_data(adata: AnnData,
 
     Returns
     ----------
-    train_data:
-        PyG Data object containing training edges in the ´edge_label_index´ 
-        attribute and training edge labels in the ´edge_label´ attribute.
-    val_data:
-        PyG Data object containing validation edges in the ´edge_label_index´ 
-        attribute and validation edge labels in the ´edge_label´ attribute.
-    test_data:
-        PyG Data object containing test edges in the ´edge_label_index´ 
-        attribute and test edge labels in the ´edge_label´ attribute.
+    data_dict:
+        Dictionary containing edge-level training, validation and test PyG 
+        Data objects and node-level PyG Data object with split masks under keys 
+        ´edge_train_data´, ´edge_val_data´, ´edge_test_data´, and 
+        ´node_masked_data´ respectively. The edge-level PyG Data objects contain
+        edges in the ´edge_label_index´ attribute and edge labels in the 
+        ´edge_label´ attribute.
     """
     data_dict = {}
     dataset = SpatialAnnTorchDataset(adata=adata,
                                      adj_key=adj_key,
                                      node_label_method=node_label_method)
-    # PyG Data object (has 2 edge index pairs for one edge because of symmetry)
+    # PyG Data object (has 2 edge index pairs for one edge because of symmetry;
+    # one edge index pair will be removed in the edge-level split).
     data = Data(x=dataset.x,
                 edge_index=dataset.edge_index,
                 node_labels=dataset.node_labels)

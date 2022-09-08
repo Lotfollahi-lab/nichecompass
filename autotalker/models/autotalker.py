@@ -1,4 +1,3 @@
-import logging
 from typing import Literal, Optional, Union
 
 import torch
@@ -11,9 +10,6 @@ from autotalker.modules import VGPGAE
 from autotalker.train import Trainer
 
 
-logger = logging.getLogger(__name__)
-
-
 class Autotalker(BaseModelMixin, VGAEModelMixin):
     """
     Autotalker model class.
@@ -22,19 +18,19 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
     ----------
     adata:
         AnnData object with sparse adjacency matrix stored in 
-        adata.obsp[adj_key] and binary gene program targets and (optionally) 
-        sources masks stored in adata.varm[gp_targets_mask_key] and 
-        adata.varm[gp_sources_mask_key] respectively (unless gene program masks
-        are passed explicitly to the model via parameters ´gp_targets_mask_key´
-        and ´gp_sources_mask_key´).
+        ´adata.obsp[adj_key]´ and binary gene program targets and (optionally) 
+        sources masks stored in ´adata.varm[gp_targets_mask_key]´ and 
+        ´adata.varm[gp_sources_mask_key]´ respectively (unless gene program 
+        masks are passed explicitly to the model via parameters 
+        ´gp_targets_mask_key´ and ´gp_sources_mask_key´).
     adj_key:
-        Key under which the sparse adjacency matrix is stored in adata.obsp.
+        Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
     gp_targets_mask_key:
-        Key under which the gene program targets mask is stored in adata.varm. 
+        Key under which the gene program targets mask is stored in ´adata.varm´. 
         This mask will only be used if no ´gp_targets_mask_key´ is passed 
         explicitly to the model.
     gp_sources_mask_key:
-        Key under which the gene program sources mask is stored in adata.varm. 
+        Key under which the gene program sources mask is stored in ´adata.varm´. 
         This mask will only be used if no ´gp_sources_mask_key´ is passed 
         explicitly to the model.    
     include_edge_recon_loss:
@@ -44,12 +40,15 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         If `True`, include the gene expression reconstruction loss in the 
         loss optimization.
     node_label_method:
-        Node label method that will be used for gene expression reconstruction 
-        if ´include_gene_exp_recon_loss'is ´True´. If ´self´, use only the 
-        input features of the node itself as node labels for gene expression 
-        reconstruction. If ´one-hop´, use a concatenation of the node's input 
-        features with an average of the input features of all nodes in the 
-        node's one-hop neighborhood.
+        Node label method that will be used for gene expression reconstruction. 
+        If ´self´, use only the input features of the node itself as node labels
+        for gene expression reconstruction. If ´one-hop-sum´, use a 
+        concatenation of the node's input features with the sum of the input 
+        features of all nodes in the node's one-hop neighborhood. If 
+        ´one-hop-norm´, use a concatenation of the node`s input features with
+        the node's one-hop neighbors input features normalized as per Kipf, T. 
+        N. & Welling, M. Semi-Supervised Classification with Graph Convolutional
+        Networks. arXiv [cs.LG] (2016))
     n_hidden_encoder:
         Number of nodes in the encoder hidden layer.
     dropout_rate_encoder:
@@ -60,11 +59,11 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
     gp_targets_mask:
         Gene program targets mask that is directly passed to the model (if not 
         ´None´, this mask will have prevalence over a gene program targets mask
-        stored in adata.varm[gp_targets_mask_key]).
+        stored in ´adata.varm[gp_targets_mask_key]´).
     gp_sources_mask:
         Gene program sources mask that is directly passed to the model (if not 
         ´None´, this mask will have prevalence over a gene program sources mask
-        stored in adata.varm[gp_sources_mask_key]).    
+        stored in ´adata.varm[gp_sources_mask_key]´).    
     """
     def __init__(self,
                  adata: AnnData,
@@ -73,7 +72,9 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                  gp_sources_mask_key: str="autotalker_gp_sources",
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
-                 node_label_method: Literal["self", "one-hop"]="one-hop",
+                 node_label_method: Literal["self",
+                                            "one-hop-sum",
+                                            "one-hop-norm"]="one-hop-norm",
                  n_hidden_encoder: int=256,
                  dropout_rate_encoder: float=0.0,
                  dropout_rate_graph_decoder: float=0.0,
@@ -88,7 +89,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         self.node_label_method_ = node_label_method
         self.n_input_ = adata.n_vars
         self.n_output_ = adata.n_vars
-        if node_label_method == "one-hop":
+        if node_label_method != "self":
             self.n_output_ *= 2
         self.n_hidden_encoder_ = n_hidden_encoder
         self.dropout_rate_encoder_ = dropout_rate_encoder

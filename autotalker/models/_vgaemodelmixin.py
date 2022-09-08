@@ -22,7 +22,13 @@ class VGAEModelMixin:
             AnnData object to get the latent representation for if not the one
             passed to the model.
         adj_key:
-            Key under which the sparse adjacency matrix is stored in adata.obsp.
+            Key under which the sparse adjacency matrix is stored in 
+            ´adata.obsp´.
+
+        Returns
+        ----------
+        z:
+            Numpy array containing latent dimensions.
         """
         self._check_if_trained(warn=False)
         device = next(self.model.parameters()).device
