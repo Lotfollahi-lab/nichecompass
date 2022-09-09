@@ -1,6 +1,8 @@
 from typing import Optional
+from xml.etree.ElementPath import xpath_tokenizer
 
 import numpy as np
+import torch
 from anndata import AnnData
 
 from autotalker.data import SpatialAnnTorchDataset
@@ -39,11 +41,9 @@ class VGAEModelMixin:
             dataset = SpatialAnnTorchDataset(self.adata, self.adj_key_)
 
         x = dataset.x.to(device)
+        if self.model.log_variational:
+            x = torch.log(1 + x) # for numerical stability during model training
         edge_index = dataset.edge_index.to(device) 
 
         z = np.array(self.model.get_latent_representation(x, edge_index).cpu())
         return z
-
-
-
-                                                    

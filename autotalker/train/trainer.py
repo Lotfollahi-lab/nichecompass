@@ -1,3 +1,4 @@
+import copy
 import time
 import warnings
 from collections import defaultdict
@@ -9,10 +10,10 @@ import torch
 import torch.nn as nn
 from anndata import AnnData
 
-from ._metrics import eval_metrics, plot_eval_metrics
-from ._utils import plot_loss_curves, print_progress, EarlyStopping
+from .metrics import eval_metrics, plot_eval_metrics
+from .utils import plot_loss_curves, print_progress, EarlyStopping
 from autotalker.data import initialize_dataloaders, prepare_data
-from autotalker.modules._utils import edge_values_and_sorted_labels
+from autotalker.modules.utils import _edge_values_and_sorted_labels
 
 
 class Trainer:
@@ -341,7 +342,7 @@ class Trainer:
                " sec.")
 
         if self.best_model_state_dict is not None and self.reload_best_model:
-            print("Saving best model state, which was in epoch "
+            print("Using best model state, which was in epoch "
                   f"{self.best_epoch + 1}.")
             self.model.load_state_dict(self.best_model_state_dict)
 
@@ -418,7 +419,7 @@ class Trainer:
             adj_recon_probs_val = torch.sigmoid(
                 edge_val_model_output["adj_recon_logits"])
 
-            edge_recon_probs_val, edge_labels_val = edge_values_and_sorted_labels(
+            edge_recon_probs_val, edge_labels_val = _edge_values_and_sorted_labels(
                 adj=adj_recon_probs_val,
                 edge_label_index=edge_val_data_batch.edge_label_index,
                 edge_labels=edge_val_data_batch.edge_label)
@@ -459,7 +460,7 @@ class Trainer:
             adj_recon_probs_test = torch.sigmoid(
                 edge_test_model_output["adj_recon_logits"])
 
-            edge_recon_probs_test, edge_labels_test = edge_values_and_sorted_labels(
+            edge_recon_probs_test, edge_labels_test = _edge_values_and_sorted_labels(
                 adj=adj_recon_probs_test,
                 edge_label_index=edge_test_data_batch.edge_label_index,
                 edge_labels=edge_test_data_batch.edge_label)
@@ -498,13 +499,13 @@ class Trainer:
         early_stopping_metric = self.early_stopping.early_stopping_metric
         current_metric = self.epoch_logs[early_stopping_metric][-1]
         if self.early_stopping.update_state(current_metric):
-            self.best_model_state_dict = self.model.state_dict()
+            self.best_model_state_dict = copy.deepcopy(self.model.state_dict())
             self.best_epoch = self.epoch
 
         continue_training, reduce_lr = self.early_stopping.step(current_metric)
         if reduce_lr:
-            print(f"\nReducing learning rate.")
             for param_group in self.optimizer.param_groups:
                 param_group["lr"] *= self.early_stopping.lr_factor
+            print(f"New learning rate is {param_group['lr']}.\n")
 
         return not continue_training

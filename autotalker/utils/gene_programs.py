@@ -5,7 +5,7 @@ import omnipath as op
 import pandas as pd
 from anndata import AnnData
 
-from ._utils import _load_R_file_as_df
+from .utils import _load_R_file_as_df
 
 
 def add_gps_from_gp_dict_to_adata(

@@ -4,7 +4,7 @@ from anndata import AnnData
 from torch_geometric.data import Data
 from torch_geometric.transforms import RandomNodeSplit, RandomLinkSplit
 
-from ._datasets import SpatialAnnTorchDataset
+from .datasets import SpatialAnnTorchDataset
 
 
 def edge_level_split(data: Data,

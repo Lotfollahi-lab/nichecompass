@@ -1,4 +1,3 @@
-from pickletools import optimize
 from typing import Literal
 
 import mlflow
@@ -6,15 +5,13 @@ import torch
 import torch.nn as nn
 from torch_geometric.data import Data
 
-from autotalker.nn import DotProductGraphDecoder
-from autotalker.nn import GCNEncoder
-from autotalker.nn import MaskedGeneExprDecoder
-from ._losses import compute_edge_recon_loss
-from ._losses import compute_gene_expr_recon_zinb_loss
-from ._losses import compute_kl_loss
-from ._losses import compute_vgae_loss
-from ._losses import vgae_loss_parameters
-from ._vgaemodulemixin import VGAEModuleMixin
+from autotalker.nn import (DotProductGraphDecoder,
+                           GCNEncoder,
+                           MaskedGeneExprDecoder)
+from .losses import (compute_edge_recon_loss, 
+                     compute_gene_expr_recon_zinb_loss,
+                     compute_kl_loss)
+from .vgaemodulemixin import VGAEModuleMixin
 
 
 class VGPGAE(nn.Module, VGAEModuleMixin):
@@ -44,6 +41,10 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
     include_gene_expr_recon_loss:
         If `True`, include the gene expression reconstruction loss in the 
         loss optimization.
+    log_variational:
+        If ´True´, transform x by log(x+1) prior to encoding for numerical 
+        stability. Not normalization.
+
     """
     def __init__(self,
                  n_input: int,
@@ -54,7 +55,8 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
                  dropout_rate_encoder: float=0.0,
                  dropout_rate_graph_decoder: float=0.0,
                  include_edge_recon_loss: bool=True,
-                 include_gene_expr_recon_loss: bool=True):
+                 include_gene_expr_recon_loss: bool=True,
+                 log_variational: bool=True):
         super().__init__()
         self.n_input = n_input
         self.n_hidden_encoder = n_hidden_encoder
@@ -64,6 +66,7 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         self.dropout_rate_graph_decoder = dropout_rate_graph_decoder
         self.include_edge_recon_loss = include_edge_recon_loss
         self.include_gene_expr_recon_loss = include_gene_expr_recon_loss
+        self.log_variational = log_variational
 
         print("--- INITIALIZING NEW NETWORK MODULE: VGPGAE ---")
         print(f"LOSS -> include_edge_recon_loss: {include_edge_recon_loss}, "
@@ -83,7 +86,7 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
             n_output=n_output,
             mask=gene_expr_decoder_mask)
         
-        # Gene-specific inverse dispersion parameters
+        # Gene-specific dispersion parameters
         self.theta = torch.nn.Parameter(torch.randn(self.n_output))
 
     def forward(self,
@@ -114,6 +117,8 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         # Use observed library size as scaling factor in mean of ZINB 
         # distribution
         log_library_size = torch.log(x.sum(1)).unsqueeze(1)
+        if self.log_variational:
+            x = torch.log(1 + x)
         output["mu"], output["logstd"] = self.encoder(x, edge_index)
         z = self.reparameterize(output["mu"], output["logstd"])
         if decoder == "graph":
@@ -153,11 +158,19 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         """
         loss_dict = {}
 
-        vgae_loss_params = vgae_loss_parameters(
-            data_batch=edge_data_batch,
-            device=device)
-        edge_recon_loss_norm_factor = vgae_loss_params[0]
-        edge_recon_loss_pos_weight = vgae_loss_params[1]
+        # Compute loss parameters
+        n_possible_edges = edge_data_batch.x.shape[0] ** 2
+        n_neg_edges = n_possible_edges - edge_data_batch.edge_index.shape[1]
+        # Factor with which edge reconstruction loss is weighted compared to 
+        # Kullback-Leibler divergence and gene expression reconstruction loss.
+        edge_recon_loss_norm_factor = n_possible_edges / (n_neg_edges * 2)
+        # Weight with which positive examples are reweighted in the 
+        # reconstruction loss calculation. Should be 1 if negative sampling 
+        # ratio is 1. 
+        edge_recon_loss_pos_weight = torch.Tensor([1]).to(device)
+        # Factor with which gene expression reconstruction loss is weighted 
+        # compared to Kullback-Leibler divergence and edge reconstruction loss.
+        gene_expr_recon_loss_norm_factor = 1
 
         loss_dict["edge_recon_loss"] = (edge_recon_loss_norm_factor * 
         compute_edge_recon_loss(
@@ -176,11 +189,12 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         # Gene-specific inverse dispersion
         theta = torch.exp(self.theta)
 
-        loss_dict["gene_expr_recon_loss"] = compute_gene_expr_recon_zinb_loss(
+        loss_dict["gene_expr_recon_loss"] = (gene_expr_recon_loss_norm_factor * 
+        compute_gene_expr_recon_zinb_loss(
             x=node_data_batch.node_labels,
             mu=nb_means,
             theta=theta,
-            zi_prob_logits=zi_prob_logits)
+            zi_prob_logits=zi_prob_logits))
 
         loss_dict["loss"] = 0
         loss_dict["loss"] += loss_dict["kl_loss"]
@@ -203,4 +217,6 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         mlflow.log_param("include_edge_recon_loss", 
                          self.include_edge_recon_loss)
         mlflow.log_param("include_gene_expr_recon_loss", 
-                         self.include_gene_expr_recon_loss)                    
+                         self.include_gene_expr_recon_loss)
+        mlflow.log_param("log_variational", 
+                         self.log_variational)                   

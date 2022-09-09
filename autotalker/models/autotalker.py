@@ -4,8 +4,8 @@ import torch
 from anndata import AnnData
 from numpy import ndarray
 
-from ._basemodelmixin import BaseModelMixin
-from ._vgaemodelmixin import VGAEModelMixin
+from .basemodelmixin import BaseModelMixin
+from .vgaemodelmixin import VGAEModelMixin
 from autotalker.modules import VGPGAE
 from autotalker.train import Trainer
 
@@ -141,7 +141,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             dropout_rate_encoder=self.dropout_rate_encoder_,
             dropout_rate_graph_decoder=self.dropout_rate_graph_decoder_,
             include_edge_recon_loss=self.include_edge_recon_loss_,
-            include_gene_expr_recon_loss=self.include_gene_expr_recon_loss_,)
+            include_gene_expr_recon_loss=self.include_gene_expr_recon_loss_,
+            log_variational=True)
 
         self.is_trained_ = False
         # Store init params for saving and loading

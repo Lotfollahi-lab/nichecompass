@@ -5,7 +5,7 @@ import torch
 import torch_geometric
 from anndata import AnnData
 
-from ._utils import _sparse_mx_to_sparse_tensor
+from .utils import _sparse_mx_to_sparse_tensor
 
 
 class SpatialAnnTorchDataset():

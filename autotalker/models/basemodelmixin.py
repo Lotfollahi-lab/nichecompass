@@ -9,7 +9,7 @@ import scipy.sparse as sp
 import torch
 from anndata import AnnData
 
-from ._utils import _initialize_model, _load_saved_files, _validate_var_names
+from .utils import _initialize_model, _load_saved_files, _validate_var_names
 
 
 class BaseModelMixin():
