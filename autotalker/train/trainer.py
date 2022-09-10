@@ -27,10 +27,13 @@ class Trainer:
     Parameters
     ----------
     adata:
-        AnnData object with sparse adjacency matrix stored in 
-        adata.obsp[adj_key].
+        AnnData object with raw counts stored in 
+        ´adata.layers[counts_layer_key]´, and sparse adjacency matrix stored in 
+        ´adata.obsp[adj_key]´.
     model:
         An Autotalker module model instance.
+    counts_layer_key:
+        Key under which the raw counts are stored in ´adata.layer´.
     adj_key:
         Key under which the sparse adjacency matrix is stored in adata.obsp.
     node_label_method:
@@ -66,6 +69,7 @@ class Trainer:
     def __init__(self,
                  adata: AnnData,
                  model: nn.Module,
+                 counts_layer_key: str="counts",
                  adj_key: str="spatial_connectivities",
                  node_label_method: Literal["self",
                                             "one-hop-sum",
@@ -83,6 +87,7 @@ class Trainer:
                  **kwargs):
         self.adata = adata
         self.model = model
+        self.counts_layer_key = counts_layer_key
         self.adj_key = adj_key
         self.node_label_method = node_label_method
         self.edge_train_ratio = 1 - edge_val_ratio - edge_test_ratio
@@ -107,6 +112,7 @@ class Trainer:
         self.loaders_n_direct_neighbors = kwargs.pop(
             "loaders_n_direct_neighbors", -1)
         self.loaders_n_hops = kwargs.pop("loaders_n_hops", 3)
+        self.grad_clip_value = kwargs.pop("grad_clip_value", 0.0)
         self.epoch = -1
         self.training_time = 0
         self.optimizer = None
@@ -126,6 +132,7 @@ class Trainer:
         # Prepare data and get node-level and edge-level training, validation
         # and test splits
         data_dict = prepare_data(adata=adata,
+                                 counts_layer_key=self.counts_layer_key,
                                  adj_key=self.adj_key,
                                  node_label_method=node_label_method,
                                  edge_val_ratio=self.edge_val_ratio,
@@ -240,6 +247,7 @@ class Trainer:
             mlflow.log_param("seed", self.seed)
             mlflow.log_param("loaders_n_hops", self.loaders_n_hops)
             mlflow.log_param("loaders_n_direct_neighbors", self.loaders_n_direct_neighbors)
+            mlflow.log_param("grad_clip_value", self.grad_clip_value)
             mlflow.log_param("n_epochs", self.n_epochs)
             mlflow.log_param("lr", self.lr)
             mlflow.log_param("weight_decay", self.weight_decay)
@@ -297,10 +305,16 @@ class Trainer:
                 self.iter_logs["train_gene_expr_recon_loss"].append(
                     train_gene_expr_recon_loss.item())
                 self.iter_logs["n_train_iter"] += 1
-        
+
                 # Optimize for training loss
                 self.optimizer.zero_grad()
                 train_loss.backward()
+
+                # Clip gradients
+                if self.grad_clip_value > 0:
+                    torch.nn.utils.clip_grad_value_(self.model.parameters(),
+                                                    self.grad_clip_value)
+
                 self.optimizer.step()
 
             # Validate model

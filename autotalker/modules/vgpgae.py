@@ -117,8 +117,11 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         # Use observed library size as scaling factor in mean of ZINB 
         # distribution
         log_library_size = torch.log(x.sum(1)).unsqueeze(1)
+        
+        # Convert gene expression for numerical stability
         if self.log_variational:
             x = torch.log(1 + x)
+
         output["mu"], output["logstd"] = self.encoder(x, edge_index)
         z = self.reparameterize(output["mu"], output["logstd"])
         if decoder == "graph":

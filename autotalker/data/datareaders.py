@@ -1,3 +1,5 @@
+from typing import Optional
+
 import anndata as ad
 import pandas as pd
 import scipy.sparse as sp
@@ -5,10 +7,14 @@ import scipy.sparse as sp
 
 def load_spatial_adata_from_csv(x_file_path: str,
                                 adj_file_path: str,
-                                adj_key: str="spatial_connectivities"):
+                                cell_type_file_path: Optional[str]=None,
+                                adj_key: str="spatial_connectivities",
+                                cell_type_col: str="cell_type",
+                                cell_type_key: str="cell_type"):
     """
     Create AnnData object from two csv files containing gene expression feature 
-    matrix and adjacency matrix respectively.
+    matrix and adjacency matrix respectively. Optionally, a third csv file with
+    cell types can be provided.
 
     Parameters
     ----------
@@ -17,9 +23,15 @@ def load_spatial_adata_from_csv(x_file_path: str,
         data.
     adj_file_path:
         File path of the csv file which contains adjacency matrix data.
+    cell_type_file_path:
+        File path of the csv file which contains cell type data.
     adj_key:
         Key under which the sparse adjacency matrix will be stored in 
         ´adata.obsp´.
+    cell_type_col:
+        Column under wich the cell type is stored in the ´cell_type_file´.
+    cell_type_key:
+        Key under which the cell types will be stored in ´adata.obs´.
 
     Returns
     ----------
@@ -31,4 +43,8 @@ def load_spatial_adata_from_csv(x_file_path: str,
     adj_df = pd.read_csv(adj_file_path, sep=",", header=0)
     adj = adj_df.values
     adata.obsp[adj_key] = sp.csr_matrix(adj).tocoo()
+
+    if cell_type_file_path:
+        cell_type_df = pd.read_csv(cell_type_file_path, sep=",", header=0)
+        adata.obs[cell_type_key] = cell_type_df[cell_type_col].values
     return adata

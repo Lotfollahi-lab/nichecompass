@@ -17,12 +17,15 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
     Parameters
     ----------
     adata:
-        AnnData object with sparse adjacency matrix stored in 
+        AnnData object with raw counts stored in 
+        ´adata.layers[counts_layer_key]´, sparse adjacency matrix stored in 
         ´adata.obsp[adj_key]´ and binary gene program targets and (optionally) 
         sources masks stored in ´adata.varm[gp_targets_mask_key]´ and 
         ´adata.varm[gp_sources_mask_key]´ respectively (unless gene program 
         masks are passed explicitly to the model via parameters 
         ´gp_targets_mask_key´ and ´gp_sources_mask_key´).
+    counts_layer_key:
+        Key under which the raw counts are stored in ´adata.layer´.
     adj_key:
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
     gp_targets_mask_key:
@@ -39,6 +42,9 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
     include_gene_expr_recon_loss:
         If `True`, include the gene expression reconstruction loss in the 
         loss optimization.
+    log_variational:
+        If ´True´, transform x by log(x+1) prior to encoding for numerical 
+        stability. Not normalization.
     node_label_method:
         Node label method that will be used for gene expression reconstruction. 
         If ´self´, use only the input features of the node itself as node labels
@@ -67,11 +73,13 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
     """
     def __init__(self,
                  adata: AnnData,
+                 counts_layer_key="counts",
                  adj_key: str="spatial_connectivities",
                  gp_targets_mask_key: str="autotalker_gp_targets",
                  gp_sources_mask_key: str="autotalker_gp_sources",
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
+                 log_variational: bool=True,
                  node_label_method: Literal["self",
                                             "one-hop-sum",
                                             "one-hop-norm"]="one-hop-norm",
@@ -81,11 +89,13 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                  gp_targets_mask: Optional[Union[ndarray, list]]=None,
                  gp_sources_mask: Optional[Union[ndarray, list]]=None):
         self.adata = adata
+        self.counts_layer_key_ = counts_layer_key
         self.adj_key_ = adj_key
         self.gp_targets_mask_key_ = gp_targets_mask_key
         self.gp_sources_mask_key_ = gp_sources_mask_key
         self.include_edge_recon_loss_ = include_edge_recon_loss
         self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
+        self.log_variational_ = log_variational
         self.node_label_method_ = node_label_method
         self.n_input_ = adata.n_vars
         self.n_output_ = adata.n_vars
@@ -127,6 +137,19 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         
         self.n_latent_ = len(self.gp_mask_)
         
+        # Validate counts layer key and counts values
+        if counts_layer_key not in adata.layers:
+            raise ValueError("Please specify an adequate ´counts_layer_key´. "
+                             "By default the raw counts are assumed to be "
+                             f"stored in adata.layers['counts'].")
+        if include_gene_expr_recon_loss or log_variational:
+            if (adata.layers[counts_layer_key] < 0).sum() > 0:
+                raise ValueError("Please make sure that "
+                                 "´adata.layers[counts_layer_key]´ contains the"
+                                 " raw counts (not log library size "
+                                 "normalized) if ´include_gene_expr_recon_loss´"
+                                 " is ´True´ or ´log_variational´ is ´True´.")
+
         # Validate adjacency key
         if adj_key not in adata.obsp:
             raise ValueError("Please specify an adequate ´adj_key´.")
@@ -142,7 +165,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             dropout_rate_graph_decoder=self.dropout_rate_graph_decoder_,
             include_edge_recon_loss=self.include_edge_recon_loss_,
             include_gene_expr_recon_loss=self.include_gene_expr_recon_loss_,
-            log_variational=True)
+            log_variational=self.log_variational_)
 
         self.is_trained_ = False
         # Store init params for saving and loading
@@ -189,6 +212,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         self.trainer = Trainer(
             adata=self.adata,
             model=self.model,
+            counts_layer_key=self.counts_layer_key_,
             adj_key=self.adj_key_,
             node_label_method=self.node_label_method_,
             edge_val_ratio=edge_val_ratio,
