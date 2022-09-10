@@ -1,10 +1,7 @@
-from typing import Literal
-
 import torch
 import torch.nn.functional as F
-from torch_geometric.data import Data
 
-from ._utils import edge_values_and_sorted_labels
+from .utils import _edge_values_and_sorted_labels
 
 
 def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
@@ -35,7 +32,7 @@ def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
         probabilities (calculated from logits for numerical stability in
         backpropagation).
     """
-    edge_recon_logits, edge_labels_sorted = edge_values_and_sorted_labels(
+    edge_recon_logits, edge_labels_sorted = _edge_values_and_sorted_labels(
         adj=adj_recon_logits,
         edge_label_index=edge_label_index,
         edge_labels=edge_labels)
@@ -51,7 +48,7 @@ def compute_gene_expr_recon_zinb_loss(x: torch.Tensor,
                                       mu: torch.Tensor,
                                       theta: torch.Tensor,
                                       zi_prob_logits: torch.Tensor,
-                                      eps=1e-8):
+                                      eps: float=1e-8):
     """
     Gene expression reconstruction loss according to a ZINB gene expression 
     model, which is used to model scRNA-seq count data due to its capacity of 
@@ -132,86 +129,3 @@ def compute_kl_loss(mu: torch.Tensor,
     kl_loss = (-0.5 / n_nodes) * torch.mean(
     torch.sum(1 + 2 * logstd - mu ** 2 - torch.exp(logstd) ** 2, 1))
     return kl_loss
-
-
-def compute_vgae_loss(adj_recon_logits: torch.Tensor,
-                      edge_labels: torch.Tensor,
-                      edge_label_index: torch.Tensor,
-                      edge_recon_loss_pos_weight: torch.Tensor,
-                      edge_recon_loss_norm_factor: float,
-                      mu: torch.Tensor,
-                      logstd: torch.Tensor,
-                      n_nodes: int):
-    """
-    Compute the Variational Graph Autoencoder loss which consists of the
-    weighted binary cross entropy loss (edge reconstruction loss), where sparse 
-    positive examples (Aij = 1) can be reweighted in case of imbalanced negative
-    sampling, as well as the Kullback-Leibler divergence (regularization loss) 
-    as per Kingma, D. P. & Welling, M. Auto-Encoding Variational Bayes. arXiv 
-    [stat.ML] (2013). The edge reconstruction loss is weighted with a 
-    normalization factor compared to the regularization loss.
-
-    Parameters
-    ----------
-    adj_recon_logits:
-        Adjacency matrix containing the predicted edge logits.
-    edge_labels:
-        Edge ground truth labels for both positive and negatively sampled edges.
-    edge_label_index:
-        Index with edge labels for both positive and negatively sampled edges.
-    edge_recon_loss_pos_weight:
-        Weight with which positive examples are reweighted in the reconstruction
-        loss calculation. Should be 1 if negative sampling ratio is 1.
-    edge_recon_loss_norm_factor:
-        Factor with which edge reconstruction loss is weighted compared to 
-        Kullback-Leibler divergence.
-    mu:
-        Expected values of the latent space distribution.
-    logstd:
-        Log of standard deviations of the latent space distribution.
-    n_nodes:
-        Number of nodes in the graph.
-        
-    Returns
-    ----------
-    vgae_loss:
-        Variational Graph Autoencoder loss composed of edge reconstruction and 
-        regularization loss.
-    """
-    edge_recon_loss = compute_edge_recon_loss(
-        adj_recon_logits,
-        edge_labels,
-        edge_label_index,
-        pos_weight=edge_recon_loss_pos_weight)
-
-    kl_loss = compute_kl_loss(mu, logstd, n_nodes)
-
-    vgae_loss = edge_recon_loss_norm_factor * edge_recon_loss + kl_loss
-    return vgae_loss
-
-
-def vgae_loss_parameters(data_batch: Data, device: Literal["cpu", "cuda"]):
-    """
-    Compute the parameters for the vgae loss calculation.
-
-    Parameters
-    ----------
-    data_batch:
-        PyG Data object containing a batch of data.
-    device:
-        Device where to send the loss parameters.
-
-    Returns
-    ----------
-    edge_recon_loss_norm_factor:
-        Factor with which edge reconstruction loss is weighted compared to 
-        Kullback-Leibler divergence.
-    edge_recon_loss_pos_weight:
-        Weight with which positive examples are reweighted in the reconstruction
-        loss calculation. Should be 1 if negative sampling ratio is 1.     
-    """
-    n_possible_edges = data_batch.x.shape[0] ** 2
-    n_neg_edges = n_possible_edges - data_batch.edge_index.shape[1]
-    edge_recon_loss_norm_factor = n_possible_edges / (n_neg_edges * 2)
-    edge_recon_loss_pos_weight = torch.Tensor([1]).to(device)
-    return edge_recon_loss_norm_factor, edge_recon_loss_pos_weight

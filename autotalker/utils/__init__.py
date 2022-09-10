@@ -1,4 +1,7 @@
-from .gene_programs import download_nichenet_ligand_target_mx
-from .gene_programs import extract_gps_from_ligand_target_mx
-from .gene_programs import add_binary_gp_mask_to_adata
-from .gene_programs import extract_gps_from_omnipath_lr_interactions
+from .gene_programs import (add_gps_from_gp_dict_to_adata,
+                            extract_gp_dict_from_nichenet_ligand_target_mx,
+                            extract_gp_dict_from_omnipath_lr_interactions)
+
+__all__ = ["add_gps_from_gp_dict_to_adata",
+           "extract_gp_dict_from_nichenet_ligand_target_mx",
+           "extract_gp_dict_from_omnipath_lr_interactions"]

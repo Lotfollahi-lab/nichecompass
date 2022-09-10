@@ -2,9 +2,9 @@ import torch
 from torch_geometric.utils import to_dense_adj
 
 
-def edge_values_and_sorted_labels(adj: torch.Tensor,
-                                  edge_label_index: torch.Tensor,
-                                  edge_labels: torch.Tensor):
+def _edge_values_and_sorted_labels(adj: torch.Tensor,
+                                   edge_label_index: torch.Tensor,
+                                   edge_labels: torch.Tensor):
     """
     Utility function to retrieve values at edge indeces as given by 
     ´edge_label_index´ from an adjacency matrix ´adj´, remove edge labels 

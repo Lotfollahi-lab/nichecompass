@@ -16,11 +16,11 @@ class MaskedLinear(nn.Linear):
         Number of input nodes to the masked layer.
     n_output:
         Number of output nodes from the masked layer.
-    bias:
-        If ´True´, use a bias.
     mask:
         Mask that is used to mask the node connections from the input layer to
         the output layer.
+    bias:
+        If ´True´, use a bias.
     """
     def __init__(self,
                  n_input: int,

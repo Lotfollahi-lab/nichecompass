@@ -8,7 +8,7 @@ class VGAEModuleMixin:
     """
     def reparameterize(self, mu: torch.Tensor, logstd: torch.Tensor):
         """
-        Reparameterization trick for latent space normal distribution.
+        Use reparameterization trick for latent space normal distribution.
         
         Parameters
         ----------

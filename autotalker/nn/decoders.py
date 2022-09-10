@@ -2,7 +2,46 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ._layers import MaskedLayer
+from .layers import MaskedLayer
+
+
+class FCGraphDecoder(nn.Module):
+    """
+    Fully connected graph decoder class.
+    """
+    def __init__(self,
+                 n_input: int,
+                 n_output: int,
+                 bias: bool=False,
+                 dropout_rate: float=0.0,
+                 activation: nn.Module=nn.Identity):
+        super().__init__()
+
+        print(f"FULLY CONNECTED GRAPH DECODER -> dropout_rate: {dropout_rate}")
+
+        self.linear = nn.Linear(n_input * 2, n_output, bias=bias)
+        self.dropout = nn.Dropout(dropout_rate)
+        self.activation = activation
+
+    def forward(self, z: torch.Tensor):
+        """
+        Forward pass of the fully connected graph decoder.
+
+        Parameters
+        ----------
+        z:
+            Tensor containing the latent space features.
+
+        Returns
+        ----------
+        adj_rec_logits:
+            Tensor containing the reconstructed adjacency matrix with logits.
+        """
+        z_cat = torch.cat((z, z.t()), dim=-1)
+        print(z_cat.shape)
+        z_cat = self.linear(self.dropout(z_cat))
+        adj_rec_logits = self.activation(z_cat)
+        return adj_rec_logits
 
 
 class DotProductGraphDecoder(nn.Module):

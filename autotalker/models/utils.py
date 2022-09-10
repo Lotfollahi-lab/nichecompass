@@ -75,16 +75,15 @@ def _validate_var_names(adata: ad.AnnData, source_var_names: str):
     user_var_names = adata.var_names.astype(str)
     if not np.array_equal(source_var_names, user_var_names):
         logger.warning(
-            "The var_names of the passed in adata do not match the var_names of"
-            " the adata used to train the model. For valid results, the "
-            "var_names need to be the same and in the same order as the adata "
-            "used to train the model.")
+            "The ´var_names´ of the passed in adata do not match the "
+            "´var_names´ of the adata used to train the model. For valid "
+            "results, the var_names need to be the same and in the same order "
+            "as the adata used to train the model.")
 
 
 def _initialize_model(cls,
                       adata: ad.AnnData,
-                      attr_dict: dict,
-                      use_cuda: bool):
+                      attr_dict: dict):
     """
     Helper to initialize a model. Adapted from 
     https://github.com/scverse/scvi-tools/blob/master/scvi/model/base/_utils.py#L103.
@@ -95,16 +94,11 @@ def _initialize_model(cls,
         AnnData object to be used for initialization.
     attr_dict:
         Dictionary with attributes for model initialization.
-    use_cuda:
-        If ´True´ send model to cuda.
     """
     if "init_params_" not in attr_dict.keys():
         raise ValueError("No init_params_ were saved by the model.")
     # Get the parameters for the class init signature
     init_params = attr_dict.pop("init_params_")
-
-    # Update use_cuda from the saved model
-    # init_params["use_cuda"] = use_cuda
 
     # Grab all the parameters except for kwargs (is a dict)
     non_kwargs = {k: v for k, v in init_params.items() if not isinstance(v, dict)}

@@ -3,7 +3,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from ._layercomponents import MaskedLinear
+from .layercomponents import MaskedLinear
 
 
 class GCNLayer(nn.Module):
@@ -87,7 +87,7 @@ class MaskedLayer(nn.Module):
                  mask: Optional[torch.Tensor]=None,
                  activation: nn.Module=nn.ReLU):
         super().__init__()
-        
+
         if mask is None:
             self.mfc_l = nn.Linear(n_input, n_output, bias=bias)
         else:

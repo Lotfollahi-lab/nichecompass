@@ -1,17 +1,15 @@
+from calendar import c
 import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 from matplotlib.ticker import MaxNLocator
 
 
 class EarlyStopping:
     """
-    EarlyStopping class for early stopping of Autotalker training.
-
-    This early stopping class was adapted from 
-    https://github.com/YosefLab/scvi-tools.
+    EarlyStopping class for early stopping of Autotalker training. Adapted from 
+    https://github.com/theislab/scarches/blob/cb54fa0df3255ad1576a977b17e9d77d4907ceb0/scarches/utils/monitor.py#L4.
     
     Parameters
     ----------
@@ -23,11 +21,11 @@ class EarlyStopping:
         Number of epochs which are allowed to have no metric_improvement until 
         the training is stopped.
     reduce_lr_on_plateau:
-        If "True", the learning rate gets adjusted by "lr_factor" after a given 
+        If ´True´, the learning rate gets adjusted by ´lr_factor´ after a given 
         number of epochs with no
         metric_improvement.
     lr_patience:
-        Number of epochs which are allowed to have no metric_improvement until 
+        Number of epochs which are allowed to have no metric improvement until 
         the learning rate is adjusted.
     lr_factor:
         Scaling factor for adjusting the learning rate.
@@ -35,9 +33,9 @@ class EarlyStopping:
     def __init__(self,
                  early_stopping_metric: str="val_loss",
                  metric_improvement_threshold: float=0,
-                 patience: int=15,
+                 patience: int=6,
                  reduce_lr_on_plateau: bool=True,
-                 lr_patience: int=13,
+                 lr_patience: int=3,
                  lr_factor: float=0.1):
         self.early_stopping_metric = early_stopping_metric
         self.metric_improvement_threshold = metric_improvement_threshold
@@ -55,8 +53,25 @@ class EarlyStopping:
         self.best_performance_state = np.inf
 
 
-    def step(self, current_metric):
+    def step(self, current_metric: float):
         self.epochs += 1
+
+        # Calculate metric improvement
+        self.current_performance = current_metric
+        metric_improvement = (self.best_performance - 
+                              self.current_performance)
+        
+        # Update best performance
+        if metric_improvement > 0:
+            self.best_performance = self.current_performance
+        # Update epochs not improved
+        if metric_improvement < self.metric_improvement_threshold:
+            self.epochs_not_improved += 1
+            self.epochs_not_improved_lr += 1
+        else:
+            self.epochs_not_improved = 0
+            self.epochs_not_improved_lr = 0
+
         # Determine whether to continue training
         if self.epochs < self.patience:
             continue_training = True
@@ -71,32 +86,18 @@ class EarlyStopping:
             elif self.epochs_not_improved_lr >= self.lr_patience:
                 reduce_lr = True
                 self.epochs_not_improved_lr = 0
+                print("\nReducing learning rate: metric has not improved more "
+                      f"than {self.metric_improvement_threshold} in the last "
+                      f"{self.lr_patience} epochs.")
             else:
                 reduce_lr = False
-            
-            # Calculate metric improvement
-            self.current_performance = current_metric
-            metric_improvement = (self.best_performance - 
-                                  self.current_performance)
-            
-            # Update best performance
-            if metric_improvement > 0:
-                self.best_performance = self.current_performance
-
-            # Update epochs not improved
-            if metric_improvement < self.metric_improvement_threshold:
-                self.epochs_not_improved += 1
-                self.epochs_not_improved_lr += 1
-            else:
-                self.epochs_not_improved = 0
-                self.epochs_not_improved_lr = 0
 
             continue_training = True
 
         if not continue_training:
             print("\nStopping early: metric has not improved more than " 
                   + str(self.metric_improvement_threshold) +
-                  " in the last " + str(self.patience) + " epochs")
+                  " in the last " + str(self.patience) + " epochs.")
             print("If the early stopping criterion is too strong, "
                   "please instantiate it with different parameters "
                   "in the train method.")
@@ -174,7 +175,7 @@ def _print_progress_bar(epoch: int,
     sys.stdout.flush()
 
 
-def plot_loss_curves(loss_dict):
+def plot_loss_curves(loss_dict: dict):
     """
     Plot loss curves.
 
@@ -182,6 +183,11 @@ def plot_loss_curves(loss_dict):
     ----------
     loss_dict:
         Dictionary containing the training and validation losses.
+
+    Returns
+    ----------
+    fig:
+        Matplotlib figure of loss curves.
     """
     # Plot epochs as integers
     ax = plt.figure().gca()

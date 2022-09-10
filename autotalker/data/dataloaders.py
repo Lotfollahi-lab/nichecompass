@@ -1,14 +1,11 @@
-from typing import Optional
-
 from torch_geometric.data import Data
-from torch_geometric.loader import LinkNeighborLoader
-from torch_geometric.loader import NeighborLoader
+from torch_geometric.loader import LinkNeighborLoader, NeighborLoader
 
 
 def initialize_dataloaders(node_masked_data: Data,
                            edge_train_data: Data,
-                           edge_val_data: Optional[Data]=None,
-                           edge_test_data: Optional[Data]=None,
+                           edge_val_data: Data,
+                           edge_test_data: Data,
                            node_batch_size_train: int=8,
                            node_batch_size_val: int=8,
                            node_batch_size_test: int=8,
@@ -18,8 +15,8 @@ def initialize_dataloaders(node_masked_data: Data,
                            edges_directed: bool=False,
                            neg_edge_sampling_ratio: float=1.0):
     """
-    Initialize edge-level and node-level training, validation and test 
-    dataloaders.
+    Initialize edge-level (for edge reconstruction) and node-level (for gene
+    expression reconstruction) training, validation and test dataloaders.
 
     Parameters
     ----------
@@ -29,6 +26,8 @@ def initialize_dataloaders(node_masked_data: Data,
         PyG Data object containing the edge-level training set.
     edge_val_data:
         PyG Data object containing the edge-level validation set.
+    edge_test_data:
+        PyG Data object containing the edge-level test set.        
     node_batch_size_train:
         Batch size for the node-level train dataloader.
     node_batch_size_val:
@@ -41,11 +40,11 @@ def initialize_dataloaders(node_masked_data: Data,
         Number of direct neighbors of the sampled nodes to be included in the 
         batch. Defaults to ´-1´, which means to include all direct neighbors.
     n_hops:
-        Number of neighbor hops/levels to be included in the batch. E.g. ´2´
+        Number of neighbor hops / levels to be included in the batch. E.g. ´2´
         means to not only include direct neighbors of sampled nodes but also the
         neighbors of the direct neighbors.
     edges_directed:
-        If `False` both symmetric edge index pairs are included in the same 
+        If `False`, both symmetric edge index pairs are included in the same 
         edge-level batch (1 edge has 2 symmetric edge index pairs).
     neg_edge_sampling_ratio:
         Negative sampling ratio of edges. This is currently implemented in an

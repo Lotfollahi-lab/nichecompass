@@ -11,6 +11,22 @@ def _load_R_file_as_df(R_file_path: str,
     """
     Helper to load an R file either from ´url´ if specified or from ´file_path´ 
     on disk and convert to a pandas DataFrame.
+
+    Parameters
+    ----------
+    R_file_path:
+        File path to the R file to be loaded as df.
+    url:
+        URL to the R file to be loaded as df.
+    save_df_to_disk:
+        If ´True´, save df to disk.
+    df_save_path:
+        Path where the df will be saved if ´save_df_to_disk´ is ´True´.
+
+    Returns
+    ----------
+    df:
+        Content of R file loaded into a DataFrame.
     """
     if url is None:
         if not os.path.exists(R_file_path):
