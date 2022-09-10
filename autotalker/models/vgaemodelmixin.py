@@ -14,6 +14,7 @@ class VGAEModelMixin:
     """
     def get_latent_representation(self, 
                                   adata: Optional[AnnData]=None,
+                                  counts_layer_key: str="counts",
                                   adj_key: str="spatial_connectivities"):
         """
         Get latent representation from a trained VGAE model.
@@ -36,14 +37,17 @@ class VGAEModelMixin:
         device = next(self.model.parameters()).device
 
         if adata is not None:
-            dataset = SpatialAnnTorchDataset(adata, adj_key)
+            dataset = SpatialAnnTorchDataset(adata, counts_layer_key, adj_key)
         else:
-            dataset = SpatialAnnTorchDataset(self.adata, self.adj_key_)
+            dataset = SpatialAnnTorchDataset(self.adata,
+                                             self.counts_layer_key_,
+                                             self.adj_key_)
 
         x = dataset.x.to(device)
+        edge_index = dataset.edge_index.to(device) 
+        
         if self.model.log_variational:
             x = torch.log(1 + x) # for numerical stability during model training
-        edge_index = dataset.edge_index.to(device) 
 
         z = np.array(self.model.get_latent_representation(x, edge_index).cpu())
         return z

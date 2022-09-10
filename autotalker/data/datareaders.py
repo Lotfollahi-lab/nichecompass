@@ -5,7 +5,7 @@ import pandas as pd
 import scipy.sparse as sp
 
 
-def load_spatial_adata_from_csv(x_file_path: str,
+def load_spatial_adata_from_csv(counts_file_path: str,
                                 adj_file_path: str,
                                 cell_type_file_path: Optional[str]=None,
                                 adj_key: str="spatial_connectivities",
@@ -18,7 +18,7 @@ def load_spatial_adata_from_csv(x_file_path: str,
 
     Parameters
     ----------
-    x_file_path:
+    counts_file_path:
         File path of the csv file which contains gene expression feature matrix
         data.
     adj_file_path:
@@ -39,7 +39,7 @@ def load_spatial_adata_from_csv(x_file_path: str,
         AnnData object with gene expression data stored in ´adata.X´ and sparse 
         adjacency matrix (coo format) stored in ´adata.obps[adj_key]´.
     """
-    adata = ad.read_csv(x_file_path)
+    adata = ad.read_csv(counts_file_path)
     adj_df = pd.read_csv(adj_file_path, sep=",", header=0)
     adj = adj_df.values
     adata.obsp[adj_key] = sp.csr_matrix(adj).tocoo()
