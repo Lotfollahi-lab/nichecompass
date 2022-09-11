@@ -1,0 +1,4 @@
+artifact_location: file:///home/cartalop/sebastianbirk/autotalker-dev/mlruns/1
+experiment_id: '1'
+lifecycle_stage: active
+name: autotalker_nichenet_gps
