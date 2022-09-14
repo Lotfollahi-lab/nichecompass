@@ -137,8 +137,5 @@ dmypy.json
 # data
 /datasets
 
-# mlflow artefacts
-/mlruns
-
 # model artefacts
 /model_artefacts
