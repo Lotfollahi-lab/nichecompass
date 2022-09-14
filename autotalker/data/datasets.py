@@ -59,6 +59,7 @@ class SpatialAnnTorchDataset():
         if not (self.adj.to_dense() == self.adj.to_dense().T).all():
             raise ImportError("The input adjacency matrix has to be symmetric.")
 
+        """
         # Store labels for gene expression reconstruction
         if node_label_method == "self":
             self.node_labels = self.x
@@ -70,10 +71,11 @@ class SpatialAnnTorchDataset():
         elif node_label_method == "one-hop-sum":
             x_neighbors_sum = self.adj.matmul(self.x)
             self.node_labels = torch.cat((self.x, x_neighbors_sum), dim=-1)
+        """
 
         self.edge_index = self.adj.to_torch_sparse_coo_tensor()._indices()
         self.n_node_features = self.x.size(1)
-        self.n_node_labels = self.node_labels.size(1)
+        # self.n_node_labels = self.node_labels.size(1)
         self.size_factors = self.x.sum(1)
 
     def __len__(self):

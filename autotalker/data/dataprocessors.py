@@ -149,8 +149,7 @@ def prepare_data(adata: AnnData,
     # PyG Data object (has 2 edge index pairs for one edge because of symmetry;
     # one edge index pair will be removed in the edge-level split).
     data = Data(x=dataset.x,
-                edge_index=dataset.edge_index,
-                node_labels=dataset.node_labels)
+                edge_index=dataset.edge_index)
 
     # Edge-level split for edge reconstruction
     edge_train_data, edge_val_data, edge_test_data = edge_level_split(

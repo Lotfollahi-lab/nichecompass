@@ -82,7 +82,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                  log_variational: bool=True,
                  node_label_method: Literal["self",
                                             "one-hop-sum",
-                                            "one-hop-norm"]="one-hop-norm",
+                                            "one-hop-norm",
+                                            "one-hop-attention"]="one-hop-attention",
                  n_hidden_encoder: int=256,
                  dropout_rate_encoder: float=0.0,
                  dropout_rate_graph_decoder: float=0.0,
@@ -165,6 +166,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             dropout_rate_graph_decoder=self.dropout_rate_graph_decoder_,
             include_edge_recon_loss=self.include_edge_recon_loss_,
             include_gene_expr_recon_loss=self.include_gene_expr_recon_loss_,
+            node_label_method=self.node_label_method_,
             log_variational=self.log_variational_)
 
         self.is_trained_ = False

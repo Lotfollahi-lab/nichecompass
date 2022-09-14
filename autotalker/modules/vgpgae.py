@@ -5,7 +5,11 @@ import torch
 import torch.nn as nn
 from torch_geometric.data import Data
 
-from autotalker.nn import (DotProductGraphDecoder,
+from autotalker.nn import (AttentionNodeLabelAggregation,
+                           GCNNormNodeLabelAggregation,
+                           SelfNodeLabelAggregation,
+                           SumNodeLabelAggregation,
+                           DotProductGraphDecoder,
                            GCNEncoder,
                            MaskedGeneExprDecoder)
 from .losses import (compute_edge_recon_loss, 
@@ -56,6 +60,10 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
                  dropout_rate_graph_decoder: float=0.0,
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
+                 node_label_method: Literal["self",
+                                            "one-hop-norm",
+                                            "one-hop-sum",
+                                            "one-hop-attention"]="one-hop-attention",
                  log_variational: bool=True):
         super().__init__()
         self.n_input = n_input
@@ -66,11 +74,13 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         self.dropout_rate_graph_decoder = dropout_rate_graph_decoder
         self.include_edge_recon_loss = include_edge_recon_loss
         self.include_gene_expr_recon_loss = include_gene_expr_recon_loss
+        self.node_label_method = node_label_method
         self.log_variational = log_variational
 
         print("--- INITIALIZING NEW NETWORK MODULE: VGPGAE ---")
         print(f"LOSS -> include_edge_recon_loss: {include_edge_recon_loss}, "
               f"include_gene_expr_recon_loss: {include_gene_expr_recon_loss}")
+        print(f"NODE LABEL METHOD -> {node_label_method}")
 
         self.encoder = GCNEncoder(n_input=n_input,
                                   n_hidden=n_hidden_encoder,
@@ -85,6 +95,17 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
             n_input=n_latent,
             n_output=n_output,
             mask=gene_expr_decoder_mask)
+
+        if node_label_method == "self":
+            self.gene_expr_node_label_aggregator = SelfNodeLabelAggregation()
+        elif node_label_method == "one-hop-norm":
+            self.gene_expr_node_label_aggregator = GCNNormNodeLabelAggregation()
+        elif node_label_method == "one-hop-sum":
+            self.gene_expr_node_label_aggregator = SumNodeLabelAggregation() 
+        elif node_label_method == "one-hop-attention": 
+            self.gene_expr_node_label_aggregator = AttentionNodeLabelAggregation(
+                n_input=n_input)
+
         
         # Gene-specific dispersion parameters
         self.theta = torch.nn.Parameter(torch.randn(self.n_output))
@@ -123,10 +144,18 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
             x = torch.log(1 + x)
 
         output["mu"], output["logstd"] = self.encoder(x, edge_index)
+        
         z = self.reparameterize(output["mu"], output["logstd"])
         if decoder == "graph":
             output["adj_recon_logits"] = self.graph_decoder(z)
         elif decoder == "gene_expr":
+
+            # Compute aggregated neighborhood gene expression for gene 
+            # expression reconstruction        
+            output["node_labels"] = self.gene_expr_node_label_aggregator(
+                x, 
+                edge_index)
+
             output["zinb_parameters"] = self.gene_expr_decoder(z,
                                                                log_library_size)
         return output
@@ -194,7 +223,7 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
 
         loss_dict["gene_expr_recon_loss"] = (gene_expr_recon_loss_norm_factor * 
         compute_gene_expr_recon_zinb_loss(
-            x=node_data_batch.node_labels,
+            x=node_model_output["node_labels"].to(device),
             mu=nb_means,
             theta=theta,
             zi_prob_logits=zi_prob_logits))
@@ -221,5 +250,7 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
                          self.include_edge_recon_loss)
         mlflow.log_param("include_gene_expr_recon_loss", 
                          self.include_gene_expr_recon_loss)
+        mlflow.log_param("node_label_method", 
+                         self.node_label_method)
         mlflow.log_param("log_variational", 
                          self.log_variational)                   
