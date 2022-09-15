@@ -33,7 +33,9 @@ class AttentionNodeLabelAggregation(MessagePassing):
     def reset_parameters(self):
         glorot(self.att)
 
-    def forward(self, x, edge_index, return_attention_weights: bool=True):
+    def forward(self, x, edge_index, return_attention_weights: bool=False):
+        x = x.to("cpu")
+        edge_index = edge_index.to("cpu")
 
         x_i = x_j = x
 
@@ -58,7 +60,9 @@ class AttentionNodeLabelAggregation(MessagePassing):
                 index: torch.Tensor) -> torch.Tensor:
         x = x_j + x_i
         x = F.leaky_relu(x, self.negative_slope)
+        x = x.to("cuda:0")
         alpha = (x * self.att).sum(dim=-1)
+        alpha = alpha.to("cpu")
         alpha = softmax(alpha, index)
         self._alpha = alpha
         return x_j * alpha.unsqueeze(-1)

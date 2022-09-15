@@ -1,8 +1,9 @@
-name: autotalker
+name: autotalker-new
 channels:
   - conda-forge
   - pytorch
 dependencies:
+  - cudatoolkit=11.3
   - ipykernel=6.15.1
   - ipywidgets=7.6.5
   - jupyterlab=3.4.5
@@ -14,7 +15,7 @@ dependencies:
   - scanpy=1.7.2
   - pip:
     - omnipath==1.0.5
-    - squidpy==1.1.0
-    - torch-scatter -f https://data.pyg.org/whl/torch-1.12.1+cu102.html
-    - torch-sparse -f https://data.pyg.org/whl/torch-1.12.1+cu102.html
-    - git+https://github.com/pyg-team/pytorch_geometric.git
+    - squidpy==1.2.2
+    - torch-scatter==2.0.9 -f https://data.pyg.org/whl/torch-1.12.1+cu113.html
+    - torch-sparse==0.6.15 -f https://data.pyg.org/whl/torch-1.12.1+cu113.html
+    - torch-geometric==2.1.0.post1
