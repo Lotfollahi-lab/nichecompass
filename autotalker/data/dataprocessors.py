@@ -144,8 +144,7 @@ def prepare_data(adata: AnnData,
     data_dict = {}
     dataset = SpatialAnnTorchDataset(adata=adata,
                                      counts_layer_key=counts_layer_key,
-                                     adj_key=adj_key,
-                                     node_label_method=node_label_method)
+                                     adj_key=adj_key)
     # PyG Data object (has 2 edge index pairs for one edge because of symmetry;
     # one edge index pair will be removed in the edge-level split).
     data = Data(x=dataset.x,

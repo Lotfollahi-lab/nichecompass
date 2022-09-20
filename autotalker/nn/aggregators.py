@@ -1,45 +1,52 @@
+from typing import Optional
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn.inits import glorot
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.conv.gcn_conv import gcn_norm
+from torch_geometric.nn.dense.linear import Linear
 from torch_geometric.utils import to_dense_adj, softmax
 from torch_sparse import SparseTensor
 
 
-class SelfNodeLabelAggregation(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x, edge_index):
-        node_labels = x
-        return node_labels
-
-
-class AttentionNodeLabelAggregation(MessagePassing):
+class AttentionNodeLabelAggregator(MessagePassing):
     def __init__(self,
                  n_input: int,
-                 negative_slope: float=0.2):
+                 n_heads: int=4,
+                 leaky_relu_negative_slope: float=0.2):
         super().__init__(node_dim=0)
 
         self.n_input = n_input
-        self.negative_slope = negative_slope
+        self.n_heads = n_heads
+        self.leaky_relu_negative_slope = leaky_relu_negative_slope
 
-        self.att = nn.Parameter(torch.Tensor(1, n_input))
+        self.linear_l_l = Linear(n_input,
+                                 n_input * n_heads,
+                                 bias=False,
+                                 weight_initializer="glorot")
+        self.linear_r_l = Linear(n_input,
+                                 n_input * n_heads,
+                                 bias=False,
+                                 weight_initializer="glorot")
+        self.attn = nn.Parameter(torch.Tensor(1, n_heads, n_input))
+        self.activation = nn.LeakyReLU(negative_slope=leaky_relu_negative_slope)
         self._alpha = None
         self.reset_parameters()
 
     def reset_parameters(self):
-        glorot(self.att)
+        self.linear_l_l.reset_parameters()
+        self.linear_r_l.reset_parameters()
+        glorot(self.attn)
 
     def forward(self, x, edge_index, return_attention_weights: bool=False):
-        x = x.to("cpu")
-        edge_index = edge_index.to("cpu")
-
-        x_i = x_j = x
-
-        x_neighbors_att = self.propagate(edge_index, x=(x_j, x_i))
+        x_l = x_r = x
+        g_l = self.linear_l_l(x_l).view(-1, self.n_heads, self.n_input)
+        g_r = self.linear_r_l(x_r).view(-1, self.n_heads, self.n_input)
+        x_l = x_l.repeat(1, self.n_heads).view(-1, self.n_heads, self.n_input)
+        output = self.propagate(edge_index, x=(x_l, x_r), g=(g_l, g_r))
+        x_neighbors_att = output.mean(dim=1)
         node_labels = torch.cat((x, x_neighbors_att), dim=-1)
 
         alpha = self._alpha
@@ -57,25 +64,25 @@ class AttentionNodeLabelAggregation(MessagePassing):
     def message(self,
                 x_j: torch.Tensor,
                 x_i: torch.Tensor,
+                g_j: torch.Tensor,
+                g_i: torch.Tensor,
                 index: torch.Tensor) -> torch.Tensor:
-        x = x_j + x_i
-        x = F.leaky_relu(x, self.negative_slope)
-        x = x.to("cuda:0")
-        alpha = (x * self.att).sum(dim=-1)
-        alpha = alpha.to("cpu")
+        g = g_i + g_j
+        g = self.activation(g)
+        alpha = (g * self.attn).sum(dim=-1)
         alpha = softmax(alpha, index)
         self._alpha = alpha
         return x_j * alpha.unsqueeze(-1)
 
 
-class GCNNormNodeLabelAggregation(nn.Module):
+class GCNNormNodeLabelAggregator(nn.Module):
+    """
+    cover case in which no edge in sampled batch
+    """
     def __init__(self):
         super().__init__()
 
     def forward(self, x, edge_index):
-        # SparseTensor does not support CUDA
-        x = x.to("cpu")
-        edge_index = edge_index.to("cpu")
         adj = SparseTensor.from_edge_index(edge_index)
         adj_norm = gcn_norm(adj, add_self_loops=False)
         x_neighbors_norm = adj_norm.matmul(x)
@@ -83,14 +90,20 @@ class GCNNormNodeLabelAggregation(nn.Module):
         return node_labels
 
 
-class SumNodeLabelAggregation(nn.Module):
+class SelfNodeLabelPseudoAggregator(nn.Module):
     def __init__(self):
         super().__init__()
 
     def forward(self, x, edge_index):
-        # SparseTensor does not support CUDA
-        x = x.to("cpu")
-        edge_index = edge_index.to("cpu")
+        node_labels = x
+        return node_labels
+
+
+class SumNodeLabelAggregator(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x, edge_index):
         adj = SparseTensor.from_edge_index(edge_index)
         x_neighbors_sum = adj.matmul(x)
         node_labels = torch.cat((x, x_neighbors_sum), dim=-1)

@@ -5,10 +5,10 @@ import torch
 import torch.nn as nn
 from torch_geometric.data import Data
 
-from autotalker.nn import (AttentionNodeLabelAggregation,
-                           GCNNormNodeLabelAggregation,
-                           SelfNodeLabelAggregation,
-                           SumNodeLabelAggregation,
+from autotalker.nn import (AttentionNodeLabelAggregator,
+                           GCNNormNodeLabelAggregator,
+                           SelfNodeLabelPseudoAggregator,
+                           SumNodeLabelAggregator,
                            DotProductGraphDecoder,
                            GCNEncoder,
                            MaskedGeneExprDecoder)
@@ -97,15 +97,14 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
             mask=gene_expr_decoder_mask)
 
         if node_label_method == "self":
-            self.gene_expr_node_label_aggregator = SelfNodeLabelAggregation()
+            self.gene_expr_node_label_aggregator = SelfNodeLabelPseudoAggregator()
         elif node_label_method == "one-hop-norm":
-            self.gene_expr_node_label_aggregator = GCNNormNodeLabelAggregation()
+            self.gene_expr_node_label_aggregator = GCNNormNodeLabelAggregator()
         elif node_label_method == "one-hop-sum":
-            self.gene_expr_node_label_aggregator = SumNodeLabelAggregation() 
+            self.gene_expr_node_label_aggregator = SumNodeLabelAggregator() 
         elif node_label_method == "one-hop-attention": 
-            self.gene_expr_node_label_aggregator = AttentionNodeLabelAggregation(
+            self.gene_expr_node_label_aggregator = AttentionNodeLabelAggregator(
                 n_input=n_input)
-
         
         # Gene-specific dispersion parameters
         self.theta = torch.nn.Parameter(torch.randn(self.n_output))
@@ -141,9 +140,11 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         
         # Convert gene expression for numerical stability
         if self.log_variational:
-            x = torch.log(1 + x)
+            x_enc = torch.log(1 + x)
+        else:
+            x_enc = x
 
-        output["mu"], output["logstd"] = self.encoder(x, edge_index)
+        output["mu"], output["logstd"] = self.encoder(x_enc, edge_index)
         
         z = self.reparameterize(output["mu"], output["logstd"])
         if decoder == "graph":
@@ -155,9 +156,11 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
             output["node_labels"] = self.gene_expr_node_label_aggregator(
                 x, 
                 edge_index)
-
-            output["zinb_parameters"] = self.gene_expr_decoder(z,
-                                                               log_library_size)
+            
+            output["zinb_parameters"] = self.gene_expr_decoder(
+                    z,
+                    log_library_size)
+                    
         return output
 
     def loss(self,
@@ -223,7 +226,7 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
 
         loss_dict["gene_expr_recon_loss"] = (gene_expr_recon_loss_norm_factor * 
         compute_gene_expr_recon_zinb_loss(
-            x=node_model_output["node_labels"].to(device),
+            x=node_model_output["node_labels"],
             mu=nb_means,
             theta=theta,
             zi_prob_logits=zi_prob_logits))
