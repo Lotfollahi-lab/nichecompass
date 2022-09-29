@@ -6,4 +6,4 @@ This tool is developed in the Talavera-López Lab of the Institute of Computatio
 The tool will be open sourced once published.
 
 ## Poster
-see /poster/autotalker_poster.png
+see /poster/autotalker_poster.pdf
