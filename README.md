@@ -1,5 +1,9 @@
 # Autotalker
 
-(c) Talavera-López Lab
+## Copyright
+This tool is developed in the Talavera-López Lab of the Institute of Computational Biology, Helmholtz Munich. The copyright holder for this project is Talavera-López Lab. All rights reserved.
 
-Poster: see /poster/autotalker_poster.png
+The tool will be open sourced once published.
+
+## Poster
+see /poster/autotalker_poster.png
