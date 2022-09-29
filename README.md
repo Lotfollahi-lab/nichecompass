@@ -1,5 +1,5 @@
 # Autotalker
 
-(C) Talavera-López Lab
+(c) Talavera-López Lab
 
 Poster: see /poster/autotalker_poster.png
