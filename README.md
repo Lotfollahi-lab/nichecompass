@@ -2,4 +2,4 @@
 
 (C) Talavera-López Lab
 
-Poster: https://github.com/sebastianbirk/autotalker/blob/main/poster/autotalker_poster.png
+Poster: see /poster/autotalker_poster.png
