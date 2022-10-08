@@ -55,3 +55,14 @@ class VGAEModuleMixin:
         mu, logstd = self.encoder(x, edge_index)
         z = self.reparameterize(mu, logstd)
         return z
+
+    @torch.no_grad()
+    def get_reconstructed_adj(self,
+                              z: torch.Tensor,
+                              edge_prob_threshold: float):
+        """
+        
+        """
+        adj_recon_probs = torch.sigmoid(self.graph_decoder(z))
+        adj_recon = (adj_recon_probs > edge_prob_threshold).astype("int")
+        return adj_recon
