@@ -39,6 +39,7 @@ def compute_avg_ctad_metric(
         varying number of neighbors.
     """
     ctad_list = []
+    
     for n_neighbors in range(1,10):
         ctad_list.append(compute_cell_type_affinity_distance(
             adata=adata,
