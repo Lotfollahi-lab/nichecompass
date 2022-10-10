@@ -1,3 +1,5 @@
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 import scipy
@@ -125,10 +127,13 @@ def _compute_clisi(adata: AnnData,
                    knn_graph_feature_key: str,
                    knn_graph_n_neighbors: int,
                    cell_type_key: str,
-                   perplexity=None):
+                   perplexity: Optional[float]=None):
     """
-    Compute LISI score on kNN graph provided in the adata object. By default, perplexity
-    is chosen as 1/3 * number of nearest neighbours in the knn-graph.
+    Compute cell-type lisi score (clisi) on kNN graph provided in the adata object. 
+    
+    perplexity:
+        Perplexity used for simpson index calculation. By default, perplexity
+        is chosen as 1/3 * n_neighbors used in the knn graph.
     # Create neighbor graph from spatial coordinates
     sq.gr.spatial_neighbors(adata,
                             spatial_key=spatial_key,
@@ -144,59 +149,88 @@ def _compute_clisi(adata: AnnData,
                                                    neighborhood_graph_n_neighs)
     """
 
-    neighbor_index_mat, neighbor_dist_mat = _compute_knn_graph(adata, distance_key, knn_graph_n_neighbors)
+    knn_indices, knn_distances = _compute_knn_graph(
+        adata=adata,
+        feature_key=knn_graph_feature_key,
+        n_neighbors=knn_graph_n_neighbors)
 
     if perplexity is None:
         # Use LISI default perplexity
-        perplexity = np.floor(neighbor_index_mat.shape[1] / 3)
+        perplexity = np.floor(knn_indices.shape[1] / 3)
 
-    cell_type_codes = adata.obs[cell_type_key].cat.codes.values
+    cell_type_labels = adata.obs[cell_type_key].cat.codes.values
     n_cell_types = len(np.unique(adata.obs[cell_type_key]))
 
-    simpson_estimate_label = compute_simpson_index(
-        D=neighbor_dist_mat,
-        knn_idx=neighbor_index_mat,
-        cell_type_labels=cell_type_codes,
+    clsi = compute_simpson_index(
+        D=knn_distances,
+        knn_idx=knn_indices,
+        cell_type_labels=cell_type_labels,
         n_cell_types=n_cell_types,
-        perplexity=perplexity,
-    )
-    simpson_est_label = 1 / simpson_estimate_label
-    return simpson_est_label
-    # extract results
-    d = {cell_type_key: simpson_est_label}
-    lisi_estimate = pd.DataFrame(data=d, index=np.arange(0, len(simpson_est_label)))
+        perplexity=perplexity)
 
-    return lisi_estimate
+    clisi = 1 / clsi
+    return clisi
 
 
-def compute_clisi_metric(adata: AnnData,
-                         spatial_key: str="spatial",
-                         latent_rep_key: str="latent_autotalker_fc_gps",
-                         cell_type_key: str="celltype_mapped_refined",
-                         neighborhood_graph_n_neighs: int=6):
+def compute_cell_level_log_clisi_ratios(
+        adata: AnnData,
+        spatial_key: str="spatial",
+        latent_key: str="latent_autotalker_fc_gps",
+        cell_type_key: str="celltype_mapped_refined",
+        knn_graph_n_neighbors: int=6):
     """
-    
+    First compute the cell-level Cell-type Local Inverse Simpson Index (CLISI)
+    from the spatial coordinates (ground truth) and from the latent 
+    representation of the model (latent) respectively. The cell-level CLISI 
+    captures the degree of cell mixing in a local neighborhood around a given
+    cell. Then divide the latent CLISI by the ground truth CLISI and compute the
+    log2 to get a relative local heterogeneity score as proposed in Heidari, E. 
+    et al. Supervised spatial inference of dissociated single-cell data with
+    SageNet. bioRxiv 2022.04.14.488419 (2022) doi:10.1101/2022.04.14.488419. 
+    Values closer to 0 indicate a latent representation that more accurately 
+    preserves the spatial cell-type heterogeneity of the ground truth.
+
+    Parameters
+    ----------
+    adata:
+        AnnData object with cell type annotations stored in 
+        ´adata.obs[cell_type_key]´, spatial coordinates stored in 
+        ´adata.obsm[spatial_key]´ and the latent representation from the model
+        stored in adata.obsm[latent_rep_key].
+    spatial_key:
+        Key under which the spatial coordinates are stored in ´adata.obsm´.
+    latent_key:
+        Key under which the latent representation from the model is stored in 
+        ´adata.obsm´.
+    cell_type_key:
+        Key under which the cell type annotations are stored in ´adata.obs´.
+    knn_graph_n_neighbors:
+        Number of neighbors used for the construction of the knn graph.
+
+    Returns
+    ----------
+    cell_level_log_clisi_ratios_df:
+        Pandas DataFrame that contains the cell-level CLISI ratios, the 
+        distribution of which indicates how well the latent space preserves 
+        ground truth spatial cell-type heterogeneity.
     """
-    spatial_clisi = _compute_clisi(
-        adata,
-        spatial_key=spatial_key,
-        cell_type_key=cell_type_key,
-        neighborhood_graph_n_neighs=neighborhood_graph_n_neighs)
+    ground_truth_cell_level_clisi = _compute_cell_level_clisi(
+        adata=adata,
+        knn_graph_feature_key=spatial_key,
+        knn_graph_n_neighbors=knn_graph_n_neighbors,
+        cell_type_key=cell_type_key)
 
-    latent_clisi = _compute_clisi(
-        adata,
-        spatial_key=latent_rep_key,
-        cell_type_key=cell_type_key,
-        neighborhood_graph_n_neighs=neighborhood_graph_n_neighs)
+    latent_cell_level_clisi = _compute_cell_level_clisi(
+        adata=adata,
+        knn_graph_feature_key=latent_key,
+        knn_graph_n_neighbors=knn_graph_n_neighbors,
+        cell_type_key=cell_type_key)
 
-    relative_clisi = latent_clisi / spatial_clisi
+    cell_level_clisi_ratios = latent_cell_level_clisi / ground_truth_cell_level_clisi
+    cell_level_log_clisi_ratios = np.log2(cell_level_clisi_ratios)
 
-    log_relative_clisi = np.log2(relative_clisi)
-
-    lisi_estimate = pd.DataFrame(data=log_relative_clisi,
-                                 index=np.arange(0, len(spatial_clisi)))
+    cell_level_log_clisi_ratios_df = pd.DataFrame(
+        data=cell_level_log_clisi_ratios,
+        index=np.arange(0, len(ground_truth_cell_level_clisi)))
     
-    return lisi_estimate
-
-    
-
+    return cell_level_log_clisi_ratios_df

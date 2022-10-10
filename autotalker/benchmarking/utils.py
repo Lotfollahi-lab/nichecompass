@@ -7,8 +7,8 @@ def _compute_knn_graph(adata: AnnData,
                        feature_key: str,
                        n_neighbors: int=6):
     """
-    Compute a k-nearest-neighbors graph based on feature values stored in an
-    AnnData object and return the indices of and distances to the k-nearest 
+    Compute a k-nearest-neighbors (knn) graph based on feature values stored in
+    an AnnData object and return the indices of and distances to the k-nearest 
     neighbors for each observation.
 
     Parameters
