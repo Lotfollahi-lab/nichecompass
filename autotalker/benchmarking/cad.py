@@ -4,16 +4,16 @@ import squidpy as sq
 from anndata import AnnData
 
 
-def compute_avg_ctad_metric(
+def compute_avg_cad_metric(
         adata: AnnData,
         cell_type_key: str="celltype_mapped_refined",
         spatial_key: str="spatial",
         latent_rep_key: str="autotalker_latent",
         seed: int=42):
     """
-    Compute multiple cell-type affinity distances (ctads) by varying the number
+    Compute multiple cell-type affinity distances (cads) by varying the number
     of neighbors used for neighorhood graph construction from 1 to 10 and return
-    the average ctad metric.
+    the average cad metric.
 
     Parameters
     ----------
@@ -39,7 +39,7 @@ def compute_avg_ctad_metric(
         varying number of neighbors.
     """
     ctad_list = []
-    
+
     for n_neighbors in range(1,10):
         ctad_list.append(compute_cell_type_affinity_distance(
             adata=adata,
@@ -97,35 +97,43 @@ def compute_cell_type_affinity_distance(
         and the latent representation cell-type affinity matrix as measured by 
         the Frobenius norm of the element-wise matrix differences.
     """
-    # Create graph from spatial coordinates 
+    # Create neighbor graph from spatial coordinates
     sq.gr.spatial_neighbors(adata,
                             spatial_key=spatial_key,
                             coord_type="generic",
                             n_neighs=neighborhood_graph_n_neighs,
-                            key_added="ctad_spatial")
+                            key_added="cad_spatial")
 
     # Calculate cell-type affinity scores for spatial neighbor graph
     spatial_nhood_enrichment_zscore_mx, _ = sq.gr.nhood_enrichment(
         adata,
         cluster_key=cell_type_key,
-        connectivity_key="ctad_spatial",
+        connectivity_key="cad_spatial",
         n_perms=1000,
         seed=seed,
         copy=True,
         show_progress_bar=False)
 
-    # Create graph from latent representation
+    # Create neighbor graph from latent representation
+    """
+    sc.pp.neighbors did not give expected results
     sc.pp.neighbors(adata,
                     n_neighbors=neighborhood_graph_n_neighs,
                     use_rep=latent_rep_key,
                     random_state=seed,
-                    key_added="latent")
+                    key_added="cad_latent")
+    """
+    sq.gr.spatial_neighbors(adata,
+                            spatial_key=latent_rep_key,
+                            coord_type="generic",
+                            n_neighs=neighborhood_graph_n_neighs,
+                            key_added="cad_latent")
 
     # Calculate cell type affinity scores for latent neighbor graph
     latent_nhood_enrichment_zscore_mx, _ = sq.gr.nhood_enrichment(
         adata,
         cluster_key=cell_type_key,
-        connectivity_key="latent",
+        connectivity_key="cad_latent",
         n_perms=1000,
         seed=seed,
         copy=True,

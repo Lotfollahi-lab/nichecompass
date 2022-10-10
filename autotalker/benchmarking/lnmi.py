@@ -35,11 +35,20 @@ def compute_min_lnmi_metric(
                      adjacency=adata.obsp["lnmi_spatial_connectivities"])
 
     # Create neighbor graph from latent representation
+    """
+    sc.pp.neighbors did not give expected results
     sc.pp.neighbors(adata,
                     n_neighbors=neighborhood_graph_n_neighs,
                     use_rep=latent_rep_key,
                     random_state=seed,
                     key_added="lnmi_latent")
+    """
+
+    sq.gr.spatial_neighbors(adata,
+                            spatial_key=latent_rep_key,
+                            coord_type="generic",
+                            n_neighs=neighborhood_graph_n_neighs,
+                            key_added="lnmi_latent")
 
     # Calculate adjacency matrix for latent Leiden clustering
     for resolution in clustering_resolutions:
