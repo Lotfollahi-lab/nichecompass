@@ -4,7 +4,7 @@ import squidpy as sq
 from anndata import AnnData
 
 
-def compute_avg_cad_metric(
+def compute_avg_cad(
         adata: AnnData,
         cell_type_key: str="celltype_mapped_refined",
         spatial_key: str="spatial",

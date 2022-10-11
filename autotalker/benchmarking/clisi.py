@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from anndata import AnnData
 
-from .utils import _compute_knn_graph, _convert_to_one_hot
+from .utils import _compute_knn_graph_indices_and_distances, _convert_to_one_hot
 
 
 def compute_cell_level_log_clisi_ratios(
@@ -112,7 +112,7 @@ def _compute_cell_level_clisi_from_adata(
     cell_level_clisi:
         1-D NumPy array that contains the cell-level CLISIs.
     """
-    knn_indices, knn_distances = _compute_knn_graph(
+    knn_indices, knn_distances = _compute_knn_graph_indices_and_distances(
         adata=adata,
         feature_key=knn_graph_feature_key,
         n_neighbors=knn_graph_n_neighbors)
@@ -244,7 +244,7 @@ def _compute_cell_level_clisi_from_knn_graph(
     return cell_level_clisi
 
 
-def hbeta(D: np.ndarray, beta: float) -> Tuple(np.ndarray, np.ndarray):
+def hbeta(D: np.ndarray, beta: float) -> Tuple[np.ndarray, np.ndarray]:
     """
     Given a vector of Euclidean distances and the precision of a Gaussian 
     similarity kernel, compute the normalized Gaussian kernel similarity values 

@@ -4,12 +4,14 @@ import squidpy as sq
 from anndata import AnnData
 from sklearn.metrics import normalized_mutual_info_score
 
+from utils import _compute_knn_graph
 
-def compute_min_lnmi_metric(
+
+def compute_min_lnmi(
         adata: AnnData,
         spatial_key: str="spatial",
         latent_rep_key: str="autotalker_latent",
-        neighborhood_graph_n_neighs: int=6,
+        neighborhood_graph_n_neighs: int=15,
         seed: int=42):
     """
     
