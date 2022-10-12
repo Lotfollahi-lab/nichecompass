@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from anndata import AnnData
 
-from .utils import _compute_knn_graph_indices_and_distances, _convert_to_one_hot
+from .utils import _compute_graph_indices_and_distances, _convert_to_one_hot
 
 
 def compute_cell_level_log_clisi_ratios(
@@ -112,10 +112,11 @@ def _compute_cell_level_clisi_from_adata(
     cell_level_clisi:
         1-D NumPy array that contains the cell-level CLISIs.
     """
-    knn_indices, knn_distances = _compute_knn_graph_indices_and_distances(
+    knn_indices, knn_distances = _compute_graph_indices_and_distances(
         adata=adata,
         feature_key=knn_graph_feature_key,
-        n_neighbors=knn_graph_n_neighbors)
+        n_neighbors=knn_graph_n_neighbors,
+        mode="knn")
 
     if perplexity is None:
         # Use LISI default perplexity

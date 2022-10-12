@@ -1,19 +1,20 @@
 import numpy as np
-import scanpy as sc
 import squidpy as sq
 from anndata import AnnData
+
+from .utils import _compute_graph_connectivities
 
 
 def compute_avg_cad(
         adata: AnnData,
         cell_type_key: str="celltype_mapped_refined",
         spatial_key: str="spatial",
-        latent_rep_key: str="autotalker_latent",
-        seed: int=42):
+        latent_key: str="latent_autotalker_fc_gps",
+        seed: int=42) -> np.float64:
     """
-    Compute multiple cell-type affinity distances (cads) by varying the number
-    of neighbors used for neighorhood graph construction from 1 to 10 and return
-    the average cad metric.
+    Compute multiple cell-type affinity distances (CAD) by varying the number
+    of neighbors used for nearest neighbor graph construction (between 1 and 15)
+    and return the average CAD.
 
     Parameters
     ----------
@@ -26,7 +27,7 @@ def compute_avg_cad(
         Key under which the cell type annotations are stored in ´adata.obs´.
     spatial_key:
         Key under which the spatial coordinates are stored in ´adata.obsm´.
-    latent_rep_key:
+    latent_key:
         Key under which the latent representation from the model is stored in 
         ´adata.obsm´.
     seed:
@@ -34,40 +35,41 @@ def compute_avg_cad(
 
     Returns
     ----------
-    avg_ctad_metric:
-        Average cell-type affinity distance computed over different graphs with
-        varying number of neighbors.
+    avg_cad:
+        Average CAD computed over different nearest neighbor graphs with varying
+        number of neighbors.
     """
-    ctad_list = []
-
-    for n_neighbors in range(1,10):
-        ctad_list.append(compute_cell_type_affinity_distance(
+    cad_list = []
+    for n_neighbors in range(1,15):
+        cad_list.append(compute_cad(
             adata=adata,
             cell_type_key=cell_type_key,
             spatial_key=spatial_key,
-            latent_rep_key=latent_rep_key,
-            neighborhood_graph_n_neighs=n_neighbors,
-            seed=seed))
+            latent_key=latent_key,
+            n_neighbors=n_neighbors,
+            seed=seed,
+            visualize_ccc_maps=False))
+    avg_cad = np.mean(cad_list)
+    return avg_cad
 
-    avg_ctad_metric = np.mean(ctad_list)
-    return avg_ctad_metric
 
-
-def compute_cell_type_affinity_distance(
+def compute_cad(
         adata: AnnData,
         cell_type_key: str="celltype_mapped_refined",
         spatial_key: str="spatial",
-        latent_rep_key: str="autotalker_latent",
-        neighborhood_graph_n_neighs: int=6,
-        seed: int=42):
+        latent_key: str="latent_autotalker_fc_gps",
+        n_neighbors: int=15,
+        seed: int=42,
+        visualize_ccc_maps: bool=False) -> np.float64:
     """
-    Compute the cell-type affinity distance benchmarking metric as first 
-    introduced by Lohoff, T. et al. Integration of spatial and single-cell 
-    transcriptomic data elucidates mouse organogenesis. Nat. Biotechnol. 40, 
-    74–85 (2022). Note that the used implementation from squidpy slightly 
-    deviates from the original method and we construct neighborhood graphs
-    using the original spatial coordinates and the latent representation from
-    the model respectively.
+    Compute the cell-type affinity distance (CAD) as first introduced by Lohoff,
+    T. et al. Integration of spatial and single-cell transcriptomic data 
+    elucidates mouse organogenesis. Nat. Biotechnol. 40, 74–85 (2022). 
+    Note that the used neighborhood enrichment implementation from squidpy 
+    slightly deviates from the original method and we construct nearest neighbor
+    graphs using the original spatial coordinates and the latent representation
+    from the model respectively. The cell-cell contact maps are stored in the
+    AnnData object and can optionally be visualized.
 
     Parameters
     ----------
@@ -80,69 +82,89 @@ def compute_cell_type_affinity_distance(
         Key under which the cell type annotations are stored in ´adata.obs´.
     spatial_key:
         Key under which the spatial coordinates are stored in ´adata.obsm´.
-    latent_rep_key:
+    latent_key:
         Key under which the latent representation from the model is stored in 
         ´adata.obsm´.
-    neighborhood_graph_n_neighs:
-        Number of neighbors used for the construction of the neighborhood graphs
-        from the spatial coordinates and the latent representation from the 
-        model.
+    n_neighbors:
+        Number of neighbors used for the construction of the nearest neighbor
+        graphs from the spatial coordinates and the latent representation from
+        the model.
     seed:
         Random seed to get reproducible results.
+    visualize_ccc_maps:
+        If ´True´, also visualize the spatial/physical and latent cell-type
+        affinity matrices (cell-cell contact maps).
 
     Returns
     ----------
     cell_type_affinity_distance:
-        Matrix distance between the spatial coordinate cell-type affinity matrix
-        and the latent representation cell-type affinity matrix as measured by 
-        the Frobenius norm of the element-wise matrix differences.
+        Matrix distance between the spatial coordinate (ground truth) cell-type
+        affinity matrix and the latent representation cell-type affinity matrix
+        as measured by the Frobenius norm of the element-wise matrix differences.
     """
-    # Create neighbor graph from spatial coordinates
-    sq.gr.spatial_neighbors(adata,
-                            spatial_key=spatial_key,
-                            coord_type="generic",
-                            n_neighs=neighborhood_graph_n_neighs,
-                            key_added="cad_spatial")
+    # Compute spatial (ground truth) connectivities
+    adata.obsp["cad_spatial_connectivities"] = _compute_graph_connectivities(
+        adata=adata,
+        feature_key=spatial_key,
+        n_neighbors=n_neighbors,
+        mode="knn",
+        seed=seed)
 
-    # Calculate cell-type affinity scores for spatial neighbor graph
-    spatial_nhood_enrichment_zscore_mx, _ = sq.gr.nhood_enrichment(
-        adata,
-        cluster_key=cell_type_key,
-        connectivity_key="cad_spatial",
-        n_perms=1000,
-        seed=seed,
-        copy=True,
-        show_progress_bar=False)
+    # Compute latent connectivities
+    adata.obsp["cad_latent_connectivities"] = _compute_graph_connectivities(
+        adata=adata,
+        feature_key=latent_key,
+        n_neighbors=n_neighbors,
+        mode="knn",
+        seed=seed)
 
-    # Create neighbor graph from latent representation
-    """
-    sc.pp.neighbors did not give expected results
-    sc.pp.neighbors(adata,
-                    n_neighbors=neighborhood_graph_n_neighs,
-                    use_rep=latent_rep_key,
-                    random_state=seed,
-                    key_added="cad_latent")
-    """
-    sq.gr.spatial_neighbors(adata,
-                            spatial_key=latent_rep_key,
-                            coord_type="generic",
-                            n_neighs=neighborhood_graph_n_neighs,
-                            key_added="cad_latent")
+    # Calculate cell-type affinity scores for spatial nearest neighbor graph
+    sq.gr.nhood_enrichment(adata,
+                           cluster_key=cell_type_key,
+                           connectivity_key="cad_spatial",
+                           n_perms=1000,
+                           seed=seed,
+                           show_progress_bar=False)
 
-    # Calculate cell type affinity scores for latent neighbor graph
-    latent_nhood_enrichment_zscore_mx, _ = sq.gr.nhood_enrichment(
-        adata,
-        cluster_key=cell_type_key,
-        connectivity_key="cad_latent",
-        n_perms=1000,
-        seed=seed,
-        copy=True,
-        show_progress_bar=False)
+    # Save results in adata (no ´key_added´ functionality in squidpy)
+    adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"] = {}
+    adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"] = adata.uns[
+        f"{cell_type_key}_nhood_enrichment"]["zscore"]
+
+    if visualize_ccc_maps:
+        sq.pl.nhood_enrichment(adata=adata,
+                               cluster_key=cell_type_key,
+                               mode="zscore",
+                               title="Spatial Cell-type Affinity",
+                               figsize=(5, 5))
+
+    # Calculate cell type affinity scores for latent nearest neighbor graph
+    sq.gr.nhood_enrichment(adata,
+                           cluster_key=cell_type_key,
+                           connectivity_key="cad_latent",
+                           n_perms=1000,
+                           seed=seed,
+                           show_progress_bar=False)
+
+    # Save results in adata (no ´key_added´ functionality in squidpy)
+    adata.uns[f"{cell_type_key}_latent_nhood_enrichment"] = {}
+    adata.uns[f"{cell_type_key}_latent_nhood_enrichment"]["zscore"] = adata.uns[
+        f"{cell_type_key}_nhood_enrichment"]["zscore"]
+
+    if visualize_ccc_maps:
+        sq.pl.nhood_enrichment(adata=adata,
+                               cluster_key=cell_type_key,
+                               mode="zscore",
+                               title="Latent Cell-type Affinity",
+                               figsize=(5, 5))
+
+    del adata.uns[f"{cell_type_key}_nhood_enrichment"]["zscore"]
 
     # Calculate Frobenius norm of matrix differences to quantify distance
-    nhood_enrichment_zscore_diff_mx = (latent_nhood_enrichment_zscore_mx -
-                                       spatial_nhood_enrichment_zscore_mx)
-    cell_type_affinity_distance = np.linalg.norm(nhood_enrichment_zscore_diff_mx,
+    nhood_enrichment_zscores_diff = (
+        adata.uns[f"{cell_type_key}_latent_nhood_enrichment"]["zscore"] -
+        adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"])
+    cell_type_affinity_distance = np.linalg.norm(nhood_enrichment_zscores_diff,
                                                  ord="fro")
     return cell_type_affinity_distance
 
