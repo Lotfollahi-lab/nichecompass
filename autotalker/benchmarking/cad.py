@@ -1,3 +1,6 @@
+
+
+
 import numpy as np
 import squidpy as sq
 from anndata import AnnData
@@ -22,7 +25,7 @@ def compute_avg_cad(
         AnnData object with cell type annotations stored in 
         ´adata.obs[cell_type_key]´, spatial coordinates stored in 
         ´adata.obsm[spatial_key]´ and the latent representation from the model
-        stored in adata.obsm[latent_rep_key].
+        stored in adata.obsm[latent_key].
     cell_type_key:
         Key under which the cell type annotations are stored in ´adata.obs´.
     spatial_key:
@@ -77,7 +80,7 @@ def compute_cad(
         AnnData object with cell type annotations stored in 
         ´adata.obs[cell_type_key]´, spatial coordinates stored in 
         ´adata.obsm[spatial_key]´ and the latent representation from the model
-        stored in adata.obsm[latent_rep_key].
+        stored in adata.obsm[latent_key].
     cell_type_key:
         Key under which the cell type annotations are stored in ´adata.obs´.
     spatial_key:
@@ -102,7 +105,7 @@ def compute_cad(
         affinity matrix and the latent representation cell-type affinity matrix
         as measured by the Frobenius norm of the element-wise matrix differences.
     """
-    # Compute spatial (ground truth) connectivities
+    # Compute physical (ground truth) connectivities
     adata.obsp["cad_spatial_connectivities"] = _compute_graph_connectivities(
         adata=adata,
         feature_key=spatial_key,
