@@ -1,4 +1,4 @@
-name: autotalker-new
+name: autotalker
 channels:
   - pytorch
 dependencies:

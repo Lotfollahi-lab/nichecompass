@@ -114,7 +114,7 @@ def _compute_per_cell_clisi_from_feature(
         is chosen as 1/3 * n_neighbors used in the knn graph.
     seed:
         Random seed to get reproducible results.
-        
+
     Returns
     ----------
     per_cell_clisi:

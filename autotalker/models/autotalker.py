@@ -88,7 +88,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                  dropout_rate_encoder: float=0.0,
                  dropout_rate_graph_decoder: float=0.0,
                  gp_targets_mask: Optional[Union[ndarray, list]]=None,
-                 gp_sources_mask: Optional[Union[ndarray, list]]=None):
+                 gp_sources_mask: Optional[Union[ndarray, list]]=None,
+                 n_addon_gps: int=0):
         self.adata = adata
         self.counts_layer_key_ = counts_layer_key
         self.adj_key_ = adj_key
@@ -136,7 +137,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                 (self.gp_mask_, torch.tensor(gp_sources_mask, 
                 dtype=torch.float32)), dim=1)
         
-        self.n_latent_ = len(self.gp_mask_)
+        self.n_gps_ = len(self.gp_mask_)
+        self.n_addon_gps_ = n_addon_gps
         
         # Validate counts layer key and counts values
         if counts_layer_key not in adata.layers:
@@ -159,7 +161,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         self.model = VGPGAE(
             n_input=self.n_input_,
             n_hidden_encoder=self.n_hidden_encoder_,
-            n_latent=self.n_latent_,
+            n_latent=self.n_gps_,
+            n_addon_latent=self.n_addon_gps_,
             n_output=self.n_output_,
             gene_expr_decoder_mask=self.gp_mask_,
             dropout_rate_encoder=self.dropout_rate_encoder_,

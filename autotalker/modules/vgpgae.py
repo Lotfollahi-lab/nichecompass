@@ -12,13 +12,14 @@ from autotalker.nn import (AttentionNodeLabelAggregator,
                            DotProductGraphDecoder,
                            GCNEncoder,
                            MaskedGeneExprDecoder)
+from .basemodulemixin import BaseModuleMixin
 from .losses import (compute_edge_recon_loss, 
                      compute_gene_expr_recon_zinb_loss,
                      compute_kl_loss)
 from .vgaemodulemixin import VGAEModuleMixin
 
 
-class VGPGAE(nn.Module, VGAEModuleMixin):
+class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     """
     Variational Gene Program Graph Autoencoder class.
 
@@ -29,7 +30,10 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
     n_hidden_encoder:
         Number of nodes in the encoder hidden layer.
     n_latent:
-        Number of nodes in the latent space.
+        Number of nodes in the latent space (gene programs from the gene program
+        mask).
+    n_addon_latent:
+        Number of add-on nodes in the latent space (new gene programs)
     n_output:
         Number of nodes in the output layer.
     gene_expr_decoder_mask:
@@ -54,6 +58,7 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
                  n_input: int,
                  n_hidden_encoder: int,
                  n_latent: int,
+                 n_addon_latent: int,
                  n_output: int,
                  gene_expr_decoder_mask: torch.Tensor,
                  dropout_rate_encoder: float=0.0,
@@ -69,6 +74,7 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         self.n_input = n_input
         self.n_hidden_encoder = n_hidden_encoder
         self.n_latent = n_latent
+        self.n_addon_latent = n_addon_latent
         self.n_output = n_output
         self.dropout_rate_encoder = dropout_rate_encoder
         self.dropout_rate_graph_decoder = dropout_rate_graph_decoder
@@ -76,6 +82,7 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         self.include_gene_expr_recon_loss = include_gene_expr_recon_loss
         self.node_label_method = node_label_method
         self.log_variational = log_variational
+        self.freeze = False
 
         print("--- INITIALIZING NEW NETWORK MODULE: VGPGAE ---")
         print(f"LOSS -> include_edge_recon_loss: {include_edge_recon_loss}, "
@@ -85,6 +92,7 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         self.encoder = GCNEncoder(n_input=n_input,
                                   n_hidden=n_hidden_encoder,
                                   n_latent=n_latent,
+                                  n_addon_latent=n_addon_latent,
                                   dropout_rate=dropout_rate_encoder,
                                   activation=torch.relu)
         
@@ -94,7 +102,8 @@ class VGPGAE(nn.Module, VGAEModuleMixin):
         self.gene_expr_decoder = MaskedGeneExprDecoder(
             n_input=n_latent,
             n_output=n_output,
-            mask=gene_expr_decoder_mask)
+            mask=gene_expr_decoder_mask,
+            n_addon_input=n_addon_latent)
 
         if node_label_method == "self":
             self.gene_expr_node_label_aggregator = SelfNodeLabelPseudoAggregator()
