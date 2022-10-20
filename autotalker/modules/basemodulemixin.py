@@ -7,7 +7,8 @@ class BaseModuleMixin:
     """
     def load_and_expand_state_dict(self, model_state_dict):
         """
-        Adapted from 
+        Load model state dictionary into model and expand it to account for
+        architectural changes through e.g. add-on nodes. Adapted from 
         https://github.com/theislab/scarches/blob/master/scarches/models/base/_base.py#L92.
         """
         load_state_dict = model_state_dict.copy() # old model architecture state dict
@@ -21,26 +22,26 @@ class BaseModuleMixin:
             if new_param_tensor.size() == load_param_tensor.size():
                 continue # nothing needs to be updated
             else:
-                # add-on nodes in new model architecture cause difference in 
-                # parameter tensor sizes which necessitates updates
+                # new model architecture parameter tensors are different from
+                # old model architecture parameter tensors; updates are necessary
                 load_param_tensor = load_param_tensor.to(device)
                 n_dims = len(new_param_tensor.shape)
-                slice_idx = [slice(None)] * n_dims
+                idx_slicers = [slice(None)] * n_dims
                 for i in range(n_dims):
                     dim_diff = new_param_tensor.shape[i] - load_param_tensor.shape[i]
-                    slice_idx[i] = slice(-dim_diff, None)
+                    idx_slicers[i] = slice(-dim_diff, None)
                     if dim_diff > 0:
                         break
-                updated_param_tensor = torch.cat(
-                    [load_param_tensor, new_param_tensor[tuple(slice_idx)]],
+                expanded_param_tensor = torch.cat(
+                    [load_param_tensor, new_param_tensor[tuple(idx_slicers)]],
                     dim=i)
-                load_state_dict[key] = updated_param_tensor
+                load_state_dict[key] = expanded_param_tensor
 
         # Add parameter tensors from new model architecture to old model 
         # architecture state dict
         for key, new_param_tensor in new_state_dict.items():
             if key not in load_state_dict:
+                print("nope")
                 load_state_dict[key] = new_param_tensor
 
         self.load_state_dict(load_state_dict)
-
