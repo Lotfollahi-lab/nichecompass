@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .layers import MaskedLayer
+from .layers import AddOnMaskedLayer
 
 
 class FCGraphDecoder(nn.Module):
@@ -95,35 +95,42 @@ class MaskedGeneExprDecoder(nn.Module):
     Parameters
     ----------
     n_input:
-        Number of input nodes to the decoder (latent space dimensionality).
+        Number of maskable input nodes to the decoder (maskable latent space 
+        dimensionality).
     n_output:
         Number of output nodes from the decoder (number of genes).
     mask:
         Mask that determines which input nodes / latent features can contribute
         to the reconstruction of which genes.
+    n_addon_input:
+        Number of non-maskable add-on input nodes to the decoder (non-maskable
+        latent space dimensionality)
     """
     def __init__(self,
                  n_input: int,
                  n_output: int,
-                 mask: torch.Tensor):
+                 mask: torch.Tensor,
+                 n_addon_input: int):
         super().__init__()
 
-        print(f"MASKED GENE EXPRESSION DECODER -> n_input: {n_input}"
-              f", n_output: {n_output}")
+        print(f"MASKED GENE EXPRESSION DECODER -> n_input: {n_input}, "
+              f"n_addon_input: {n_addon_input}, n_output: {n_output}")
 
-        self.nb_means_normalized_decoder = MaskedLayer(
+        self.nb_means_normalized_decoder = AddOnMaskedLayer(
             n_input=n_input,
             n_output=n_output,
             bias=False,
-            activation=nn.Softmax(dim=-1),
-            mask=mask)
+            mask=mask,
+            n_addon_input=n_addon_input,
+            activation=nn.Softmax(dim=-1))
 
-        self.zi_prob_logits_decoder = MaskedLayer(
+        self.zi_prob_logits_decoder = AddOnMaskedLayer(
             n_input=n_input,
             n_output=n_output,
             bias=False,
-            activation=nn.Identity(),
-            mask=mask)
+            mask=mask,
+            n_addon_input=n_addon_input,
+            activation=nn.Identity())
 
     def forward(self, z: torch.Tensor, log_library_size: torch.Tensor):
         """

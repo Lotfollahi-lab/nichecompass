@@ -5,7 +5,7 @@ from .aggregators import (AttentionNodeLabelAggregator,
 from .decoders import DotProductGraphDecoder, MaskedGeneExprDecoder
 from .encoders import GCNEncoder
 from .layercomponents import MaskedLinear
-from .layers import GCNLayer, MaskedLayer
+from .layers import GCNLayer, AddOnMaskedLayer
 
 __all__ = ["AttentionNodeLabelAggregator",
            "GCNNormNodeLabelAggregator",

@@ -127,9 +127,13 @@ class BaseModelMixin():
              dir_path: str,
              adata: Optional[AnnData]=None,
              adata_file_name: str="adata.h5ad",
-             use_cuda: bool=False):
+             use_cuda: bool=False,
+             n_addon_gps: int=0,
+             freeze_non_addon_weights: bool=False):
         """
-        Instantiate a model from saved output.
+        Instantiate a model from saved output. Can be used for transfer learning
+        scenarios and to learn de-novo gene programs by adding add-on gene 
+        programs and freezing non add-on weights.
         
         Parameters
         ----------
@@ -142,11 +146,18 @@ class BaseModelMixin():
             File name of the AnnData object to be loaded.
         use_cuda:
             If `True`, load model on GPU.
+        n_addon_gps:
+            Number of (new) add-on gene programs to be added to the model's
+            architecture.
+        freeze_non_addon_weights:
+            If `True`, freeze non-addon weights to constrain training to add-on
+            gene programs.
         
         Returns
         -------
         model:
-            Model with loaded state dictionaries.
+            Model with loaded state dictionaries and, if specified, frozen non 
+            add-on weights.
         """
         load_adata = adata is None
         use_cuda = use_cuda and torch.cuda.is_available()
@@ -157,16 +168,38 @@ class BaseModelMixin():
         adata = new_adata if new_adata is not None else adata
 
         _validate_var_names(adata, var_names)
+
+        if n_addon_gps != 0:
+            attr_dict["init_params_"]["n_addon_gps"] = n_addon_gps
+
         model = _initialize_model(cls, adata, attr_dict)
 
         # set saved attrs for loaded model
         for attr, val in attr_dict.items():
             setattr(model, attr, val)
 
-        model.model.load_state_dict(model_state_dict)
+        if n_addon_gps != 0:
+            model.model.load_and_expand_state_dict(model_state_dict)
+        else:
+            model.model.load_state_dict(model_state_dict)
+
         if use_cuda:
             model.model.cuda()
         model.model.eval()
+
+        # Freeze pre-trained weights to only allow updates of addon gene program
+        # weights
+        if freeze_non_addon_weights:
+
+            if not model.is_trained_:
+                raise ValueError("The model has not been pre-trained and "
+                                 "therefore weights should not be frozen.")
+
+            for param_name, param in model.model.named_parameters():
+                param.requires_grad = False
+                if "addon" in param_name or "theta" in param_name:
+                    param.requires_grad = True
+
         return model
 
     def _check_if_trained(self,

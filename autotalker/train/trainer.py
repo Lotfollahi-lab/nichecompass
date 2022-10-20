@@ -82,6 +82,7 @@ class Trainer:
                  use_early_stopping: bool=True,
                  reload_best_model: bool=True,
                  early_stopping_kwargs: Optional[dict]=None,
+                 gamma_addon: Optional[float]=None,
                  seed: int=0,
                  monitor: bool=True,
                  **kwargs):
@@ -107,6 +108,7 @@ class Trainer:
             else:
                 self.early_stopping_kwargs["early_stopping_metric"] = "train_loss"
         self.early_stopping = EarlyStopping(**self.early_stopping_kwargs)
+        self.gamma_addon = gamma_addon
         self.seed = seed
         self.monitor = monitor
         self.loaders_n_direct_neighbors = kwargs.pop(
