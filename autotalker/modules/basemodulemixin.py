@@ -41,7 +41,6 @@ class BaseModuleMixin:
         # architecture state dict
         for key, new_param_tensor in new_state_dict.items():
             if key not in load_state_dict:
-                print("nope")
                 load_state_dict[key] = new_param_tensor
 
         self.load_state_dict(load_state_dict)

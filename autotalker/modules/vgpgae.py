@@ -13,7 +13,8 @@ from autotalker.nn import (AttentionNodeLabelAggregator,
                            GCNEncoder,
                            MaskedGeneExprDecoder)
 from .basemodulemixin import BaseModuleMixin
-from .losses import (compute_edge_recon_loss, 
+from .losses import (compute_addon_l1_reg_loss,
+                     compute_edge_recon_loss, 
                      compute_gene_expr_recon_zinb_loss,
                      compute_kl_loss)
 from .vgaemodulemixin import VGAEModuleMixin
@@ -248,6 +249,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
         if self.include_gene_expr_recon_loss:
             loss_dict["loss"] += loss_dict["gene_expr_recon_loss"]
+
+        if self.n_addon_latent != 0:
+            loss_dict["addon_gp_l1_reg_loss"] = compute_addon_l1_reg_loss(
+                self.named_parameters())
+            loss_dict["loss"] += loss_dict["addon_gp_l1_reg_loss"]
+
         return loss_dict
 
     def log_module_hyperparams_to_mlflow(self):

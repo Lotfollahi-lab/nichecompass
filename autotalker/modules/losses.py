@@ -4,6 +4,28 @@ import torch.nn.functional as F
 from .utils import _edge_values_and_sorted_labels
 
 
+def compute_addon_l1_reg_loss(named_model_params):
+    """
+    Compute L1 regularization loss for the add-on decoder layer weights to 
+    enforce sparsity of add-on gene programs.
+
+    Parameters
+    ----------
+    named_model_params:
+        Named model parameters of the model.
+
+    Returns
+    ----------
+    addon_l1_reg_loss:
+        L1 regularization loss of add-on decoder layers.
+    """
+    addon_decoder_layerwise_param_sum = torch.tensor(
+        [abs(param).sum() for param_name, param in named_model_params 
+         if "addon_l" in param_name])
+    addon_l1_reg_loss = torch.sum(addon_decoder_layerwise_param_sum)
+    return addon_l1_reg_loss
+
+
 def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
                             edge_labels: torch.Tensor,
                             edge_label_index: torch.Tensor,
