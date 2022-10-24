@@ -211,7 +211,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         mlflow_experiment_id:
             ID of the Mlflow experiment used for tracking training parameters
             and metrics.
-        trainer_kawrgs:
+        trainer_kwargs:
             Kwargs for the model Trainer.
         """
         self.trainer = Trainer(
