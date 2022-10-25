@@ -1,5 +1,7 @@
 from typing import Literal, Optional, Union
 
+import numpy as np
+import pandas as pd
 import torch
 from anndata import AnnData
 from numpy import ndarray
@@ -233,3 +235,44 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                            mlflow_experiment_id=mlflow_experiment_id,)
         
         self.is_trained_ = True
+
+
+    def get_gp_gene_importance(
+            self,
+            gp_name: str,
+            gp_key: str):
+        """
+        Adapted from https://github.com/theislab/scarches/blob/master/scarches/models/expimap/expimap_model.py#L305.
+
+        """
+        gp_list = list(self.adata.uns[gp_key])
+
+        if len(gp_list) == self.n_gps_:
+            if self.n_addon_gps_ > 0:
+                gp_list += ["addon_GP_" + str(i) for i in range(self.n_addon_gps_)]
+
+        n_latent_w_addon = self.n_gps_ + self.n_addon_gps_
+
+        if len(gp_list) != n_latent_w_addon:
+            raise ValueError("The number of gene programs should equal the latent space dimensionality.")
+
+        gp_idx = gp_list.index(gp_name)
+
+        if gp_idx < self.n_gps_:
+            weights = self.model.gene_expr_decoder.nb_means_normalized_decoder.masked_l.weight[:, gp_idx].data.cpu().numpy()
+        elif gp_idx >= self.n_gps_:
+            weights = self.model.gene_expr_decoder.nb_means_normalized_decoder.addon_l.weight[:, gp_idx].data.cpu().numpy()
+
+        abs_weights = np.abs(weights)
+        srt_idx = np.argsort(abs_weights)[::-1][:(abs_weights > 0).sum()]
+
+        # Split into communication target and source
+        target_srt_idx = srt_idx[srt_idx < len(self.adata.var_names)]
+        source_srt_idx = srt_idx[srt_idx > len(self.adata.var_names)] - len(self.adata.var_names)
+
+        gp_genes_df = pd.DataFrame()
+        gp_genes_df["target_genes"] = self.adata.var_names[target_srt_idx].tolist()
+        gp_genes_df["source_genes"] = self.adata.var_names[source_srt_idx].tolist()
+        gp_genes_df["weights"] = weights[srt_idx]
+
+        return gp_genes_df
