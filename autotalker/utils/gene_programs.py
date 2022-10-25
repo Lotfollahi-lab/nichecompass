@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 
 import numpy as np
 import omnipath as op
@@ -239,3 +239,88 @@ def extract_gp_dict_from_omnipath_lr_interactions(
             "sources": [ligand],
             "targets": receptor}
     return gp_dict
+
+
+def extract_gp_dict_from_mebocost_es_interactions(
+        species: Literal["mouse", "human"]):
+    """
+    Retrieve metabolite enzyme-sensor interactions from the Human Metabolome
+    Database (HMDB) data curated in Chen, K. et al. MEBOCOST: 
+    Metabolite-mediated cell communication modeling by single cell transcriptome.
+    Research Square (2022) doi:10.21203/rs.3.rs-2092898/v1. 
+    This data is available in the Autotalker package under 
+    ´datasets/gp_data/metabolite_enzyme_sensor_gps´.
+
+    Parameters
+    ----------
+    species:
+        Species for which to retrieve metabolite enzyme-sensor interactions.
+
+    Returns
+    ----------
+    gp_dict:
+        Nested dictionary containing the MEBOCOST enzyme-sensor interaction
+        gene programs with keys being gene program names and values being 
+        dictionaries with keys ´targets´ and ´sources´, where ´targets´ contains
+        the MEBOCOST sensor genes and ´sources´ contains the MEBOCOST enzyme
+        genes.    
+    """
+    # Read data from directory
+    dir_path = "datasets/gp_data/metabolite_enzyme_sensor_gps/"
+    if species == "human":
+        metabolite_enzymes_df = pd.read_csv(
+            dir_path + "human_metabolite_enzymes.tsv", sep="\t")
+        metabolite_sensors_df = pd.read_csv(
+            dir_path + "human_metabolite_sensors.tsv", sep="\t")
+    elif species == "mouse":
+        metabolite_enzymes_df = pd.read_csv(
+            dir_path + "mouse_metabolite_enzymes.tsv", sep="\t")
+        metabolite_sensors_df = pd.read_csv(
+            dir_path + "mouse_metabolite_sensors.tsv", sep="\t")
+    else:
+        raise KeyError("Species should be either human or mouse!")
+
+    # Retrieve metabolite names
+    metabolite_names_df = (metabolite_sensors_df[["HMDB_ID", "standard_metName"]]
+                          .drop_duplicates()
+                          .set_index("HMDB_ID"))
+
+    # Retrieve metabolite enzyme and sensor genes
+    metabolite_enzymes_unrolled = []
+    for _, line in metabolite_enzymes_df.iterrows():
+        genes = line["gene"].split("; ")
+        for gene in genes:
+            tmp = line.copy()
+            tmp["gene"] = gene
+            metabolite_enzymes_unrolled.append(tmp)
+    metabolite_enzymes_df = pd.DataFrame(metabolite_enzymes_unrolled)
+    metabolite_enzymes_df["gene_name"] = metabolite_enzymes_df["gene"].apply(
+        lambda x: x.split("[")[0])
+
+    metabolite_enzymes_df = (metabolite_enzymes_df.groupby(["HMDB_ID"])
+                             .agg({"gene_name": lambda x: x.tolist()})
+                             .rename({"gene_name": "enzyme_genes"}, axis=1)
+                             .reset_index()).set_index("HMDB_ID")
+
+    metabolite_sensors_df = (metabolite_sensors_df.groupby(["HMDB_ID"])
+                             .agg({"Gene_name": lambda x: x.tolist()})
+                             .rename({"Gene_name": "sensor_genes"}, axis=1)
+                             .reset_index()).set_index("HMDB_ID")
+
+    # Combine metabolite names and enzyme and sensor genes
+    metabolite_interaction_df = metabolite_enzymes_df.join(
+        other=metabolite_sensors_df,
+        how="inner").join(metabolite_names_df).set_index("standard_metName")
+
+    metabolite_interaction_gp_dict = metabolite_interaction_df.to_dict()
+
+    # Convert to gene program dictionary format
+    gp_dict = {}
+    for metabolite, enzyme_genes in metabolite_interaction_gp_dict["enzyme_genes"].items():
+        gp_dict[metabolite + "_metabolite_enzyme_sensor_GP"] = {
+            "sources": enzyme_genes}
+    for metabolite, sensor_genes in metabolite_interaction_gp_dict["sensor_genes"].items():
+        gp_dict[metabolite + "_metabolite_enzyme_sensor_GP"]["targets"] = sensor_genes
+
+    return gp_dict
+
