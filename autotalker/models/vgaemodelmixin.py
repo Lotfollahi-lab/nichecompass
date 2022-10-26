@@ -15,7 +15,8 @@ class VGAEModelMixin:
     def get_latent_representation(self, 
                                   adata: Optional[AnnData]=None,
                                   counts_layer_key: str="counts",
-                                  adj_key: str="spatial_connectivities"):
+                                  adj_key: str="spatial_connectivities",
+                                  return_mu_std: bool=False):
         """
         Get latent representation from a trained VGAE model.
 
@@ -27,6 +28,9 @@ class VGAEModelMixin:
         adj_key:
             Key under which the sparse adjacency matrix is stored in 
             ´adata.obsp´.
+        return_mu_std:
+            If `True`, return mu and std instead of a random sample from the
+            latent space.
 
         Returns
         ----------
@@ -49,5 +53,17 @@ class VGAEModelMixin:
         if self.model.log_variational:
             x = torch.log(1 + x) # for numerical stability during model training
 
-        z = np.array(self.model.get_latent_representation(x, edge_index).cpu())
-        return z
+        if return_mu_std:
+            mu, std = self.model.get_latent_representation(
+                x=x,
+                edge_index=edge_index,
+                return_mu_std=True)
+            mu = mu.cpu()
+            std = std.cpu()
+            return mu, std
+        else:
+            z = np.array(self.model.get_latent_representation(
+                x=x,
+                edge_index=edge_index,
+                return_mu_std=False).cpu())
+            return z

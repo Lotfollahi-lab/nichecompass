@@ -34,7 +34,8 @@ class VGAEModuleMixin:
     @torch.no_grad()
     def get_latent_representation(self,
                                   x: torch.Tensor,
-                                  edge_index: torch.Tensor):
+                                  edge_index: torch.Tensor,
+                                  return_mu_std: bool=False):
         """
         Encode input features x and edge index into the latent space normal 
         distribution parameters and return z. If the module is not in training
@@ -46,6 +47,9 @@ class VGAEModuleMixin:
             Feature matrix to be encoded into latent space.
         edge_index:
             Edge index of the graph.
+        return_mu_std:
+            If `True`, return mu and logstd instead of a random sample from the
+            latent space.
 
         Returns
         -------
@@ -53,5 +57,8 @@ class VGAEModuleMixin:
             Latent space encoding.
         """
         mu, logstd = self.encoder(x, edge_index)
-        z = self.reparameterize(mu, logstd)
-        return z
+        if return_mu_std:
+            return mu, torch.exp(logstd)
+        else:
+            z = self.reparameterize(mu, logstd)
+            return z

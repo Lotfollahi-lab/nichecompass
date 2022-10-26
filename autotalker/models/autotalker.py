@@ -5,6 +5,7 @@ import pandas as pd
 import torch
 from anndata import AnnData
 from numpy import ndarray
+from scipy.special import erfc
 
 from .basemodelmixin import BaseModelMixin
 from .vgaemodelmixin import VGAEModelMixin
@@ -329,3 +330,88 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             weight_based_importance[srt_idx])
 
         return gp_gene_importances_df
+
+
+    def calculate_gp_enrichment_scores(
+            self,
+            cat_key: str,
+            adata: Optional[AnnData]=None,
+            comparison_cats: Union[str, list]="rest",
+            selected_gps: Optional[list]=None,
+            n_sample: int=5000,
+            key_added: str="gp_enrichment_scores"):
+        """
+        Adapted from 
+        https://github.com/theislab/scarches/blob/master/scarches/models/expimap/expimap_model.py#L429.
+        """
+        if adata is None:
+            adata = self.adata
+
+        cat_values = adata.obs[cat_key]
+        cats = cat_values.unique()
+
+        if comparison_cats != "rest" and isinstance(comparison_cats, str):
+            comparison_cats = [comparison_cats]
+        
+        if comparison_cats != "rest" and not set(comparison_cats).issubset(cats):
+            raise ValueError("Comparison categories should be 'rest' or among "
+                             "the existing categories")
+
+        scores = {}
+
+        for cat in cats:
+            if cat in comparison_cats:
+                continue
+
+            cat_mask = cat_values == cat
+            if comparison_cats == "rest":
+                comparison_cat_mask = ~cat_mask
+            else:
+                comparison_cat_mask = cat_values.isin(comparison_cats)
+
+            choice1 = np.random.choice(cat_mask.sum(), n_sample)
+            choice2 = np.random.choice(comparison_cat_mask.sum(), n_sample)
+            
+            adata_cat = adata[cat_mask][choice1]
+            adata_comparison_cat = adata[comparison_cat_mask][choice2]
+
+            latent_cat = self.get_latent_representation(
+                adata=adata_cat,
+                counts_layer_key="counts",
+                adj_key="spatial_connectivities",
+                return_mu_std=True)
+
+            latent_comparison_cat = self.get_latent_representation(
+                adata=adata_comparison_cat,
+                counts_layer_key="counts",
+                adj_key="spatial_connectivities",
+                return_mu_std=True)
+
+            mu_cat, std_cat = latent_cat
+            mu_comparison_cat, std_comparison_cat = latent_comparison_cat
+
+            if selected_gps is not None:
+                mu_cat = mu_cat[:, selected_gps]
+                mu_comparison_cat = mu_comparison_cat[:, selected_gps]
+                std_cat = std_cat[:, selected_gps]
+                std_comparison_cat = std_comparison_cat[:, selected_gps]
+
+            to_reduce = (mu_comparison_cat - mu_cat) / np.sqrt(2 * (std_comparison_cat + std_cat))
+            to_reduce = 0.5 * erfc(to_reduce)
+            zeros_mask = (np.abs(mu_cat).sum(0) == 0) | (np.abs(mu_comparison_cat).sum(0) == 0)
+
+            p_h0 = np.mean(to_reduce.cpu().numpy(), axis=0)
+            p_h1 = 1.0 - p_h0
+            epsilon = 1e-12
+            bf = np.log(p_h0 + epsilon) - np.log(p_h1 + epsilon)
+
+            p_h0[zeros_mask] = 0
+            p_h1[zeros_mask] = 0
+            bf[zeros_mask] = 0
+
+            scores[cat] = dict(p_h0=p_h0, p_h1=p_h1, bf=bf)
+
+        adata.uns[key_added] = scores
+
+
+        
