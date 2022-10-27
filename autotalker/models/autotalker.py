@@ -335,82 +335,144 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
     def calculate_gp_enrichment_scores(
             self,
             cat_key: str,
+            gp_key: Optional[str]=None,
             adata: Optional[AnnData]=None,
             comparison_cats: Union[str, list]="rest",
             selected_gps: Optional[list]=None,
-            n_sample: int=5000,
+            n_sample: int=1000,
             key_added: str="gp_enrichment_scores"):
         """
+        Calculate gene program (latent) enrichment scores between a category and 
+        comparison categories for multiple categories. The enrichment scores are
+        log Bayes Factors between the hypothesis that the gene program / latent 
+        score of the category is higher than the gene program / latent score of
+        the comparison categories (h0) versus the alternative hypothesis that
+        the gene program / latent score of the comparison categories is higher
+        or equal to the gene program / latent score of the category. 
         Adapted from 
         https://github.com/theislab/scarches/blob/master/scarches/models/expimap/expimap_model.py#L429.
+
+        Parameters
+        ----------
+        cat_key:
+            Key under which the categories and comparison categories used for
+            enrichment score calculation are stored in ´adata.obs´.
+        gp_key:
+            Key under which a list of all gene programs is stored in ´adata.uns´.
+        adata:
+            AnnData object to be used for enrichment score calculation. If 
+            ´None´, uses the adata object stored in the model.
+        comparison_cats:
+            Categories used as comparison group. If ´rest´, all categories other
+            than the category under consideration are used as comparison group.
+        selected_gps:
+            List of gene program names to be selected for the enrichment score
+            calculation. If ´None´, uses all gene programs.
+        n_sample:
+            Number of observations used from the category and comparison
+            categories for the enrichment score calculation.
+        key_added:
+            Key under which the enrichment scores are stored in ´adata.uns´.           
         """
         if adata is None:
             adata = self.adata
 
+        # Retrieve the category values for each observation and the unique 
+        # categories
         cat_values = adata.obs[cat_key]
         cats = cat_values.unique()
 
+        # Validate comparison categories
         if comparison_cats != "rest" and isinstance(comparison_cats, str):
-            comparison_cats = [comparison_cats]
-        
+            comparison_cats = [comparison_cats] 
         if comparison_cats != "rest" and not set(comparison_cats).issubset(cats):
-            raise ValueError("Comparison categories should be 'rest' or among "
-                             "the existing categories")
+            raise ValueError("Comparison categories should be 'rest' (for "
+                             "comparison with all other categories) or contain"
+                             "existing categories")
 
-        scores = {}
-
+        # Compute scores for all categories that are not part of the comparison
+        # categories
+        scores = []
         for cat in cats:
             if cat in comparison_cats:
                 continue
 
+            # Generate random samples of category and comparison categories 
+            # observations with equal size
             cat_mask = cat_values == cat
             if comparison_cats == "rest":
                 comparison_cat_mask = ~cat_mask
             else:
                 comparison_cat_mask = cat_values.isin(comparison_cats)
 
-            choice1 = np.random.choice(cat_mask.sum(), n_sample)
-            choice2 = np.random.choice(comparison_cat_mask.sum(), n_sample)
-            
-            adata_cat = adata[cat_mask][choice1]
-            adata_comparison_cat = adata[comparison_cat_mask][choice2]
+            cat_idx = np.random.choice(cat_mask.sum(), n_sample)
+            comparison_cat_idx = np.random.choice(comparison_cat_mask.sum(), n_sample)
 
-            latent_cat = self.get_latent_representation(
+            adata_cat = adata[cat_mask][cat_idx]
+            adata_comparison_cat = adata[comparison_cat_mask][comparison_cat_idx]
+
+            # Get gene program (latent) posterior parameters
+            mu_cat, std_cat = self.get_latent_representation(
                 adata=adata_cat,
                 counts_layer_key="counts",
                 adj_key="spatial_connectivities",
                 return_mu_std=True)
-
-            latent_comparison_cat = self.get_latent_representation(
+            mu_comparison_cat, std_comparison_cat = self.get_latent_representation(
                 adata=adata_comparison_cat,
                 counts_layer_key="counts",
                 adj_key="spatial_connectivities",
                 return_mu_std=True)
 
-            mu_cat, std_cat = latent_cat
-            mu_comparison_cat, std_comparison_cat = latent_comparison_cat
-
+            # Filter for selected gene programs only
             if selected_gps is not None:
-                mu_cat = mu_cat[:, selected_gps]
-                mu_comparison_cat = mu_comparison_cat[:, selected_gps]
-                std_cat = std_cat[:, selected_gps]
-                std_comparison_cat = std_comparison_cat[:, selected_gps]
+                if gp_key is None:
+                    raise ValueError("Please specify a 'gp_key' or set "
+                                     "selected_gps to 'None'")
+                selected_gps_idx = [adata.uns[gp_key].index(gp) for gp in selected_gps]
+                mu_cat = mu_cat[:, selected_gps_idx]
+                mu_comparison_cat = mu_comparison_cat[:, selected_gps_idx]
+                std_cat = std_cat[:, selected_gps_idx]
+                std_comparison_cat = std_comparison_cat[:, selected_gps_idx]
+            else:
+                selected_gps_idx = np.arange(len(adata.uns[gp_key]))
 
-            to_reduce = (mu_comparison_cat - mu_cat) / np.sqrt(2 * (std_comparison_cat + std_cat))
+            # Calculate log Bayes Factor
+            to_reduce = (-(mu_cat - mu_comparison_cat) / 
+                         np.sqrt(2 * (std_cat**2 + std_comparison_cat**2)))
             to_reduce = 0.5 * erfc(to_reduce)
-            zeros_mask = (np.abs(mu_cat).sum(0) == 0) | (np.abs(mu_comparison_cat).sum(0) == 0)
-
             p_h0 = np.mean(to_reduce.cpu().numpy(), axis=0)
             p_h1 = 1.0 - p_h0
             epsilon = 1e-12
-            bf = np.log(p_h0 + epsilon) - np.log(p_h1 + epsilon)
+            log_bayes_factor = np.log(p_h0 + epsilon) - np.log(p_h1 + epsilon)
 
+            zeros_mask = (np.abs(mu_cat).sum(0) == 0) | (np.abs(mu_comparison_cat).sum(0) == 0)
             p_h0[zeros_mask] = 0
             p_h1[zeros_mask] = 0
-            bf[zeros_mask] = 0
+            log_bayes_factor[zeros_mask] = 0
 
-            scores[cat] = dict(p_h0=p_h0, p_h1=p_h1, bf=bf)
+            cat_scores = [{"category": cat,
+                          "gp": gp,
+                          "p_h0": p_h0,
+                          "p_h1": p_h1,
+                          "log_bayes_factor": log_bayes_factor} 
+                          for gp, p_h0, p_h1, log_bayes_factor in zip(
+                            [adata.uns[gp_key][i] for i in selected_gps_idx],
+                            p_h0,
+                            p_h1,
+                            log_bayes_factor)]
+            for score in cat_scores:
+                scores.append(score)
+            
+            """
+            scores.append(dict(
+                category=cat,
+                gp=[adata.uns[gp_key][i] for i in selected_gps_idx],
+                p_h0=p_h0,
+                p_h1=p_h1,
+                log_bayes_factor=log_bayes_factor))
+            """
 
+        scores = pd.DataFrame(scores)
         adata.uns[key_added] = scores
 
 
