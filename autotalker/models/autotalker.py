@@ -348,8 +348,9 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         score of the category is higher than the gene program / latent score of
         the comparison categories (h0) versus the alternative hypothesis that
         the gene program / latent score of the comparison categories is higher
-        or equal to the gene program / latent score of the category. 
-        Adapted from 
+        or equal to the gene program / latent score of the category. The gene
+        program enrichment scores per category will be stored in a pandas 
+        DataFrame under ´adata.uns[key_added]´. Adapted from 
         https://github.com/theislab/scarches/blob/master/scarches/models/expimap/expimap_model.py#L429.
 
         Parameters
@@ -372,7 +373,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             Number of observations used from the category and comparison
             categories for the enrichment score calculation.
         key_added:
-            Key under which the enrichment scores are stored in ´adata.uns´.           
+            Key under which the enrichment score pandas DataFrame is stored in 
+            ´adata.uns´.           
         """
         if adata is None:
             adata = self.adata
@@ -387,7 +389,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             comparison_cats = [comparison_cats] 
         if comparison_cats != "rest" and not set(comparison_cats).issubset(cats):
             raise ValueError("Comparison categories should be 'rest' (for "
-                             "comparison with all other categories) or contain"
+                             "comparison with all other categories) or contain "
                              "existing categories")
 
         # Compute scores for all categories that are not part of the comparison
@@ -436,7 +438,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             else:
                 selected_gps_idx = np.arange(len(adata.uns[gp_key]))
 
-            # Calculate log Bayes Factor
+            # Calculate gene program log Bayes Factors for the category
             to_reduce = (-(mu_cat - mu_comparison_cat) / 
                          np.sqrt(2 * (std_cat**2 + std_comparison_cat**2)))
             to_reduce = 0.5 * erfc(to_reduce)
@@ -450,27 +452,20 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             p_h1[zeros_mask] = 0
             log_bayes_factor[zeros_mask] = 0
 
+            zipped = zip(
+                [adata.uns[gp_key][i] for i in selected_gps_idx],
+                p_h0,
+                p_h1,
+                log_bayes_factor)
+
             cat_scores = [{"category": cat,
-                          "gp": gp,
-                          "p_h0": p_h0,
-                          "p_h1": p_h1,
-                          "log_bayes_factor": log_bayes_factor} 
-                          for gp, p_h0, p_h1, log_bayes_factor in zip(
-                            [adata.uns[gp_key][i] for i in selected_gps_idx],
-                            p_h0,
-                            p_h1,
-                            log_bayes_factor)]
+                           "gp": gp,
+                           "p_h0": p_h0,
+                           "p_h1": p_h1,
+                           "log_bayes_factor": log_bayes_factor} 
+                          for gp, p_h0, p_h1, log_bayes_factor in zipped]
             for score in cat_scores:
                 scores.append(score)
-            
-            """
-            scores.append(dict(
-                category=cat,
-                gp=[adata.uns[gp_key][i] for i in selected_gps_idx],
-                p_h0=p_h0,
-                p_h1=p_h1,
-                log_bayes_factor=log_bayes_factor))
-            """
 
         scores = pd.DataFrame(scores)
         adata.uns[key_added] = scores
