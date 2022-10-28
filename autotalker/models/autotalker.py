@@ -377,7 +377,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             List of gene program names to be selected for the enrichment score
             calculation. If ´None´, uses all gene programs.
         n_sample:
-            Number of observations used from the category and comparison
+            Number of observations to be drawn from the category and comparison
             categories for the enrichment score calculation.
         key_added:
             Key under which the enrichment score pandas DataFrame is stored in 
@@ -432,6 +432,22 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                 adj_key="spatial_connectivities",
                 return_mu_std=True)
 
+            # Align signs of latent values with up- & downregulation
+            # directionality
+            gp_weights = (self.model.gene_expr_decoder
+                          .nb_means_normalized_decoder.masked_l.weight.data)
+            if self.n_addon_gps_ > 0:
+                gp_weights = torch.cat(
+                    [gp_weights, 
+                    (self.model.gene_expr_decoder
+                    .nb_means_normalized_decoder.addon_l.weight.data)])
+
+            gp_signs = gp_weights.sum(0).cpu().numpy()
+            gp_signs[gp_signs>0] = 1.
+            gp_signs[gp_signs<0] = -1.
+            mu_cat *= gp_signs
+            mu_comparison_cat *= gp_signs
+    
             # Filter for selected gene programs only
             if selected_gps is not None:
                 if gp_key is None:
@@ -505,3 +521,12 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             n_neighbors=n_neighbors,
             mode=mode,
             seed=seed)
+
+    def latent_directions(self):
+        """
+        
+        """
+
+
+
+        return signs
