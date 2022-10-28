@@ -241,12 +241,12 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         self.is_trained_ = True
 
 
-    def get_gp_gene_importances(
+    def compute_gp_gene_importances(
             self,
             gp_name: str,
             gp_key: str):
         """
-        Get gene importances of a given gene program. Gene importances are 
+        Compute gene importances of a given gene program. Gene importances are 
         determined by the normalized absolute weights of the gene expression 
         decoder. Adapted from 
         https://github.com/theislab/scarches/blob/master/scarches/models/expimap/expimap_model.py#L305.
@@ -432,8 +432,9 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                 adj_key="spatial_connectivities",
                 return_mu_std=True)
 
-            # Align signs of latent values with up- & downregulation
-            # directionality
+            # Align signs of latent values with predominant up- & downregulation
+            # directionality (naturally the signs of latent scores do not 
+            # necessarily correspond to predominant up- & downregulation)
             gp_weights = (self.model.gene_expr_decoder
                           .nb_means_normalized_decoder.masked_l.weight.data)
             if self.n_addon_gps_ > 0:

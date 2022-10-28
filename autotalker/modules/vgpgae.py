@@ -85,7 +85,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.log_variational = log_variational
         self.freeze = False
 
-        print("--- INITIALIZING NEW NETWORK MODULE: VGPGAE ---")
+        print("--- INITIALIZING NEW NETWORK MODULE: VARIATIONAL GENE PROGRAM "
+              "GRAPH AUTOENCODER ---")
         print(f"LOSS -> include_edge_recon_loss: {include_edge_recon_loss}, "
               f"include_gene_expr_recon_loss: {include_gene_expr_recon_loss}")
         print(f"NODE LABEL METHOD -> {node_label_method}")

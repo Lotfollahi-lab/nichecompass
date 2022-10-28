@@ -242,7 +242,8 @@ def extract_gp_dict_from_omnipath_lr_interactions(
 
 
 def extract_gp_dict_from_mebocost_es_interactions(
-        species: Literal["mouse", "human"]):
+        species: Literal["mouse", "human"],
+        genes_uppercase: bool=False):
     """
     Retrieve metabolite enzyme-sensor interactions from the Human Metabolome
     Database (HMDB) data curated in Chen, K. et al. MEBOCOST: 
@@ -294,8 +295,14 @@ def extract_gp_dict_from_mebocost_es_interactions(
             tmp["gene"] = gene
             metabolite_enzymes_unrolled.append(tmp)
     metabolite_enzymes_df = pd.DataFrame(metabolite_enzymes_unrolled)
+
     metabolite_enzymes_df["gene_name"] = metabolite_enzymes_df["gene"].apply(
         lambda x: x.split("[")[0])
+
+    metabolite_enzymes_df["gene_name"] = metabolite_enzymes_df["gene_name"].apply(
+        lambda x: x.upper() if genes_uppercase else x)
+    metabolite_sensors_df["Gene_name"] = metabolite_sensors_df["Gene_name"].apply(
+        lambda x: x.upper() if genes_uppercase else x)
 
     metabolite_enzymes_df = (metabolite_enzymes_df.groupby(["HMDB_ID"])
                              .agg({"gene_name": lambda x: x.tolist()})
