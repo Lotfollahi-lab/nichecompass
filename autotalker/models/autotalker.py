@@ -1,5 +1,7 @@
 from typing import Literal, Optional, Union
 
+import scanpy as sc
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
@@ -11,6 +13,7 @@ from .basemodelmixin import BaseModelMixin
 from .vgaemodelmixin import VGAEModelMixin
 from autotalker.modules import VGPGAE
 from autotalker.train import Trainer
+from autotalker.utils import _compute_graph_connectivities
 
 
 class Autotalker(BaseModelMixin, VGAEModelMixin):
@@ -344,13 +347,17 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         """
         Calculate gene program (latent) enrichment scores between a category and 
         comparison categories for multiple categories. The enrichment scores are
-        log Bayes Factors between the hypothesis that the gene program / latent 
-        score of the category is higher than the gene program / latent score of
-        the comparison categories (h0) versus the alternative hypothesis that
-        the gene program / latent score of the comparison categories is higher
-        or equal to the gene program / latent score of the category. The gene
-        program enrichment scores per category will be stored in a pandas 
-        DataFrame under ´adata.uns[key_added]´. Adapted from 
+        log Bayes Factors between the hypothesis h0 that the gene program / 
+        latent score of the category under consideration (z0) is higher than the
+        gene program / latent score of the comparison categories (z1) versus the
+        alternative hypothesis h1 that the gene program / latent score of the 
+        comparison categories (z1) is higher or equal to the gene program / 
+        latent score of the category under consideration (z0). The gene program
+        enrichment scores (log Bayes Factors) per category are stored in a 
+        pandas DataFrame under ´adata.uns[key_added]´. The DataFrame also stores
+        p_h0, the probability that z0 > z1 and p_h1, the probability that 
+        z1 >= z0. The rows are ordered by the log Bayes Factor. 
+        Adapted from 
         https://github.com/theislab/scarches/blob/master/scarches/models/expimap/expimap_model.py#L429.
 
         Parameters
@@ -459,7 +466,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                 log_bayes_factor)
 
             cat_scores = [{"category": cat,
-                           "gp": gp,
+                           "gene_program": gp,
                            "p_h0": p_h0,
                            "p_h1": p_h1,
                            "log_bayes_factor": log_bayes_factor} 
@@ -468,7 +475,33 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                 scores.append(score)
 
         scores = pd.DataFrame(scores)
+        scores.sort_values(by="log_bayes_factor", ascending=False, inplace=True)
+        scores.reset_index(drop=True, inplace=True)
         adata.uns[key_added] = scores
 
 
+    def compute_latent_graph_connectivities(
+            self,
+            adata: Optional[AnnData]=None,
+            latent_key: str="latent_autotalker_fc_gps",
+            n_neighbors: int=15,
+            mode: Literal["knn", "umap"]="knn",
+            seed: int=42):
+        """
         
+        """
+        if adata is None:
+            adata = self.adata
+
+        if latent_key not in adata.obsm:
+            raise ValueError(f"Key '{latent_key}' not found in 'adata.obsm'. "
+                             "Please make sure to first train the model and "
+                             "store the latent representation in 'adata.obsm'.")
+
+        # Compute latent connectivities
+        adata.obsp["latent_connectivities"] = _compute_graph_connectivities(
+            adata=adata,
+            feature_key=latent_key,
+            n_neighbors=n_neighbors,
+            mode=mode,
+            seed=seed)
