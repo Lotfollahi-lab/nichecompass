@@ -116,6 +116,24 @@ class MaskedGeneExprDecoder(nn.Module):
         print(f"MASKED GENE EXPRESSION DECODER -> n_input: {n_input}, "
               f"n_addon_input: {n_addon_input}, n_output: {n_output}")
 
+        """
+        self.shared_decoder = AddOnMaskedLayer(
+            n_input=n_input,
+            n_output=n_output,
+            bias=False,
+            mask=mask,
+            n_addon_input=n_addon_input,
+            activation=nn.Identity())
+
+        self.nb_means_normalized_decoder = nn.Sequential(
+            self.shared_decoder,
+            nn.Softmax(dim=-1))
+
+        self.zi_prob_logits_decoder = nn.Sequential(
+            self.shared_decoder,
+            nn.Identity())
+        """
+
         self.nb_means_normalized_decoder = AddOnMaskedLayer(
             n_input=n_input,
             n_output=n_output,

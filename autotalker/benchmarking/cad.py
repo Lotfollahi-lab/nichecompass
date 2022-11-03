@@ -5,7 +5,7 @@ import numpy as np
 import squidpy as sq
 from anndata import AnnData
 
-from .utils import _compute_graph_connectivities
+from autotalker.utils import _compute_graph_connectivities
 
 
 def compute_avg_cad(

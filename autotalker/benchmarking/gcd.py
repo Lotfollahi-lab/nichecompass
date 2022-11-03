@@ -4,7 +4,7 @@ import torch
 from anndata import AnnData
 from sklearn.metrics import roc_auc_score
 
-from .utils import _compute_graph_connectivities
+from autotalker.utils import _compute_graph_connectivities
 
 
 def compute_avg_gcd(

@@ -65,6 +65,8 @@ class Trainer:
         Random seed to get reproducible results.
     monitor:
         If ´True´, the progress of training will be printed after each epoch.
+    verbose:
+        If ´True´, print out detailed training progress of individual losses.
     """
     def __init__(self,
                  adata: AnnData,
@@ -85,6 +87,7 @@ class Trainer:
                  gamma_addon: Optional[float]=None,
                  seed: int=0,
                  monitor: bool=True,
+                 verbose: bool=False,
                  **kwargs):
         self.adata = adata
         self.model = model
@@ -111,6 +114,7 @@ class Trainer:
         self.gamma_addon = gamma_addon
         self.seed = seed
         self.monitor = monitor
+        self.verbose = verbose
         self.loaders_n_direct_neighbors = kwargs.pop(
             "loaders_n_direct_neighbors", -1)
         self.loaders_n_hops = kwargs.pop("loaders_n_hops", 3)
@@ -295,17 +299,12 @@ class Trainer:
                     node_model_output=node_train_model_output,
                     device=self.device)
                 train_loss = train_loss_dict["loss"]
-                train_edge_recon_loss = train_loss_dict["edge_recon_loss"]
-                train_kl_loss = train_loss_dict["kl_loss"]
-                train_gene_expr_recon_loss = train_loss_dict[
-                    "gene_expr_recon_loss"]
-                self.iter_logs["train_loss"].append(train_loss.item())
-                self.iter_logs["train_edge_recon_loss"].append(
-                    train_edge_recon_loss.item())
-                self.iter_logs["train_kl_loss"].append(
-                    train_kl_loss.item())    
-                self.iter_logs["train_gene_expr_recon_loss"].append(
-                    train_gene_expr_recon_loss.item())
+                if self.verbose:
+                    for key, value in train_loss_dict.items():
+                        self.iter_logs[f"train_{key}"].append(value.item())
+                else:
+                    self.iter_logs["train_loss"].append(train_loss.item())    
+
                 self.iter_logs["n_train_iter"] += 1
 
                 # Optimize for training loss
@@ -321,14 +320,14 @@ class Trainer:
 
             # Validate model
             if (self.edge_val_loader is not None and 
-                    self.node_val_loader is not None):
-                self.validate()
+                self.node_val_loader is not None):
+                    self.validate()
             elif (self.edge_val_loader is None and 
-                    self.node_val_loader is not None):
+                  self.node_val_loader is not None):
                 warnings.warn("You have specified a node validation set but no "
                               "edge validation set. Skipping validation...")
             elif (self.edge_val_loader is not None and 
-                    self.node_val_loader is None):
+                  self.node_val_loader is None):
                 warnings.warn("You have specified an edge validation set but no"
                               " node validation set. Skipping validation...")
     
@@ -391,7 +390,7 @@ class Trainer:
 
         edge_recon_probs_val_accumulated = np.array([])
         edge_labels_val_accumulated = np.array([])
-        
+
         # Jointly loop through edge and node level batches
         for edge_val_data_batch, node_val_data_batch in zip(
                 self.edge_val_loader, self.node_val_loader):
@@ -419,16 +418,11 @@ class Trainer:
                     node_model_output=node_val_model_output,
                     device=self.device)
             val_loss = val_loss_dict["loss"]
-            val_edge_recon_loss = val_loss_dict["edge_recon_loss"]
-            val_kl_loss = val_loss_dict["kl_loss"]
-            val_gene_expr_recon_loss = val_loss_dict["gene_expr_recon_loss"]
-            self.iter_logs["val_loss"].append(val_loss.item())
-            self.iter_logs["val_edge_recon_loss"].append(
-                val_edge_recon_loss.item())
-            self.iter_logs["val_kl_loss"].append(
-                    val_kl_loss.item())    
-            self.iter_logs["val_gene_expr_recon_loss"].append(
-                val_gene_expr_recon_loss.item())
+            if self.verbose:
+                for key, value in val_loss_dict.items():
+                    self.iter_logs[f"val_{key}"].append(value.item())
+            else:
+                self.iter_logs["val_loss"].append(val_loss.item())  
             self.iter_logs["n_val_iter"] += 1
             
             # Calculate evaluation metrics
@@ -451,10 +445,15 @@ class Trainer:
             edge_recon_probs=edge_recon_probs_val_accumulated,
             edge_labels=edge_labels_val_accumulated)
 
-        self.epoch_logs["val_auroc_score"].append(val_eval_dict["auroc_score"])
-        self.epoch_logs["val_auprc_score"].append(val_eval_dict["auprc_score"])
-        self.epoch_logs["val_best_acc_score"].append(val_eval_dict["best_acc_score"])
-        self.epoch_logs["val_best_f1_score"].append(val_eval_dict["best_f1_score"])
+        if self.verbose:
+            self.epoch_logs["val_auroc_score"].append(
+                val_eval_dict["auroc_score"])
+            self.epoch_logs["val_auprc_score"].append(
+                val_eval_dict["auprc_score"])
+            self.epoch_logs["val_best_acc_score"].append(
+                val_eval_dict["best_acc_score"])
+            self.epoch_logs["val_best_f1_score"].append(
+                val_eval_dict["best_f1_score"])
         
         self.model.train()
 

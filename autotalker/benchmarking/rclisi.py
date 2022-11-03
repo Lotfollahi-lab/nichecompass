@@ -4,7 +4,8 @@ import numpy as np
 import pandas as pd
 from anndata import AnnData
 
-from .utils import _compute_graph_indices_and_distances, _convert_to_one_hot
+from .utils import _convert_to_one_hot
+from autotalker.utils import _compute_graph_indices_and_distances
 
 
 def compute_per_cell_log_rclisi(

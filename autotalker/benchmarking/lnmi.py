@@ -5,7 +5,7 @@ import squidpy as sq
 from anndata import AnnData
 from sklearn.metrics import normalized_mutual_info_score
 
-from .utils import _compute_graph_connectivities
+from autotalker.utils import _compute_graph_connectivities
 
 
 def compute_max_lnmi(

@@ -170,6 +170,7 @@ class BaseModelMixin():
         _validate_var_names(adata, var_names)
 
         if n_addon_gps != 0:
+            attr_dict["n_addon_gps_"] = n_addon_gps
             attr_dict["init_params_"]["n_addon_gps"] = n_addon_gps
 
         model = _initialize_model(cls, adata, attr_dict)
