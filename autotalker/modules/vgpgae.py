@@ -5,10 +5,10 @@ import torch
 import torch.nn as nn
 from torch_geometric.data import Data
 
-from autotalker.nn import (AttentionNodeLabelAggregator,
-                           GCNNormNodeLabelAggregator,
+from autotalker.nn import (OneHopAttentionNodeLabelAggregator,
+                           OneHopGCNNormNodeLabelAggregator,
                            SelfNodeLabelNoneAggregator,
-                           SumNodeLabelAggregator,
+                           OneHopSumNodeLabelAggregator,
                            DotProductGraphDecoder,
                            GCNEncoder,
                            MaskedGeneExprDecoder)
@@ -108,21 +108,22 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_addon_input=n_addon_latent)
 
         if node_label_method == "self":
-            self.gene_expr_node_label_aggregator = SelfNodeLabelPseudoAggregator()
+            self.gene_expr_node_label_aggregator = SelfNodeLabelNoneAggregator()
         elif node_label_method == "one-hop-norm":
-            self.gene_expr_node_label_aggregator = GCNNormNodeLabelAggregator()
+            self.gene_expr_node_label_aggregator = OneHopGCNNormNodeLabelAggregator()
         elif node_label_method == "one-hop-sum":
-            self.gene_expr_node_label_aggregator = SumNodeLabelAggregator() 
+            self.gene_expr_node_label_aggregator = OneHopSumNodeLabelAggregator() 
         elif node_label_method == "one-hop-attention": 
-            self.gene_expr_node_label_aggregator = AttentionNodeLabelAggregator(
+            self.gene_expr_node_label_aggregator = OneHopAttentionNodeLabelAggregator(
                 n_input=n_input)
         
         # Gene-specific dispersion parameters
         self.theta = torch.nn.Parameter(torch.randn(self.n_output))
 
     def forward(self,
-                x: torch.Tensor,
-                edge_index: torch.Tensor,
+                data_batch: Data,
+                # x: torch.Tensor,
+                # edge_index: torch.Tensor,
                 decoder: Literal["graph", "gene_expr"]="graph"):
         """
         Forward pass of the VGPGAE module.
@@ -144,6 +145,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             parameters for gene expression reconstruction, mu and logstd from
             the latent space distribution.
         """
+        x = data_batch.x
+        edge_index = data_batch.edge_index
         output = {}
         # Use observed library size as scaling factor in mean of ZINB 
         # distribution
@@ -166,11 +169,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             # expression reconstruction        
             output["node_labels"] = self.gene_expr_node_label_aggregator(
                 x, 
-                edge_index)
+                edge_index,
+                data_batch.batch_size)
 
             output["zinb_parameters"] = self.gene_expr_decoder(
-                    z,
-                    log_library_size)
+                    z[:data_batch.batch_size],
+                    log_library_size[:data_batch.batch_size])
         
         return output
 

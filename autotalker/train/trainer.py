@@ -280,18 +280,17 @@ class Trainer:
 
                 # Forward pass edge-level batch
                 edge_train_model_output = self.model(
-                    x=edge_train_data_batch.x,
-                    edge_index=edge_train_data_batch.edge_index,
+                    data_batch=edge_train_data_batch,
+                    # x=edge_train_data_batch.x,
+                    # edge_index=edge_train_data_batch.edge_index,
                     decoder="graph")
 
                 # Forward pass node-level batch
                 node_train_model_output = self.model(
-                    x=node_train_data_batch.x,
-                    edge_index=node_train_data_batch.edge_index,
+                    data_batch=node_train_data_batch,
+                    # x=node_train_data_batch.x,
+                    # edge_index=node_train_data_batch.edge_index,
                     decoder="gene_expr")
-
-                print("node train data batch")
-                print(node_train_data_batch)
                     
                 # Calculate training loss (edge reconstruction loss + gene 
                 # expression reconstruction loss)
@@ -402,14 +401,16 @@ class Trainer:
 
             # Forward pass edge level batch
             edge_val_model_output = self.model(
-                edge_val_data_batch.x,
-                edge_val_data_batch.edge_index,
+                data_batch=edge_val_data_batch,
+                #edge_val_data_batch.x,
+                #edge_val_data_batch.edge_index,
                 decoder="graph")
 
             # Forward pass node level batch
             node_val_model_output = self.model(
-                node_val_data_batch.x,
-                node_val_data_batch.edge_index,
+                data_batch=node_val_data_batch,
+                #node_val_data_batch.x,
+                #node_val_data_batch.edge_index,
                 decoder="gene_expr")
             
             # Calculate validation loss (edge reconstruction loss + gene 
@@ -470,8 +471,9 @@ class Trainer:
         for edge_test_data_batch in self.edge_test_loader:
             edge_test_data_batch = edge_test_data_batch.to(self.device)
 
-            edge_test_model_output = self.model(edge_test_data_batch.x,
-                                                edge_test_data_batch.edge_index,
+            edge_test_model_output = self.model(data_batch=edge_test_data_batch,
+                                                #edge_test_data_batch.x,
+                                                #edge_test_data_batch.edge_index,
                                                 decoder="graph")
     
             # Calculate evaluation metrics

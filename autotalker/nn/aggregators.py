@@ -11,7 +11,7 @@ from torch_geometric.utils import to_dense_adj, softmax
 from torch_sparse import SparseTensor
 
 
-class AttentionNodeLabelAggregator(MessagePassing):
+class OneHopAttentionNodeLabelAggregator(MessagePassing):
     def __init__(self,
                  n_input: int,
                  n_heads: int=4,
@@ -75,7 +75,7 @@ class AttentionNodeLabelAggregator(MessagePassing):
         return x_j * alpha.unsqueeze(-1)
 
 
-class GCNNormNodeLabelAggregator(nn.Module):
+class OneHopGCNNormNodeLabelAggregator(nn.Module):
     """
     cover case in which no edge in sampled batch
     """
@@ -111,48 +111,54 @@ class SelfNodeLabelNoneAggregator(nn.Module):
         return node_labels
 
 
-class SumNodeLabelAggregator(nn.Module):
+class OneHopSumNodeLabelAggregator(nn.Module):
     """
-    Sum Node Label Aggregator class that simply sums up the gene expression of a
-    node's neighbors to build an aggregated neighbor gene expression vector. It
-    returns a concatenation of the node's own gene expression and the 
-    sum-aggregated neighbor gene expression vector as node labels for the gene 
-    expression reconstruction task.
+    One Hop Sum Node Label Aggregator class that sums up the gene expression of
+    a node's 1-hop neighbors to build an aggregated neighbor gene expression 
+    vector for a node. It returns a concatenation of the node's own gene 
+    expression and the sum-aggregated neighbor gene expression vector as node 
+    labels for the gene expression reconstruction task.
     """
     def __init__(self):
         super().__init__()
 
-    def forward(self, x, edge_index):
+    def forward(self,
+                x: torch.Tensor,
+                edge_index:torch.Tensor,
+                batch_size:int) -> torch.Tensor:
         """
-        Forward pass of the sum node label aggregator.
+        Forward pass of the one hop sum node label aggregator.
         
         Parameters
         ----------
         x:
             Tensor containing the gene expression of the nodes in the current 
-            node batch including their sampled neighbors. 
-            (Size: n_nodes_current_batch x n_node_features)
+            node batch including sampled neighbors. 
+            (Size: n_nodes_batch_and_sampled_neighbors x n_node_features)
         edge_index:
             Tensor containing the node indices of edges in the current node 
-            batch.
-            (Size: 2 x n_edges_current_batch)
+            batch including sampled neighbors.
+            (Size: 2 x n_edges_batch_and_sampled_neighbors)
 
         Returns
         ----------
         node_labels:
             Tensor containing the node labels of the nodes in the current node 
-            batch including their sampled neighbors used for the gene expression
-            reconstruction task.
-            (Size: n_nodes_current_batch x (2 x n_node_features))
+            batch excluding sampled neighbors. These labels are used for the 
+            gene expression reconstruction task.
+            (Size: n_nodes_batch x (2 x n_node_features))
         """
-        adj = SparseTensor.from_edge_index(edge_index,
-                                           sparse_sizes=(x.shape[0],
-                                                         x.shape[0]))
+        # Get adjacency matrix with edges of nodes in the current batch with 
+        # sampled neighbors only (exluding edges between sampled neighbors)
+        batch_nodes_edge_index = edge_index[:, (edge_index[1] < batch_size)]
+        adj = SparseTensor.from_edge_index(
+            batch_nodes_edge_index,
+            sparse_sizes=(max(batch_nodes_edge_index[0]+1), batch_size))
 
-        # x.batch_size
-        print(adj)
-        print(x.shape)
-        x_neighbors_sum = adj.matmul(x)
-        node_labels = torch.cat((x, x_neighbors_sum), dim=-1)
+        # Compute sum aggregation of neighborhood gene expression    
+        x_neighbors_sum = adj.t().matmul(x)
+
+        # Concatenate with node's own gene expression
+        node_labels = torch.cat((x[:batch_size,:], x_neighbors_sum), dim=-1)
         return node_labels
 
