@@ -43,7 +43,7 @@ class SpatialAnnTorchDataset():
                 sp.csr_matrix(adata.obsp[adj_key]))
 
         # Validate adjacency matrix symmetry
-        if not (self.adj.to_dense() == self.adj.to_dense().T).all():
+        if (self.adj.nnz() != self.adj.t().nnz()):
             raise ImportError("The input adjacency matrix has to be symmetric.")
         
         self.edge_index = self.adj.to_torch_sparse_coo_tensor()._indices()

@@ -83,7 +83,9 @@ class GCNNormNodeLabelAggregator(nn.Module):
         super().__init__()
 
     def forward(self, x, edge_index):
-        adj = SparseTensor.from_edge_index(edge_index)
+        adj = SparseTensor.from_edge_index(edge_index,
+                                           sparse_sizes=(x.shape[0],
+                                                         x.shape[0]))
         adj_norm = gcn_norm(adj, add_self_loops=False)
         x_neighbors_norm = adj_norm.matmul(x)
         node_labels = torch.cat((x, x_neighbors_norm), dim=-1)
