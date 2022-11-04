@@ -7,7 +7,7 @@ from torch_geometric.data import Data
 
 from autotalker.nn import (AttentionNodeLabelAggregator,
                            GCNNormNodeLabelAggregator,
-                           SelfNodeLabelPseudoAggregator,
+                           SelfNodeLabelNoneAggregator,
                            SumNodeLabelAggregator,
                            DotProductGraphDecoder,
                            GCNEncoder,
@@ -167,11 +167,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             output["node_labels"] = self.gene_expr_node_label_aggregator(
                 x, 
                 edge_index)
-            
+
             output["zinb_parameters"] = self.gene_expr_decoder(
                     z,
                     log_library_size)
-                    
+        
         return output
 
     def loss(self,

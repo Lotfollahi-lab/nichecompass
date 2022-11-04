@@ -1,6 +1,6 @@
 from .aggregators import (AttentionNodeLabelAggregator,
                           GCNNormNodeLabelAggregator,
-                          SelfNodeLabelPseudoAggregator,
+                          SelfNodeLabelNoneAggregator,
                           SumNodeLabelAggregator)
 from .decoders import DotProductGraphDecoder, MaskedGeneExprDecoder
 from .encoders import GCNEncoder

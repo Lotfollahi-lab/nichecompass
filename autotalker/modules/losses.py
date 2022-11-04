@@ -100,6 +100,10 @@ def compute_gene_expr_recon_zinb_loss(x: torch.Tensor,
     zinb_loss:
         Gene expression reconstruction loss using a ZINB gene expression model.
     """
+    print("mu")
+    print(mu.shape)
+    print("x")
+    print(x.shape)
     # Reshape theta for broadcasting
     theta = theta.view(1, theta.size(0))
 

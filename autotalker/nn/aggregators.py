@@ -92,7 +92,17 @@ class GCNNormNodeLabelAggregator(nn.Module):
         return node_labels
 
 
-class SelfNodeLabelPseudoAggregator(nn.Module):
+class SelfNodeLabelNoneAggregator(nn.Module):
+    """
+    Self Node Label None Aggregator class that provides an API to pass ´x´ and
+    ´edge_index´ to the forward pass (for consistency with other aggregators) 
+    but does no neighborhood gene expression aggregation. Instead, it just 
+    returns the gene expression of the nodes themselves as labels for the gene 
+    expression reconstruction task (hence 'none aggregator'). Note that this 
+    is a capability for benchmarking but is not compatible with the inference of
+    communication gene programs that require an aggregation of the neighborhood
+    gene expression.
+    """
     def __init__(self):
         super().__init__()
 
@@ -102,11 +112,46 @@ class SelfNodeLabelPseudoAggregator(nn.Module):
 
 
 class SumNodeLabelAggregator(nn.Module):
+    """
+    Sum Node Label Aggregator class that simply sums up the gene expression of a
+    node's neighbors to build an aggregated neighbor gene expression vector. It
+    returns a concatenation of the node's own gene expression and the 
+    sum-aggregated neighbor gene expression vector as node labels for the gene 
+    expression reconstruction task.
+    """
     def __init__(self):
         super().__init__()
 
     def forward(self, x, edge_index):
-        adj = SparseTensor.from_edge_index(edge_index)
+        """
+        Forward pass of the sum node label aggregator.
+        
+        Parameters
+        ----------
+        x:
+            Tensor containing the gene expression of the nodes in the current 
+            node batch including their sampled neighbors. 
+            (Size: n_nodes_current_batch x n_node_features)
+        edge_index:
+            Tensor containing the node indices of edges in the current node 
+            batch.
+            (Size: 2 x n_edges_current_batch)
+
+        Returns
+        ----------
+        node_labels:
+            Tensor containing the node labels of the nodes in the current node 
+            batch including their sampled neighbors used for the gene expression
+            reconstruction task.
+            (Size: n_nodes_current_batch x (2 x n_node_features))
+        """
+        adj = SparseTensor.from_edge_index(edge_index,
+                                           sparse_sizes=(x.shape[0],
+                                                         x.shape[0]))
+
+        # x.batch_size
+        print(adj)
+        print(x.shape)
         x_neighbors_sum = adj.matmul(x)
         node_labels = torch.cat((x, x_neighbors_sum), dim=-1)
         return node_labels

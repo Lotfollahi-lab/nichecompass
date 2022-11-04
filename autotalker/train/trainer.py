@@ -289,6 +289,9 @@ class Trainer:
                     x=node_train_data_batch.x,
                     edge_index=node_train_data_batch.edge_index,
                     decoder="gene_expr")
+
+                print("node train data batch")
+                print(node_train_data_batch)
                     
                 # Calculate training loss (edge reconstruction loss + gene 
                 # expression reconstruction loss)
