@@ -190,6 +190,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
               edge_test_ratio: float=0.05,
               node_val_ratio: float=0.1,
               edge_batch_size: int=64,
+              node_batch_size: int=64,
               mlflow_experiment_id: Optional[str]=None,
               **trainer_kwargs):
         """
@@ -214,6 +215,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             The rest of the data will be used as training set on node-level.
         edge_batch_size:
             Batch size for the edge-level dataloaders.
+        node_batch_size:
+            Batch size for the node-level dataloaders.
         mlflow_experiment_id:
             ID of the Mlflow experiment used for tracking training parameters
             and metrics.
@@ -231,6 +234,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             node_val_ratio=node_val_ratio,
             node_test_ratio=0.0,
             edge_batch_size=edge_batch_size,
+            node_batch_size=node_batch_size,
             **trainer_kwargs)
 
         self.trainer.train(n_epochs=n_epochs,

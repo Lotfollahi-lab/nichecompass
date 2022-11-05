@@ -173,6 +173,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 data_batch.batch_size)
 
             output["zinb_parameters"] = self.gene_expr_decoder(
+                    #z,
+                    #log_library_size)
                     z[:data_batch.batch_size],
                     log_library_size[:data_batch.batch_size])
         
