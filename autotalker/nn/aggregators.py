@@ -139,32 +139,47 @@ class OneHopAttentionNodeLabelAggregatorOld(MessagePassing):
         return x_j * alpha.unsqueeze(-1)
 
 
-class OneHopGCNNormNodeLabelAggregatorOld(nn.Module):
-    """
-    cover case in which no edge in sampled batch
-    """
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x, edge_index, batch_size):
-        adj = SparseTensor.from_edge_index(edge_index,
-                                           sparse_sizes=(x.shape[0],
-                                                         x.shape[0]))
-        adj_norm = gcn_norm(adj, add_self_loops=False)
-        print(adj_norm.shape)
-        x_neighbors_norm = adj_norm.t().matmul(x)
-        node_labels = torch.cat((x, x_neighbors_norm), dim=-1)
-        return node_labels
-
-
 class OneHopGCNNormNodeLabelAggregator(nn.Module):
     """
-    One-hop GCN Norm Node Label Aggregator class.
+    One-hop GCN Norm Node Label Aggregator class that uses a node degree
+    normalized sum of the gene expression of a node's 1-hop neighbors to build
+    an aggregated neighbor gene expression vector for a node. It returns a 
+    concatenation of the node's own gene expression and the gcn-norm-aggregated
+    neighbor gene expression vector as node labels for the gene expression
+    reconstruction task.
     """
     def __init__(self):
         super().__init__()
 
-    def forward(self, x, edge_index, batch_size):
+    def forward(self,
+                x: torch.tensor,
+                edge_index: torch.tensor,
+                batch_size: int) -> torch.tensor:
+        """
+        Forward pass of the One-hop GCN Norm Node Label Aggregator.
+        
+        Parameters
+        ----------
+        x:
+            Tensor containing the gene expression of the nodes in the current 
+            node batch including sampled neighbors. 
+            (Size: n_nodes_batch_and_sampled_neighbors x n_node_features)
+        edge_index:
+            Tensor containing the node indices of edges in the current node 
+            batch including sampled neighbors.
+            (Size: 2 x n_edges_batch_and_sampled_neighbors)
+        batch_size:
+            Node batch size. Is used to return only node labels for the nodes
+            in the current node batch.
+
+        Returns
+        ----------
+        node_labels:
+            Tensor containing the node labels of the nodes in the current node 
+            batch excluding sampled neighbors. These labels are used for the 
+            gene expression reconstruction task.
+            (Size: n_nodes_batch x (2 x n_node_features))
+        """
         # Get adjacency matrix with edges of nodes in the current batch with 
         # sampled neighbors only (exluding edges between sampled neighbors)
         adj = SparseTensor.from_edge_index(edge_index,
@@ -174,25 +189,6 @@ class OneHopGCNNormNodeLabelAggregator(nn.Module):
         x_neighbors_norm = adj_norm.t().matmul(x)
         node_labels = torch.cat((x, x_neighbors_norm), dim=-1)
         return node_labels[:batch_size]
-
-
-class SelfNodeLabelNoneAggregator(nn.Module):
-    """
-    Self Node Label None Aggregator class that provides an API to pass ´x´ and
-    ´edge_index´ to the forward pass (for consistency with other aggregators) 
-    but does no neighborhood gene expression aggregation. Instead, it just 
-    returns the gene expression of the nodes themselves as labels for the gene 
-    expression reconstruction task (hence 'none aggregator'). Note that this 
-    is a capability for benchmarking but is not compatible with the inference of
-    communication gene programs that require an aggregation of the neighborhood
-    gene expression.
-    """
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x, edge_index):
-        node_labels = x
-        return node_labels
 
 
 class OneHopSumNodeLabelAggregator(nn.Module):
@@ -244,6 +240,25 @@ class OneHopSumNodeLabelAggregator(nn.Module):
 
         # Concatenate with node's own gene expression
         node_labels = torch.cat((x[:batch_size,:], x_neighbors_sum), dim=-1)
+        return node_labels
+
+
+class SelfNodeLabelNoneAggregator(nn.Module):
+    """
+    Self Node Label None Aggregator class that provides an API to pass ´x´ and
+    ´edge_index´ to the forward pass (for consistency with other aggregators) 
+    but does no neighborhood gene expression aggregation. Instead, it just 
+    returns the gene expression of the nodes themselves as labels for the gene 
+    expression reconstruction task (hence 'none aggregator'). Note that this 
+    is a capability for benchmarking but is not compatible with the inference of
+    communication gene programs that require an aggregation of the neighborhood
+    gene expression.
+    """
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x, edge_index):
+        node_labels = x
         return node_labels
 
 
