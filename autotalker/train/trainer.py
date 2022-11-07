@@ -1,4 +1,5 @@
 import copy
+import itertools
 import time
 import warnings
 from collections import defaultdict
@@ -51,9 +52,9 @@ class Trainer:
     node_test_ratio:
         Fraction of the data that is used as test set on node-level.
     edge_batch_size:
-        Batch size for the edge-level dataloaders (the batch size for the node-
-        level dataloaders will be calculated automatically to match the number
-        of iterations between edge-level and node-level dataloaders).
+        Batch size for the edge-level dataloaders.
+    node_batch_size:
+        Batch size for the node-level dataloaders.
     use_early_stopping:
         If `True`, the EarlyStopping class is used to prevent overfitting.
     reload_best_model:
@@ -81,6 +82,7 @@ class Trainer:
                  node_val_ratio: float=0.1,
                  node_test_ratio: float=0.0,
                  edge_batch_size: int=64,
+                 node_batch_size: int=64,
                  use_early_stopping: bool=True,
                  reload_best_model: bool=True,
                  early_stopping_kwargs: Optional[dict]=None,
@@ -101,6 +103,7 @@ class Trainer:
         self.node_val_ratio = node_val_ratio
         self.node_test_ratio = node_test_ratio
         self.edge_batch_size = edge_batch_size
+        self.node_batch_size = node_batch_size
         self.use_early_stopping = use_early_stopping
         self.reload_best_model = reload_best_model
         self.early_stopping_kwargs = (early_stopping_kwargs if 
@@ -117,7 +120,7 @@ class Trainer:
         self.verbose = verbose
         self.loaders_n_direct_neighbors = kwargs.pop(
             "loaders_n_direct_neighbors", -1)
-        self.loaders_n_hops = kwargs.pop("loaders_n_hops", 3)
+        self.loaders_n_hops = kwargs.pop("loaders_n_hops", 2)
         self.grad_clip_value = kwargs.pop("grad_clip_value", 0.0)
         self.epoch = -1
         self.training_time = 0
@@ -161,34 +164,6 @@ class Trainer:
         print(f"Number of training edges: {self.n_edges_train}")
         print(f"Number of validation edges: {self.n_edges_val}")
         print(f"Number of test edges: {self.n_edges_test}")
-
-        # Calculate node-level batch sizes so that number of iterations of 
-        # node-level dataloaders match number of iterations of edge-level 
-        # dataloaders (or are as close as possible but with node-level 
-        # dataloaders having slightly more iterations, in which case some of 
-        # their iterations will be cut off by the zipping in the joint iteration
-        # loop; this is fine, however, since we use random shuffling so we will
-        # use different nodes in different epochs)
-        edge_train_loader_n_iter = int(np.ceil(
-            self.n_edges_train / edge_batch_size))
-        edge_val_loader_n_iter = int(np.ceil(
-            self.n_edges_val / edge_batch_size))
-        edge_test_loader_n_iter = int(np.ceil(
-            self.n_edges_test / edge_batch_size))
-        self.node_batch_size_train = int(np.floor(
-            self.n_nodes_train / edge_train_loader_n_iter))
-        if edge_val_loader_n_iter != 0:
-            self.node_batch_size_val = int(np.floor(
-                self.n_nodes_val / edge_val_loader_n_iter))
-        else:
-            # Avoid division by 0 error
-            self.node_batch_size_val = 0
-        if edge_test_loader_n_iter != 0:
-            self.node_batch_size_test = int(np.floor(
-                self.n_nodes_test / edge_test_loader_n_iter))
-        else:
-            # Avoid division by 0 error
-            self.node_batch_size_test = 0
         
         # Initialize node-level and edge-level dataloaders
         loader_dict = initialize_dataloaders(
@@ -196,10 +171,8 @@ class Trainer:
             edge_train_data=self.edge_train_data,
             edge_val_data=self.edge_val_data,
             edge_test_data=self.edge_test_data,
-            node_batch_size_train=self.node_batch_size_train,
-            node_batch_size_val=self.node_batch_size_val,
-            node_batch_size_test=self.node_batch_size_test,
             edge_batch_size=self.edge_batch_size,
+            node_batch_size=self.node_batch_size,
             n_direct_neighbors=self.loaders_n_direct_neighbors,
             n_hops=self.loaders_n_hops,
             edges_directed=False,
@@ -247,6 +220,7 @@ class Trainer:
             mlflow.log_param("node_train_ratio", self.node_train_ratio)
             mlflow.log_param("node_val_ratio", self.node_val_ratio)
             mlflow.log_param("edge_batch_size", self.edge_batch_size)
+            mlflow.log_param("node_batch_size", self.node_batch_size)
             mlflow.log_param("use_early_stopping", self.use_early_stopping)
             mlflow.log_param("reload_best_model", self.reload_best_model)
             mlflow.log_param("early_stopping_kwargs", self.early_stopping_kwargs)
@@ -274,20 +248,19 @@ class Trainer:
             
             # Jointly loop through edge- and node-level batches
             for edge_train_data_batch, node_train_data_batch in zip(
-                    self.edge_train_loader, self.node_train_loader):
+                    self.edge_train_loader,
+                    itertools.cycle(self.node_train_loader)):
                 edge_train_data_batch = edge_train_data_batch.to(self.device)
                 node_train_data_batch = node_train_data_batch.to(self.device)
 
                 # Forward pass edge-level batch
                 edge_train_model_output = self.model(
-                    x=edge_train_data_batch.x,
-                    edge_index=edge_train_data_batch.edge_index,
+                    data_batch=edge_train_data_batch,
                     decoder="graph")
 
                 # Forward pass node-level batch
                 node_train_model_output = self.model(
-                    x=node_train_data_batch.x,
-                    edge_index=node_train_data_batch.edge_index,
+                    data_batch=node_train_data_batch,
                     decoder="gene_expr")
                     
                 # Calculate training loss (edge reconstruction loss + gene 
@@ -399,14 +372,16 @@ class Trainer:
 
             # Forward pass edge level batch
             edge_val_model_output = self.model(
-                edge_val_data_batch.x,
-                edge_val_data_batch.edge_index,
+                data_batch=edge_val_data_batch,
+                #edge_val_data_batch.x,
+                #edge_val_data_batch.edge_index,
                 decoder="graph")
 
             # Forward pass node level batch
             node_val_model_output = self.model(
-                node_val_data_batch.x,
-                node_val_data_batch.edge_index,
+                data_batch=node_val_data_batch,
+                #node_val_data_batch.x,
+                #node_val_data_batch.edge_index,
                 decoder="gene_expr")
             
             # Calculate validation loss (edge reconstruction loss + gene 
@@ -467,8 +442,9 @@ class Trainer:
         for edge_test_data_batch in self.edge_test_loader:
             edge_test_data_batch = edge_test_data_batch.to(self.device)
 
-            edge_test_model_output = self.model(edge_test_data_batch.x,
-                                                edge_test_data_batch.edge_index,
+            edge_test_model_output = self.model(data_batch=edge_test_data_batch,
+                                                #edge_test_data_batch.x,
+                                                #edge_test_data_batch.edge_index,
                                                 decoder="graph")
     
             # Calculate evaluation metrics
