@@ -12,7 +12,8 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
     def __init__(self,
                  n_input: int,
                  n_heads: int=4,
-                 leaky_relu_negative_slope: float=0.2):
+                 leaky_relu_negative_slope: float=0.2,
+                 dropout_rate: float=0.0):
         """
         One-hop Attention Node Label Aggregator class that uses a weighted sum
         of the gene expression of a node's 1-hop neighbors to build an
@@ -20,7 +21,22 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         determined by an attention mechanism with learnable weights. It returns 
         a concatenation of the node's own gene expression and the 
         attention-aggregated neighbor gene expression vector as node labels for
-        the gene expression reconstruction task.
+        the gene expression reconstruction task. Implementation inspired by
+        https://github.com/pyg-team/pytorch_geometric/blob/master/torch_geometric/nn/conv/gatv2_conv.py#L16.
+
+        Parameters
+        ----------
+        n_input:
+            Number of input nodes to the Node Label Aggregator (corresponds to
+            number of genes).
+        n_heads:
+            Number of attention heads for multi-head attention.
+        leaky_relu_negative_slope:
+            Slope of the leaky relu activation function.
+        dropout_rate:
+            Dropout probability of the normalized attention coefficients which
+            exposes each node to a stochastically sampled neighborhood during 
+            training.
         """
         super().__init__(node_dim=0)
         self.n_input = n_input
@@ -36,10 +52,14 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
                                  weight_initializer="glorot")
         self.attn = nn.Parameter(torch.Tensor(1, n_heads, n_input))
         self.activation = nn.LeakyReLU(negative_slope=leaky_relu_negative_slope)
+        self.dropout = nn.Dropout(p=dropout_rate)
         self._alpha = None
         self.reset_parameters()
 
     def reset_parameters(self):
+        """
+        Reset weight parameters.
+        """
         self.linear_l_l.reset_parameters()
         self.linear_r_l.reset_parameters()
         glorot(self.attn)
@@ -102,11 +122,17 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
                 g_j: torch.Tensor,
                 g_i: torch.Tensor,
                 index: torch.Tensor) -> torch.Tensor:
+        """
+        Message method of the MessagePassing parent class. Variables with "_i" 
+        suffix refer to the central nodes that aggregate information. Variables
+        with "_j" suffix refer to the neigboring nodes.
+        """
         g = g_i + g_j
         g = self.activation(g)
         alpha = (g * self.attn).sum(dim=-1)
         alpha = softmax(alpha, index)
         self._alpha = alpha
+        alpha = self.dropout(alpha)
         return x_j * alpha.unsqueeze(-1)
 
 
