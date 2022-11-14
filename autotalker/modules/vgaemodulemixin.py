@@ -62,3 +62,31 @@ class VGAEModuleMixin:
         else:
             z = self.reparameterize(mu, logstd)
             return z
+
+    @torch.no_grad()
+    def get_zinb_gene_expr_params(self,
+                                  z: torch.Tensor,
+                                  log_library_size: torch.Tensor):
+        """
+        Decode latent space features z using the log library size of the
+        input gene expression to return the parameters of the ZINB distribution
+        used for reconstruction of gene expression.
+
+        Parameters
+        ----------
+        z:
+            Tensor containing the latent space features.
+        log_library_size:
+            Tensor containing the log library size of the nodes.
+
+        Returns
+        ----------
+        zinb_parameters:
+            Parameters for the ZINB distribution to model gene expression.
+        """
+        zinb_parameters = self.gene_expr_decoder(
+            z,
+            log_library_size)
+
+        return zinb_parameters
+      

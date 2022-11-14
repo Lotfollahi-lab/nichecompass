@@ -122,8 +122,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
     def forward(self,
                 data_batch: Data,
-                # x: torch.Tensor,
-                # edge_index: torch.Tensor,
                 decoder: Literal["graph", "gene_expr"]="graph"):
         """
         Forward pass of the VGPGAE module.
@@ -173,8 +171,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 data_batch.batch_size)
 
             output["zinb_parameters"] = self.gene_expr_decoder(
-                    #z,
-                    #log_library_size)
                     z[:data_batch.batch_size],
                     log_library_size[:data_batch.batch_size])
         

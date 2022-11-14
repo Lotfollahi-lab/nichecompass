@@ -245,111 +245,18 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         self.is_trained_ = True
 
 
-    def compute_gp_gene_importances(
-            self,
-            gp_name: str,
-            gp_key: str):
-        """
-        Compute gene importances of a given gene program. Gene importances are 
-        determined by the normalized absolute weights of the gene expression 
-        decoder. Adapted from 
-        https://github.com/theislab/scarches/blob/master/scarches/models/expimap/expimap_model.py#L305.
-
-        Parameters
-        ----------
-        gp_name:
-            Name of the gene program for which the gene importances should be
-            retrieved.
-        gp_key:
-            Key under which a list of all gene programs is stored in ´adata.uns´.       
-
-        Returns
-        ----------
-        gp_gene_importances_df:
-            Pandas DataFrame with genes stored in ´gene´ and gene expression
-            decoder weights stored in ´weights_nb_means_normalized´ and 
-            ´weights_zi_prob_logits´ ordered by ´weight_based_importance´, which
-            is calculated as an average of the normalized gene expression 
-            decoder weights. Genes can belong to the communication source or 
-            target as indicated in ´gene_entity´.
-        """
-        # Retrieve gene program names
-        gp_list = list(self.adata.uns[gp_key])
-        if len(gp_list) == self.n_gps_:
-            if self.n_addon_gps_ > 0:
-                gp_list += ["addon_GP_" + str(i) for i in range(
-                            self.n_addon_gps_)]
-        
-        # Validate that all gene programs are contained
-        n_latent_w_addon = self.n_gps_ + self.n_addon_gps_
-        if len(gp_list) != n_latent_w_addon:
-            raise ValueError(f"The number of gene programs ({len(gp_list)}) "
-                             "must equal the number of latent dimensions "
-                             f"({n_latent_w_addon})!")
-
-        # Retrieve gene-expression-decoder-weight-based importance scores
-        gp_idx = gp_list.index(gp_name)
-        if gp_idx < self.n_gps_:
-            weights_nb_means_normalized = (
-                self.model.gene_expr_decoder.nb_means_normalized_decoder
-                .masked_l.weight[:, gp_idx].data.cpu().numpy())
-            weights_zi_prob_logits = (
-                self.model.gene_expr_decoder.zi_prob_logits_decoder
-                .masked_l.weight[:, gp_idx].data.cpu().numpy())
-        elif gp_idx >= self.n_gps_:
-            weights_nb_means_normalized = (
-                self.model.gene_expr_decoder.nb_means_normalized_decoder
-                .addon_l.weight[:, gp_idx].data.cpu().numpy())
-            weights_zi_prob_logits = (
-                self.model.gene_expr_decoder.zi_prob_logits_decoder
-                .addon_l.weight[:, gp_idx].data.cpu().numpy())
-        abs_weights_nb_means_normalized = np.abs(weights_nb_means_normalized)
-        abs_weights_zi_prob_logits = np.abs(weights_zi_prob_logits) 
-        normalized_abs_weights_nb_means_normalized = (
-            abs_weights_nb_means_normalized / 
-            abs_weights_nb_means_normalized.sum())
-        normalized_abs_weights_zi_prob_logits = (
-            abs_weights_zi_prob_logits / 
-            abs_weights_zi_prob_logits.sum())
-        weight_based_importance = (normalized_abs_weights_nb_means_normalized + 
-                                   normalized_abs_weights_zi_prob_logits / 2)
-        srt_idx = (np.argsort(weight_based_importance)[::-1]
-                   [:(weight_based_importance > 0).sum()])
-
-        # Split into communication target and source idx
-        target_srt_idx = srt_idx[srt_idx < len(self.adata.var_names)]
-        source_srt_idx = (srt_idx[srt_idx > len(self.adata.var_names)] - 
-                          len(self.adata.var_names))
-
-        # Build gene importances df
-        gp_gene_importances_df = pd.DataFrame()
-        gp_gene_importances_df["gene"] = (
-            [gene for gene in self.adata.var_names[target_srt_idx].tolist()] +
-            [gene for gene in self.adata.var_names[source_srt_idx].tolist()])
-        gp_gene_importances_df["gene_entity"] = (
-            ["target" for _ in self.adata.var_names[target_srt_idx].tolist()] +
-            ["source" for _ in self.adata.var_names[source_srt_idx].tolist()])
-        gp_gene_importances_df["weights_nb_means_normalized"] = (
-           weights_nb_means_normalized[srt_idx])
-        gp_gene_importances_df["weights_zi_prob_logits"] = (
-           weights_zi_prob_logits[srt_idx])
-        gp_gene_importances_df["weight_based_importance"] = (
-            weight_based_importance[srt_idx])
-
-        return gp_gene_importances_df
-
-
     def compute_gp_enrichment_scores(
             self,
             cat_key: str,
             gp_key: str,
             adata: Optional[AnnData]=None,
             comparison_cats: Union[str, list]="rest",
-            n_sample: int=1000,
+            n_sample: int=10000,
             selected_gps: Optional[list]=None,
             key_added: str="gp_enrichment_scores",
             n_top_up_gps_retrieved: int=10,
-            n_top_down_gps_retrieved: int=10) -> list:
+            n_top_down_gps_retrieved: int=10,
+            seed: int=42) -> list:
         """
         Compute gene program / latent enrichment scores between a category and 
         specified comparison categories for all categories in 
@@ -397,13 +304,17 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             whose scores will be stored in ´adata.obs´.
         n_top_down_gps_retrieved:
             Number of top downregulated gene programs which will be returned and 
-            whose scores will be stored in ´adata.obs´.    
+            whose scores will be stored in ´adata.obs´.
+        seed:
+            Random seed for reproducible sampling.
 
         Returns
         ----------
         top_gps:
             Names of ´n_top_gps_retrieved´ top enriched gene programs.
         """
+        np.random.seed(seed)
+
         if adata is None:
             adata = self.adata
 
@@ -444,13 +355,13 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             # Get gene program / latent posterior parameters for sampled cells
             mu_cat, std_cat = self.get_latent_representation(
                 adata=adata_cat,
-                counts_layer_key="counts",
-                adj_key="spatial_connectivities",
+                counts_layer_key=self.counts_layer_key_,
+                adj_key=self.adj_key_,
                 return_mu_std=True)
             mu_comparison_cat, std_comparison_cat = self.get_latent_representation(
                 adata=adata_comparison_cat,
-                counts_layer_key="counts",
-                adj_key="spatial_connectivities",
+                counts_layer_key=self.counts_layer_key_,
+                adj_key=self.adj_key_,
                 return_mu_std=True)
 
             # Normalize latent scores using decoder weights to accurately 
@@ -522,8 +433,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             # Get latent scores for all observations
             mu_all, _ = self.get_latent_representation(
                 adata=adata,
-                counts_layer_key="counts",
-                adj_key="spatial_connectivities",
+                counts_layer_key=self.counts_layer_key_,
+                adj_key=self.adj_key_,
                 return_mu_std=True)
 
             # Normalize latent scores
@@ -547,6 +458,118 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                     adata.obs[gp] = mu_all[:, gp_idx]
                 top_gps.extend(top_down_gps)
         return top_gps
+
+
+    def compute_gp_gene_importances(
+            self,
+            gp_name: str,
+            gp_key: str,
+            adata: Optional[AnnData]=None):
+        """
+        Compute gene importances of a given gene program. Gene importances are 
+        determined by the normalized absolute weights of the gene expression 
+        decoder. Implementation is inspired by
+        https://github.com/theislab/scarches/blob/master/scarches/models/expimap/expimap_model.py#L305.
+
+        Parameters
+        ----------
+        gp_name:
+            Name of the gene program for which the gene importances should be
+            retrieved.
+        gp_key:
+            Key under which a list of all gene programs is stored in ´adata.uns´.       
+
+        Returns
+        ----------
+        gp_gene_importances_df:
+            Pandas DataFrame with genes stored in ´gene´ and gene expression
+            decoder weights stored in ´weights_nb_means_normalized´ and 
+            ´weights_zi_prob_logits´ ordered by ´weight_based_importance´, which
+            is calculated as an average of the normalized gene expression 
+            decoder weights. Genes can belong to the communication source or 
+            target as indicated in ´gene_entity´.
+        """
+        if adata is None:
+            adata = self.adata
+
+        # Retrieve gene program names
+        gp_list = list(adata.uns[gp_key])
+        if len(gp_list) == self.n_gps_:
+            if self.n_addon_gps_ > 0:
+                gp_list += ["addon_GP_" + str(i) for i in range(
+                            self.n_addon_gps_)]
+        
+        # Validate that all gene programs are contained
+        n_latent_w_addon = self.n_gps_ + self.n_addon_gps_
+        if len(gp_list) != n_latent_w_addon:
+            raise ValueError(f"The number of gene programs ({len(gp_list)}) "
+                             "must equal the number of latent dimensions "
+                             f"({n_latent_w_addon})!")
+
+        # Get latent scores for all observations
+        mu, _ = self.get_latent_representation(
+            adata=adata,
+            counts_layer_key=self.counts_layer_key_,
+            adj_key=self.adj_key_,
+            return_mu_std=True)
+
+        gp_idx = gp_list.index(gp_name)
+        gp_scores = mu[:, gp_idx]
+        gp_sign = gp_scores.sum(0).cpu().numpy()
+        if gp_sign > 0:
+            gp_sign = 1
+        elif gp_sign < 0:
+            gp_sign = -1
+        # gp_sign = gp_scores[gp_scores>0] = 1.
+        # gp_sign = gp_scores[gp_scores<0] = -1.
+
+        # Get zero inflation probabilities
+        _, zi_probs = self.get_zinb_gene_expr_params(
+            adata=adata,
+            counts_layer_key=self.counts_layer_key_,
+            adj_key=self.adj_key_)
+        mean_zi_probs = zi_probs.mean(0)
+        mean_non_zi_probs = (1 - mean_zi_probs).cpu().numpy()
+
+        # Retrieve gene-expression-decoder-weight-based importance scores
+        if gp_idx < self.n_gps_:
+            weights_nb_means_normalized = (
+                self.model.gene_expr_decoder.nb_means_normalized_decoder
+                .masked_l.weight[:, gp_idx].data.cpu().numpy())
+        elif gp_idx >= self.n_gps_:
+            weights_nb_means_normalized = (
+                self.model.gene_expr_decoder.nb_means_normalized_decoder
+                .addon_l.weight[:, gp_idx].data.cpu().numpy())
+
+        # Adjust weights by zero inflation probabilities and gp sign
+        weights_nb_means_normalized *= gp_sign
+        weights_nb_means_normalized *= mean_non_zi_probs
+
+        normalized_weights_nb_means_normalized = (
+            weights_nb_means_normalized / 
+            weights_nb_means_normalized.sum(0))
+
+        weight_based_importance = normalized_weights_nb_means_normalized
+        srt_idx = (np.argsort(weight_based_importance)[::-1]
+                   [:(weight_based_importance > 0).sum()])
+
+        # Split into communication target and source idx
+        target_srt_idx = srt_idx[srt_idx < len(self.adata.var_names)]
+        source_srt_idx = (srt_idx[srt_idx > len(self.adata.var_names)] - 
+                          len(self.adata.var_names))
+
+        # Build gene importances df
+        gp_gene_importances_df = pd.DataFrame()
+        gp_gene_importances_df["gene"] = (
+            [gene for gene in self.adata.var_names[target_srt_idx].tolist()] +
+            [gene for gene in self.adata.var_names[source_srt_idx].tolist()])
+        gp_gene_importances_df["gene_entity"] = (
+            ["target" for _ in self.adata.var_names[target_srt_idx].tolist()] +
+            ["source" for _ in self.adata.var_names[source_srt_idx].tolist()])
+        gp_gene_importances_df["weight_based_importance"] = (
+            weight_based_importance[srt_idx])
+
+        return gp_gene_importances_df
 
 
     def compute_latent_graph_connectivities(
@@ -574,12 +597,3 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             n_neighbors=n_neighbors,
             mode=mode,
             seed=seed)
-
-    def latent_directions(self):
-        """
-        
-        """
-
-
-
-        return signs
