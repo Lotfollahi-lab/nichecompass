@@ -339,29 +339,34 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         return gp_gene_importances_df
 
 
-    def calculate_gp_enrichment_scores(
+    def compute_gp_enrichment_scores(
             self,
             cat_key: str,
-            gp_key: Optional[str]=None,
+            gp_key: str,
             adata: Optional[AnnData]=None,
             comparison_cats: Union[str, list]="rest",
-            selected_gps: Optional[list]=None,
             n_sample: int=1000,
-            key_added: str="gp_enrichment_scores"):
+            selected_gps: Optional[list]=None,
+            key_added: str="gp_enrichment_scores",
+            n_top_up_gps_retrieved: int=10,
+            n_top_down_gps_retrieved: int=10) -> list:
         """
-        Calculate gene program (latent) enrichment scores between a category and 
-        comparison categories for multiple categories. The enrichment scores are
-        log Bayes Factors between the hypothesis h0 that the gene program / 
-        latent score of the category under consideration (z0) is higher than the
-        gene program / latent score of the comparison categories (z1) versus the
-        alternative hypothesis h1 that the gene program / latent score of the 
-        comparison categories (z1) is higher or equal to the gene program / 
-        latent score of the category under consideration (z0). The gene program
-        enrichment scores (log Bayes Factors) per category are stored in a 
-        pandas DataFrame under ´adata.uns[key_added]´. The DataFrame also stores
-        p_h0, the probability that z0 > z1 and p_h1, the probability that 
-        z1 >= z0. The rows are ordered by the log Bayes Factor. 
-        Adapted from 
+        Compute gene program / latent enrichment scores between a category and 
+        specified comparison categories for all categories in 
+        ´adata.obs[cat_key]´. The enrichment scores are log Bayes Factors 
+        between the hypothesis h0 that the normalized gene program / latent 
+        scores of the category under consideration (z0) are higher than the 
+        normalized gene program / latent score of the comparison categories (z1)
+        versus the alternative hypothesis h1 that the normalized gene program / 
+        latent scores of the comparison categories (z1) are higher or equal to 
+        the normalized gene program / latent scores of the category under 
+        consideration (z0). The gene program enrichment scores (log Bayes 
+        Factors) per category are stored in a pandas DataFrame under 
+        ´adata.uns[key_added]´. The DataFrame also stores p_h0, the probability 
+        that z0 > z1 and p_h1, the probability that z1 >= z0. The rows are 
+        ordered by the log Bayes Factor. In addition, the normalized gene
+        program / latent scores of the ´n_top_gps_retrieved´ top enriched gene
+        programs will be stored in ´adata.obs´. Implementation is adapted from
         https://github.com/theislab/scarches/blob/master/scarches/models/expimap/expimap_model.py#L429.
 
         Parameters
@@ -370,22 +375,34 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             Key under which the categories and comparison categories used for
             enrichment score calculation are stored in ´adata.obs´.
         gp_key:
-            Key under which a list of all gene programs is stored in ´adata.uns´.
+            Key under which a list of all gene programs is stored in 
+            ´adata.uns´.
         adata:
             AnnData object to be used for enrichment score calculation. If 
             ´None´, uses the adata object stored in the model.
         comparison_cats:
             Categories used as comparison group. If ´rest´, all categories other
             than the category under consideration are used as comparison group.
-        selected_gps:
-            List of gene program names to be selected for the enrichment score
-            calculation. If ´None´, uses all gene programs.
         n_sample:
             Number of observations to be drawn from the category and comparison
             categories for the enrichment score calculation.
+        selected_gps:
+            List of gene program names to be selected for the enrichment score
+            calculation. If ´None´, uses all gene programs.
         key_added:
             Key under which the enrichment score pandas DataFrame is stored in 
-            ´adata.uns´.           
+            ´adata.uns´.
+        n_top_up_gps_retrieved:
+            Number of top upregulated gene programs which will be returned and 
+            whose scores will be stored in ´adata.obs´.
+        n_top_down_gps_retrieved:
+            Number of top downregulated gene programs which will be returned and 
+            whose scores will be stored in ´adata.obs´.    
+
+        Returns
+        ----------
+        top_gps:
+            Names of ´n_top_gps_retrieved´ top enriched gene programs.
         """
         if adata is None:
             adata = self.adata
@@ -397,7 +414,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
 
         # Validate comparison categories
         if comparison_cats != "rest" and isinstance(comparison_cats, str):
-            comparison_cats = [comparison_cats] 
+            comparison_cats = [comparison_cats]
         if comparison_cats != "rest" and not set(comparison_cats).issubset(cats):
             raise ValueError("Comparison categories should be 'rest' (for "
                              "comparison with all other categories) or contain "
@@ -417,14 +434,14 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                 comparison_cat_mask = ~cat_mask
             else:
                 comparison_cat_mask = cat_values.isin(comparison_cats)
-
-            cat_idx = np.random.choice(cat_mask.sum(), n_sample)
-            comparison_cat_idx = np.random.choice(comparison_cat_mask.sum(), n_sample)
-
+            cat_idx = np.random.choice(cat_mask.sum(),
+                                       n_sample)
+            comparison_cat_idx = np.random.choice(comparison_cat_mask.sum(),
+                                                  n_sample)
             adata_cat = adata[cat_mask][cat_idx]
             adata_comparison_cat = adata[comparison_cat_mask][comparison_cat_idx]
 
-            # Get gene program (latent) posterior parameters
+            # Get gene program / latent posterior parameters for sampled cells
             mu_cat, std_cat = self.get_latent_representation(
                 adata=adata_cat,
                 counts_layer_key="counts",
@@ -436,9 +453,12 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                 adj_key="spatial_connectivities",
                 return_mu_std=True)
 
-            # Align signs of latent values with predominant up- & downregulation
-            # directionality (naturally the signs of latent scores do not 
-            # necessarily correspond to predominant up- & downregulation)
+            # Normalize latent scores using decoder weights to accurately 
+            # reflect up- & downregulation directionalities and strengths across
+            # all genes of a gene program (naturally the latent scores do not 
+            # necessarily correspond to up- & downregulation directionalities
+            # and strengths as decoder weights might be different for different
+            # genes and gene programs)
             gp_weights = (self.model.gene_expr_decoder
                           .nb_means_normalized_decoder.masked_l.weight.data)
             if self.n_addon_gps_ > 0:
@@ -446,25 +466,22 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                     [gp_weights, 
                     (self.model.gene_expr_decoder
                     .nb_means_normalized_decoder.addon_l.weight.data)])
+            gp_weights = gp_weights.cpu().numpy()
+            gp_score_norm_factor = (gp_weights.sum(0) /
+                                    np.count_nonzero(gp_weights, axis=0)) 
+                                    # normalize by number of genes in gp
+            mu_cat *= gp_score_norm_factor
+            mu_comparison_cat *= gp_score_norm_factor
 
-            gp_signs = gp_weights.sum(0).cpu().numpy()
-            gp_signs[gp_signs>0] = 1.
-            gp_signs[gp_signs<0] = -1.
-            mu_cat *= gp_signs
-            mu_comparison_cat *= gp_signs
-    
             # Filter for selected gene programs only
             if selected_gps is not None:
-                if gp_key is None:
-                    raise ValueError("Please specify a 'gp_key' or set "
-                                     "selected_gps to 'None'")
                 selected_gps_idx = [adata.uns[gp_key].index(gp) for gp in selected_gps]
-                mu_cat = mu_cat[:, selected_gps_idx]
-                mu_comparison_cat = mu_comparison_cat[:, selected_gps_idx]
-                std_cat = std_cat[:, selected_gps_idx]
-                std_comparison_cat = std_comparison_cat[:, selected_gps_idx]
             else:
                 selected_gps_idx = np.arange(len(adata.uns[gp_key]))
+            mu_cat = mu_cat[:, selected_gps_idx]
+            mu_comparison_cat = mu_comparison_cat[:, selected_gps_idx]
+            std_cat = std_cat[:, selected_gps_idx]
+            std_comparison_cat = std_comparison_cat[:, selected_gps_idx]
 
             # Calculate gene program log Bayes Factors for the category
             to_reduce = (-(mu_cat - mu_comparison_cat) / 
@@ -474,18 +491,17 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             p_h1 = 1.0 - p_h0
             epsilon = 1e-12
             log_bayes_factor = np.log(p_h0 + epsilon) - np.log(p_h1 + epsilon)
-
             zeros_mask = (np.abs(mu_cat).sum(0) == 0) | (np.abs(mu_comparison_cat).sum(0) == 0)
             p_h0[zeros_mask] = 0
             p_h1[zeros_mask] = 0
             log_bayes_factor[zeros_mask] = 0
 
+            # Store gp enrichment scores
             zipped = zip(
                 [adata.uns[gp_key][i] for i in selected_gps_idx],
                 p_h0,
                 p_h1,
                 log_bayes_factor)
-
             cat_scores = [{"category": cat,
                            "gene_program": gp,
                            "p_h0": p_h0,
@@ -499,6 +515,38 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         scores.sort_values(by="log_bayes_factor", ascending=False, inplace=True)
         scores.reset_index(drop=True, inplace=True)
         adata.uns[key_added] = scores
+
+        # Retrieve top gene programs and normalized gene program / latent scores
+        top_gps = []
+        if n_top_up_gps_retrieved > 0 or n_top_down_gps_retrieved > 0:
+            # Get latent scores for all observations
+            mu_all, _ = self.get_latent_representation(
+                adata=adata,
+                counts_layer_key="counts",
+                adj_key="spatial_connectivities",
+                return_mu_std=True)
+
+            # Normalize latent scores
+            mu_all *= gp_score_norm_factor
+    
+            # Store ´n_top_up_gps_retrieved´ top upregulated gene program scores
+            # in ´adata.obs´
+            if n_top_up_gps_retrieved > 0:
+                top_up_gps = scores["gene_program"][:n_top_up_gps_retrieved].to_list()
+                top_up_gps_idx = [adata.uns[gp_key].index(gp) for gp in top_up_gps]
+                for gp, gp_idx in zip(top_up_gps, top_up_gps_idx):
+                    adata.obs[gp] = mu_all[:, gp_idx]
+                top_gps.extend(top_up_gps)
+            
+            # Store ´n_top_down_gps_retrieved´ top downregulated gene program 
+            # scores in ´adata.obs´
+            if n_top_down_gps_retrieved > 0:
+                top_down_gps = scores["gene_program"][-n_top_down_gps_retrieved:].to_list()
+                top_down_gps_idx = [adata.uns[gp_key].index(gp) for gp in top_down_gps]
+                for gp, gp_idx in zip(top_down_gps, top_down_gps_idx):
+                    adata.obs[gp] = mu_all[:, gp_idx]
+                top_gps.extend(top_down_gps)
+        return top_gps
 
 
     def compute_latent_graph_connectivities(

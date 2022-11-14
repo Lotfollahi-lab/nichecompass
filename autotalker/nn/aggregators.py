@@ -22,7 +22,8 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         a concatenation of the node's own gene expression and the 
         attention-aggregated neighbor gene expression vector as node labels for
         the gene expression reconstruction task. Implementation inspired by
-        https://github.com/pyg-team/pytorch_geometric/blob/master/torch_geometric/nn/conv/gatv2_conv.py#L16.
+        https://github.com/pyg-team/pytorch_geometric/blob/master/torch_geometric/nn/conv/gatv2_conv.py#L16
+        but adjusted to return weighted gene expression vector.
 
         Parameters
         ----------
@@ -238,7 +239,7 @@ class OneHopSumNodeLabelAggregator(nn.Module):
                                            sparse_sizes=(x.shape[0],
                                                          x.shape[0]))
         x_neighbors_sum = adj.t().matmul(x)
-        node_labels = torch.cat((x[:batch_size,:], x_neighbors_sum), dim=-1)
+        node_labels = torch.cat((x, x_neighbors_sum), dim=-1)
         return node_labels[:batch_size]
 
 
