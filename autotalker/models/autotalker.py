@@ -341,12 +341,12 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
     def compute_differential_gp_scores(
             self,
             cat_key: str,
-            gp_scores_weight_normalized: bool=True,
-            gp_scores_zi_normalized: bool=True,
             adata: Optional[AnnData]=None,
+            selected_gps: Optional[Union[str,list]]=None,
+            gp_scores_weight_normalization: bool=True,
+            gp_scores_zi_normalization: bool=True,
             comparison_cats: Union[str, list]="rest",
             n_sample: int=10000,
-            selected_gps: Optional[Union[str,list]]=None,
             key_added: str="gp_enrichment_scores",
             n_top_up_gps_retrieved: int=10,
             n_top_down_gps_retrieved: int=10,
@@ -355,88 +355,94 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         Compute differential gene program / latent scores between a category and 
         specified comparison categories for all categories in 
         ´adata.obs[cat_key]´. Differential gp scores are measured through the 
-        log Bayes Factor between the hypothesis h0 that the normalized gene 
+        log Bayes Factor between the hypothesis h0 that the (normalized) gene 
         program / latent scores of the category under consideration (z0) are 
-        higher than the normalized gene program / latent score of the comparison
-        categories (z1) versus the alternative hypothesis h1 that the normalized
-        gene program / latent scores of the comparison categories (z1) are 
-        higher or equal to the normalized gene program / latent scores of the 
-        category under consideration (z0). The log Bayes Factors per category 
-        are stored in a pandas DataFrame under ´adata.uns[key_added]´. The 
-        DataFrame also stores p_h0, the probability that z0 > z1 and p_h1, the 
-        probability that z1 >= z0. The rows are ordered by the log Bayes Factor.
-        In addition, the (normalized) gene program / latent scores of the 
-        ´n_top_gps_retrieved´ top enriched gene programs will be stored in 
-        ´adata.obs´. Implementation is inspired by
+        higher than the (normalized) gene program / latent score of the 
+        comparison categories (z1) versus the alternative hypothesis h1 that the
+        (normalized) gene program / latent scores of the comparison categories 
+        (z1) are higher or equal to the (normalized) gene program / latent 
+        scores of the category under consideration (z0). The log Bayes Factors 
+        per category are stored in a pandas DataFrame under 
+        ´adata.uns[key_added]´. The DataFrame also stores p_h0, the probability
+        that z0 > z1 and p_h1, the probability that z1 >= z0. The rows are 
+        ordered by the log Bayes Factor. In addition, the (normalized) gene 
+        program / latent scores of the ´n_top_up_gps_retrieved´ top upregulated
+        gene programs and ´n_top_down_gps_retrieved´ top downregulated gene 
+        programs will be stored in ´adata.obs´.
+
+        Parts of the implementation are inspired by
         https://github.com/theislab/scarches/blob/master/scarches/models/expimap/expimap_model.py#L429.
 
         Parameters
         ----------
         cat_key:
-            Key under which the categories and comparison categories used for
-            enrichment score calculation are stored in ´adata.obs´.
+            Key under which the categories and comparison categories are stored 
+            in ´adata.obs´.
         adata:
-            AnnData object to be used for enrichment score calculation. If 
-            ´None´, uses the adata object stored in the model.
+            AnnData object to be used. If ´None´, uses the adata object stored 
+            in the model.
+        selected_gps:
+            List of gene program names for which differential gp scores will be
+            computed. If ´None´, uses all gene programs.
+        gp_scores_weight_normalization:
+            If ´True´, normalize the gp scores by the nb means decoder weights.
+        gp_scores_zi_normalization:
+            If ´True´, normalize the gp scores by the zero inflation 
+            probabilities.        
         comparison_cats:
             Categories used as comparison group. If ´rest´, all categories other
             than the category under consideration are used as comparison group.
         n_sample:
             Number of observations to be drawn from the category and comparison
-            categories for the enrichment score calculation.
-        selected_gps:
-            List of gene program names to be selected for the enrichment score
-            calculation. If ´None´, uses all gene programs.
+            categories for the log Bayes Factor computation.
         key_added:
-            Key under which the enrichment score pandas DataFrame is stored in 
-            ´adata.uns´.
+            Key under which the differential gp scores pandas DataFrame is 
+            stored in ´adata.uns´.
         n_top_up_gps_retrieved:
             Number of top upregulated gene programs which will be returned and 
-            whose scores will be stored in ´adata.obs´.
+            whose (normalized) gp scores will be stored in ´adata.obs´.
         n_top_down_gps_retrieved:
             Number of top downregulated gene programs which will be returned and 
-            whose scores will be stored in ´adata.obs´.
+            whose (normalized) gp scores will be stored in ´adata.obs´.
         seed:
             Random seed for reproducible sampling.
 
         Returns
         ----------
         top_gps:
-            Names of ´n_top_gps_retrieved´ top enriched gene programs.
+            Names of ´n_top_up_gps_retrieved´ upregulated and 
+            ´n_top_down_gps_retrieved´ downregulated differential gene programs.
         """
         np.random.seed(seed)
+
         if selected_gps is None:
             selected_gps = adata.uns[self.gp_key_]
-        elif isinstance(selected_gps, str):
-            selected_gps = [selected_gps]
-    
+            selected_gps_idx = np.arange(len(selected_gps))
+        else: 
+            if isinstance(selected_gps, str):
+                selected_gps = [selected_gps]
+            selected_gps_idx = [adata.uns[self.gp_key_].index(gp) 
+                                for gp in selected_gps]
+
         if adata is None:
             adata = self.adata
 
-        # Get gene program / latent posterior parameters
+        # Get gene program / latent posterior parameters of selected gps
         mu, std = self.get_latent_representation(
             adata=adata,
             counts_layer_key=self.counts_layer_key_,
             adj_key=self.adj_key_,
             return_mu_std=True)
-    
-        # Filter for selected gene programs only
-        if selected_gps is not None:
-            selected_gps_idx = [adata.uns[self.gp_key_].index(gp) 
-                                for gp in selected_gps]
-        else:
-            selected_gps_idx = np.arange(len(adata.uns[self.gp_key_]))
-        mu = mu[:, selected_gps_idx]
-        std = std[:, selected_gps_idx]
+        mu = mu[:, selected_gps_idx].cpu().numpy()
+        std = std[:, selected_gps_idx].cpu().numpy()
 
-        norm_factors = np.ones((mu.shape[0], 2*len(adata.var_names), mu.shape[1]))
-
-        # Normalize latent scores using decoder weights to accurately 
-        # reflect up- & downregulation directionalities and strengths across
-        # all genes of a gene program (naturally the latent scores do not 
-        # necessarily correspond to up- & downregulation directionalities
-        # and strengths as decoder weights might be different for different
-        # genes and gene programs)
+        # Normalize gp scores using nb means decoder weights or signs of summed 
+        # weights and, if specified, zero inflation to accurately reflect up- &
+        # downregulation directionalities and strengths across gene programs 
+        # (naturally the gp scores do not necessarily correspond to up- & 
+        # downregulation directionalities and strengths as nb means decoder 
+        # weights are different for different genes and gene programs and zero 
+        # inflation is different for different observations / cells and genes)
         gp_weights = (self.model.gene_expr_decoder
                       .nb_means_normalized_decoder.masked_l.weight.data)
         if self.n_addon_gps_ > 0:
@@ -444,18 +450,18 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                 [gp_weights, 
                 (self.model.gene_expr_decoder
                 .nb_means_normalized_decoder.addon_l.weight.data)])
-        selected_gps_gp_weights = gp_weights.cpu().numpy()[:, selected_gps_idx]
+        gp_weights = gp_weights[:, selected_gps_idx].cpu().numpy()
 
-        if gp_scores_weight_normalized:
-            selected_gps_gp_weights_rep = np.repeat(
-                selected_gps_gp_weights[np.newaxis, :, :],
-                mu.shape[0],
-                axis=0)
+        if gp_scores_weight_normalization:
+            norm_factors = gp_weights
+        else:
+            gp_weights_sum = gp_weights.sum(0) # sum over genes
+            gp_signs = np.zeros_like(gp_weights_sum)
+            gp_signs[gp_weights_sum>0] = 1. # keep sign of gp score
+            gp_signs[gp_weights_sum<0] = -1. # reverse sign of gp score
+            norm_factors = gp_signs
 
-            norm_factors *= selected_gps_gp_weights_rep
-
-        if gp_scores_zi_normalized:
-
+        if gp_scores_zi_normalization:
             # Get zero inflation probabilities
             _, zi_probs = self.get_zinb_gene_expr_params(
                 adata=adata,
@@ -463,42 +469,18 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                 adj_key=self.adj_key_)
             zi_probs = zi_probs.cpu().numpy()
             non_zi_probs = 1 - zi_probs
-            non_zi_probs_rep = np.repeat(non_zi_probs[:, :, np.newaxis],
-                                         mu.shape[1],
-                                         axis=2)
+            non_zi_probs_rep = np.repeat(
+                non_zi_probs[:, :, np.newaxis],
+                len(selected_gps),
+                axis=2) # dim: (n_obs, 2 x n_genes, n_selected_gps)
+            if norm_factors.ndim == 1:               
+               norm_factors = np.repeat(norm_factors[np.newaxis, :],
+                                        2*len(adata.var_names),
+                                        axis=0)
+            norm_factors = np.repeat(norm_factors[np.newaxis, :],
+                                     mu.shape[0],
+                                     axis=0) # dim: (n_obs, 2 x n_genes, n_selected_gps)
             norm_factors *= non_zi_probs_rep
-
-        """
-        gp_weights_sum = selected_gps_gp_weights.sum(0)
-        gp_signs = np.zeros_like(gp_weights_sum)
-        gp_signs[gp_weights_sum>0] = 1.
-        gp_signs[gp_weights_sum<0] = -1.
-
-        if gp_scores_weight_normalized:
-                    # Normalize by number of genes in gp
-            gp_scores_norm_factors = (gp_weights_sum /
-                                      np.count_nonzero(gp_weights, axis=0))
-        else:
-            gp_scores_norm_factors = gp_signs
-        gp_scores_norm_factors = gp_scores_norm_factors.reshape(-1,
-                                                                len(selected_gps))
-
-        gp_scores_norm_factors = np.repeat(gp_scores_norm_factors, mu.shape[0], 0)
-
-        print(mu.shape)
-        print(gp_scores_norm_factors.shape)
-
-        mu *= gp_scores_norm_factors
-        
-        #if gp_scores_zi_normalized:
-
-            # Compute mean zero inflation probabilities for each gene (across
-            # observations)
-            #zi_probs_obs_mean = zi_probs.mean(0).cpu().numpy().reshape(-1, 1)
-            #non_zi_probs_obs_mean = (1 - zi_probs_obs_mean)
-        # Adjust weights for zero inflation
-        #gp_weights = gp_weights * non_zi_probs_obs_mean
-        """
 
         # Retrieve category values for each observation as well as all existing 
         # categories
@@ -520,48 +502,54 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             if cat in comparison_cats:
                 continue
 
-            # Generate random samples of category and comparison categories 
-            # observations with equal size
+            # Filter gp scores and normalization factors for the category under
+            # consideration and comparison categories
             cat_mask = cat_values == cat
             if comparison_cats == "rest":
                 comparison_cat_mask = ~cat_mask
             else:
                 comparison_cat_mask = cat_values.isin(comparison_cats)
+
+            if norm_factors.ndim == 1:
+                norm_factors_cat = norm_factors_comparison_cat = norm_factors
+            # Compute mean of normalization factors across genes
+            elif norm_factors.ndim == 2:
+                norm_factors_cat = norm_factors_comparison_cat = norm_factors.mean(0)
+            # Compute mean of normalization factors across genes for the category
+            # under consideration and the comparison categories respectively            
+            elif norm_factors.ndim == 3:
+                norm_factors_cat = norm_factors[cat_mask].mean(1)
+                norm_factors_comparison_cat = norm_factors[comparison_cat_mask].mean(1)
+
+            mu_cat = mu[cat_mask] * norm_factors_cat
+            std_cat = std[cat_mask] * norm_factors_cat
+            mu_comparison_cat = (mu[comparison_cat_mask] * 
+                                 norm_factors_comparison_cat)
+            std_comparison_cat = (std[comparison_cat_mask] *
+                                  norm_factors_comparison_cat)
+
+            # Generate random samples of category and comparison categories 
+            # observations with equal size
             cat_idx = np.random.choice(cat_mask.sum(),
                                        n_sample)
             comparison_cat_idx = np.random.choice(comparison_cat_mask.sum(),
                                                   n_sample)
-
-            norm_factors_cat = norm_factors[cat_mask].mean(1)
-            norm_factors_comparison_cat = norm_factors[comparison_cat_mask].mean(1)
-
-            mu_cat = mu[cat_mask] * norm_factors_cat
-            std_cat = std[cat_mask] * norm_factors_cat
-            mu_comparison_cat = mu[comparison_cat_mask] * norm_factors_comparison_cat
-            std_comparison_cat = std[comparison_cat_mask] * norm_factors_comparison_cat
-
             mu_cat_sample = mu_cat[cat_idx]
             std_cat_sample = std_cat[cat_idx]
-
             mu_comparison_cat_sample = mu_comparison_cat[comparison_cat_idx]
             std_comparison_cat_sample = std_comparison_cat[comparison_cat_idx]
 
-            #if cat == "Cardiomyocytes":
-                #print(mu_cat.shape)
-                #print(mu_comparison_cat.shape)
-                #print(mu_cat.sum())
-                #print(mu_comparison_cat.sum())
-
             # Calculate gene program log Bayes Factors for the category
             to_reduce = (-(mu_cat_sample - mu_comparison_cat_sample) / 
-                         np.sqrt(2 * (std_cat_sample**2 + std_comparison_cat_sample**2)))
+                         np.sqrt(2 * (std_cat_sample**2 + 
+                                      std_comparison_cat_sample**2)))
             to_reduce = 0.5 * erfc(to_reduce)
-            p_h0 = np.mean(to_reduce.cpu().numpy(), axis=0)
+            p_h0 = np.mean(to_reduce, axis=0)
             p_h1 = 1.0 - p_h0
             epsilon = 1e-12
             log_bayes_factor = np.log(p_h0 + epsilon) - np.log(p_h1 + epsilon)
             zeros_mask = ((np.abs(mu_cat_sample).sum(0) == 0) | 
-                          (np.abs(mu_comparison_cat_sample).sum(0) == 0)).cpu().numpy()
+                          (np.abs(mu_comparison_cat_sample).sum(0) == 0))
             p_h0[zeros_mask] = 0
             p_h1[zeros_mask] = 0
             log_bayes_factor[zeros_mask] = 0
@@ -586,11 +574,16 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         scores.reset_index(drop=True, inplace=True)
         adata.uns[key_added] = scores
 
-        # Retrieve top gene programs and normalized gene program / latent scores
+        # Retrieve top gps and (normalized) gene program / latent scores
         top_gps = []
         if n_top_up_gps_retrieved > 0 or n_top_down_gps_retrieved > 0:
-
-            mu *= norm_factors.mean(1)
+            if norm_factors.ndim == 1:
+                norm_factors = norm_factors
+            elif norm_factors.ndim == 2:
+                norm_factors = norm_factors.mean(0)
+            elif norm_factors.ndim == 3:
+                norm_factors = norm_factors.mean(1)
+            mu *= norm_factors
     
             # Store ´n_top_up_gps_retrieved´ top upregulated gene program scores
             # in ´adata.obs´
@@ -609,6 +602,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                 for gp, gp_idx in zip(top_down_gps, top_down_gps_idx):
                     adata.obs[gp] = mu[:, gp_idx]
                 top_gps.extend(top_down_gps)
+
         return top_gps
 
 
