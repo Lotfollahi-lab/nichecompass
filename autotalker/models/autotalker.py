@@ -1,12 +1,9 @@
 from typing import Literal, Optional, Union
 
-import scanpy as sc
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
 from anndata import AnnData
-from numpy import ndarray
 from scipy.special import erfc
 
 from .basemodelmixin import BaseModelMixin
@@ -23,34 +20,40 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
     Parameters
     ----------
     adata:
-        AnnData object with raw counts stored in 
-        ´adata.layers[counts_layer_key]´, sparse adjacency matrix stored in 
-        ´adata.obsp[adj_key]´ and binary gene program targets and (optionally) 
+        AnnData object with raw counts stored in ´adata.layers[counts_key]´, 
+        sparse adjacency matrix stored in ´adata.obsp[adj_key]´, gene program
+        names stored in ´adata.uns[gp_key]´, and binary gene program targets and 
         sources masks stored in ´adata.varm[gp_targets_mask_key]´ and 
         ´adata.varm[gp_sources_mask_key]´ respectively (unless gene program 
         masks are passed explicitly to the model via parameters 
-        ´gp_targets_mask_key´ and ´gp_sources_mask_key´).
-    counts_layer_key:
+        ´gp_targets_mask´ and ´gp_sources_mask´, in which case this will have
+        prevalence).
+    counts_key:
         Key under which the raw counts are stored in ´adata.layer´.
     adj_key:
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
+    gp_key:
+        Key under which the gene program names are stored in ´adata.uns´.
     gp_targets_mask_key:
         Key under which the gene program targets mask is stored in ´adata.varm´. 
-        This mask will only be used if no ´gp_targets_mask_key´ is passed 
-        explicitly to the model.
+        This mask will only be used if no ´gp_targets_mask´ is passed explicitly
+        to the model.
     gp_sources_mask_key:
         Key under which the gene program sources mask is stored in ´adata.varm´. 
-        This mask will only be used if no ´gp_sources_mask_key´ is passed 
-        explicitly to the model.    
+        This mask will only be used if no ´gp_sources_mask´ is passed explicitly
+        to the model.
+    latent_key:
+        Key under which the latent representation will be stored in ´adata.obsm´
+        after model training. 
     include_edge_recon_loss:
         If `True`, include the edge reconstruction loss in the loss 
-        optimization of the model.
+        optimization.
     include_gene_expr_recon_loss:
-        If `True`, include the gene expression reconstruction loss in the 
-        loss optimization.
+        If `True`, include the gene expression reconstruction loss in the loss
+        optimization.
     log_variational:
         If ´True´, transform x by log(x+1) prior to encoding for numerical 
-        stability. Not normalization.
+        stability (not for normalization).
     node_label_method:
         Node label method that will be used for gene expression reconstruction. 
         If ´self´, use only the input features of the node itself as node labels
@@ -60,7 +63,9 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         ´one-hop-norm´, use a concatenation of the node`s input features with
         the node's one-hop neighbors input features normalized as per Kipf, T. 
         N. & Welling, M. Semi-Supervised Classification with Graph Convolutional
-        Networks. arXiv [cs.LG] (2016))
+        Networks. arXiv [cs.LG] (2016). If ´one-hop-attention´, use a 
+        concatenation of the node`s input features with the node's one-hop 
+        neighbors input features weighted by an attention mechanism.
     n_hidden_encoder:
         Number of nodes in the encoder hidden layer.
     dropout_rate_encoder:
@@ -75,32 +80,40 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
     gp_sources_mask:
         Gene program sources mask that is directly passed to the model (if not 
         ´None´, this mask will have prevalence over a gene program sources mask
-        stored in ´adata.varm[gp_sources_mask_key]´).    
+        stored in ´adata.varm[gp_sources_mask_key]´).
+    n_addon_gps:
+        Number of addon gene programs (i.e. gene programs that are not included
+        in masks but can be learned de novo).
     """
     def __init__(self,
                  adata: AnnData,
-                 counts_layer_key="counts",
+                 counts_key="counts",
                  adj_key: str="spatial_connectivities",
+                 gp_key: str="autotalker_gps",
                  gp_targets_mask_key: str="autotalker_gp_targets",
                  gp_sources_mask_key: str="autotalker_gp_sources",
+                 latent_key: str="autotalker_latent",
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
                  log_variational: bool=True,
-                 node_label_method: Literal["self",
-                                            "one-hop-sum",
-                                            "one-hop-norm",
-                                            "one-hop-attention"]="one-hop-attention",
+                 node_label_method: Literal[
+                    "self",
+                    "one-hop-sum",
+                    "one-hop-norm",
+                    "one-hop-attention"]="one-hop-attention",
                  n_hidden_encoder: int=256,
                  dropout_rate_encoder: float=0.0,
                  dropout_rate_graph_decoder: float=0.0,
-                 gp_targets_mask: Optional[Union[ndarray, list]]=None,
-                 gp_sources_mask: Optional[Union[ndarray, list]]=None,
+                 gp_targets_mask: Optional[Union[np.ndarray, list]]=None,
+                 gp_sources_mask: Optional[Union[np.ndarray, list]]=None,
                  n_addon_gps: int=0):
         self.adata = adata
-        self.counts_layer_key_ = counts_layer_key
+        self.counts_key_ = counts_key
         self.adj_key_ = adj_key
+        self.gp_key_ = gp_key
         self.gp_targets_mask_key_ = gp_targets_mask_key
         self.gp_sources_mask_key_ = gp_sources_mask_key
+        self.latent_key_ = latent_key
         self.include_edge_recon_loss_ = include_edge_recon_loss
         self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
         self.log_variational_ = log_variational
@@ -128,7 +141,6 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                                  "created with ´mask = "
                                  "np.ones((n_latent, n_output))´).")
         self.gp_mask_ = torch.tensor(gp_targets_mask, dtype=torch.float32)
-        
         if node_label_method != "self":
             if gp_sources_mask is None:
                 if gp_sources_mask_key in adata.varm:
@@ -142,32 +154,40 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             self.gp_mask_ = torch.cat(
                 (self.gp_mask_, torch.tensor(gp_sources_mask, 
                 dtype=torch.float32)), dim=1)
-        
-        self.n_gps_ = len(self.gp_mask_)
+        self.n_nonaddon_gps_ = len(self.gp_mask_)
         self.n_addon_gps_ = n_addon_gps
         
         # Validate counts layer key and counts values
-        if counts_layer_key not in adata.layers:
-            raise ValueError("Please specify an adequate ´counts_layer_key´. "
+        if counts_key not in adata.layers:
+            raise ValueError("Please specify an adequate ´counts_key´. "
                              "By default the raw counts are assumed to be "
                              f"stored in adata.layers['counts'].")
         if include_gene_expr_recon_loss or log_variational:
-            if (adata.layers[counts_layer_key] < 0).sum() > 0:
+            if (adata.layers[counts_key] < 0).sum() > 0:
                 raise ValueError("Please make sure that "
-                                 "´adata.layers[counts_layer_key]´ contains the"
+                                 "´adata.layers[counts_key]´ contains the"
                                  " raw counts (not log library size "
                                  "normalized) if ´include_gene_expr_recon_loss´"
                                  " is ´True´ or ´log_variational´ is ´True´.")
 
         # Validate adjacency key
         if adj_key not in adata.obsp:
-            raise ValueError("Please specify an adequate ´adj_key´.")
+            raise ValueError("Please specify an adequate ´adj_key´. "
+                             "By default the adjacency matrix is assumed to be "
+                             "stored in adata.obsm['spatial_connectivities'].")
+
+        # Validate gp key
+        if gp_key not in adata.uns:
+            raise ValueError("Please specify an adequate ´gp_key´. "
+                             "By default the gene program names are assumed to "
+                             "be stored in adata.uns['autotalker_gps'].")
         
-        # Initialize model with module
+        # Initialize model with Variational Gene Program Graph Autoencoder 
+        # module
         self.model = VGPGAE(
             n_input=self.n_input_,
             n_hidden_encoder=self.n_hidden_encoder_,
-            n_latent=self.n_gps_,
+            n_latent=self.n_nonaddon_gps_,
             n_addon_latent=self.n_addon_gps_,
             n_output=self.n_output_,
             gene_expr_decoder_mask=self.gp_mask_,
@@ -199,11 +219,11 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         Parameters
         ----------
         n_epochs:
-            Number of epochs for model training.
+            Number of epochs.
         lr:
-            Learning rate for model training.
+            Learning rate.
         weight_decay:
-            Weight decay (L2 penalty) for model training.
+            Weight decay (L2 penalty).
         edge_val_ratio:
             Fraction of the data that is used as validation set on edge-level.
             The rest of the data will be used as training or test set (as 
@@ -226,7 +246,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         self.trainer = Trainer(
             adata=self.adata,
             model=self.model,
-            counts_layer_key=self.counts_layer_key_,
+            counts_key=self.counts_key_,
             adj_key=self.adj_key_,
             node_label_method=self.node_label_method_,
             edge_val_ratio=edge_val_ratio,
@@ -241,102 +261,10 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                            lr=lr,
                            weight_decay=weight_decay,
                            mlflow_experiment_id=mlflow_experiment_id,)
+
+        self.adata.obsm[self.latent_key_] = self.get_latent_representation()
         
         self.is_trained_ = True
-
-
-    def add_gps_from_gp_dict_to_adata(
-            self,
-            gp_dict: dict,
-            adata: Optional[AnnData]=None,
-            genes_uppercase: bool=True,
-            gp_targets_varm_key: str="autotalker_gp_targets",
-            gp_sources_varm_key: str="autotalker_gp_sources",
-            gp_names_uns_key: str="autotalker_gp_names",
-            min_genes_per_gp: int=0,
-            max_genes_per_gp: Optional[int]=None):
-        """
-        Add gene programs defined in a gene program dictionary to an AnnData object
-        by converting the gene program lists of gene program target and source genes
-        to binary masks and aligning the masks with genes for which gene expression
-        is available in the AnnData object. Inspired by
-        https://github.com/theislab/scarches/blob/master/scarches/utils/annotations.py#L5.
-    
-        Parameters
-        ----------
-        adata:
-            AnnData object to which the gene programs will be added. If ´None´, uses
-            the adata object stored in the model.
-        gp_dict:
-            Nested dictionary containing the gene programs with keys being gene 
-            program names and values being dictionaries with keys ´targets´ and 
-            ´sources´, where ´targets´ contains a list of the names of genes in the
-            gene program for the reconstruction of the gene expression of the node
-            itself (receiving node) and ´sources´ contains a list of the names of
-            genes in the gene program for the reconstruction of the gene expression
-            of the node's neighbors (transmitting nodes).
-        genes_uppercase:
-            If `True`, convert the gene names in adata to uppercase for comparison
-            with the gene program dictionary (e.g. if adata contains mouse data).
-        gp_targets_varm_key:
-            Key in adata.varm where the binary gene program mask for target genes
-            of a gene program will be stored (target genes are used for the 
-            reconstruction of the gene expression of the node itself (receiving node
-            )).
-        gp_sources_varm_key:
-            Key in adata.varm where the binary gene program mask for source genes
-            of a gene program will be stored (source genes are used for the 
-            reconstruction of the gene expression of the node'sneighbors 
-            (transmitting nodes).
-        gp_names_uns_key:
-            Key in adata.uns where the gene program names will be stored.
-        min_genes_per_gp:
-            Minimum number of genes in a gene program inluding both target and 
-            source genes that need to be available in the adata (gene expression has
-            been probed) for a gene program not to be discarded.
-        max_genes_per_gp:
-            Maximum number of genes in a gene program including both target and 
-            source genes that can be available in the adata (gene expression has 
-            been probed) for a gene program not to be discarded.
-        """
-        if adata is None:
-            adata = self.adata
-            
-        # Retrieve probed genes from adata
-        adata_genes = (adata.var_names.str.upper() if genes_uppercase 
-                                                   else adata.var_names)
-    
-        # Create binary gene program masks considering only probed genes
-        gp_targets_mask = [[int(gene in gp_genes_dict["targets"]) 
-                   for _, gp_genes_dict in gp_dict.items()]
-                   for gene in adata_genes]
-        gp_targets_mask = np.asarray(gp_targets_mask, dtype="int32")
-    
-        gp_sources_mask = [[int(gene in gp_genes_dict["sources"]) 
-                   for _, gp_genes_dict in gp_dict.items()]
-                   for gene in adata_genes]
-        gp_sources_mask = np.asarray(gp_sources_mask, dtype="int32")
-        
-        gp_mask = np.concatenate((gp_sources_mask, gp_targets_mask), axis=0)
-    
-        # Filter gene programs
-        gp_mask_filter = gp_mask.sum(0) > min_genes_per_gp
-        if max_genes_per_gp is not None:
-            gp_mask_filter &= gp_mask.sum(0) < max_genes_per_gp
-        gp_targets_mask = gp_targets_mask[:, gp_mask_filter]
-        gp_sources_mask = gp_sources_mask[:, gp_mask_filter]
-    
-        # Add binary gene program masks to adata.varm
-        adata.varm[gp_sources_varm_key] = gp_sources_mask
-        adata.varm[gp_targets_varm_key] = gp_targets_mask
-    
-        # Add gene program names of gene programs that passed filter to adata.uns
-        removed_gp_idx = np.where(~gp_mask_filter)[0]
-        adata.uns[gp_names_uns_key] = [gp_name for i, (gp_name, _) in 
-                              enumerate(gp_dict.items()) if i not in removed_gp_idx]
-
-        self.gp_key_ = gp_names_uns_key
-
 
     def compute_differential_gp_scores(
             self,
@@ -385,7 +313,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             List of gene program names for which differential gp scores will be
             computed. If ´None´, uses all gene programs.
         gp_scores_weight_normalization:
-            If ´True´, normalize the gp scores by the nb means decoder weights.
+            If ´True´, normalize the gp scores by the nb means gene expression 
+            decoder weights.
         gp_scores_zi_normalization:
             If ´True´, normalize the gp scores by the zero inflation 
             probabilities.        
@@ -430,18 +359,19 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         # Get gene program / latent posterior parameters of selected gps
         mu, std = self.get_latent_representation(
             adata=adata,
-            counts_layer_key=self.counts_layer_key_,
+            counts_key=self.counts_key_,
             adj_key=self.adj_key_,
             return_mu_std=True)
         mu = mu[:, selected_gps_idx].cpu().numpy()
         std = std[:, selected_gps_idx].cpu().numpy()
 
-        # Normalize gp scores using nb means decoder weights or signs of summed 
-        # weights and, if specified, zero inflation to accurately reflect up- &
-        # downregulation directionalities and strengths across gene programs 
-        # (naturally the gp scores do not necessarily correspond to up- & 
-        # downregulation directionalities and strengths as nb means decoder 
-        # weights are different for different genes and gene programs and zero 
+        # Normalize gp scores using nb means gene expression decoder weights or 
+        # signs of summed weights and, if specified, gene expression zero 
+        # inflation to accurately reflect up- & downregulation directionalities
+        # and strengths across gene programs (naturally the gp scores do not 
+        # necessarily correspond to up- & downregulation directionalities and 
+        # strengths as nb means gene expression decoder weights are different 
+        # for different genes and gene programs and gene expression zero 
         # inflation is different for different observations / cells and genes)
         gp_weights = (self.model.gene_expr_decoder
                       .nb_means_normalized_decoder.masked_l.weight.data)
@@ -450,7 +380,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                 [gp_weights, 
                 (self.model.gene_expr_decoder
                 .nb_means_normalized_decoder.addon_l.weight.data)])
-        gp_weights = gp_weights[:, selected_gps_idx].cpu().numpy()
+        gp_weights = gp_weights[:, selected_gps_idx].cpu().numpy().copy()
 
         if gp_scores_weight_normalization:
             norm_factors = gp_weights
@@ -465,7 +395,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             # Get zero inflation probabilities
             _, zi_probs = self.get_zinb_gene_expr_params(
                 adata=adata,
-                counts_layer_key=self.counts_layer_key_,
+                counts_key=self.counts_key_,
                 adj_key=self.adj_key_)
             zi_probs = zi_probs.cpu().numpy()
             non_zi_probs = 1 - zi_probs
@@ -512,12 +442,13 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
 
             if norm_factors.ndim == 1:
                 norm_factors_cat = norm_factors_comparison_cat = norm_factors
-            # Compute mean of normalization factors across genes
             elif norm_factors.ndim == 2:
-                norm_factors_cat = norm_factors_comparison_cat = norm_factors.mean(0)
-            # Compute mean of normalization factors across genes for the category
-            # under consideration and the comparison categories respectively            
+                # Compute mean of normalization factors across genes
+                norm_factors_cat = norm_factors_comparison_cat = norm_factors.mean(0)       
             elif norm_factors.ndim == 3:
+                # Compute mean of normalization factors across genes for the 
+                # category under consideration and the comparison categories 
+                # respectively     
                 norm_factors_cat = norm_factors[cat_mask].mean(1)
                 norm_factors_comparison_cat = norm_factors[comparison_cat_mask].mean(1)
 
@@ -580,9 +511,9 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             if norm_factors.ndim == 1:
                 norm_factors = norm_factors
             elif norm_factors.ndim == 2:
-                norm_factors = norm_factors.mean(0)
+                norm_factors = norm_factors.mean(0) # mean over genes
             elif norm_factors.ndim == 3:
-                norm_factors = norm_factors.mean(1)
+                norm_factors = norm_factors.mean(1) # mean over genes
             mu *= norm_factors
     
             # Store ´n_top_up_gps_retrieved´ top upregulated gene program scores
@@ -602,261 +533,121 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                 for gp, gp_idx in zip(top_down_gps, top_down_gps_idx):
                     adata.obs[gp] = mu[:, gp_idx]
                 top_gps.extend(top_down_gps)
-
         return top_gps
-
-
-    def compute_gp_gene_importancesx(
-            self,
-            gp_name: str,
-            gp_key: str):
-        """
-        Compute gene importances of a given gene program. Gene importances are 
-        determined by the normalized absolute weights of the gene expression 
-        decoder. Adapted from 
-        https://github.com/theislab/scarches/blob/master/scarches/models/expimap/expimap_model.py#L305.
-        Parameters
-        ----------
-        gp_name:
-            Name of the gene program for which the gene importances should be
-            retrieved.
-        gp_key:
-            Key under which a list of all gene programs is stored in ´adata.uns´.       
-        Returns
-        ----------
-        gp_gene_importances_df:
-            Pandas DataFrame with genes stored in ´gene´ and gene expression
-            decoder weights stored in ´weights_nb_means_normalized´ and 
-            ´weights_zi_prob_logits´ ordered by ´weight_based_importance´, which
-            is calculated as an average of the normalized gene expression 
-            decoder weights. Genes can belong to the communication source or 
-            target as indicated in ´gene_entity´.
-        """
-        # Retrieve gene program names
-        gp_list = list(self.adata.uns[gp_key])
-        if len(gp_list) == self.n_gps_:
-            if self.n_addon_gps_ > 0:
-                gp_list += ["addon_GP_" + str(i) for i in range(
-                            self.n_addon_gps_)]
-        
-        # Validate that all gene programs are contained
-        n_latent_w_addon = self.n_gps_ + self.n_addon_gps_
-        if len(gp_list) != n_latent_w_addon:
-            raise ValueError(f"The number of gene programs ({len(gp_list)}) "
-                             "must equal the number of latent dimensions "
-                             f"({n_latent_w_addon})!")
-
-        # Retrieve gene-expression-decoder-weight-based importance scores
-        gp_idx = gp_list.index(gp_name)
-        if gp_idx < self.n_gps_:
-            weights_nb_means_normalized = (
-                self.model.gene_expr_decoder.nb_means_normalized_decoder
-                .masked_l.weight[:, gp_idx].data.cpu().numpy())
-            weights_zi_prob_logits = (
-                self.model.gene_expr_decoder.zi_prob_logits_decoder
-                .masked_l.weight[:, gp_idx].data.cpu().numpy())
-        elif gp_idx >= self.n_gps_:
-            weights_nb_means_normalized = (
-                self.model.gene_expr_decoder.nb_means_normalized_decoder
-                .addon_l.weight[:, gp_idx].data.cpu().numpy())
-            weights_zi_prob_logits = (
-                self.model.gene_expr_decoder.zi_prob_logits_decoder
-                .addon_l.weight[:, gp_idx].data.cpu().numpy())
-        abs_weights_nb_means_normalized = np.abs(weights_nb_means_normalized)
-        abs_weights_zi_prob_logits = np.abs(weights_zi_prob_logits) 
-        normalized_abs_weights_nb_means_normalized = (
-            abs_weights_nb_means_normalized / 
-            abs_weights_nb_means_normalized.sum())
-        normalized_abs_weights_zi_prob_logits = (
-            abs_weights_zi_prob_logits / 
-            abs_weights_zi_prob_logits.sum())
-        weight_based_importance = (normalized_abs_weights_nb_means_normalized + 
-                                   normalized_abs_weights_zi_prob_logits / 2)
-        srt_idx = (np.argsort(weight_based_importance)[::-1]
-                   [:(weight_based_importance > 0).sum()])
-
-        # Split into communication target and source idx
-        target_srt_idx = srt_idx[srt_idx < len(self.adata.var_names)]
-        source_srt_idx = (srt_idx[srt_idx > len(self.adata.var_names)] - 
-                          len(self.adata.var_names))
-
-        # Build gene importances df
-        gp_gene_importances_df = pd.DataFrame()
-        gp_gene_importances_df["gene"] = (
-            [gene for gene in self.adata.var_names[target_srt_idx].tolist()] +
-            [gene for gene in self.adata.var_names[source_srt_idx].tolist()])
-        gp_gene_importances_df["gene_entity"] = (
-            ["target" for _ in self.adata.var_names[target_srt_idx].tolist()] +
-            ["source" for _ in self.adata.var_names[source_srt_idx].tolist()])
-        gp_gene_importances_df["weights_nb_means_normalized"] = (
-           weights_nb_means_normalized[srt_idx])
-        gp_gene_importances_df["weights_zi_prob_logits"] = (
-           weights_zi_prob_logits[srt_idx])
-        gp_gene_importances_df["weight_based_importance"] = (
-            weight_based_importance[srt_idx])
-
-        return gp_gene_importances_df
 
     def compute_gp_gene_importances(
             self,
-            selected_gps: Union[str, list],
-            gp_key: str,
-            adata: Optional[AnnData]=None):
+            selected_gp: str,
+            adata: Optional[AnnData]=None,
+            gene_importances_zi_normalization: bool=True) -> pd.DataFrame:
         """
-        Compute gene importances of a given gene program. Gene importances are 
-        determined by the normalized absolute weights of the gene expression 
-        decoder. Implementation is inspired by
-        https://github.com/theislab/scarches/blob/master/scarches/models/expimap/expimap_model.py#L305.
+        Compute gene importances for the genes of a given gene program. Gene
+        importances are determined by the normalized weights of the NB means 
+        gene expression decoder, optionally corrected for gene expression zero
+        inflation.
 
         Parameters
         ----------
-        gp_name:
+        selected_gp:
             Name of the gene program for which the gene importances should be
             retrieved.
-        gp_key:
-            Key under which a list of all gene programs is stored in ´adata.uns´.       
-
+        adata:
+            AnnData object to be used. If ´None´, uses the adata object stored 
+            in the model.
+        gene_importances_zi_normalization:
+            If ´True´, normalize the gene importances by the zero inflation 
+            probabilities.        
+     
         Returns
         ----------
         gp_gene_importances_df:
-            Pandas DataFrame with genes stored in ´gene´ and gene expression
-            decoder weights stored in ´weights_nb_means_normalized´ and 
-            ´weights_zi_prob_logits´ ordered by ´weight_based_importance´, which
-            is calculated as an average of the normalized gene expression 
-            decoder weights. Genes can belong to the communication source or 
-            target as indicated in ´gene_entity´.
+            Pandas DataFrame containing genes, gene weights, gene importances 
+            and an indicator whether the gene belongs to the communication 
+            source or target, stored in ´gene_entity´.
         """
         if adata is None:
             adata = self.adata
 
-        if isinstance(selected_gps, str):
-            selected_gps = [selected_gps]
-
-        # Get latent scores for all observations / cells
-        gp_scores, _ = self.get_latent_representation(
-            adata=adata,
-            counts_layer_key=self.counts_layer_key_,
-            adj_key=self.adj_key_,
-            return_mu_std=True)
-
-        # categories
-        cat_values = adata.obs["celltype_mapped_refined"]
-        cat_mask = cat_values == "Cardiomyocytes"
-
-        selected_gps_idx = [adata.uns[gp_key].index(gp) for gp in selected_gps]
-        #gp_idx = gp_list.index(gp_name)
-        # gp_scores = mu[:, gp_idx]
-        selected_gps_scores = gp_scores[cat_mask, selected_gps_idx]
-        selected_gps_scores_obs_sum = selected_gps_scores.sum(0).cpu().numpy()
-        print(selected_gps_scores_obs_sum)
-        #gp_sign 
-        #if gp_sign > 0:
-        #    gp_sign = 1
-        #elif gp_sign < 0:
-        #    gp_sign = -1
-        #gp_sign = gp_scores_obs_sum[gp_scores_obs_sum>0] = 1.
-        #gp_sign = gp_scores_obs_sum[gp_scores_obs_sum<0] = -1.
-
-        # Get zero inflation probabilities
-        _, zi_probs = self.get_zinb_gene_expr_params(
-            adata=adata,
-            counts_layer_key=self.counts_layer_key_,
-            adj_key=self.adj_key_)
-        zi_probs_obs_mean = zi_probs.mean(0).cpu().numpy()
-        non_zi_probs_obs_mean = (1 - zi_probs_obs_mean).reshape(-1, 1)
-
-        gp_weights = (self.model.gene_expr_decoder
-                      .nb_means_normalized_decoder.masked_l.weight.data)
-        if self.n_addon_gps_ > 0:
-            gp_weights = torch.cat(
-                [gp_weights, 
-                (self.model.gene_expr_decoder
-                .nb_means_normalized_decoder.addon_l.weight.data)])
-        selected_gps_weights = gp_weights[:, selected_gps_idx].cpu().numpy()
-        weight_based_gene_importances = selected_gps_weights
-        print(weight_based_gene_importances.shape)
-
-        # print(weights_nb_means_normalized)
-        """
-        if gp_idx < self.n_gps_:
-            weights_nb_means_normalized = (
+        # Retrieve NB means gene expression decoder weights
+        selected_gp_idx = adata.uns[self.gp_key_].index(selected_gp)
+        if selected_gp_idx < self.n_nonaddon_gps_: # non-addon gp
+            gp_weights = (
                 self.model.gene_expr_decoder.nb_means_normalized_decoder
-                .masked_l.weight[:, gp_idx].data.cpu().numpy())
-        elif gp_idx >= self.n_gps_:
-            weights_nb_means_normalized = (
+                .masked_l.weight[:, selected_gp_idx].data.cpu().numpy().copy())
+        elif selected_gp_idx >= self.n_nonaddon_gps_: # addon gp
+            selected_gp_idx -= self.n_nonaddon_gps_
+            gp_weights = (
                 self.model.gene_expr_decoder.nb_means_normalized_decoder
-                .addon_l.weight[:, gp_idx].data.cpu().numpy())
-        """
+                .addon_l.weight[:, selected_gp_idx].data.cpu().numpy().copy())
 
-        # Adjust weights by zero inflation probabilities and gp sign
-        #weight_based_gene_importances = (selected_gps_weights *
-        #                                 selected_gps_scores_obs_sum *
-        #                                 non_zi_probs_obs_mean)
+        # Correct signs of gp weights to be aligned with (normalized) gp scores
+        if gp_weights.sum(0) < 0:
+            gp_weights *= -1
         
-        gp_gene_importances = []
-        for i, gp in enumerate(selected_gps):
-            # Store gp enrichment scores
-            zipped = zip(
-                [gene for gene in adata.var_names.tolist()] * 2,
-                ["target"] * len(adata.var_names) + ["source"] * len(adata.var_names),
-                 weight_based_gene_importances[:, i])
-            cat_scores = [{"gene_program": gp,
-                           "gene": gene,
-                           "gene_entity": gene_entity,
-                           "weight_based_gene_importance": weight_based_gene_importance}
-                          for gene, gene_entity, weight_based_gene_importance in zipped]
-            for dictiii in cat_scores:
-                gp_gene_importances.append(dictiii)
+        if gene_importances_zi_normalization:
+            # Get zero inflation probabilities
+            _, zi_probs = self.get_zinb_gene_expr_params(
+                adata=adata,
+                counts_key=self.counts_key_,
+                adj_key=self.adj_key_)
+            zi_probs = zi_probs.cpu().numpy()
+            non_zi_probs = 1 - zi_probs
+            gp_weights_zi = gp_weights * non_zi_probs.sum(0) # sum over all obs / cells
+            # Normalize gp weights to get gene importances
+            gp_gene_importances = gp_weights_zi / gp_weights_zi.sum(0)
+        else:
+            # Normalize gp weights to get gene importances
+            gp_gene_importances = gp_weights / gp_weights.sum(0)
 
-        gp_gene_importances_df = pd.DataFrame(gp_gene_importances)
-        gp_gene_importances_df.sort_values(by="weight_based_gene_importance",
+        gp_gene_importances_df = pd.DataFrame()
+        gp_gene_importances_df["gene"] = [gene for gene in 
+                                          adata.var_names.tolist()] * 2
+        gp_gene_importances_df["gene_entity"] = (["target"] * len(adata.var_names) + 
+                                                ["source"] * len(adata.var_names))
+        gp_gene_importances_df["gene_weight"] = gp_weights
+        gp_gene_importances_df["gene_importance"] = gp_gene_importances
+        gp_gene_importances_df = (gp_gene_importances_df
+            [gp_gene_importances_df["gene_importance"] != 0])
+        gp_gene_importances_df.sort_values(by="gene_importance",
                                            ascending=False,
                                            inplace=True)
         gp_gene_importances_df.reset_index(drop=True, inplace=True)
-
-        """
-        # Split into communication target and source idx
-        target_srt_idx = srt_idx[srt_idx < len(self.adata.var_names)]
-        source_srt_idx = (srt_idx[srt_idx > len(self.adata.var_names)] - 
-                          len(self.adata.var_names))
-
-        # Build gene importances df
-        gp_gene_importances_df = pd.DataFrame()
-        gp_gene_importances_df["gene"] = (
-            [gene for gene in self.adata.var_names[target_srt_idx].tolist()] +
-            [gene for gene in self.adata.var_names[source_srt_idx].tolist()])
-        gp_gene_importances_df["gene_entity"] = (
-            ["target" for _ in self.adata.var_names[target_srt_idx].tolist()] +
-            ["source" for _ in self.adata.var_names[source_srt_idx].tolist()])
-        gp_gene_importances_df["weight_based_importance"] = (
-            weight_based_importance[srt_idx])
-        """
-
         return gp_gene_importances_df
-
 
     def compute_latent_graph_connectivities(
             self,
             adata: Optional[AnnData]=None,
-            latent_key: str="latent_autotalker_fc_gps",
             n_neighbors: int=15,
             mode: Literal["knn", "umap"]="knn",
             seed: int=42):
         """
-        
+        Compute latent graph connectivities.
+
+        Parameters
+        ----------
+        adata:
+            AnnData object to be used. If ´None´, uses the adata object stored 
+            in the model.
+        n_neighbors:
+            Number of neighbors for graph connectivities computation.
+        mode:
+            Mode to be used for graph connectivities computation.
+        seed:
+            Random seed for reproducible computation.
         """
         if adata is None:
             adata = self.adata
 
-        if latent_key not in adata.obsm:
-            raise ValueError(f"Key '{latent_key}' not found in 'adata.obsm'. "
-                             "Please make sure to first train the model and "
-                             "store the latent representation in 'adata.obsm'.")
+        if self.latent_key_ not in adata.obsm:
+            raise ValueError(f"Key '{self.latent_key_}' not found in "
+                              "'adata.obsm'. Please make sure to first train "
+                              "the model and store the latent representation in"
+                              " 'adata.obsm'.")
 
         # Compute latent connectivities
         adata.obsp["latent_connectivities"] = _compute_graph_connectivities(
             adata=adata,
-            feature_key=latent_key,
+            feature_key=self.latent_key_,
             n_neighbors=n_neighbors,
             mode=mode,
             seed=seed)

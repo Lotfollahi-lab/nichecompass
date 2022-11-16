@@ -9,8 +9,8 @@ from .utils import _load_R_file_as_df
 
 
 def add_gps_from_gp_dict_to_adata(
-        adata: AnnData,
         gp_dict: dict,
+        adata: Optional[AnnData]=None,
         genes_uppercase: bool=True,
         gp_targets_varm_key: str="autotalker_gp_targets",
         gp_sources_varm_key: str="autotalker_gp_sources",
@@ -27,7 +27,8 @@ def add_gps_from_gp_dict_to_adata(
     Parameters
     ----------
     adata:
-        AnnData object to which the gene programs will be added.
+        AnnData object to which the gene programs will be added. If ´None´, uses
+        the adata object stored in the model.
     gp_dict:
         Nested dictionary containing the gene programs with keys being gene 
         program names and values being dictionaries with keys ´targets´ and 
@@ -60,6 +61,9 @@ def add_gps_from_gp_dict_to_adata(
         source genes that can be available in the adata (gene expression has 
         been probed) for a gene program not to be discarded.
     """
+    if adata is None:
+        adata = self.adata
+        
     # Retrieve probed genes from adata
     adata_genes = (adata.var_names.str.upper() if genes_uppercase 
                                                else adata.var_names)
