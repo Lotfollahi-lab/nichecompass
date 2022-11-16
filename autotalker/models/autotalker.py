@@ -89,7 +89,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                  adata: AnnData,
                  counts_key="counts",
                  adj_key: str="spatial_connectivities",
-                 gp_key: str="autotalker_gps",
+                 gp_key: str="autotalker_gp_names",
                  gp_targets_mask_key: str="autotalker_gp_targets",
                  gp_sources_mask_key: str="autotalker_gp_sources",
                  latent_key: str="autotalker_latent",
@@ -260,21 +260,22 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         self.trainer.train(n_epochs=n_epochs,
                            lr=lr,
                            weight_decay=weight_decay,
-                           mlflow_experiment_id=mlflow_experiment_id,)
-
-        self.adata.obsm[self.latent_key_] = self.get_latent_representation()
+                           mlflow_experiment_id=mlflow_experiment_id)
         
         self.is_trained_ = True
+
+        self.adata.obsm[self.latent_key_] = self.get_latent_representation()
 
     def compute_differential_gp_scores(
             self,
             cat_key: str,
             adata: Optional[AnnData]=None,
             selected_gps: Optional[Union[str,list]]=None,
+            selected_cats: Optional[Union[str,list]]=None,
             gp_scores_weight_normalization: bool=True,
             gp_scores_zi_normalization: bool=True,
             comparison_cats: Union[str, list]="rest",
-            n_sample: int=10000,
+            n_sample: int=1000,
             key_added: str="gp_enrichment_scores",
             n_top_up_gps_retrieved: int=10,
             n_top_down_gps_retrieved: int=10,
@@ -338,9 +339,11 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
 
         Returns
         ----------
-        top_gps:
+        top_unique_gps:
             Names of ´n_top_up_gps_retrieved´ upregulated and 
-            ´n_top_down_gps_retrieved´ downregulated differential gene programs.
+            ´n_top_down_gps_retrieved´ downregulated unique differential gene 
+            programs (duplicate gene programs that appear for multiple catgories
+            are not considered).
         """
         np.random.seed(seed)
 
@@ -416,6 +419,10 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         # categories
         cat_values = adata.obs[cat_key]
         cats = cat_values.unique()
+        if selected_cats is None:
+            selected_cats = cats
+        elif isinstance(selected_cats, str):
+            selected_cats = [selected_cats]
 
         # Check specified comparison categories
         if comparison_cats != "rest" and isinstance(comparison_cats, str):
@@ -428,7 +435,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         # Compute scores for all categories that are not part of the comparison
         # categories
         scores = []
-        for cat in cats:
+        for cat in selected_cats:
             if cat in comparison_cats:
                 continue
 
@@ -505,8 +512,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         scores.reset_index(drop=True, inplace=True)
         adata.uns[key_added] = scores
 
-        # Retrieve top gps and (normalized) gene program / latent scores
-        top_gps = []
+        # Retrieve top unique gps and (normalized) gene program / latent scores
+        top_unique_gps = []
         if n_top_up_gps_retrieved > 0 or n_top_down_gps_retrieved > 0:
             if norm_factors.ndim == 1:
                 norm_factors = norm_factors
@@ -515,25 +522,36 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             elif norm_factors.ndim == 3:
                 norm_factors = norm_factors.mean(1) # mean over genes
             mu *= norm_factors
-    
+
             # Store ´n_top_up_gps_retrieved´ top upregulated gene program scores
             # in ´adata.obs´
             if n_top_up_gps_retrieved > 0:
-                top_up_gps = scores["gene_program"][:n_top_up_gps_retrieved].to_list()
+                # Get unique top up gene programs while maintaining order
+                top_up_gps = scores["gene_program"]
+                _, top_up_gps_sort_idx = np.unique(top_up_gps,
+                                                   return_index=True)
+                top_up_gps = top_up_gps[np.sort(top_up_gps_sort_idx)]
+                top_up_gps = top_up_gps[:n_top_up_gps_retrieved].to_list()
                 top_up_gps_idx = [selected_gps.index(gp) for gp in top_up_gps]
                 for gp, gp_idx in zip(top_up_gps, top_up_gps_idx):
                     adata.obs[gp] = mu[:, gp_idx]
-                top_gps.extend(top_up_gps)
+                top_unique_gps.extend(top_up_gps)
             
             # Store ´n_top_down_gps_retrieved´ top downregulated gene program 
             # scores in ´adata.obs´
             if n_top_down_gps_retrieved > 0:
-                top_down_gps = scores["gene_program"][-n_top_down_gps_retrieved:].to_list()
+                # Get unique top down gene programs while maintaining order
+                top_down_gps = scores["gene_program"][::-1]
+                top_down_gps.reset_index(inplace=True, drop=True)
+                _, top_down_gps_sort_idx = np.unique(top_down_gps,
+                                                     return_index=True)
+                top_down_gps = top_down_gps[np.sort(top_down_gps_sort_idx)]
+                top_down_gps = top_down_gps[:n_top_down_gps_retrieved].to_list()
                 top_down_gps_idx = [selected_gps.index(gp) for gp in top_down_gps]
                 for gp, gp_idx in zip(top_down_gps, top_down_gps_idx):
                     adata.obs[gp] = mu[:, gp_idx]
-                top_gps.extend(top_down_gps)
-        return top_gps
+                top_unique_gps.extend(top_down_gps)
+        return top_unique_gps
 
     def compute_gp_gene_importances(
             self,

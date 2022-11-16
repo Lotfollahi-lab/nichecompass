@@ -17,23 +17,22 @@ class SpatialAnnTorchDataset():
     Parameters
     ----------
     adata:
-        AnnData object with raw counts stored in 
-        ´adata.layers[counts_layer_key]´, and sparse adjacency matrix stored in 
-        ´adata.obsp[adj_key]´.
-    counts_layer_key:
+        AnnData object with raw counts stored in ´adata.layers[counts_key]´, and
+        sparse adjacency matrix stored in ´adata.obsp[adj_key]´.
+    counts_key:
         Key under which the raw counts are stored in ´adata.layer´.
     adj_key:
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
     """
     def __init__(self,
                  adata: AnnData,
-                 counts_layer_key: str="counts",
+                 counts_key: str="counts",
                  adj_key: str="spatial_connectivities"):
         # Store features in dense format
-        if sp.issparse(adata.layers[counts_layer_key]): 
-            self.x = torch.tensor(adata.layers[counts_layer_key].toarray())
+        if sp.issparse(adata.layers[counts_key]): 
+            self.x = torch.tensor(adata.layers[counts_key].toarray())
         else:
-            self.x = torch.tensor(adata.layers[counts_layer_key])
+            self.x = torch.tensor(adata.layers[counts_key])
 
         # Store adjacency matrix in torch_sparse SparseTensor format
         if sp.issparse(adata.obsp[adj_key]):

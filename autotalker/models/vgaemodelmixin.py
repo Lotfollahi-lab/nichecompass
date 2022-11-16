@@ -14,7 +14,7 @@ class VGAEModelMixin:
     """
     def get_latent_representation(self, 
                                   adata: Optional[AnnData]=None,
-                                  counts_layer_key: str="counts",
+                                  counts_key: str="counts",
                                   adj_key: str="spatial_connectivities",
                                   return_mu_std: bool=False):
         """
@@ -25,6 +25,8 @@ class VGAEModelMixin:
         adata:
             AnnData object to get the latent representation for if not the one
             passed to the model.
+        counts_key:
+            Key under which the raw counts are stored in ´adata.layer´.
         adj_key:
             Key under which the sparse adjacency matrix is stored in 
             ´adata.obsp´.
@@ -41,10 +43,10 @@ class VGAEModelMixin:
         device = next(self.model.parameters()).device
 
         if adata is not None:
-            dataset = SpatialAnnTorchDataset(adata, counts_layer_key, adj_key)
+            dataset = SpatialAnnTorchDataset(adata, counts_key, adj_key)
         else:
             dataset = SpatialAnnTorchDataset(self.adata,
-                                             self.counts_layer_key_,
+                                             self.counts_key_,
                                              self.adj_key_)
 
         x = dataset.x.to(device)
@@ -71,7 +73,7 @@ class VGAEModelMixin:
     @torch.no_grad()
     def get_zinb_gene_expr_params(self, 
                                   adata: Optional[AnnData]=None,
-                                  counts_layer_key: str="counts",
+                                  counts_key: str="counts",
                                   adj_key: str="spatial_connectivities",):
         """
         Get ZINB gene expression reconstruction parameters from a trained VGAE 
@@ -82,6 +84,8 @@ class VGAEModelMixin:
         adata:
             AnnData object to get the ZINB gene expression parameters for if not
             the one passed to the model.
+        counts_key:
+            Key under which the raw counts are stored in ´adata.layer´.    
         adj_key:
             Key under which the sparse adjacency matrix is stored in 
             ´adata.obsp´.
@@ -98,10 +102,10 @@ class VGAEModelMixin:
         device = next(self.model.parameters()).device
 
         if adata is not None:
-            dataset = SpatialAnnTorchDataset(adata, counts_layer_key, adj_key)
+            dataset = SpatialAnnTorchDataset(adata, counts_key, adj_key)
         else:
             dataset = SpatialAnnTorchDataset(self.adata,
-                                             self.counts_layer_key_,
+                                             self.counts_key_,
                                              self.adj_key_)
 
         x = dataset.x.to(device)
