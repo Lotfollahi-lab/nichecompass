@@ -1,23 +1,24 @@
 import os
 from typing import Optional
 
+import pandas as pd
 import pyreadr
 
 
 def _load_R_file_as_df(R_file_path: str,
                        url: Optional[str]=None,
                        save_df_to_disk: bool=False,
-                       df_save_path: Optional[str]=None):
+                       df_save_path: Optional[str]=None) -> pd.DataFrame:
     """
     Helper to load an R file either from ´url´ if specified or from ´file_path´ 
-    on disk and convert to a pandas DataFrame.
+    on disk and convert it to a pandas DataFrame.
 
     Parameters
     ----------
     R_file_path:
         File path to the R file to be loaded as df.
     url:
-        URL to the R file to be loaded as df.
+        URL of the R file to be loaded as df.
     save_df_to_disk:
         If ´True´, save df to disk.
     df_save_path:
@@ -26,7 +27,7 @@ def _load_R_file_as_df(R_file_path: str,
     Returns
     ----------
     df:
-        Content of R file loaded into a DataFrame.
+        Content of R file loaded into a pandas DataFrame.
     """
     if url is None:
         if not os.path.exists(R_file_path):
@@ -41,7 +42,6 @@ def _load_R_file_as_df(R_file_path: str,
     if save_df_to_disk:
         if df_save_path == None:
             raise ValueError("Please specify ´df_save_path´ or set " 
-                             "´save_to_disk.´ to False")
+                             "´save_to_disk.´ to False.")
         df.to_csv(df_save_path)
-
     return df

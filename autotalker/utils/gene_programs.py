@@ -12,23 +12,27 @@ def add_gps_from_gp_dict_to_adata(
         gp_dict: dict,
         adata: AnnData,
         genes_uppercase: bool=True,
-        gp_targets_varm_key: str="autotalker_gp_targets",
-        gp_sources_varm_key: str="autotalker_gp_sources",
-        gp_names_uns_key: str="autotalker_gp_names",
-        min_genes_per_gp: int=0,
-        max_genes_per_gp: Optional[int]=None):
+        gp_targets_mask_key: str="autotalker_gp_targets",
+        gp_sources_mask_key: str="autotalker_gp_sources",
+        gp_names_key: str="autotalker_gp_names",
+        min_total_genes_per_gp: int=1,
+        min_source_genes_per_gp: int=0,
+        min_target_genes_per_gp: int=0,
+        max_total_genes_per_gp: Optional[int]=None,
+        max_source_genes_per_gp: Optional[int]=None,
+        max_target_genes_per_gp: Optional[int]=None):
     """
     Add gene programs defined in a gene program dictionary to an AnnData object
     by converting the gene program lists of gene program target and source genes
     to binary masks and aligning the masks with genes for which gene expression
-    is available in the AnnData object. Inspired by
-    https://github.com/theislab/scarches/blob/master/scarches/utils/annotations.py#L5.
+    is available in the AnnData object. 
+    
+    Parts of the implementation are inspired by
+    https://github.com/theislab/scarches/blob/master/scarches/utils/annotations.py#L5
+    (01.10.2022).
 
     Parameters
     ----------
-    adata:
-        AnnData object to which the gene programs will be added. If ´None´, uses
-        the adata object stored in the model.
     gp_dict:
         Nested dictionary containing the gene programs with keys being gene 
         program names and values being dictionaries with keys ´targets´ and 
@@ -37,30 +41,61 @@ def add_gps_from_gp_dict_to_adata(
         itself (receiving node) and ´sources´ contains a list of the names of
         genes in the gene program for the reconstruction of the gene expression
         of the node's neighbors (transmitting nodes).
+    adata:
+        AnnData object to which the gene programs will be added.
     genes_uppercase:
         If `True`, convert the gene names in adata to uppercase for comparison
         with the gene program dictionary (e.g. if adata contains mouse data).
-    gp_targets_varm_key:
-        Key in adata.varm where the binary gene program mask for target genes
+    gp_targets_mask_key:
+        Key in ´adata.varm´ where the binary gene program mask for target genes
         of a gene program will be stored (target genes are used for the 
         reconstruction of the gene expression of the node itself (receiving node
         )).
-    gp_sources_varm_key:
-        Key in adata.varm where the binary gene program mask for source genes
+    gp_sources_mask_key:
+        Key in ´adata.varm´ where the binary gene program mask for source genes
         of a gene program will be stored (source genes are used for the 
-        reconstruction of the gene expression of the node'sneighbors 
-        (transmitting nodes).
-    gp_names_uns_key:
-        Key in adata.uns where the gene program names will be stored.
-    min_genes_per_gp:
-        Minimum number of genes in a gene program inluding both target and 
+        reconstruction of the gene expression of the node's neighbors 
+        (transmitting nodes)).
+    gp_names_key:
+        Key in ´adata.uns´ where the gene program names will be stored.
+    min_total_genes_per_gp:
+        Minimum number of total genes in a gene program inluding both target and 
         source genes that need to be available in the adata (gene expression has
         been probed) for a gene program not to be discarded.
-    max_genes_per_gp:
-        Maximum number of genes in a gene program including both target and 
+    min_source_genes_per_gp:
+        Minimum number of source genes in a gene program that need to be 
+        available in the adata (gene expression has been probed) for a gene 
+        program not to be discarded.
+    min_target_genes_per_gp:
+        Minimum number of target genes in a gene program that need to be 
+        available in the adata (gene expression has been probed) for a gene 
+        program not to be discarded.
+    max_total_genes_per_gp:
+        Maximum number of total genes in a gene program including both target and 
         source genes that can be available in the adata (gene expression has 
         been probed) for a gene program not to be discarded.
+    max_source_genes_per_gp:
+        Maximum number of source genes in a gene program that can be available 
+        in the adata (gene expression has been probed) for a gene program not to
+        be discarded.
+    max_target_genes_per_gp:
+        Maximum number of target genes in a gene program that can be available 
+        in the adata (gene expression has been probed) for a gene program not to
+        be discarded.
     """
+    # Validate gene program dictionary to not have completely overlapping source
+    # genes gene programs
+    for i, (gp_i, gp_genes_dict) in enumerate(gp_dict.items()):
+        sources_genes_i = gp_genes_dict["sources"]
+        for j, (gp_j, gp_genes_comparison_dict) in enumerate(gp_dict.items()):
+            if i != j:
+                sources_genes_j = gp_genes_comparison_dict["sources"]
+                if set(sources_genes_i) == set(sources_genes_j):
+                    raise ValueError(f"Gene programs '{gp_i}' and '{gp_j}' have"
+                                     " the same source genes. Please remove one"
+                                     " of the gene programs to have gene "
+                                     "programs with unique source genes.")
+
     # Retrieve probed genes from adata
     adata_genes = (adata.var_names.str.upper() if genes_uppercase 
                                                else adata.var_names)
@@ -70,41 +105,48 @@ def add_gps_from_gp_dict_to_adata(
                for _, gp_genes_dict in gp_dict.items()]
                for gene in adata_genes]
     gp_targets_mask = np.asarray(gp_targets_mask, dtype="int32")
-
     gp_sources_mask = [[int(gene in gp_genes_dict["sources"]) 
                for _, gp_genes_dict in gp_dict.items()]
                for gene in adata_genes]
     gp_sources_mask = np.asarray(gp_sources_mask, dtype="int32")
-    
     gp_mask = np.concatenate((gp_sources_mask, gp_targets_mask), axis=0)
 
-    # Filter gene programs
-    gp_mask_filter = gp_mask.sum(0) > min_genes_per_gp
-    if max_genes_per_gp is not None:
-        gp_mask_filter &= gp_mask.sum(0) < max_genes_per_gp
+    # Filter gene programs for min genes and max genes
+    gp_mask_filter = gp_mask.sum(0) >= min_total_genes_per_gp
+    if max_total_genes_per_gp is not None:
+        gp_mask_filter &= gp_mask.sum(0) <= max_total_genes_per_gp
+    gp_sources_mask_filter = gp_sources_mask.sum(0) >= min_source_genes_per_gp
+    gp_targets_mask_filter = gp_targets_mask.sum(0) >= min_target_genes_per_gp
+    if max_source_genes_per_gp is not None:
+        gp_sources_mask_filter &= gp_sources_mask.sum(0) <= max_source_genes_per_gp
+    if max_target_genes_per_gp is not None:
+        gp_targets_mask_filter &= gp_targets_mask.sum(0) <= max_target_genes_per_gp
+    gp_mask_filter &= gp_sources_mask_filter
+    gp_mask_filter &= gp_targets_mask_filter
     gp_targets_mask = gp_targets_mask[:, gp_mask_filter]
     gp_sources_mask = gp_sources_mask[:, gp_mask_filter]
 
-    # Add binary gene program masks to adata.varm
-    adata.varm[gp_sources_varm_key] = gp_sources_mask
-    adata.varm[gp_targets_varm_key] = gp_targets_mask
+    # Add binary gene program masks to ´adata.varm´
+    adata.varm[gp_sources_mask_key] = gp_sources_mask
+    adata.varm[gp_targets_mask_key] = gp_targets_mask
 
     # Add gene program names of gene programs that passed filter to adata.uns
     removed_gp_idx = np.where(~gp_mask_filter)[0]
-    adata.uns[gp_names_uns_key] = [gp_name for i, (gp_name, _) in 
-                          enumerate(gp_dict.items()) if i not in removed_gp_idx]
+    adata.uns[gp_names_key] = [gp_name for i, (gp_name, _) in enumerate(
+                               gp_dict.items()) if i not in removed_gp_idx]
 
 
 def extract_gp_dict_from_nichenet_ligand_target_mx(
         keep_target_ratio: float=0.1,
         load_from_disk: bool=False,
         save_to_disk: bool=False,
-        file_path: Optional[str]="nichenet_ligand_target_matrix.csv"):
+        file_path: Optional[str]="nichenet_ligand_target_matrix.csv") -> dict:
     """
-    Retrieve NicheNet ligand target matrix as described in Browaeys, R., 
-    Saelens, W. & Saeys, Y. NicheNet: modeling intercellular communication by 
-    linking ligands to target genes. Nat. Methods 17, 159–162 (2020) and extract
-    a gene program dictionary from the matrix based on ´keep_target_ratio´.
+    Retrieve NicheNet ligand target potential matrix as described in Browaeys, 
+    R., Saelens, W. & Saeys, Y. NicheNet: modeling intercellular communication 
+    by linking ligands to target genes. Nat. Methods 17, 159–162 (2020) and 
+    extract a gene program dictionary from the matrix based on 
+    ´keep_target_ratio´. Only applies if ´load_from_disk´ is ´False´.
 
     Parameters
     ----------
@@ -134,8 +176,8 @@ def extract_gp_dict_from_nichenet_ligand_target_mx(
     # Download or load NicheNet ligand target matrix and store in df (optionally
     # also on disk)
     if not load_from_disk:
-        print("Downloading NicheNet ligand target matrix from the web. This "
-              "might take a while...")
+        print("Downloading NicheNet ligand target potential matrix from the "
+              "web. This might take a while...")
         ligand_target_df = _load_R_file_as_df(
             R_file_path="ligand_target_matrix.rds",
             url="https://zenodo.org/record/3260758/files/ligand_target_matrix.rds",
@@ -169,13 +211,16 @@ def extract_gp_dict_from_omnipath_lr_interactions(
         min_curation_effort: int=0,
         load_from_disk: bool=False,
         save_to_disk: bool=False,
-        file_path: Optional[str]="omnipath_lr_interactions.csv"):
+        file_path: Optional[str]="omnipath_lr_interactions.csv") -> dict:
     """
-    Retrieve ligand-receptor interactions from OmniPath and extract a gene
-    program dictionary. OmniPath is a database of molecular biology prior 
+    Retrieve ligand-receptor interactions from OmniPath and extract them into a 
+    gene program dictionary. OmniPath is a database of molecular biology prior 
     knowledge that combines intercellular communication data from many different
     resources (all resources for intercellular communication included in 
     OmniPath can be queried via ´op.requests.Intercell.resources()´).
+
+    Parts of the implementation are inspired by 
+    https://workflows.omnipathdb.org/intercell-networks-py.html (01.10.2022).
 
     Parameters
     ----------
@@ -187,11 +232,11 @@ def extract_gp_dict_from_omnipath_lr_interactions(
         disk instead of from the omnipath library.
     save_to_disk:
         If ´True´, the OmniPath ligand-receptor interactions will additionally 
-        be stored on disk.
+        be stored on disk. Only applies if ´load_from_disk´ is ´False´.
     file_path:
         Path of the file where the OmniPath ligand-receptor interactions will be
-        stored (if ´save_to_disk´ is ´True´) or is loaded from 
-        (if ´load_from_disk´ is ´True´).    
+        stored (if ´save_to_disk´ is ´True´) or loaded from (if ´load_from_disk´
+        is ´True´).    
 
     Returns
     ----------
@@ -204,7 +249,7 @@ def extract_gp_dict_from_omnipath_lr_interactions(
     if not load_from_disk:
         # Define intercell_network categories to be retrieved
         intercell_df = op.interactions.import_intercell_network(
-            include=['omnipath', 'pathwayextra', 'ligrecextra'])
+            include=["omnipath", "pathwayextra", "ligrecextra"])
     
         # Set transmitters to be ligands and receivers to be receptors
         lr_interaction_df = intercell_df[

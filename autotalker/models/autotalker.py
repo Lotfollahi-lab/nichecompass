@@ -22,9 +22,9 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
     adata:
         AnnData object with raw counts stored in ´adata.layers[counts_key]´, 
         sparse adjacency matrix stored in ´adata.obsp[adj_key]´, gene program
-        names stored in ´adata.uns[gp_key]´, and binary gene program targets and 
-        sources masks stored in ´adata.varm[gp_targets_mask_key]´ and 
-        ´adata.varm[gp_sources_mask_key]´ respectively (unless gene program 
+        names stored in ´adata.uns[gp_names_key]´, and binary gene program 
+        targets and sources masks stored in ´adata.varm[gp_targets_mask_key]´ 
+        and ´adata.varm[gp_sources_mask_key]´ respectively (unless gene program 
         masks are passed explicitly to the model via parameters 
         ´gp_targets_mask´ and ´gp_sources_mask´, in which case this will have
         prevalence).
@@ -32,7 +32,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         Key under which the raw counts are stored in ´adata.layer´.
     adj_key:
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
-    gp_key:
+    gp_names_key:
         Key under which the gene program names are stored in ´adata.uns´.
     gp_targets_mask_key:
         Key under which the gene program targets mask is stored in ´adata.varm´. 
@@ -89,7 +89,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                  adata: AnnData,
                  counts_key="counts",
                  adj_key: str="spatial_connectivities",
-                 gp_key: str="autotalker_gp_names",
+                 gp_names_key: str="autotalker_gp_names",
                  gp_targets_mask_key: str="autotalker_gp_targets",
                  gp_sources_mask_key: str="autotalker_gp_sources",
                  latent_key: str="autotalker_latent",
@@ -110,7 +110,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         self.adata = adata
         self.counts_key_ = counts_key
         self.adj_key_ = adj_key
-        self.gp_key_ = gp_key
+        self.gp_names_key_ = gp_names_key
         self.gp_targets_mask_key_ = gp_targets_mask_key
         self.gp_sources_mask_key_ = gp_sources_mask_key
         self.latent_key_ = latent_key
@@ -177,8 +177,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                              "stored in adata.obsm['spatial_connectivities'].")
 
         # Validate gp key
-        if gp_key not in adata.uns:
-            raise ValueError("Please specify an adequate ´gp_key´. "
+        if gp_names_key not in adata.uns:
+            raise ValueError("Please specify an adequate ´gp_names_key´. "
                              "By default the gene program names are assumed to "
                              "be stored in adata.uns['autotalker_gps'].")
         
@@ -348,12 +348,12 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         np.random.seed(seed)
 
         if selected_gps is None:
-            selected_gps = adata.uns[self.gp_key_]
+            selected_gps = adata.uns[self.gp_names_key_]
             selected_gps_idx = np.arange(len(selected_gps))
         else: 
             if isinstance(selected_gps, str):
                 selected_gps = [selected_gps]
-            selected_gps_idx = [adata.uns[self.gp_key_].index(gp) 
+            selected_gps_idx = [adata.uns[self.gp_names_key_].index(gp) 
                                 for gp in selected_gps]
 
         if adata is None:
@@ -587,7 +587,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             adata = self.adata
 
         # Retrieve NB means gene expression decoder weights
-        selected_gp_idx = adata.uns[self.gp_key_].index(selected_gp)
+        selected_gp_idx = adata.uns[self.gp_names_key_].index(selected_gp)
         if selected_gp_idx < self.n_nonaddon_gps_: # non-addon gp
             gp_weights = (
                 self.model.gene_expr_decoder.nb_means_normalized_decoder
