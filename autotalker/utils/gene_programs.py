@@ -11,23 +11,23 @@ from .utils import _load_R_file_as_df
 def add_gps_from_gp_dict_to_adata(
         gp_dict: dict,
         adata: AnnData,
-        genes_uppercase: bool=True,
-        validate_gp_source_gene_overlaps: bool=True,
-        gp_targets_mask_key: str="autotalker_gp_targets",
-        gp_sources_mask_key: str="autotalker_gp_sources",
-        gp_names_key: str="autotalker_gp_names",
-        min_total_genes_per_gp: int=1,
-        min_source_genes_per_gp: int=0,
-        min_target_genes_per_gp: int=0,
-        max_total_genes_per_gp: Optional[int]=None,
-        max_source_genes_per_gp: Optional[int]=None,
-        max_target_genes_per_gp: Optional[int]=None):
+        genes_uppercase: bool = True,
+        validate_gp_source_gene_overlaps: bool = True,
+        gp_targets_mask_key: str = "autotalker_gp_targets",
+        gp_sources_mask_key: str = "autotalker_gp_sources",
+        gp_names_key: str = "autotalker_gp_names",
+        min_total_genes_per_gp: int = 1,
+        min_source_genes_per_gp: int = 0,
+        min_target_genes_per_gp: int = 0,
+        max_total_genes_per_gp: Optional[int] = None,
+        max_source_genes_per_gp: Optional[int] = None,
+        max_target_genes_per_gp: Optional[int] = None):
     """
     Add gene programs defined in a gene program dictionary to an AnnData object
     by converting the gene program lists of gene program target and source genes
     to binary masks and aligning the masks with genes for which gene expression
     is available in the AnnData object. 
-    
+
     Parts of the implementation are inspired by
     https://github.com/theislab/scarches/blob/master/scarches/utils/annotations.py#L5
     (01.10.2022).
@@ -89,33 +89,75 @@ def add_gps_from_gp_dict_to_adata(
     """
     # Validate gene program dictionary to not have completely overlapping source
     # genes gene programs
+    new_gp_dict = {}
+    overlap_threshold_source = 0.8
+    overlap_threshold_target = 0.8
+    overlap_threshold_all = 0.8
+
     if validate_gp_source_gene_overlaps:
         for i, (gp_i, gp_genes_dict) in enumerate(gp_dict.items()):
-            sources_genes_i = gp_genes_dict["sources"]
-            sources_genes_i = [gene.upper() for gene in sources_genes_i]
+            source_genes_i = gp_genes_dict["sources"]
+            target_genes_i = gp_genes_dict["targets"]
+            source_genes_i = set([gene.upper() for gene in source_genes_i])
+            target_genes_i = set([gene.upper() for gene in target_genes_i])
+            combined_gps = [gp_i]
             for j, (gp_j, gp_genes_comparison_dict) in enumerate(gp_dict.items()):
                 if i != j:
-                    sources_genes_j = gp_genes_comparison_dict["sources"]
-                    sources_genes_j = [gene.upper() for gene in sources_genes_j]
+                    source_genes_j = gp_genes_comparison_dict["sources"]
+                    target_genes_j = gp_genes_comparison_dict["targets"]
+                    source_genes_j = set([gene.upper() for gene in source_genes_j])
+                    target_genes_j = set([gene.upper() for gene in target_genes_j])
+                    source_genes_overlap = list(source_genes_i & source_genes_j)
+                    target_genes_overlap = list(target_genes_i & target_genes_j)
+                    n_source_genes_overlap = len(source_genes_overlap)
+                    n_target_genes_overlap = len(target_genes_overlap)
+                    n_genes_overlap = n_source_genes_overlap + n_target_genes_overlap
+                    n_avg_source_genes = (len(source_genes_i) + len(source_genes_j)) / 2
+                    n_avg_target_genes = (len(target_genes_i) + len(target_genes_j)) / 2
+                    n_avg_genes = n_avg_source_genes + n_avg_target_genes
+                    ratio_shared_source_genes = n_source_genes_overlap / n_avg_source_genes
+                    ratio_shared_target_genes = n_target_genes_overlap / n_avg_target_genes
+                    ratio_shared_genes = n_genes_overlap / n_avg_genes
+                    if ((ratio_shared_source_genes > overlap_threshold_source) &
+                        (ratio_shared_target_genes > overlap_threshold_target) &
+                        (ratio_shared_genes > overlap_threshold_all)):
+                            combined_gps.append(gp_j)
+
+                    # if sources_genes_j.issubset(sources_genes_i) & target_genes_j.issubset(target_genes_i) or sources_genes_i.issubset(sources_genes_j) & target_genes_i.issubset(target_genes_j):
+                        # print(f"Gene program '{gp_j}' is a subset of gene "
+                        #      f"program '{gp_i}'.")
+
+            if len(combined_gps) > 1:
+                print(combined_gps)
+            # new_gp_dict[gp_i + "_&_" + ] = gp_dict[gp_i]
+            # new_gp_dict[gp_i + "_&_" + gp_j]["sources"].extend(
+            #    gp_dict[gp_i]["sources"])
+            # new_gp_dict[gp_i + "_&_" + gp_j]["targets"].extend(
+            #    gp_dict[gp_i]["targets"])
+            """
                     if set(sources_genes_i) == set(sources_genes_j):
                         raise ValueError(f"Gene programs '{gp_i}' and '{gp_j}' "
                                          "have the same source genes. Please "
                                          "remove one of the gene programs to "
                                          "have gene programs with unique source"
                                          " genes.")
+            """
+
+    # print("YAAX")
+    # print(new_gp_dict)
 
     # Retrieve probed genes from adata
-    adata_genes = (adata.var_names.str.upper() if genes_uppercase 
-                                               else adata.var_names)
+    adata_genes = (adata.var_names.str.upper() if genes_uppercase
+                   else adata.var_names)
 
     # Create binary gene program masks considering only probed genes
-    gp_targets_mask = [[int(gene in gp_genes_dict["targets"]) 
-               for _, gp_genes_dict in gp_dict.items()]
-               for gene in adata_genes]
+    gp_targets_mask = [[int(gene in gp_genes_dict["targets"])
+                        for _, gp_genes_dict in gp_dict.items()]
+                       for gene in adata_genes]
     gp_targets_mask = np.asarray(gp_targets_mask, dtype="int32")
-    gp_sources_mask = [[int(gene in gp_genes_dict["sources"]) 
-               for _, gp_genes_dict in gp_dict.items()]
-               for gene in adata_genes]
+    gp_sources_mask = [[int(gene in gp_genes_dict["sources"])
+                        for _, gp_genes_dict in gp_dict.items()]
+                       for gene in adata_genes]
     gp_sources_mask = np.asarray(gp_sources_mask, dtype="int32")
     gp_mask = np.concatenate((gp_sources_mask, gp_targets_mask), axis=0)
 
@@ -126,11 +168,11 @@ def add_gps_from_gp_dict_to_adata(
     gp_sources_mask_filter = gp_sources_mask.sum(0) >= min_source_genes_per_gp
     gp_targets_mask_filter = gp_targets_mask.sum(0) >= min_target_genes_per_gp
     if max_source_genes_per_gp is not None:
-        gp_sources_mask_filter &= (gp_sources_mask.sum(0) <= 
-                                   max_source_genes_per_gp)
+        gp_sources_mask_filter &= (gp_sources_mask.sum(0)
+                                   <= max_source_genes_per_gp)
     if max_target_genes_per_gp is not None:
-        gp_targets_mask_filter &= (gp_targets_mask.sum(0) <= 
-                                   max_target_genes_per_gp)
+        gp_targets_mask_filter &= (gp_targets_mask.sum(0)
+                                   <= max_target_genes_per_gp)
     gp_mask_filter &= gp_sources_mask_filter
     gp_mask_filter &= gp_targets_mask_filter
     gp_targets_mask = gp_targets_mask[:, gp_mask_filter]
@@ -147,10 +189,10 @@ def add_gps_from_gp_dict_to_adata(
 
 
 def extract_gp_dict_from_nichenet_ligand_target_mx(
-        keep_target_ratio: float=0.1,
-        load_from_disk: bool=False,
-        save_to_disk: bool=False,
-        file_path: Optional[str]="nichenet_ligand_target_matrix.csv") -> dict:
+        keep_target_ratio: float = 0.1,
+        load_from_disk: bool = False,
+        save_to_disk: bool = False,
+        file_path: Optional[str] = "nichenet_ligand_target_matrix.csv") -> dict:
     """
     Retrieve NicheNet ligand target potential matrix as described in Browaeys, 
     R., Saelens, W. & Saeys, Y. NicheNet: modeling intercellular communication 
@@ -197,13 +239,13 @@ def extract_gp_dict_from_nichenet_ligand_target_mx(
     else:
         ligand_target_df = pd.read_csv(file_path, index_col=0)
 
-    # Filter NicheNet ligand target matrix based on scores and 
+    # Filter NicheNet ligand target matrix based on scores and
     # ´keep_target_ratio´
     all_target_gene_scores = np.squeeze(ligand_target_df.values).flatten()
     all_target_gene_scores.sort()
     all_target_gene_scores_sorted = np.flip(all_target_gene_scores)
     score_keep_threshold = all_target_gene_scores_sorted[int(
-        (len(all_target_gene_scores_sorted) -1) * keep_target_ratio)]
+        (len(all_target_gene_scores_sorted) - 1) * keep_target_ratio)]
     ligand_target_df = ligand_target_df.applymap(
         lambda x: x > score_keep_threshold)
 
@@ -213,16 +255,16 @@ def extract_gp_dict_from_nichenet_ligand_target_mx(
     for ligand in ligand_target_dict.keys():
         gp_dict[ligand + "_ligand_targetgenes_GP"] = {
             "sources": [ligand],
-            "targets": [target for target, include in 
-                       ligand_target_dict[ligand].items() if include]}
+            "targets": [target for target, include in
+                        ligand_target_dict[ligand].items() if include]}
     return gp_dict
 
 
 def extract_gp_dict_from_omnipath_lr_interactions(
-        min_curation_effort: int=0,
-        load_from_disk: bool=False,
-        save_to_disk: bool=False,
-        file_path: Optional[str]="omnipath_lr_interactions.csv") -> dict:
+        min_curation_effort: int = 0,
+        load_from_disk: bool = False,
+        save_to_disk: bool = False,
+        file_path: Optional[str] = "omnipath_lr_interactions.csv") -> dict:
     """
     Retrieve ligand-receptor interactions from OmniPath and extract them into a 
     gene program dictionary. OmniPath is a database of molecular biology prior 
@@ -261,11 +303,11 @@ def extract_gp_dict_from_omnipath_lr_interactions(
         # Define intercell_network categories to be retrieved
         intercell_df = op.interactions.import_intercell_network(
             include=["omnipath", "pathwayextra", "ligrecextra"])
-    
+
         # Set transmitters to be ligands and receivers to be receptors
         lr_interaction_df = intercell_df[
-            (intercell_df["category_intercell_source"] == "ligand") &
-            (intercell_df["category_intercell_target"] == "receptor")]
+            (intercell_df["category_intercell_source"] == "ligand")
+            & (intercell_df["category_intercell_target"] == "receptor")]
 
         if save_to_disk:
             lr_interaction_df.to_csv(file_path, index=False)
@@ -285,9 +327,9 @@ def extract_gp_dict_from_omnipath_lr_interactions(
 
     # Dictionary comprehension to convert dictionary values to lists and split
     # "COMPLEX:receptor1_receptor2" into ["receptor1", "receptor2"]
-    lr_interaction_dict = {key: ([value] if "COMPLEX:" not in value 
-        else value.removeprefix("COMPLEX:").split("_")) 
-        for key, value in lr_interaction_dict.items()}
+    lr_interaction_dict = {key: ([value] if "COMPLEX:" not in value
+                                 else value.removeprefix("COMPLEX:").split("_"))
+                           for key, value in lr_interaction_dict.items()}
 
     # Extract gene programs and store in nested dict
     gp_dict = {}
@@ -300,7 +342,7 @@ def extract_gp_dict_from_omnipath_lr_interactions(
 
 def extract_gp_dict_from_mebocost_es_interactions(
         species: Literal["mouse", "human"],
-        genes_uppercase: bool=False) -> dict:
+        genes_uppercase: bool = False) -> dict:
     """
     Retrieve metabolite enzyme-sensor interactions from the Human Metabolome
     Database (HMDB) data curated in Chen, K. et al. MEBOCOST: 
@@ -339,16 +381,16 @@ def extract_gp_dict_from_mebocost_es_interactions(
     else:
         raise ValueError("Species should be either human or mouse.")
 
-    #print(metabolite_enzymes_df[metabolite_enzymes_df["metabolite"].str.contains("Cytidine")])
-    #print(metabolite_enzymes_df[metabolite_enzymes_df["metabolite"].str.contains("Uridine")])
-    #print(metabolite_sensors_df[metabolite_sensors_df["standard_metName"].str.contains("Cytidine")])
-    #print(metabolite_sensors_df[metabolite_sensors_df["standard_metName"].str.contains("Uridine")])
+    # print(metabolite_enzymes_df[metabolite_enzymes_df["metabolite"].str.contains("Cytidine")])
+    # print(metabolite_enzymes_df[metabolite_enzymes_df["metabolite"].str.contains("Uridine")])
+    # print(metabolite_sensors_df[metabolite_sensors_df["standard_metName"].str.contains("Cytidine")])
+    # print(metabolite_sensors_df[metabolite_sensors_df["standard_metName"].str.contains("Uridine")])
 
     # Retrieve metabolite names
     metabolite_names_df = (metabolite_sensors_df[["HMDB_ID",
                                                   "standard_metName"]]
-                          .drop_duplicates()
-                          .set_index("HMDB_ID"))
+                           .drop_duplicates()
+                           .set_index("HMDB_ID"))
 
     # Retrieve metabolite enzyme and sensor genes
     metabolite_enzymes_unrolled = []
@@ -367,18 +409,18 @@ def extract_gp_dict_from_mebocost_es_interactions(
                                           .apply(lambda x: x.upper()
                                                  if genes_uppercase else x))
     metabolite_sensors_df["Gene_name"] = (metabolite_sensors_df["Gene_name"]
-                                          .apply(lambda x: x.upper() 
+                                          .apply(lambda x: x.upper()
                                                  if genes_uppercase else x))
 
     metabolite_enzymes_df = (metabolite_enzymes_df.groupby(["HMDB_ID"])
-        .agg({"gene_name": lambda x: sorted(x.unique().tolist())})
-        .rename({"gene_name": "enzyme_genes"}, axis=1)
-        .reset_index()).set_index("HMDB_ID")
+                             .agg({"gene_name": lambda x: sorted(x.unique().tolist())})
+                             .rename({"gene_name": "enzyme_genes"}, axis=1)
+                             .reset_index()).set_index("HMDB_ID")
 
     metabolite_sensors_df = (metabolite_sensors_df.groupby(["HMDB_ID"])
-        .agg({"Gene_name": lambda x: sorted(x.unique().tolist())})
-        .rename({"Gene_name": "sensor_genes"}, axis=1)
-        .reset_index()).set_index("HMDB_ID")
+                             .agg({"Gene_name": lambda x: sorted(x.unique().tolist())})
+                             .rename({"Gene_name": "sensor_genes"}, axis=1)
+                             .reset_index()).set_index("HMDB_ID")
 
     # Combine metabolite names and enzyme and sensor genes
     metabolite_df = metabolite_enzymes_df.join(
@@ -387,7 +429,7 @@ def extract_gp_dict_from_mebocost_es_interactions(
 
     # Combine metabolites with duplicate enzymes and sensors into one gp
     metabolite_str_df = metabolite_df.astype(str)
-    chars_to_replace = ["[","]",",", "'"]
+    chars_to_replace = ["[", "]", ",", "'"]
     for char in chars_to_replace:
         metabolite_str_df["enzyme_genes"] = metabolite_str_df["enzyme_genes"].str.replace(char, "")
         metabolite_str_df["sensor_genes"] = metabolite_str_df["sensor_genes"].str.replace(char, "")
@@ -406,9 +448,9 @@ def extract_gp_dict_from_mebocost_es_interactions(
         left_on=["sensor_genes"],
         right_on=["sensor_genes"],
         how="inner")[["metabolite_x", "metabolite_y"]]
-    metabolite_dup_df["metabolites"] = (metabolite_dup_df["metabolite_x"] +
-                                        " " +
-                                        metabolite_dup_df["metabolite_y"])
+    metabolite_dup_df["metabolites"] = (metabolite_dup_df["metabolite_x"]
+                                        + " "
+                                        + metabolite_dup_df["metabolite_y"])
     metabolite_x = metabolite_dup_df["metabolite_x"].tolist()
     metabolites = metabolite_dup_df["metabolites"].tolist()
     for met_x, mets in zip(metabolite_x, metabolites):
