@@ -71,7 +71,7 @@ def add_gps_from_gp_dict_to_adata(
         available in the adata (gene expression has been probed) for a gene 
         program not to be discarded.
     max_total_genes_per_gp:
-        Maximum number of total genes in a gene program including both target and 
+        Maximum number of total genes in a gene program inluding both target and 
         source genes that can be available in the adata (gene expression has 
         been probed) for a gene program not to be discarded.
     max_source_genes_per_gp:
@@ -118,9 +118,11 @@ def add_gps_from_gp_dict_to_adata(
     gp_sources_mask_filter = gp_sources_mask.sum(0) >= min_source_genes_per_gp
     gp_targets_mask_filter = gp_targets_mask.sum(0) >= min_target_genes_per_gp
     if max_source_genes_per_gp is not None:
-        gp_sources_mask_filter &= gp_sources_mask.sum(0) <= max_source_genes_per_gp
+        gp_sources_mask_filter &= (gp_sources_mask.sum(0) <= 
+                                   max_source_genes_per_gp)
     if max_target_genes_per_gp is not None:
-        gp_targets_mask_filter &= gp_targets_mask.sum(0) <= max_target_genes_per_gp
+        gp_targets_mask_filter &= (gp_targets_mask.sum(0) <= 
+                                   max_target_genes_per_gp)
     gp_mask_filter &= gp_sources_mask_filter
     gp_mask_filter &= gp_targets_mask_filter
     gp_targets_mask = gp_targets_mask[:, gp_mask_filter]
@@ -152,8 +154,9 @@ def extract_gp_dict_from_nichenet_ligand_target_mx(
     ----------
     keep_target_ratio:
         Ratio of target genes that are kept compared to total target genes. This
-        ratio determines the ´score_keep_threshold´, which will be used to
-        filter target genes according to their scores.
+        ratio is applied over the entire matrix (not on gene program level) and
+        determines the ´score_keep_threshold´, which will be used to filter 
+        target genes according to their scores.
     load_from_disk:
         If ´True´, the NicheNet ligand target matrix will be loaded from disk
         instead of from the web.
@@ -192,7 +195,7 @@ def extract_gp_dict_from_nichenet_ligand_target_mx(
     all_target_gene_scores.sort()
     all_target_gene_scores_sorted = np.flip(all_target_gene_scores)
     score_keep_threshold = all_target_gene_scores_sorted[int(
-        len(all_target_gene_scores_sorted) * keep_target_ratio)]
+        (len(all_target_gene_scores_sorted) -1) * keep_target_ratio)]
     ligand_target_df = ligand_target_df.applymap(
         lambda x: x > score_keep_threshold)
 
@@ -203,7 +206,7 @@ def extract_gp_dict_from_nichenet_ligand_target_mx(
         gp_dict[ligand + "_ligand_targetgenes_GP"] = {
             "sources": [ligand],
             "targets": [target for target, include in 
-                       ligand_target_dict[ligand].items() if include == True]}
+                       ligand_target_dict[ligand].items() if include]}
     return gp_dict
 
 
