@@ -12,6 +12,7 @@ def add_gps_from_gp_dict_to_adata(
         gp_dict: dict,
         adata: AnnData,
         genes_uppercase: bool=True,
+        validate_gp_source_gene_overlaps: bool=True,
         gp_targets_mask_key: str="autotalker_gp_targets",
         gp_sources_mask_key: str="autotalker_gp_sources",
         gp_names_key: str="autotalker_gp_names",
@@ -46,6 +47,9 @@ def add_gps_from_gp_dict_to_adata(
     genes_uppercase:
         If `True`, convert the gene names in adata to uppercase for comparison
         with the gene program dictionary (e.g. if adata contains mouse data).
+    validate_gp_source_gene_overlaps:
+        If `True`, validate the gene program dictionary for complete source gene
+        overlaps.
     gp_targets_mask_key:
         Key in ´adata.varm´ where the binary gene program mask for target genes
         of a gene program will be stored (target genes are used for the 
@@ -85,16 +89,20 @@ def add_gps_from_gp_dict_to_adata(
     """
     # Validate gene program dictionary to not have completely overlapping source
     # genes gene programs
-    for i, (gp_i, gp_genes_dict) in enumerate(gp_dict.items()):
-        sources_genes_i = gp_genes_dict["sources"]
-        for j, (gp_j, gp_genes_comparison_dict) in enumerate(gp_dict.items()):
-            if i != j:
-                sources_genes_j = gp_genes_comparison_dict["sources"]
-                if set(sources_genes_i) == set(sources_genes_j):
-                    raise ValueError(f"Gene programs '{gp_i}' and '{gp_j}' have"
-                                     " the same source genes. Please remove one"
-                                     " of the gene programs to have gene "
-                                     "programs with unique source genes.")
+    if validate_gp_source_gene_overlaps:
+        for i, (gp_i, gp_genes_dict) in enumerate(gp_dict.items()):
+            sources_genes_i = gp_genes_dict["sources"]
+            sources_genes_i = [gene.upper() for gene in sources_genes_i]
+            for j, (gp_j, gp_genes_comparison_dict) in enumerate(gp_dict.items()):
+                if i != j:
+                    sources_genes_j = gp_genes_comparison_dict["sources"]
+                    sources_genes_j = [gene.upper() for gene in sources_genes_j]
+                    if set(sources_genes_i) == set(sources_genes_j):
+                        raise ValueError(f"Gene programs '{gp_i}' and '{gp_j}' "
+                                         "have the same source genes. Please "
+                                         "remove one of the gene programs to "
+                                         "have gene programs with unique source"
+                                         " genes.")
 
     # Retrieve probed genes from adata
     adata_genes = (adata.var_names.str.upper() if genes_uppercase 
@@ -292,12 +300,12 @@ def extract_gp_dict_from_omnipath_lr_interactions(
 
 def extract_gp_dict_from_mebocost_es_interactions(
         species: Literal["mouse", "human"],
-        genes_uppercase: bool=False):
+        genes_uppercase: bool=False) -> dict:
     """
     Retrieve metabolite enzyme-sensor interactions from the Human Metabolome
     Database (HMDB) data curated in Chen, K. et al. MEBOCOST: 
-    Metabolite-mediated cell communication modeling by single cell transcriptome.
-    Research Square (2022) doi:10.21203/rs.3.rs-2092898/v1. 
+    Metabolite-mediated cell communication modeling by single cell 
+    transcriptome. Research Square (2022) doi:10.21203/rs.3.rs-2092898/v1. 
     This data is available in the Autotalker package under 
     ´datasets/gp_data/metabolite_enzyme_sensor_gps´.
 
@@ -305,6 +313,7 @@ def extract_gp_dict_from_mebocost_es_interactions(
     ----------
     species:
         Species for which to retrieve metabolite enzyme-sensor interactions.
+    genes_uppercase:
 
     Returns
     ----------
@@ -328,10 +337,16 @@ def extract_gp_dict_from_mebocost_es_interactions(
         metabolite_sensors_df = pd.read_csv(
             dir_path + "mouse_metabolite_sensors.tsv", sep="\t")
     else:
-        raise KeyError("Species should be either human or mouse!")
+        raise ValueError("Species should be either human or mouse.")
+
+    #print(metabolite_enzymes_df[metabolite_enzymes_df["metabolite"].str.contains("Cytidine")])
+    #print(metabolite_enzymes_df[metabolite_enzymes_df["metabolite"].str.contains("Uridine")])
+    #print(metabolite_sensors_df[metabolite_sensors_df["standard_metName"].str.contains("Cytidine")])
+    #print(metabolite_sensors_df[metabolite_sensors_df["standard_metName"].str.contains("Uridine")])
 
     # Retrieve metabolite names
-    metabolite_names_df = (metabolite_sensors_df[["HMDB_ID", "standard_metName"]]
+    metabolite_names_df = (metabolite_sensors_df[["HMDB_ID",
+                                                  "standard_metName"]]
                           .drop_duplicates()
                           .set_index("HMDB_ID"))
 
@@ -348,35 +363,66 @@ def extract_gp_dict_from_mebocost_es_interactions(
     metabolite_enzymes_df["gene_name"] = metabolite_enzymes_df["gene"].apply(
         lambda x: x.split("[")[0])
 
-    metabolite_enzymes_df["gene_name"] = metabolite_enzymes_df["gene_name"].apply(
-        lambda x: x.upper() if genes_uppercase else x)
-    metabolite_sensors_df["Gene_name"] = metabolite_sensors_df["Gene_name"].apply(
-        lambda x: x.upper() if genes_uppercase else x)
+    metabolite_enzymes_df["gene_name"] = (metabolite_enzymes_df["gene_name"]
+                                          .apply(lambda x: x.upper()
+                                                 if genes_uppercase else x))
+    metabolite_sensors_df["Gene_name"] = (metabolite_sensors_df["Gene_name"]
+                                          .apply(lambda x: x.upper() 
+                                                 if genes_uppercase else x))
 
     metabolite_enzymes_df = (metabolite_enzymes_df.groupby(["HMDB_ID"])
-                             .agg({"gene_name": lambda x: x.tolist()})
-                             .rename({"gene_name": "enzyme_genes"}, axis=1)
-                             .reset_index()).set_index("HMDB_ID")
+        .agg({"gene_name": lambda x: sorted(x.unique().tolist())})
+        .rename({"gene_name": "enzyme_genes"}, axis=1)
+        .reset_index()).set_index("HMDB_ID")
 
     metabolite_sensors_df = (metabolite_sensors_df.groupby(["HMDB_ID"])
-                             .agg({"Gene_name": lambda x: x.tolist()})
-                             .rename({"Gene_name": "sensor_genes"}, axis=1)
-                             .reset_index()).set_index("HMDB_ID")
+        .agg({"Gene_name": lambda x: sorted(x.unique().tolist())})
+        .rename({"Gene_name": "sensor_genes"}, axis=1)
+        .reset_index()).set_index("HMDB_ID")
 
     # Combine metabolite names and enzyme and sensor genes
-    metabolite_interaction_df = metabolite_enzymes_df.join(
+    metabolite_df = metabolite_enzymes_df.join(
         other=metabolite_sensors_df,
         how="inner").join(metabolite_names_df).set_index("standard_metName")
 
-    metabolite_interaction_gp_dict = metabolite_interaction_df.to_dict()
+    # Combine metabolites with duplicate enzymes and sensors into one gp
+    metabolite_str_df = metabolite_df.astype(str)
+    chars_to_replace = ["[","]",",", "'"]
+    for char in chars_to_replace:
+        metabolite_str_df["enzyme_genes"] = metabolite_str_df["enzyme_genes"].str.replace(char, "")
+        metabolite_str_df["sensor_genes"] = metabolite_str_df["sensor_genes"].str.replace(char, "")
+    print(metabolite_str_df)
+    metabolite_dup_first_mask = metabolite_str_df.duplicated(keep="first")
+    metabolite_dup_last_mask = metabolite_str_df.duplicated(keep="last")
+    metabolite_dup_first_df = metabolite_str_df[metabolite_dup_first_mask]
+    metabolite_dup_last_df = metabolite_str_df[metabolite_dup_last_mask]
+    metabolite_dup_first_df = (metabolite_dup_first_df.rename_axis("metabolite")
+                               .reset_index())
+    metabolite_dup_last_df = (metabolite_dup_last_df.rename_axis("metabolite")
+                              .reset_index())
+    metabolite_dup_df = pd.merge(
+        metabolite_dup_first_df,
+        metabolite_dup_last_df,
+        left_on=["sensor_genes"],
+        right_on=["sensor_genes"],
+        how="inner")[["metabolite_x", "metabolite_y"]]
+    metabolite_dup_df["metabolites"] = (metabolite_dup_df["metabolite_x"] +
+                                        " " +
+                                        metabolite_dup_df["metabolite_y"])
+    metabolite_x = metabolite_dup_df["metabolite_x"].tolist()
+    metabolites = metabolite_dup_df["metabolites"].tolist()
+    for met_x, mets in zip(metabolite_x, metabolites):
+        metabolite_df.rename(index={met_x: mets}, inplace=True)
+    metabolite_df = metabolite_df[~metabolite_dup_first_mask.values]
+
+    met_interaction_dict = metabolite_df.to_dict()
 
     # Convert to gene program dictionary format
     gp_dict = {}
-    for metabolite, enzyme_genes in metabolite_interaction_gp_dict["enzyme_genes"].items():
+    for metabolite, enzyme_genes in met_interaction_dict["enzyme_genes"].items():
         gp_dict[metabolite + "_metabolite_enzyme_sensor_GP"] = {
             "sources": enzyme_genes}
-    for metabolite, sensor_genes in metabolite_interaction_gp_dict["sensor_genes"].items():
-        gp_dict[metabolite + "_metabolite_enzyme_sensor_GP"]["targets"] = sensor_genes
-
+    for metabolite, sensor_genes in met_interaction_dict["sensor_genes"].items():
+        gp_dict[metabolite + "_metabolite_enzyme_sensor_GP"][
+            "targets"] = sensor_genes
     return gp_dict
-
