@@ -11,17 +11,21 @@ from .utils import _load_R_file_as_df
 def add_gps_from_gp_dict_to_adata(
         gp_dict: dict,
         adata: AnnData,
-        genes_uppercase: bool = True,
-        validate_gp_source_gene_overlaps: bool = True,
+        genes_uppercase: bool=True,
+        gp_filter_mode: Optional[Literal["subset", "superset"]]=None,
+        combine_overlapping_gps: bool=True,
+        overlap_thresh_source_genes: float=1.,
+        overlap_thresh_target_genes: float=1.,
+        overlap_thresh_genes: float=1.,
         gp_targets_mask_key: str = "autotalker_gp_targets",
         gp_sources_mask_key: str = "autotalker_gp_sources",
         gp_names_key: str = "autotalker_gp_names",
         min_total_genes_per_gp: int = 1,
         min_source_genes_per_gp: int = 0,
         min_target_genes_per_gp: int = 0,
-        max_total_genes_per_gp: Optional[int] = None,
-        max_source_genes_per_gp: Optional[int] = None,
-        max_target_genes_per_gp: Optional[int] = None):
+        max_total_genes_per_gp: Optional[int]=None,
+        max_source_genes_per_gp: Optional[int]=None,
+        max_target_genes_per_gp: Optional[int]=None):
     """
     Add gene programs defined in a gene program dictionary to an AnnData object
     by converting the gene program lists of gene program target and source genes
@@ -47,9 +51,27 @@ def add_gps_from_gp_dict_to_adata(
     genes_uppercase:
         If `True`, convert the gene names in adata to uppercase for comparison
         with the gene program dictionary (e.g. if adata contains mouse data).
-    validate_gp_source_gene_overlaps:
-        If `True`, validate the gene program dictionary for complete source gene
-        overlaps.
+    gp_filter_mode:
+        If `None` (default), do not filter any gene programs. If `subset`, 
+        remove gene program that are subsets of other gene programs from the 
+        gene program dictionary before adding it to the AnnData object. If 
+        `superset`, remove gene programs that are supersets of other gene 
+        programs instead.
+    combine_overlapping_gps:
+        If `True`, combine gene programs that overlap according to the defined
+        thresholds.
+    overlap_thresh_source_genes:
+        If `combine_overlapping_gps` is `True`, the minimum ratio of source 
+        genes that need to overlap between two gene programs for them to be 
+        combined.
+    overlap_thresh_target_genes:
+        If `combine_overlapping_gps` is `True`, the minimum ratio of target 
+        genes that need to overlap between two gene programs for them to be 
+        combined.
+    overlap_thresh_genes:
+        If `combine_overlapping_gps` is `True`, the minimum ratio of total genes
+        (source genes & target genes) that need to overlap between two gene 
+        programs for them to be combined.
     gp_targets_mask_key:
         Key in ´adata.varm´ where the binary gene program mask for target genes
         of a gene program will be stored (target genes are used for the 
@@ -87,64 +109,111 @@ def add_gps_from_gp_dict_to_adata(
         in the adata (gene expression has been probed) for a gene program not to
         be discarded.
     """
-    # Validate gene program dictionary to not have completely overlapping source
-    # genes gene programs
-    new_gp_dict = {}
-    overlap_threshold_source = 0.8
-    overlap_threshold_target = 0.8
-    overlap_threshold_all = 0.8
+    new_gp_dict = gp_dict.copy()
 
-    if validate_gp_source_gene_overlaps:
-        for i, (gp_i, gp_genes_dict) in enumerate(gp_dict.items()):
-            source_genes_i = gp_genes_dict["sources"]
-            target_genes_i = gp_genes_dict["targets"]
-            source_genes_i = set([gene.upper() for gene in source_genes_i])
-            target_genes_i = set([gene.upper() for gene in target_genes_i])
-            combined_gps = [gp_i]
-            for j, (gp_j, gp_genes_comparison_dict) in enumerate(gp_dict.items()):
+    # Filter gps that are subsets or supersets of other gps from the gp dict
+    if gp_filter_mode != None:
+        for i, (gp_i, gp_genes_dict_i) in enumerate(gp_dict.items()):
+            source_genes_i = set([gene.upper() for gene in 
+                                  gp_genes_dict_i["sources"]])
+            target_genes_i = set([gene.upper() for gene in 
+                                  gp_genes_dict_i["targets"]])
+            for j, (gp_j, gp_genes_dict_j) in enumerate(gp_dict.items()):
                 if i != j:
-                    source_genes_j = gp_genes_comparison_dict["sources"]
-                    target_genes_j = gp_genes_comparison_dict["targets"]
-                    source_genes_j = set([gene.upper() for gene in source_genes_j])
-                    target_genes_j = set([gene.upper() for gene in target_genes_j])
+                    source_genes_j = set([gene.upper() for gene in 
+                                          gp_genes_dict_j["sources"]])
+                    target_genes_j = set([gene.upper() for gene in
+                                          gp_genes_dict_j["targets"]])
+                    if gp_filter_mode == "subset":
+                        if (source_genes_j.issubset(source_genes_i) &
+                            target_genes_j.issubset(target_genes_i)):
+                                new_gp_dict.pop(gp_j, None)
+                    elif gp_filter_mode == "superset":
+                        if (source_genes_j.issuperset(source_genes_i) &
+                            target_genes_j.issuperset(target_genes_i)):
+                                new_gp_dict.pop(gp_j, None)
+
+    # Combine overlapping gps in the gp dict (overlap ratios are calculated 
+    # based on average gene numbers of the compared gene programs)
+    if combine_overlapping_gps:
+        # First get all overlapping gps per gene program (this includes
+        # duplicate overlaps and non-resolved cross overlaps (i.e. GP A might 
+        # overlap with GP B and GP B might overlap with GP C while GP A and GP C
+        # do not overlap)
+        all_overlapping_gps = []
+        for i, (gp_i, gp_genes_dict_i) in enumerate(new_gp_dict.items()):
+            source_genes_i = set([gene.upper() for gene in 
+                                  gp_genes_dict_i["sources"]])
+            target_genes_i = set([gene.upper() for gene in 
+                                  gp_genes_dict_i["targets"]])
+            gp_overlapping_gps = [gp_i]
+            for j, (gp_j, gp_genes_dict_j) in enumerate(new_gp_dict.items()):
+                if i != j:
+                    source_genes_j = set([gene.upper() for gene in 
+                                          gp_genes_dict_j["sources"]])
+                    target_genes_j = set([gene.upper() for gene in
+                                          gp_genes_dict_j["targets"]])
                     source_genes_overlap = list(source_genes_i & source_genes_j)
                     target_genes_overlap = list(target_genes_i & target_genes_j)
-                    n_source_genes_overlap = len(source_genes_overlap)
-                    n_target_genes_overlap = len(target_genes_overlap)
-                    n_genes_overlap = n_source_genes_overlap + n_target_genes_overlap
-                    n_avg_source_genes = (len(source_genes_i) + len(source_genes_j)) / 2
-                    n_avg_target_genes = (len(target_genes_i) + len(target_genes_j)) / 2
+                    n_source_gene_overlap = len(source_genes_overlap)
+                    n_target_gene_overlap = len(target_genes_overlap)
+                    n_gene_overlap = (n_source_gene_overlap + 
+                                      n_target_gene_overlap)
+                    n_avg_source_genes = (len(source_genes_i) + 
+                                          len(source_genes_j)) / 2
+                    n_avg_target_genes = (len(target_genes_i) + 
+                                          len(target_genes_j)) / 2
                     n_avg_genes = n_avg_source_genes + n_avg_target_genes
-                    ratio_shared_source_genes = n_source_genes_overlap / n_avg_source_genes
-                    ratio_shared_target_genes = n_target_genes_overlap / n_avg_target_genes
-                    ratio_shared_genes = n_genes_overlap / n_avg_genes
-                    if ((ratio_shared_source_genes > overlap_threshold_source) &
-                        (ratio_shared_target_genes > overlap_threshold_target) &
-                        (ratio_shared_genes > overlap_threshold_all)):
-                            combined_gps.append(gp_j)
+                    ratio_shared_source_genes = (n_source_gene_overlap / 
+                                                 n_avg_source_genes)
+                    ratio_shared_target_genes = (n_target_gene_overlap /
+                                                 n_avg_target_genes)
+                    ratio_shared_genes = n_gene_overlap / n_avg_genes
+                    if ((ratio_shared_source_genes >= 
+                         overlap_thresh_source_genes) &
+                        (ratio_shared_target_genes >= 
+                         overlap_thresh_target_genes) &
+                        (ratio_shared_genes >= overlap_thresh_genes)):
+                            gp_overlapping_gps.append(gp_j)
+            if len(gp_overlapping_gps) > 1:
+                all_overlapping_gps.append(set(gp_overlapping_gps))
 
-                    # if sources_genes_j.issubset(sources_genes_i) & target_genes_j.issubset(target_genes_i) or sources_genes_i.issubset(sources_genes_j) & target_genes_i.issubset(target_genes_j):
-                        # print(f"Gene program '{gp_j}' is a subset of gene "
-                        #      f"program '{gp_i}'.")
+        print(all_overlapping_gps)
 
-            if len(combined_gps) > 1:
-                print(combined_gps)
-            # new_gp_dict[gp_i + "_&_" + ] = gp_dict[gp_i]
-            # new_gp_dict[gp_i + "_&_" + gp_j]["sources"].extend(
-            #    gp_dict[gp_i]["sources"])
-            # new_gp_dict[gp_i + "_&_" + gp_j]["targets"].extend(
-            #    gp_dict[gp_i]["targets"])
-            """
-                    if set(sources_genes_i) == set(sources_genes_j):
-                        raise ValueError(f"Gene programs '{gp_i}' and '{gp_j}' "
-                                         "have the same source genes. Please "
-                                         "remove one of the gene programs to "
-                                         "have gene programs with unique source"
-                                         " genes.")
-            """
+        # Second, clean up duplicate overlaps and resolve cross overlaps by
+        # combining them
+        combined_gps = []
+        for i, overlapping_gp_i in enumerate(all_overlapping_gps):
+            print("YUGI")
+            if all(overlapping_gp_j.isdisjoint(overlapping_gp_i) for 
+            j, overlapping_gp_j in enumerate(all_overlapping_gps) if i != j):
+                combined_gps.append(overlapping_gp_i)
+            else:
+                continue
+                overlapping_gp_union = [overlapping_gp_i.union(overlapping_gp_j)
+                                        for j, overlapping_gp_j in 
+                                        enumerate(all_overlapping_gps) 
+                                        if (i != j) & 
+                                        (overlapping_gp_i.intersection(
+                                            overlapping_gp_j) != set())]
+                unique_overlaps = set().union(*overlapping_gp_union)
+                if list(unique_overlaps) not in combined_gps:
+                    combined_gps.append(list(unique_overlaps))
 
-    # print("YAAX")
-    # print(new_gp_dict)
+        print(combined_gps)
+
+        for combined_gp in combined_gps:
+            combined_gp_sources = []
+            combined_gp_targets = []
+            for gp in combined_gp:
+                combined_gp_sources.extend(new_gp_dict[gp]["sources"])
+                combined_gp_targets.extend(new_gp_dict[gp]["targets"])
+                new_gp_dict.pop(gp)
+            print(set(combined_gp_targets))
+            new_gp_dict["_".join(combined_gp)] = {"sources": 
+                                              list(set(combined_gp_sources)),
+                                              "targets":
+                                              list(set(combined_gp_targets))}
 
     # Retrieve probed genes from adata
     adata_genes = (adata.var_names.str.upper() if genes_uppercase
@@ -152,11 +221,11 @@ def add_gps_from_gp_dict_to_adata(
 
     # Create binary gene program masks considering only probed genes
     gp_targets_mask = [[int(gene in gp_genes_dict["targets"])
-                        for _, gp_genes_dict in gp_dict.items()]
+                        for _, gp_genes_dict in new_gp_dict.items()]
                        for gene in adata_genes]
     gp_targets_mask = np.asarray(gp_targets_mask, dtype="int32")
     gp_sources_mask = [[int(gene in gp_genes_dict["sources"])
-                        for _, gp_genes_dict in gp_dict.items()]
+                        for _, gp_genes_dict in new_gp_dict.items()]
                        for gene in adata_genes]
     gp_sources_mask = np.asarray(gp_sources_mask, dtype="int32")
     gp_mask = np.concatenate((gp_sources_mask, gp_targets_mask), axis=0)
@@ -185,7 +254,7 @@ def add_gps_from_gp_dict_to_adata(
     # Add gene program names of gene programs that passed filter to adata.uns
     removed_gp_idx = np.where(~gp_mask_filter)[0]
     adata.uns[gp_names_key] = [gp_name for i, (gp_name, _) in enumerate(
-                               gp_dict.items()) if i not in removed_gp_idx]
+                               new_gp_dict.items()) if i not in removed_gp_idx]
 
 
 def extract_gp_dict_from_nichenet_ligand_target_mx(
