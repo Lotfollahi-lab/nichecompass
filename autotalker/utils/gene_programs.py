@@ -1,3 +1,8 @@
+"""
+This module contains all utiilities to add interpretable communication gene
+programs as prior knowledge for the use of the Autotalker model.
+"""
+
 from typing import Literal, Optional
 
 import numpy as np
@@ -8,34 +13,14 @@ from anndata import AnnData
 from .utils import _load_R_file_as_df
 
 
-def add_gps_from_gp_dict_to_adata(
+def filter_and_combine_gp_dict_gps(
         gp_dict: dict,
-        adata: AnnData,
-        genes_uppercase: bool=True,
         gp_filter_mode: Optional[Literal["subset", "superset"]]=None,
         combine_overlapping_gps: bool=True,
         overlap_thresh_source_genes: float=1.,
         overlap_thresh_target_genes: float=1.,
-        overlap_thresh_genes: float=1.,
-        gp_targets_mask_key: str = "autotalker_gp_targets",
-        gp_sources_mask_key: str = "autotalker_gp_sources",
-        gp_names_key: str = "autotalker_gp_names",
-        min_total_genes_per_gp: int = 1,
-        min_source_genes_per_gp: int = 0,
-        min_target_genes_per_gp: int = 0,
-        max_total_genes_per_gp: Optional[int]=None,
-        max_source_genes_per_gp: Optional[int]=None,
-        max_target_genes_per_gp: Optional[int]=None):
+        overlap_thresh_genes: float=1.) -> dict:
     """
-    Add gene programs defined in a gene program dictionary to an AnnData object
-    by converting the gene program lists of gene program target and source genes
-    to binary masks and aligning the masks with genes for which gene expression
-    is available in the AnnData object. 
-
-    Parts of the implementation are inspired by
-    https://github.com/theislab/scarches/blob/master/scarches/utils/annotations.py#L5
-    (01.10.2022).
-
     Parameters
     ----------
     gp_dict:
@@ -46,17 +31,11 @@ def add_gps_from_gp_dict_to_adata(
         itself (receiving node) and ´sources´ contains a list of the names of
         genes in the gene program for the reconstruction of the gene expression
         of the node's neighbors (transmitting nodes).
-    adata:
-        AnnData object to which the gene programs will be added.
-    genes_uppercase:
-        If `True`, convert the gene names in adata to uppercase for comparison
-        with the gene program dictionary (e.g. if adata contains mouse data).
     gp_filter_mode:
         If `None` (default), do not filter any gene programs. If `subset`, 
-        remove gene program that are subsets of other gene programs from the 
-        gene program dictionary before adding it to the AnnData object. If 
-        `superset`, remove gene programs that are supersets of other gene 
-        programs instead.
+        remove gene programs that are subsets of other gene programs from the 
+        gene program dictionary. If `superset`, remove gene programs that are 
+        supersets of other gene programs instead.
     combine_overlapping_gps:
         If `True`, combine gene programs that overlap according to the defined
         thresholds.
@@ -72,42 +51,14 @@ def add_gps_from_gp_dict_to_adata(
         If `combine_overlapping_gps` is `True`, the minimum ratio of total genes
         (source genes & target genes) that need to overlap between two gene 
         programs for them to be combined.
-    gp_targets_mask_key:
-        Key in ´adata.varm´ where the binary gene program mask for target genes
-        of a gene program will be stored (target genes are used for the 
-        reconstruction of the gene expression of the node itself (receiving node
-        )).
-    gp_sources_mask_key:
-        Key in ´adata.varm´ where the binary gene program mask for source genes
-        of a gene program will be stored (source genes are used for the 
-        reconstruction of the gene expression of the node's neighbors 
-        (transmitting nodes)).
-    gp_names_key:
-        Key in ´adata.uns´ where the gene program names will be stored.
-    min_total_genes_per_gp:
-        Minimum number of total genes in a gene program inluding both target and 
-        source genes that need to be available in the adata (gene expression has
-        been probed) for a gene program not to be discarded.
-    min_source_genes_per_gp:
-        Minimum number of source genes in a gene program that need to be 
-        available in the adata (gene expression has been probed) for a gene 
-        program not to be discarded.
-    min_target_genes_per_gp:
-        Minimum number of target genes in a gene program that need to be 
-        available in the adata (gene expression has been probed) for a gene 
-        program not to be discarded.
-    max_total_genes_per_gp:
-        Maximum number of total genes in a gene program inluding both target and 
-        source genes that can be available in the adata (gene expression has 
-        been probed) for a gene program not to be discarded.
-    max_source_genes_per_gp:
-        Maximum number of source genes in a gene program that can be available 
-        in the adata (gene expression has been probed) for a gene program not to
-        be discarded.
-    max_target_genes_per_gp:
-        Maximum number of target genes in a gene program that can be available 
-        in the adata (gene expression has been probed) for a gene program not to
-        be discarded.
+
+    Returns
+    ----------
+    new_gp_dict:
+        Modified gene program dictionary with gene programs filtered according 
+        to ´gp_filter_mode´ and combined according to ´combine_overlapping_gps´,
+        ´overlap_thresh_source_genes´, ´overlap_thresh_target_genes´, and 
+        ´overlap_thresh_genes´.
     """
     new_gp_dict = gp_dict.copy()
 
@@ -136,8 +87,8 @@ def add_gps_from_gp_dict_to_adata(
     # Combine overlapping gps in the gp dict (overlap ratios are calculated 
     # based on average gene numbers of the compared gene programs)
     if combine_overlapping_gps:
-        # First get all overlapping gps per gene program (this includes
-        # duplicate overlaps and non-resolved cross overlaps (i.e. GP A might 
+        # First, get all overlapping gps per gene program (this includes
+        # duplicate overlaps and unresolved cross overlaps (i.e. GP A might 
         # overlap with GP B and GP B might overlap with GP C while GP A and GP C
         # do not overlap)
         all_overlapping_gps = []
@@ -178,18 +129,44 @@ def add_gps_from_gp_dict_to_adata(
             if len(gp_overlapping_gps) > 1:
                 all_overlapping_gps.append(set(gp_overlapping_gps))
 
-        print(all_overlapping_gps)
+        # Second, clean up duplicate overlaps 
+        all_unique_overlapping_gps = []
+        _ = [all_unique_overlapping_gps.append(item) for item in 
+             all_overlapping_gps if item not in all_unique_overlapping_gps]
 
-        # Second, clean up duplicate overlaps and resolve cross overlaps by
-        # combining them
-        combined_gps = []
-        for i, overlapping_gp_i in enumerate(all_overlapping_gps):
-            print("YUGI")
+        # Third, split overlaps into no cross and cross overlaps
+        no_cross_overlap_combined_gps = []
+        cross_overlap_combined_gps = []
+        for i, overlapping_gp_i in enumerate(all_unique_overlapping_gps):
             if all(overlapping_gp_j.isdisjoint(overlapping_gp_i) for 
-            j, overlapping_gp_j in enumerate(all_overlapping_gps) if i != j):
-                combined_gps.append(overlapping_gp_i)
+            j, overlapping_gp_j in enumerate(all_unique_overlapping_gps) 
+            if i != j):
+                no_cross_overlap_combined_gps.append(list(overlapping_gp_i))
             else:
-                continue
+                cross_overlap_combined_gps.append(list(overlapping_gp_i))
+
+        overlap_sequential_union = []
+        # Fourth, resolve cross overlaps by sequentally combining them
+        while True:
+            for i, overlapping_gp_i in enumerate(all_unique_overlapping_gps):
+                overlap_pair_union = [overlapping_gp_i.union(overlapping_gp_j)
+                                      for j, overlapping_gp_j in 
+                                      enumerate(all_unique_overlapping_gps) 
+                                      if (i != j) & 
+                                      (overlapping_gp_i.intersection(
+                                        overlapping_gp_j) != set())]
+                print(overlap_pair_union)
+                overlap_all_union = set().union(*overlap_pair_union)
+                if list(overlap_all_union) not in overlap_sequential_union:
+                    overlap_sequential_union.append(overlap_all_union)
+            if len(overlap_sequential_union) == len(all_unique_overlapping_gps):
+                break
+            else:
+                all_unique_overlapping_gps = list(overlap_sequential_union)
+
+        return new_gp_dict
+        """
+            else:
                 overlapping_gp_union = [overlapping_gp_i.union(overlapping_gp_j)
                                         for j, overlapping_gp_j in 
                                         enumerate(all_overlapping_gps) 
@@ -199,8 +176,27 @@ def add_gps_from_gp_dict_to_adata(
                 unique_overlaps = set().union(*overlapping_gp_union)
                 if list(unique_overlaps) not in combined_gps:
                     combined_gps.append(list(unique_overlaps))
-
         print(combined_gps)
+        """
+        """
+        combined_gps = []
+        for i, overlapping_gp_i in enumerate(all_unique_overlapping_gps):
+            if all(overlapping_gp_j.isdisjoint(overlapping_gp_i) for 
+            j, overlapping_gp_j in enumerate(all_unique_overlapping_gps) 
+            if i != j):
+                combined_gps.append(list(overlapping_gp_i))
+            else:
+                overlapping_gp_union = [overlapping_gp_i.union(overlapping_gp_j)
+                                        for j, overlapping_gp_j in 
+                                        enumerate(all_overlapping_gps) 
+                                        if (i != j) & 
+                                        (overlapping_gp_i.intersection(
+                                            overlapping_gp_j) != set())]
+                unique_overlaps = set().union(*overlapping_gp_union)
+                if list(unique_overlaps) not in combined_gps:
+                    combined_gps.append(list(unique_overlaps))
+        print(combined_gps)
+        """
 
         for combined_gp in combined_gps:
             combined_gp_sources = []
@@ -209,12 +205,90 @@ def add_gps_from_gp_dict_to_adata(
                 combined_gp_sources.extend(new_gp_dict[gp]["sources"])
                 combined_gp_targets.extend(new_gp_dict[gp]["targets"])
                 new_gp_dict.pop(gp)
-            print(set(combined_gp_targets))
             new_gp_dict["_".join(combined_gp)] = {"sources": 
                                               list(set(combined_gp_sources)),
                                               "targets":
                                               list(set(combined_gp_targets))}
 
+        return new_gp_dict
+
+
+
+def add_gps_from_gp_dict_to_adata(
+        gp_dict: dict,
+        adata: AnnData,
+        genes_uppercase: bool=True,
+        gp_targets_mask_key: str = "autotalker_gp_targets",
+        gp_sources_mask_key: str = "autotalker_gp_sources",
+        gp_names_key: str = "autotalker_gp_names",
+        min_total_genes_per_gp: int = 1,
+        min_source_genes_per_gp: int = 0,
+        min_target_genes_per_gp: int = 0,
+        max_total_genes_per_gp: Optional[int]=None,
+        max_source_genes_per_gp: Optional[int]=None,
+        max_target_genes_per_gp: Optional[int]=None) -> dict:
+    """
+    Add gene programs defined in a gene program dictionary to an AnnData object
+    by converting the gene program lists of gene program target and source genes
+    to binary masks and aligning the masks with genes for which gene expression
+    is available in the AnnData object.
+
+    Parts of the implementation are inspired by
+    https://github.com/theislab/scarches/blob/master/scarches/utils/annotations.py#L5
+    (01.10.2022).
+
+    Parameters
+    ----------
+    gp_dict:
+        Nested dictionary containing the gene programs with keys being gene 
+        program names and values being dictionaries with keys ´targets´ and 
+        ´sources´, where ´targets´ contains a list of the names of genes in the
+        gene program for the reconstruction of the gene expression of the node
+        itself (receiving node) and ´sources´ contains a list of the names of
+        genes in the gene program for the reconstruction of the gene expression
+        of the node's neighbors (transmitting nodes).
+    adata:
+        AnnData object to which the gene programs will be added.
+    genes_uppercase:
+        If `True`, convert the gene names in adata to uppercase for comparison
+        with the gene program dictionary (e.g. if adata contains mouse data).
+    gp_targets_mask_key:
+        Key in ´adata.varm´ where the binary gene program mask for target genes
+        of a gene program will be stored (target genes are used for the 
+        reconstruction of the gene expression of the node itself (receiving node
+        )).
+    gp_sources_mask_key:
+        Key in ´adata.varm´ where the binary gene program mask for source genes
+        of a gene program will be stored (source genes are used for the 
+        reconstruction of the gene expression of the node's neighbors 
+        (transmitting nodes)).
+    gp_names_key:
+        Key in ´adata.uns´ where the gene program names will be stored.
+    min_total_genes_per_gp:
+        Minimum number of total genes in a gene program inluding both target and 
+        source genes that need to be available in the adata (gene expression has
+        been probed) for a gene program not to be discarded.
+    min_source_genes_per_gp:
+        Minimum number of source genes in a gene program that need to be 
+        available in the adata (gene expression has been probed) for a gene 
+        program not to be discarded.
+    min_target_genes_per_gp:
+        Minimum number of target genes in a gene program that need to be 
+        available in the adata (gene expression has been probed) for a gene 
+        program not to be discarded.
+    max_total_genes_per_gp:
+        Maximum number of total genes in a gene program inluding both target and 
+        source genes that can be available in the adata (gene expression has 
+        been probed) for a gene program not to be discarded.
+    max_source_genes_per_gp:
+        Maximum number of source genes in a gene program that can be available 
+        in the adata (gene expression has been probed) for a gene program not to
+        be discarded.
+    max_target_genes_per_gp:
+        Maximum number of target genes in a gene program that can be available 
+        in the adata (gene expression has been probed) for a gene program not to
+        be discarded.
+    """
     # Retrieve probed genes from adata
     adata_genes = (adata.var_names.str.upper() if genes_uppercase
                    else adata.var_names)
