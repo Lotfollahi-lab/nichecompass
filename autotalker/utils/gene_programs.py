@@ -17,15 +17,15 @@ def add_gps_from_gp_dict_to_adata(
         gp_dict: dict,
         adata: AnnData,
         genes_uppercase: bool=True,
-        gp_targets_mask_key: str = "autotalker_gp_targets",
-        gp_sources_mask_key: str = "autotalker_gp_sources",
-        gp_names_key: str = "autotalker_gp_names",
-        min_total_genes_per_gp: int = 1,
-        min_source_genes_per_gp: int = 0,
-        min_target_genes_per_gp: int = 0,
-        max_total_genes_per_gp: Optional[int]=None,
+        gp_targets_mask_key: str="autotalker_gp_targets",
+        gp_sources_mask_key: str="autotalker_gp_sources",
+        gp_names_key: str="autotalker_gp_names",
+        min_genes_per_gp: int=1,
+        min_source_genes_per_gp: int=0,
+        min_target_genes_per_gp: int=0,
+        max_genes_per_gp: Optional[int]=None,
         max_source_genes_per_gp: Optional[int]=None,
-        max_target_genes_per_gp: Optional[int]=None) -> dict:
+        max_target_genes_per_gp: Optional[int]=None):
     """
     Add gene programs defined in a gene program dictionary to an AnnData object
     by converting the gene program lists of gene program target and source genes
@@ -63,8 +63,8 @@ def add_gps_from_gp_dict_to_adata(
         (transmitting nodes)).
     gp_names_key:
         Key in ´adata.uns´ where the gene program names will be stored.
-    min_total_genes_per_gp:
-        Minimum number of total genes in a gene program inluding both target and 
+    min_genes_per_gp:
+        Minimum number of genes in a gene program inluding both target and 
         source genes that need to be available in the adata (gene expression has
         been probed) for a gene program not to be discarded.
     min_source_genes_per_gp:
@@ -75,8 +75,8 @@ def add_gps_from_gp_dict_to_adata(
         Minimum number of target genes in a gene program that need to be 
         available in the adata (gene expression has been probed) for a gene 
         program not to be discarded.
-    max_total_genes_per_gp:
-        Maximum number of total genes in a gene program inluding both target and 
+    max_genes_per_gp:
+        Maximum number of genes in a gene program inluding both target and 
         source genes that can be available in the adata (gene expression has 
         been probed) for a gene program not to be discarded.
     max_source_genes_per_gp:
@@ -94,27 +94,27 @@ def add_gps_from_gp_dict_to_adata(
 
     # Create binary gene program masks considering only probed genes
     gp_targets_mask = [[int(gene in gp_genes_dict["targets"])
-                        for _, gp_genes_dict in new_gp_dict.items()]
+                        for _, gp_genes_dict in gp_dict.items()]
                        for gene in adata_genes]
     gp_targets_mask = np.asarray(gp_targets_mask, dtype="int32")
     gp_sources_mask = [[int(gene in gp_genes_dict["sources"])
-                        for _, gp_genes_dict in new_gp_dict.items()]
+                        for _, gp_genes_dict in gp_dict.items()]
                        for gene in adata_genes]
     gp_sources_mask = np.asarray(gp_sources_mask, dtype="int32")
     gp_mask = np.concatenate((gp_sources_mask, gp_targets_mask), axis=0)
 
     # Filter gene programs for min genes and max genes
-    gp_mask_filter = gp_mask.sum(0) >= min_total_genes_per_gp
-    if max_total_genes_per_gp is not None:
-        gp_mask_filter &= gp_mask.sum(0) <= max_total_genes_per_gp
-    gp_sources_mask_filter = gp_sources_mask.sum(0) >= min_source_genes_per_gp
+    gp_mask_filter = gp_mask.sum(0) >= min_genes_per_gp
+    if max_genes_per_gp is not None:
+        gp_mask_filter &= gp_mask.sum(0) <= max_genes_per_gp
     gp_targets_mask_filter = gp_targets_mask.sum(0) >= min_target_genes_per_gp
-    if max_source_genes_per_gp is not None:
-        gp_sources_mask_filter &= (gp_sources_mask.sum(0)
-                                   <= max_source_genes_per_gp)
     if max_target_genes_per_gp is not None:
         gp_targets_mask_filter &= (gp_targets_mask.sum(0)
                                    <= max_target_genes_per_gp)
+    gp_sources_mask_filter = gp_sources_mask.sum(0) >= min_source_genes_per_gp
+    if max_source_genes_per_gp is not None:
+        gp_sources_mask_filter &= (gp_sources_mask.sum(0)
+                                   <= max_source_genes_per_gp)
     gp_mask_filter &= gp_sources_mask_filter
     gp_mask_filter &= gp_targets_mask_filter
     gp_targets_mask = gp_targets_mask[:, gp_mask_filter]
@@ -127,20 +127,20 @@ def add_gps_from_gp_dict_to_adata(
     # Add gene program names of gene programs that passed filter to adata.uns
     removed_gp_idx = np.where(~gp_mask_filter)[0]
     adata.uns[gp_names_key] = [gp_name for i, (gp_name, _) in enumerate(
-                               new_gp_dict.items()) if i not in removed_gp_idx]
+                               gp_dict.items()) if i not in removed_gp_idx]
 
 
 def extract_gp_dict_from_nichenet_ligand_target_mx(
-        keep_target_ratio: float = 0.1,
-        load_from_disk: bool = False,
-        save_to_disk: bool = False,
-        file_path: Optional[str] = "nichenet_ligand_target_matrix.csv") -> dict:
+        keep_target_ratio: float=0.1,
+        load_from_disk: bool=False,
+        save_to_disk: bool=False,
+        file_path: Optional[str]="nichenet_ligand_target_matrix.csv") -> dict:
     """
     Retrieve NicheNet ligand target potential matrix as described in Browaeys, 
     R., Saelens, W. & Saeys, Y. NicheNet: modeling intercellular communication 
     by linking ligands to target genes. Nat. Methods 17, 159–162 (2020) and 
     extract a gene program dictionary from the matrix based on 
-    ´keep_target_ratio´. Only applies if ´load_from_disk´ is ´False´.
+    ´keep_target_ratio´.
 
     Parameters
     ----------
@@ -157,7 +157,7 @@ def extract_gp_dict_from_nichenet_ligand_target_mx(
         on disk.
     file_path:
         Path of the file where the NicheNet ligand target matrix will be stored
-        (if ´save_to_disk´ is ´True´) or is loaded from (if ´load_from_disk´ is
+        (if ´save_to_disk´ is ´True´) or loaded from (if ´load_from_disk´ is
         ´True´).
 
     Returns
@@ -203,10 +203,10 @@ def extract_gp_dict_from_nichenet_ligand_target_mx(
 
 
 def extract_gp_dict_from_omnipath_lr_interactions(
-        min_curation_effort: int = 0,
-        load_from_disk: bool = False,
-        save_to_disk: bool = False,
-        file_path: Optional[str] = "omnipath_lr_interactions.csv") -> dict:
+        min_curation_effort: int=0,
+        load_from_disk: bool=False,
+        save_to_disk: bool=False,
+        file_path: Optional[str]="omnipath_lr_interactions.csv") -> dict:
     """
     Retrieve ligand-receptor interactions from OmniPath and extract them into a 
     gene program dictionary. OmniPath is a database of molecular biology prior 
@@ -245,15 +245,12 @@ def extract_gp_dict_from_omnipath_lr_interactions(
         # Define intercell_network categories to be retrieved
         intercell_df = op.interactions.import_intercell_network(
             include=["omnipath", "pathwayextra", "ligrecextra"])
-
         # Set transmitters to be ligands and receivers to be receptors
         lr_interaction_df = intercell_df[
             (intercell_df["category_intercell_source"] == "ligand")
             & (intercell_df["category_intercell_target"] == "receptor")]
-
         if save_to_disk:
             lr_interaction_df.to_csv(file_path, index=False)
-
     else:
         lr_interaction_df = pd.read_csv(file_path, index_col=0)
 
@@ -263,7 +260,6 @@ def extract_gp_dict_from_omnipath_lr_interactions(
 
     lr_interaction_df = lr_interaction_df[
         ["genesymbol_intercell_source", "genesymbol_intercell_target"]]
-
     lr_interaction_dict = lr_interaction_df.set_index(
         "genesymbol_intercell_source")["genesymbol_intercell_target"].to_dict()
 
@@ -298,6 +294,8 @@ def extract_gp_dict_from_mebocost_es_interactions(
     species:
         Species for which to retrieve metabolite enzyme-sensor interactions.
     genes_uppercase:
+        If `True`, convert the gene names to uppercase (e.g. to align with other
+        gene programs that contain uppercase genes)
 
     Returns
     ----------
@@ -323,11 +321,6 @@ def extract_gp_dict_from_mebocost_es_interactions(
     else:
         raise ValueError("Species should be either human or mouse.")
 
-    # print(metabolite_enzymes_df[metabolite_enzymes_df["metabolite"].str.contains("Cytidine")])
-    # print(metabolite_enzymes_df[metabolite_enzymes_df["metabolite"].str.contains("Uridine")])
-    # print(metabolite_sensors_df[metabolite_sensors_df["standard_metName"].str.contains("Cytidine")])
-    # print(metabolite_sensors_df[metabolite_sensors_df["standard_metName"].str.contains("Uridine")])
-
     # Retrieve metabolite names
     metabolite_names_df = (metabolite_sensors_df[["HMDB_ID",
                                                   "standard_metName"]]
@@ -343,24 +336,22 @@ def extract_gp_dict_from_mebocost_es_interactions(
             tmp["gene"] = gene
             metabolite_enzymes_unrolled.append(tmp)
     metabolite_enzymes_df = pd.DataFrame(metabolite_enzymes_unrolled)
-
     metabolite_enzymes_df["gene_name"] = metabolite_enzymes_df["gene"].apply(
         lambda x: x.split("[")[0])
-
     metabolite_enzymes_df["gene_name"] = (metabolite_enzymes_df["gene_name"]
                                           .apply(lambda x: x.upper()
                                                  if genes_uppercase else x))
     metabolite_sensors_df["Gene_name"] = (metabolite_sensors_df["Gene_name"]
                                           .apply(lambda x: x.upper()
                                                  if genes_uppercase else x))
-
     metabolite_enzymes_df = (metabolite_enzymes_df.groupby(["HMDB_ID"])
-                             .agg({"gene_name": lambda x: sorted(x.unique().tolist())})
+                             .agg({"gene_name": lambda x: sorted(
+                                x.unique().tolist())})
                              .rename({"gene_name": "enzyme_genes"}, axis=1)
                              .reset_index()).set_index("HMDB_ID")
-
     metabolite_sensors_df = (metabolite_sensors_df.groupby(["HMDB_ID"])
-                             .agg({"Gene_name": lambda x: sorted(x.unique().tolist())})
+                             .agg({"Gene_name": lambda x: sorted(
+                                x.unique().tolist())})
                              .rename({"Gene_name": "sensor_genes"}, axis=1)
                              .reset_index()).set_index("HMDB_ID")
 
@@ -369,39 +360,8 @@ def extract_gp_dict_from_mebocost_es_interactions(
         other=metabolite_sensors_df,
         how="inner").join(metabolite_names_df).set_index("standard_metName")
 
-    # Combine metabolites with duplicate enzymes and sensors into one gp
-    metabolite_str_df = metabolite_df.astype(str)
-    chars_to_replace = ["[", "]", ",", "'"]
-    for char in chars_to_replace:
-        metabolite_str_df["enzyme_genes"] = metabolite_str_df["enzyme_genes"].str.replace(char, "")
-        metabolite_str_df["sensor_genes"] = metabolite_str_df["sensor_genes"].str.replace(char, "")
-    print(metabolite_str_df)
-    metabolite_dup_first_mask = metabolite_str_df.duplicated(keep="first")
-    metabolite_dup_last_mask = metabolite_str_df.duplicated(keep="last")
-    metabolite_dup_first_df = metabolite_str_df[metabolite_dup_first_mask]
-    metabolite_dup_last_df = metabolite_str_df[metabolite_dup_last_mask]
-    metabolite_dup_first_df = (metabolite_dup_first_df.rename_axis("metabolite")
-                               .reset_index())
-    metabolite_dup_last_df = (metabolite_dup_last_df.rename_axis("metabolite")
-                              .reset_index())
-    metabolite_dup_df = pd.merge(
-        metabolite_dup_first_df,
-        metabolite_dup_last_df,
-        left_on=["sensor_genes"],
-        right_on=["sensor_genes"],
-        how="inner")[["metabolite_x", "metabolite_y"]]
-    metabolite_dup_df["metabolites"] = (metabolite_dup_df["metabolite_x"]
-                                        + " "
-                                        + metabolite_dup_df["metabolite_y"])
-    metabolite_x = metabolite_dup_df["metabolite_x"].tolist()
-    metabolites = metabolite_dup_df["metabolites"].tolist()
-    for met_x, mets in zip(metabolite_x, metabolites):
-        metabolite_df.rename(index={met_x: mets}, inplace=True)
-    metabolite_df = metabolite_df[~metabolite_dup_first_mask.values]
-
-    met_interaction_dict = metabolite_df.to_dict()
-
     # Convert to gene program dictionary format
+    met_interaction_dict = metabolite_df.to_dict()
     gp_dict = {}
     for metabolite, enzyme_genes in met_interaction_dict["enzyme_genes"].items():
         gp_dict[metabolite + "_metabolite_enzyme_sensor_GP"] = {
@@ -597,5 +557,4 @@ def filter_and_combine_gp_dict_gps(
                                         sorted(list(set(new_gp_sources)))}
             new_gp_dict[new_gp_name]["targets"] = sorted(
                 list(set(new_gp_targets)))
-
         return new_gp_dict
