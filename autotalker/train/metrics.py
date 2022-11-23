@@ -1,3 +1,7 @@
+"""
+This module contains metrics to evaluate the Autotalker model training.
+"""
+
 from typing import Union
 
 import matplotlib.pyplot as plt
@@ -8,7 +12,7 @@ from matplotlib.ticker import MaxNLocator
 
 
 def eval_metrics(edge_recon_probs: Union[torch.Tensor, np.ndarray],
-                 edge_labels: Union[torch.Tensor, np.ndarray]):
+                 edge_labels: Union[torch.Tensor, np.ndarray]) -> dict:
     """
     Get the evaluation metrics for a (balanced) sample of positive and negative 
     edges.
@@ -65,7 +69,7 @@ def eval_metrics(edge_recon_probs: Union[torch.Tensor, np.ndarray],
     return eval_dict
 
 
-def plot_eval_metrics(eval_dict):
+def plot_eval_metrics(eval_dict: dict) -> plt.figure:
     """
     Plot evaluation metrics.
 

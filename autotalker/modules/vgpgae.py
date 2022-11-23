@@ -180,7 +180,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     def loss(self,
              edge_data_batch: Data,
              edge_model_output: dict,
-             node_data_batch: Data,
              node_model_output: dict,
              device: Literal["cpu", "cuda"],
              lambda_l1_addon: float=0.,
@@ -194,8 +193,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             PyG Data object containing an edge-level batch.
         edge_model_output:
             Output of the forward pass for edge reconstruction.
-        node_data_batch:
-            PyG Data object containing a node-level batch.
         node_model_output:
             Output of the forward pass for gene expression reconstruction.
         device:
@@ -264,7 +261,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
             loss_dict["group_lasso_reg_loss"] = (lambda_group_lasso * 
                 compute_group_lasso_reg_loss(self.named_parameters()))
-            loss_dict["loss"] += loss_dict["group_lasso_reg_loss"]
+            loss_dict["loss"] += loss_dict["group_lasso_reg_loss" ]
 
             if self.n_addon_latent != 0:
                 loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon * 
