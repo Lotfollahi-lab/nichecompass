@@ -88,7 +88,7 @@ def node_level_split_mask(data: Data,
 
 
 def prepare_data(adata: AnnData,
-                 counts_layer_key: str="counts",
+                 counts_key: str="counts",
                  adj_key: str="spatial_connectivities",
                  node_label_method: Literal["self",
                                             "one-hop-sum",
@@ -106,9 +106,9 @@ def prepare_data(adata: AnnData,
     ----------
     adata:
         AnnData object with raw counts stored in 
-        ´adata.layers[counts_layer_key]´, and sparse adjacency matrix stored in 
+        ´adata.layers[counts_key]´, and sparse adjacency matrix stored in 
         ´adata.obsp[adj_key]´.
-    counts_layer_key:
+    counts_key:
         Key under which the raw counts are stored in ´adata.layer´.
     adj_key:
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
@@ -143,7 +143,7 @@ def prepare_data(adata: AnnData,
     """
     data_dict = {}
     dataset = SpatialAnnTorchDataset(adata=adata,
-                                     counts_layer_key=counts_layer_key,
+                                     counts_key=counts_key,
                                      adj_key=adj_key)
     # PyG Data object (has 2 edge index pairs for one edge because of symmetry;
     # one edge index pair will be removed in the edge-level split).

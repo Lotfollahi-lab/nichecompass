@@ -129,6 +129,7 @@ class BaseModelMixin():
              adata_file_name: str="adata.h5ad",
              use_cuda: bool=False,
              n_addon_gps: int=0,
+             gp_key: Optional[str]=None,
              freeze_non_addon_weights: bool=False):
         """
         Instantiate a model from saved output. Can be used for transfer learning
@@ -172,6 +173,12 @@ class BaseModelMixin():
         if n_addon_gps != 0:
             attr_dict["n_addon_gps_"] = n_addon_gps
             attr_dict["init_params_"]["n_addon_gps"] = n_addon_gps
+
+            if gp_key is None:
+                raise ValueError("Please specify 'gp_key' so that addon gps can"
+                                 " be added to the gene program list.")
+
+            adata.uns[gp_key] += ["addon_GP_" + str(i) for i in range(n_addon_gps)]
 
         model = _initialize_model(cls, adata, attr_dict)
 

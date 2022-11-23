@@ -1,0 +1,4 @@
+artifact_location: file:///home/cartalop/sebastianbirk/autotalker-dev/mlruns/4
+experiment_id: '4'
+lifecycle_stage: active
+name: autotalker_mebocost_gps

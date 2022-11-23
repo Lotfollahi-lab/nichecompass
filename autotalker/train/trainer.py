@@ -29,11 +29,11 @@ class Trainer:
     ----------
     adata:
         AnnData object with raw counts stored in 
-        ´adata.layers[counts_layer_key]´, and sparse adjacency matrix stored in 
+        ´adata.layers[counts_key]´, and sparse adjacency matrix stored in 
         ´adata.obsp[adj_key]´.
     model:
         An Autotalker module model instance.
-    counts_layer_key:
+    counts_key:
         Key under which the raw counts are stored in ´adata.layer´.
     adj_key:
         Key under which the sparse adjacency matrix is stored in adata.obsp.
@@ -72,7 +72,7 @@ class Trainer:
     def __init__(self,
                  adata: AnnData,
                  model: nn.Module,
-                 counts_layer_key: str="counts",
+                 counts_key: str="counts",
                  adj_key: str="spatial_connectivities",
                  node_label_method: Literal["self",
                                             "one-hop-sum",
@@ -93,7 +93,7 @@ class Trainer:
                  **kwargs):
         self.adata = adata
         self.model = model
-        self.counts_layer_key = counts_layer_key
+        self.counts_key = counts_key
         self.adj_key = adj_key
         self.node_label_method = node_label_method
         self.edge_train_ratio = 1 - edge_val_ratio - edge_test_ratio
@@ -141,7 +141,7 @@ class Trainer:
         # Prepare data and get node-level and edge-level training, validation
         # and test splits
         data_dict = prepare_data(adata=adata,
-                                 counts_layer_key=self.counts_layer_key,
+                                 counts_key=self.counts_key,
                                  adj_key=self.adj_key,
                                  node_label_method=node_label_method,
                                  edge_val_ratio=self.edge_val_ratio,
