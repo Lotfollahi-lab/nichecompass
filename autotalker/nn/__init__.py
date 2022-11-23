@@ -16,4 +16,4 @@ __all__ = ["OneHopAttentionNodeLabelAggregator",
            "GCNEncoder",
            "MaskedLinear",
            "GCNLayer",
-           "MaskedLayer"]
+           "AddOnMaskedLayer"]

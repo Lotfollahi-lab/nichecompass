@@ -1,3 +1,7 @@
+"""
+This module contains neural network encoders used by the Autotalker model.
+"""
+
 import torch
 import torch.nn as nn
 from torch_geometric.nn import GCNConv
@@ -22,7 +26,7 @@ class GCNEncoder(nn.Module):
         Number of output nodes from the GCN encoder, making up the latent space
         features.
     n_addon_latent:
-        
+        Number of add-on nodes in the latent space (new gene programs).        
     dropout_rate:
         Probability of nodes to be dropped in the hidden layer during training.
     activation:
@@ -33,7 +37,7 @@ class GCNEncoder(nn.Module):
                  n_hidden: int,
                  n_latent: int,
                  n_addon_latent: int=0,
-                 dropout_rate: float=0.0,
+                 dropout_rate: float=0.,
                  activation: nn.Module=nn.ReLU):
         super().__init__()
         self.n_addon_latent = n_addon_latent
@@ -52,7 +56,9 @@ class GCNEncoder(nn.Module):
             self.addon_gcn_mu = GCNConv(n_hidden, n_addon_latent)
             self.addon_gcn_logstd = GCNConv(n_hidden, n_addon_latent)
 
-    def forward(self, x: torch.Tensor, edge_index: torch.Tensor):
+    def forward(self,
+                x: torch.Tensor,
+                edge_index: torch.Tensor) -> torch.Tensor:
         """
         Forward pass of the GCN encoder.
 
@@ -87,5 +93,4 @@ class GCNEncoder(nn.Module):
             logstd = torch.cat(
                 (logstd, self.addon_gcn_logstd(hidden, edge_index)),
                 dim=1)
-
         return mu, logstd

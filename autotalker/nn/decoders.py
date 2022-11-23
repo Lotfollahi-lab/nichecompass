@@ -1,47 +1,13 @@
+"""
+This module contains decoders used by the Autotalker model.
+"""
+
+from typing import Tuple
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from .layers import AddOnMaskedLayer
-
-
-class FCGraphDecoder(nn.Module):
-    """
-    Fully connected graph decoder class.
-    """
-    def __init__(self,
-                 n_input: int,
-                 n_output: int,
-                 bias: bool=False,
-                 dropout_rate: float=0.0,
-                 activation: nn.Module=nn.Identity):
-        super().__init__()
-
-        print(f"FULLY CONNECTED GRAPH DECODER -> dropout_rate: {dropout_rate}")
-
-        self.linear = nn.Linear(n_input * 2, n_output, bias=bias)
-        self.dropout = nn.Dropout(dropout_rate)
-        self.activation = activation
-
-    def forward(self, z: torch.Tensor):
-        """
-        Forward pass of the fully connected graph decoder.
-
-        Parameters
-        ----------
-        z:
-            Tensor containing the latent space features.
-
-        Returns
-        ----------
-        adj_rec_logits:
-            Tensor containing the reconstructed adjacency matrix with logits.
-        """
-        z_cat = torch.cat((z, z.t()), dim=-1)
-        print(z_cat.shape)
-        z_cat = self.linear(self.dropout(z_cat))
-        adj_rec_logits = self.activation(z_cat)
-        return adj_rec_logits
 
 
 class DotProductGraphDecoder(nn.Module):
@@ -59,14 +25,14 @@ class DotProductGraphDecoder(nn.Module):
     dropout_rate:
         Probability of nodes to be dropped during training.
     """
-    def __init__(self, dropout_rate: float=0.0):
+    def __init__(self, dropout_rate: float=0.):
         super().__init__()
 
         print(f"DOT PRODUCT GRAPH DECODER -> dropout_rate: {dropout_rate}")
 
         self.dropout = nn.Dropout(dropout_rate)
 
-    def forward(self, z: torch.Tensor):
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
         """
         Forward pass of the dot product graph decoder.
 
@@ -116,24 +82,6 @@ class MaskedGeneExprDecoder(nn.Module):
         print(f"MASKED GENE EXPRESSION DECODER -> n_input: {n_input}, "
               f"n_addon_input: {n_addon_input}, n_output: {n_output}")
 
-        """
-        self.shared_decoder = AddOnMaskedLayer(
-            n_input=n_input,
-            n_output=n_output,
-            bias=False,
-            mask=mask,
-            n_addon_input=n_addon_input,
-            activation=nn.Identity())
-
-        self.nb_means_normalized_decoder = nn.Sequential(
-            self.shared_decoder,
-            nn.Softmax(dim=-1))
-
-        self.zi_prob_logits_decoder = nn.Sequential(
-            self.shared_decoder,
-            nn.Identity())
-        """
-
         self.nb_means_normalized_decoder = AddOnMaskedLayer(
             n_input=n_input,
             n_output=n_output,
@@ -150,7 +98,10 @@ class MaskedGeneExprDecoder(nn.Module):
             n_addon_input=n_addon_input,
             activation=nn.Identity())
 
-    def forward(self, z: torch.Tensor, log_library_size: torch.Tensor):
+    def forward(self,
+                z: torch.Tensor,
+                log_library_size: torch.Tensor
+                ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass of the masked gene expression decoder.
 
