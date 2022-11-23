@@ -1,3 +1,10 @@
+"""
+This module contains generic base functionalities, added as a Mixin to the main
+Variational Gene Program Graph Autoencoder module.
+"""
+
+from collections import OrderedDict
+
 import torch
 
 
@@ -5,11 +12,15 @@ class BaseModuleMixin:
     """
     Base module mix in class containing universal module functionalities.
     """
-    def load_and_expand_state_dict(self, model_state_dict):
+    def load_and_expand_state_dict(self,
+                                   model_state_dict: OrderedDict):
         """
         Load model state dictionary into model and expand it to account for
-        architectural changes through e.g. add-on nodes. Adapted from 
-        https://github.com/theislab/scarches/blob/master/scarches/models/base/_base.py#L92.
+        architectural changes through e.g. add-on nodes. 
+        
+        Parts of the implementation are adapted from 
+        https://github.com/theislab/scarches/blob/master/scarches/models/base/_base.py#L92
+        (01.10.2022)
         """
         load_state_dict = model_state_dict.copy() # old model architecture state dict
         new_state_dict = self.state_dict() # new model architecture state dict

@@ -1,3 +1,10 @@
+"""
+This module contains generic VGAE functionalities, added as a Mixin to the main
+Variational Gene Program Graph Autoencoder module.
+"""
+
+from typing import Tuple
+
 import torch
 
 
@@ -6,7 +13,9 @@ class VGAEModuleMixin:
     VGAE module mix in class containing universal VGAE module 
     functionalities.
     """
-    def reparameterize(self, mu: torch.Tensor, logstd: torch.Tensor):
+    def reparameterize(self,
+                       mu: torch.Tensor,
+                       logstd: torch.Tensor) -> torch.Tensor:
         """
         Use reparameterization trick for latent space normal distribution.
         
@@ -35,7 +44,7 @@ class VGAEModuleMixin:
     def get_latent_representation(self,
                                   x: torch.Tensor,
                                   edge_index: torch.Tensor,
-                                  return_mu_std: bool=False):
+                                  return_mu_std: bool=False) -> torch.Tensor:
         """
         Encode input features x and edge index into the latent space normal 
         distribution parameters and return z. If the module is not in training
@@ -66,7 +75,8 @@ class VGAEModuleMixin:
     @torch.no_grad()
     def get_zinb_gene_expr_params(self,
                                   z: torch.Tensor,
-                                  log_library_size: torch.Tensor):
+                                  log_library_size: torch.Tensor
+                                  ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Decode latent space features z using the log library size of the
         input gene expression to return the parameters of the ZINB distribution
@@ -87,6 +97,5 @@ class VGAEModuleMixin:
         zinb_parameters = self.gene_expr_decoder(
             z,
             log_library_size)
-
         return zinb_parameters
       

@@ -1,15 +1,18 @@
 """
-This module contains all loss functions used for the optimization of the 
-Autotalker model.
+This module contains all loss functions used by the Variational Gene Program 
+Graph Autoencoder module for the optimization of the Autotalker model.
 """
+from typing import Iterable, Tuple
 
 import torch
 import torch.nn.functional as F
 
-from .utils import _edge_values_and_sorted_labels
+from .utils import edge_values_and_sorted_labels
 
 
-def compute_group_lasso_reg_loss(named_model_params):
+def compute_group_lasso_reg_loss(
+        named_model_params: Iterable[Tuple[str, torch.nn.Parameter]]
+        ) -> torch.Tensor:
     """
     Compute group lasso regularization loss for the decoder layer weights to 
     enforce gene program sparsity (each gene program is a group; the number of 
@@ -27,16 +30,18 @@ def compute_group_lasso_reg_loss(named_model_params):
         Group lasso regularization loss for the decoder layer weights.    
     """
     # Compute L2 norm per group / gene program and sum across all gene programs
-    decoder_layerwise_param_groupnorm_sum = torch.tensor(
+    decoder_layerwise_param_gpgroupnorm_sum = torch.tensor(
         [param.norm(p=2, dim=0).sum() for param_name, param in 
          named_model_params if "gene_expr_decoder.nb_means_normalized_decoder" 
          in param_name])
     # Sum over ´masked_l´ layer and ´addon_l´ layer if addon gene programs exist
-    group_lasso_reg_loss = torch.sum(decoder_layerwise_param_groupnorm_sum)
+    group_lasso_reg_loss = torch.sum(decoder_layerwise_param_gpgroupnorm_sum)
     return group_lasso_reg_loss
 
 
-def compute_addon_l1_reg_loss(named_model_params):
+def compute_addon_l1_reg_loss(
+        named_model_params: Iterable[Tuple[str, torch.nn.Parameter]]
+        ) -> torch.Tensor:
     """
     Compute L1 regularization loss for the add-on decoder layer weights to 
     enforce gene sparsity of add-on gene programs.
@@ -61,7 +66,7 @@ def compute_addon_l1_reg_loss(named_model_params):
 def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
                             edge_labels: torch.Tensor,
                             edge_label_index: torch.Tensor,
-                            pos_weight: torch.Tensor):
+                            pos_weight: torch.Tensor) -> torch.Tensor:
     """
     Compute edge reconstruction weighted binary cross entropy loss with logits 
     using ground truth edge labels and predicted edge logits (retrieved from the
@@ -86,7 +91,7 @@ def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
         probabilities (calculated from logits for numerical stability in
         backpropagation).
     """
-    edge_recon_logits, edge_labels_sorted = _edge_values_and_sorted_labels(
+    edge_recon_logits, edge_labels_sorted = edge_values_and_sorted_labels(
         adj=adj_recon_logits,
         edge_label_index=edge_label_index,
         edge_labels=edge_labels)
@@ -102,14 +107,16 @@ def compute_gene_expr_recon_zinb_loss(x: torch.Tensor,
                                       mu: torch.Tensor,
                                       theta: torch.Tensor,
                                       zi_prob_logits: torch.Tensor,
-                                      eps: float=1e-8):
+                                      eps: float=1e-8) -> torch.Tensor:
     """
     Gene expression reconstruction loss according to a ZINB gene expression 
     model, which is used to model scRNA-seq count data due to its capacity of 
-    modeling excess zeros and overdispersion. The source code is adapted from
+    modeling excess zeros and overdispersion. The Bernoulli distribution is 
+    parameterized using logits, hence the use of a softplus function.
+
+    Parts of the implementation are adapted from
     https://github.com/scverse/scvi-tools/blob/master/scvi/distributions/_negative_binomial.py#L22.
-    The Bernoulli distribution is parameterized using logits, hence the use of a
-    softplus function.
+    (01.10.2022)
 
     Parameters
     ----------
@@ -161,7 +168,7 @@ def compute_gene_expr_recon_zinb_loss(x: torch.Tensor,
 
 def compute_kl_loss(mu: torch.Tensor,
                     logstd: torch.Tensor,
-                    n_nodes: int):
+                    n_nodes: int) -> torch.Tensor:
     """
     Compute Kullback-Leibler divergence as per Kingma, D. P. & Welling, M. 
     Auto-Encoding Variational Bayes. arXiv [stat.ML] (2013).

@@ -1,3 +1,8 @@
+"""
+This module contains the Variational Gene Program Graph Autoencoder, the core
+module of the Autotalker model.
+"""
+
 from typing import Literal
 
 import mlflow
@@ -35,7 +40,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         Number of nodes in the latent space (gene programs from the gene program
         mask).
     n_addon_latent:
-        Number of add-on nodes in the latent space (new gene programs)
+        Number of add-on nodes in the latent space (new gene programs).
     n_output:
         Number of nodes in the output layer.
     gene_expr_decoder_mask:
@@ -67,10 +72,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  dropout_rate_graph_decoder: float=0.0,
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
-                 node_label_method: Literal["self",
-                                            "one-hop-norm",
-                                            "one-hop-sum",
-                                            "one-hop-attention"]="one-hop-attention",
+                 node_label_method: Literal[
+                    "self",
+                    "one-hop-norm",
+                    "one-hop-sum",
+                    "one-hop-attention"]="one-hop-attention",
                  log_variational: bool=True):
         super().__init__()
         self.n_input = n_input
@@ -109,21 +115,24 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_addon_input=n_addon_latent)
 
         if node_label_method == "self":
-            self.gene_expr_node_label_aggregator = SelfNodeLabelNoneAggregator()
+            self.gene_expr_node_label_aggregator = (
+                SelfNodeLabelNoneAggregator())
         elif node_label_method == "one-hop-norm":
-            self.gene_expr_node_label_aggregator = OneHopGCNNormNodeLabelAggregator()
+            self.gene_expr_node_label_aggregator = (
+                OneHopGCNNormNodeLabelAggregator())
         elif node_label_method == "one-hop-sum":
-            self.gene_expr_node_label_aggregator = OneHopSumNodeLabelAggregator() 
+            self.gene_expr_node_label_aggregator = (
+                OneHopSumNodeLabelAggregator()) 
         elif node_label_method == "one-hop-attention": 
-            self.gene_expr_node_label_aggregator = OneHopAttentionNodeLabelAggregator(
-                n_input=n_input)
+            self.gene_expr_node_label_aggregator = (
+                OneHopAttentionNodeLabelAggregator(n_input=n_input))
         
         # Gene-specific dispersion parameters
         self.theta = torch.nn.Parameter(torch.randn(self.n_output))
 
     def forward(self,
                 data_batch: Data,
-                decoder: Literal["graph", "gene_expr"]="graph"):
+                decoder: Literal["graph", "gene_expr"]="graph") -> dict:
         """
         Forward pass of the VGPGAE module.
 
@@ -163,7 +172,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         if decoder == "graph":
             output["adj_recon_logits"] = self.graph_decoder(z)
         elif decoder == "gene_expr":
-
             # Compute aggregated neighborhood gene expression for gene 
             # expression reconstruction        
             output["node_labels"] = self.gene_expr_node_label_aggregator(
@@ -174,7 +182,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             output["zinb_parameters"] = self.gene_expr_decoder(
                     z[:data_batch.batch_size],
                     log_library_size[:data_batch.batch_size])
-        
         return output
 
     def loss(self,
@@ -183,7 +190,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
              node_model_output: dict,
              device: Literal["cpu", "cuda"],
              lambda_l1_addon: float=0.,
-             lambda_group_lasso: float=0):
+             lambda_group_lasso: float=0) -> dict:
         """
         Calculate loss of the VGPGAE module.
 
@@ -198,17 +205,16 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         device:
             Device where to send the loss parameters.
         lambda_l1_addon:
-            Lambda (weighting) parameter for the L1 regularization of genes in addon
-            gene programs.
+            Lambda (weighting) parameter for the L1 regularization of genes in 
+            addon gene programs.
         lambda_group_lasso:
-            Lambda (weighting) parameter for the group lasso regularization of gene
-            programs.
+            Lambda (weighting) parameter for the group lasso regularization of 
+            gene programs.
 
         Returns
         ----------
         loss_dict:
-            Dictionary containing loss, edge reconstruction loss and gene
-            expression reconstruction loss.
+            Dictionary containing loss and all loss components.
         """
         loss_dict = {}
 
@@ -226,19 +232,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         # compared to Kullback-Leibler divergence and edge reconstruction loss.
         gene_expr_recon_loss_norm_factor = 1
 
-        loss_dict["edge_recon_loss"] = (edge_recon_loss_norm_factor * 
-        compute_edge_recon_loss(
-            adj_recon_logits=edge_model_output["adj_recon_logits"],
-            edge_labels=edge_data_batch.edge_label,
-            edge_label_index=edge_data_batch.edge_label_index,
-            pos_weight=edge_recon_loss_pos_weight))
-
         loss_dict["kl_loss"] = compute_kl_loss(
             mu=edge_model_output["mu"],
             logstd=edge_model_output["logstd"],
             n_nodes=edge_data_batch.x.size(0))
-
-        nb_means, zi_prob_logits = node_model_output["zinb_parameters"]
 
         # Gene-specific inverse dispersion
         theta = torch.exp(self.theta)
@@ -247,16 +244,24 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         loss_dict["loss"] += loss_dict["kl_loss"]
 
         if self.include_edge_recon_loss:
+            loss_dict["edge_recon_loss"] = (edge_recon_loss_norm_factor * 
+                compute_edge_recon_loss(
+                    adj_recon_logits=edge_model_output["adj_recon_logits"],
+                    edge_labels=edge_data_batch.edge_label,
+                    edge_label_index=edge_data_batch.edge_label_index,
+                    pos_weight=edge_recon_loss_pos_weight))
             loss_dict["loss"] += loss_dict["edge_recon_loss"]
 
         if self.include_gene_expr_recon_loss:
+            nb_means, zi_prob_logits = node_model_output["zinb_parameters"]
+            
             loss_dict["gene_expr_recon_loss"] = (
                 gene_expr_recon_loss_norm_factor * 
-                compute_gene_expr_recon_zinb_loss(
-                    x=node_model_output["node_labels"],
-                    mu=nb_means,
-                    theta=theta,
-                    zi_prob_logits=zi_prob_logits))
+                    compute_gene_expr_recon_zinb_loss(
+                        x=node_model_output["node_labels"],
+                        mu=nb_means,
+                        theta=theta,
+                        zi_prob_logits=zi_prob_logits))
             loss_dict["loss"] += loss_dict["gene_expr_recon_loss"]
 
             loss_dict["group_lasso_reg_loss"] = (lambda_group_lasso * 
@@ -267,7 +272,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon * 
                     compute_addon_l1_reg_loss(self.named_parameters()))
                 loss_dict["loss"] += loss_dict["addon_gp_l1_reg_loss"]
-
         return loss_dict
 
     def log_module_hyperparams_to_mlflow(self):

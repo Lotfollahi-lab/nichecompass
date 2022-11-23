@@ -1,10 +1,16 @@
+"""
+This module contains helper functions for the ´modules´ subpackage.
+"""
+from typing import Tuple
+
 import torch
 from torch_geometric.utils import to_dense_adj
 
 
-def _edge_values_and_sorted_labels(adj: torch.Tensor,
-                                   edge_label_index: torch.Tensor,
-                                   edge_labels: torch.Tensor):
+def edge_values_and_sorted_labels(adj: torch.Tensor,
+                                  edge_label_index: torch.Tensor,
+                                  edge_labels: torch.Tensor
+                                  ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Utility function to retrieve values at edge indeces as given by 
     ´edge_label_index´ from an adjacency matrix ´adj´, remove edge labels 
@@ -52,11 +58,10 @@ def _edge_values_and_sorted_labels(adj: torch.Tensor,
     # ´edge_label_index´, 
     sort_index = _unique_sorted_index(edge_label_index)
     edge_labels_sorted = edge_labels[sort_index]
-
     return adj_values, edge_labels_sorted
 
 
-def _unique_sorted_index(x: torch.Tensor, dim=-1):
+def _unique_sorted_index(x: torch.Tensor, dim=-1) -> torch.Tensor:
     """
     Utility function to remove duplicates from a tensor and return a sorted 
     index containing only indeces from unique values.
