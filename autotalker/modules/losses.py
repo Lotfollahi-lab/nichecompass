@@ -1,13 +1,45 @@
+"""
+This module contains all loss functions used for the optimization of the 
+Autotalker model.
+"""
+
 import torch
 import torch.nn.functional as F
 
 from .utils import _edge_values_and_sorted_labels
 
 
+def compute_group_lasso_reg_loss(named_model_params):
+    """
+    Compute group lasso regularization loss for the decoder layer weights to 
+    enforce gene program sparsity (each gene program is a group; the number of 
+    weights per group normalization is omitted as each group / gene program has 
+    the same number of weights).
+
+    Parameters
+    ----------
+    named_model_params:
+        Named model parameters of the model.
+
+    Returns
+    ----------
+    group_lasso_reg_loss:
+        Group lasso regularization loss for the decoder layer weights.    
+    """
+    # Compute L2 norm per group / gene program and sum across all gene programs
+    decoder_layerwise_param_groupnorm_sum = torch.tensor(
+        [param.norm(p=2, dim=0).sum() for param_name, param in 
+         named_model_params if "gene_expr_decoder.nb_means_normalized_decoder" 
+         in param_name])
+    # Sum over ´masked_l´ layer and ´addon_l´ layer if addon gene programs exist
+    group_lasso_reg_loss = torch.sum(decoder_layerwise_param_groupnorm_sum)
+    return group_lasso_reg_loss
+
+
 def compute_addon_l1_reg_loss(named_model_params):
     """
     Compute L1 regularization loss for the add-on decoder layer weights to 
-    enforce sparsity of add-on gene programs.
+    enforce gene sparsity of add-on gene programs.
 
     Parameters
     ----------
@@ -17,11 +49,11 @@ def compute_addon_l1_reg_loss(named_model_params):
     Returns
     ----------
     addon_l1_reg_loss:
-        L1 regularization loss of add-on decoder layers.
+        L1 regularization loss for the add-on decoder layer weights.
     """
     addon_decoder_layerwise_param_sum = torch.tensor(
         [abs(param).sum() for param_name, param in named_model_params 
-         if "addon_l" in param_name])
+         if "nb_means_normalized_decoder.addon_l" in param_name])
     addon_l1_reg_loss = torch.sum(addon_decoder_layerwise_param_sum)
     return addon_l1_reg_loss
 

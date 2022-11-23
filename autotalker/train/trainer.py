@@ -86,7 +86,6 @@ class Trainer:
                  use_early_stopping: bool=True,
                  reload_best_model: bool=True,
                  early_stopping_kwargs: Optional[dict]=None,
-                 gamma_addon: Optional[float]=None,
                  seed: int=0,
                  monitor: bool=True,
                  verbose: bool=False,
@@ -114,7 +113,6 @@ class Trainer:
             else:
                 self.early_stopping_kwargs["early_stopping_metric"] = "train_loss"
         self.early_stopping = EarlyStopping(**self.early_stopping_kwargs)
-        self.gamma_addon = gamma_addon
         self.seed = seed
         self.monitor = monitor
         self.verbose = verbose
@@ -188,6 +186,8 @@ class Trainer:
               n_epochs: int=30,
               lr: float=0.01,
               weight_decay: float=0,
+              lambda_l1_addon: float=0.,
+              lambda_group_lasso: float=0.,
               mlflow_experiment_id: Optional[str]=None):
         """
         Train the model.
@@ -200,6 +200,12 @@ class Trainer:
             Learning rate.
         weight_decay:
             Weight decay (L2 penalty).
+        lambda_l1_addon:
+            Lambda (weighting) parameter for the L1 regularization of genes in addon
+            gene programs.
+        lambda_group_lasso:
+            Lambda (weighting) parameter for the group lasso regularization of gene
+            programs.
         mlflow_experiment_id:
             ID of the Mlflow experiment used for tracking training parameters
             and metrics.
@@ -207,6 +213,8 @@ class Trainer:
         self.n_epochs = n_epochs
         self.lr = lr
         self.weight_decay = weight_decay
+        self.lambda_l1_addon = lambda_l1_addon
+        self.lambda_group_lasso = lambda_group_lasso
         self.mlflow_experiment_id = mlflow_experiment_id
 
         print("\n--- MODEL TRAINING ---")
@@ -224,6 +232,9 @@ class Trainer:
             mlflow.log_param("use_early_stopping", self.use_early_stopping)
             mlflow.log_param("reload_best_model", self.reload_best_model)
             mlflow.log_param("early_stopping_kwargs", self.early_stopping_kwargs)
+            mlflow.log_param("reload_best_model", self.reload_best_model)
+            mlflow.log_param("lambda_l1_addon", self.lambda_l1_addon)
+            mlflow.log_param("lambda_group_lasso", self.lambda_group_lasso)
             mlflow.log_param("seed", self.seed)
             mlflow.log_param("loaders_n_hops", self.loaders_n_hops)
             mlflow.log_param("loaders_n_direct_neighbors", self.loaders_n_direct_neighbors)
@@ -270,7 +281,9 @@ class Trainer:
                     edge_model_output=edge_train_model_output,
                     node_data_batch=node_train_data_batch,
                     node_model_output=node_train_model_output,
-                    device=self.device)
+                    device=self.device,
+                    lambda_l1_addon=self.lambda_l1_addon,
+                    lambda_group_lasso=self.lambda_group_lasso)
                 train_loss = train_loss_dict["loss"]
                 if self.verbose:
                     for key, value in train_loss_dict.items():
@@ -391,7 +404,9 @@ class Trainer:
                     edge_model_output=edge_val_model_output,
                     node_data_batch=node_val_data_batch,
                     node_model_output=node_val_model_output,
-                    device=self.device)
+                    device=self.device,
+                    lambda_l1_addon=self.lambda_l1_addon,
+                    lambda_group_lasso=self.lambda_group_lasso)
             val_loss = val_loss_dict["loss"]
             if self.verbose:
                 for key, value in val_loss_dict.items():

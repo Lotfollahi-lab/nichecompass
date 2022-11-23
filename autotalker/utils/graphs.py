@@ -1,8 +1,11 @@
+"""
+This module contains all utiilities to compute neighborhood graphs.
+"""
+
 from typing import Tuple, Literal, Optional
 
 import numpy as np
 from anndata import AnnData
-from scipy.sparse import coo_matrix
 from sklearn.metrics import pairwise_distances
 from sklearn.neighbors import kneighbors_graph
 from umap.umap_ import nearest_neighbors, fuzzy_simplicial_set
@@ -77,17 +80,8 @@ def _compute_graph_connectivities(
         adata: AnnData,
         feature_key: str,
         n_neighbors: int,
-        mode: Literal["knn", "umap"]="knn",
-        seed: int=42) -> coo_matrix:
+        mode: Literal["knn", "umap"]="knn")
     """
-    Compute graph connectivities of a nearest neighbors graph based on 
-    feature values stored in the  ´obsm´ attribute of an AnnData object. The
-    connectivites can be computed exactly from a simple k-nearest-neighbors 
-    graph  using sklearn (´mode´ == "knn") or via a fuzzy simplical set based
-    on a neighbor graph approximated via nearest neighbor descent (´mode´ == 
-    "umap") as in McInnes, L., Healy, J. & Melville, J. UMAP: Uniform Manifold 
-    Approximation and Projection for Dimension Reduction. arXiv [stat.ML] (2018).
-
     Parameters
     ----------
     adata:

@@ -206,6 +206,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
               n_epochs: int=200,
               lr: float=0.01,
               weight_decay: float=0,
+              lambda_l1_addon: float=0.,
+              lambda_group_lasso: float=0.,
               edge_val_ratio: float=0.1,
               edge_test_ratio: float=0.05,
               node_val_ratio: float=0.1,
@@ -224,6 +226,12 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             Learning rate.
         weight_decay:
             Weight decay (L2 penalty).
+        lambda_l1_addon:
+            Lambda (weighting) parameter for the L1 regularization of genes in addon
+            gene programs.
+        lambda_group_lasso:
+            Lambda (weighting) parameter for the group lasso regularization of gene
+            programs.
         edge_val_ratio:
             Fraction of the data that is used as validation set on edge-level.
             The rest of the data will be used as training or test set (as 
@@ -260,6 +268,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         self.trainer.train(n_epochs=n_epochs,
                            lr=lr,
                            weight_decay=weight_decay,
+                           lambda_l1_addon=lambda_l1_addon,
+                           lambda_group_lasso=lambda_group_lasso
                            mlflow_experiment_id=mlflow_experiment_id)
         
         self.is_trained_ = True

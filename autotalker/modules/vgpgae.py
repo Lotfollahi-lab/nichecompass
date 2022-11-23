@@ -16,6 +16,7 @@ from .basemodulemixin import BaseModuleMixin
 from .losses import (compute_addon_l1_reg_loss,
                      compute_edge_recon_loss, 
                      compute_gene_expr_recon_zinb_loss,
+                     compute_group_lasso_reg_loss,
                      compute_kl_loss)
 from .vgaemodulemixin import VGAEModuleMixin
 
@@ -181,7 +182,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
              edge_model_output: dict,
              node_data_batch: Data,
              node_model_output: dict,
-             device: Literal["cpu", "cuda"]):
+             device: Literal["cpu", "cuda"],
+             lambda_l1_addon: float=0.,
+             lambda_group_lasso: float=0):
         """
         Calculate loss of the VGPGAE module.
 
@@ -197,6 +200,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Output of the forward pass for gene expression reconstruction.
         device:
             Device where to send the loss parameters.
+        lambda_l1_addon:
+            Lambda (weighting) parameter for the L1 regularization of genes in addon
+            gene programs.
+        lambda_group_lasso:
+            Lambda (weighting) parameter for the group lasso regularization of gene
+            programs.
 
         Returns
         ----------
@@ -237,13 +246,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         # Gene-specific inverse dispersion
         theta = torch.exp(self.theta)
 
-        loss_dict["gene_expr_recon_loss"] = (gene_expr_recon_loss_norm_factor * 
-        compute_gene_expr_recon_zinb_loss(
-            x=node_model_output["node_labels"],
-            mu=nb_means,
-            theta=theta,
-            zi_prob_logits=zi_prob_logits))
-
         loss_dict["loss"] = 0
         loss_dict["loss"] += loss_dict["kl_loss"]
 
@@ -251,12 +253,23 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             loss_dict["loss"] += loss_dict["edge_recon_loss"]
 
         if self.include_gene_expr_recon_loss:
+            loss_dict["gene_expr_recon_loss"] = (
+                gene_expr_recon_loss_norm_factor * 
+                compute_gene_expr_recon_zinb_loss(
+                    x=node_model_output["node_labels"],
+                    mu=nb_means,
+                    theta=theta,
+                    zi_prob_logits=zi_prob_logits))
             loss_dict["loss"] += loss_dict["gene_expr_recon_loss"]
 
-        if self.n_addon_latent != 0:
-            loss_dict["addon_gp_l1_reg_loss"] = compute_addon_l1_reg_loss(
-                self.named_parameters())
-            loss_dict["loss"] += loss_dict["addon_gp_l1_reg_loss"]
+            loss_dict["group_lasso_reg_loss"] = (lambda_group_lasso * 
+                compute_group_lasso_reg_loss(self.named_parameters()))
+            loss_dict["loss"] += loss_dict["group_lasso_reg_loss"]
+
+            if self.n_addon_latent != 0:
+                loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon * 
+                    compute_addon_l1_reg_loss(self.named_parameters()))
+                loss_dict["loss"] += loss_dict["addon_gp_l1_reg_loss"]
 
         return loss_dict
 
