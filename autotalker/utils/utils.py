@@ -9,7 +9,7 @@ import pandas as pd
 import pyreadr
 
 
-def _load_R_file_as_df(R_file_path: str,
+def load_R_file_as_df(R_file_path: str,
                        url: Optional[str]=None,
                        save_df_to_disk: bool=False,
                        df_save_path: Optional[str]=None) -> pd.DataFrame:

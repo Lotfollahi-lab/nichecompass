@@ -1,5 +1,5 @@
 """
-This module contains generic base functionalities, added as a Mixin to the main
+This module contains generic base functionalities, added as a Mixin to the
 Variational Gene Program Graph Autoencoder module.
 """
 

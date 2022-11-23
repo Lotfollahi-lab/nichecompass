@@ -10,7 +10,7 @@ import omnipath as op
 import pandas as pd
 from anndata import AnnData
 
-from .utils import _load_R_file_as_df
+from .utils import load_R_file_as_df
 
 
 def add_gps_from_gp_dict_to_adata(
@@ -173,7 +173,7 @@ def extract_gp_dict_from_nichenet_ligand_target_mx(
     if not load_from_disk:
         print("Downloading NicheNet ligand target potential matrix from the "
               "web. This might take a while...")
-        ligand_target_df = _load_R_file_as_df(
+        ligand_target_df = load_R_file_as_df(
             R_file_path="ligand_target_matrix.rds",
             url="https://zenodo.org/record/3260758/files/ligand_target_matrix.rds",
             save_df_to_disk=save_to_disk,

@@ -1,23 +1,34 @@
+"""
+This module contains helper functions for the models subpackage.
+"""
+
 import logging
 import os
 import pickle
-from typing import Optional, Literal
+from collections import OrderedDict
+from typing import Optional, Tuple, Literal
 
 import anndata as ad
 import numpy as np
 import torch
 
+from .autotalker import Autotalker
+
 
 logger = logging.getLogger(__name__)
 
 
-def _load_saved_files(dir_path: str,
-                      load_adata: bool,
-                      adata_file_name: Optional[str]="adata.h5ad",
-                      map_location: Optional[Literal["cpu", "cuda"]]=None):
+def load_saved_files(dir_path: str,
+                     load_adata: bool,
+                     adata_file_name: Optional[str]="adata.h5ad",
+                     map_location: Optional[Literal["cpu", "cuda"]]=None
+                     ) -> Tuple[OrderedDict, dict, np.ndarray, ad.AnnData]:
     """
-    Helper to load saved model files. Adapted from 
-    https://github.com/scverse/scvi-tools/blob/master/scvi/model/base/_utils.py#L55.
+    Helper to load saved model files. 
+    
+    Parts of the implementation are adapted from 
+    https://github.com/scverse/scvi-tools/blob/master/scvi/model/base/_utils.py#L55
+    (01.10.2022)
 
     Parameters
     ----------
@@ -58,14 +69,16 @@ def _load_saved_files(dir_path: str,
     var_names = np.genfromtxt(var_names_path, delimiter=",", dtype=str)
     with open(attr_path, "rb") as handle:
         attr_dict = pickle.load(handle)
-
     return model_state_dict, var_names, attr_dict, adata
 
 
-def _validate_var_names(adata: ad.AnnData, source_var_names: str):
+def validate_var_names(adata: ad.AnnData, source_var_names: str):
     """
-    Helper to validate variable names. Adapted from 
-    https://github.com/scverse/scvi-tools/blob/master/scvi/model/base/_utils.py#L141.
+    Helper to validate variable names. 
+    
+    Parts of the implementation are adapted from 
+    https://github.com/scverse/scvi-tools/blob/master/scvi/model/base/_utils.py#L141
+    (01.10.2022)
 
     Parameters
     ----------
@@ -81,9 +94,9 @@ def _validate_var_names(adata: ad.AnnData, source_var_names: str):
             "as the adata used to train the model.")
 
 
-def _initialize_model(cls,
-                      adata: ad.AnnData,
-                      attr_dict: dict):
+def initialize_model(cls,
+                     adata: ad.AnnData,
+                     attr_dict: dict) -> Autotalker:
     """
     Helper to initialize a model. Adapted from 
     https://github.com/scverse/scvi-tools/blob/master/scvi/model/base/_utils.py#L103.

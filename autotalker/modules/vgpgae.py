@@ -289,4 +289,4 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         mlflow.log_param("node_label_method", 
                          self.node_label_method)
         mlflow.log_param("log_variational", 
-                         self.log_variational)                   
+                         self.log_variational)

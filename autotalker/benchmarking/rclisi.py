@@ -5,7 +5,7 @@ import pandas as pd
 from anndata import AnnData
 
 from .utils import _convert_to_one_hot
-from autotalker.utils import _compute_graph_indices_and_distances
+from autotalker.utils import compute_graph_indices_and_distances
 
 
 def compute_per_cell_log_rclisi(
@@ -121,7 +121,7 @@ def _compute_per_cell_clisi_from_feature(
     per_cell_clisi:
         1-D NumPy array that contains the per-cell CLISIs.
     """
-    knn_indices, knn_distances = _compute_graph_indices_and_distances(
+    knn_indices, knn_distances = compute_graph_indices_and_distances(
         adata=adata,
         feature_key=feature_key,
         n_neighbors=n_neighbors,

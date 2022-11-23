@@ -1,9 +1,9 @@
 """
-This module contains generic VGAE functionalities, added as a Mixin to the main
+This module contains generic VGAE functionalities, added as a Mixin to the
 Variational Gene Program Graph Autoencoder module.
 """
 
-from typing import Tuple
+from typing import Tuple, Union
 
 import torch
 
@@ -41,10 +41,12 @@ class VGAEModuleMixin:
             return rep
 
     @torch.no_grad()
-    def get_latent_representation(self,
-                                  x: torch.Tensor,
-                                  edge_index: torch.Tensor,
-                                  return_mu_std: bool=False) -> torch.Tensor:
+    def get_latent_representation(
+            self,
+            x: torch.Tensor,
+            edge_index: torch.Tensor,
+            return_mu_std: bool=False
+            ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Encode input features x and edge index into the latent space normal 
         distribution parameters and return z. If the module is not in training
@@ -64,10 +66,15 @@ class VGAEModuleMixin:
         -------
         z:
             Latent space encoding.
+        mu:
+            Expected values of the latent posterior.
+        std:
+            Standard deviations of the latent posterior.
         """
         mu, logstd = self.encoder(x, edge_index)
         if return_mu_std:
-            return mu, torch.exp(logstd)
+            std = torch.exp(logstd)
+            return mu, std
         else:
             z = self.reparameterize(mu, logstd)
             return z

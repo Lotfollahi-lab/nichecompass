@@ -15,7 +15,7 @@ from .basemodelmixin import BaseModelMixin
 from .vgaemodelmixin import VGAEModelMixin
 from autotalker.modules import VGPGAE
 from autotalker.train import Trainer
-from autotalker.utils import _compute_graph_connectivities
+from autotalker.utils import compute_graph_connectivities
 
 
 class Autotalker(BaseModelMixin, VGAEModelMixin):
@@ -678,9 +678,31 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                               " 'adata.obsm'.")
 
         # Compute latent connectivities
-        adata.obsp["latent_connectivities"] = _compute_graph_connectivities(
+        adata.obsp["latent_connectivities"] = compute_graph_connectivities(
             adata=adata,
             feature_key=self.latent_key_,
             n_neighbors=n_neighbors,
             mode=mode,
             seed=seed)
+
+    def get_active_gps(self) -> list:
+        """
+        Get active (non-zero weight) gene programs
+
+        Returns
+        ----------
+        nonzero_gps:
+            GP names of active (non-zero weight) gene programs.
+        """
+        gp_weights = (self.model.gene_expr_decoder
+                      .nb_means_normalized_decoder.masked_l.weight.data)
+        if self.n_addon_gps_ > 0:
+            gp_weights = torch.cat(
+                [gp_weights, 
+                (self.model.gene_expr_decoder
+                .nb_means_normalized_decoder.addon_l.weight.data)])
+        nonzero_gp_weight_sum_gp_mask = ((gp_weights.norm(p=1, dim=0)>0)
+                                         .cpu().numpy())
+        nonzero_gps = (self.adata.uns[self.gp_names_key_]
+                       [nonzero_gp_weight_sum_gp_mask])
+        return nonzero_gps

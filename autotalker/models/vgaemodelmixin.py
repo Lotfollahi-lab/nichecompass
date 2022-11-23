@@ -1,5 +1,9 @@
-from typing import Optional
-from xml.etree.ElementPath import xpath_tokenizer
+"""
+This module contains generic VGAE functionalities, added as a Mixin to the 
+Autotalker model.
+"""
+
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -12,11 +16,13 @@ class VGAEModelMixin:
     """
     VGAE model mix in class for universal VGAE model functionalities.
     """
-    def get_latent_representation(self, 
-                                  adata: Optional[AnnData]=None,
-                                  counts_key: str="counts",
-                                  adj_key: str="spatial_connectivities",
-                                  return_mu_std: bool=False):
+    def get_latent_representation(
+            self, 
+            adata: Optional[AnnData]=None,
+            counts_key: str="counts",
+            adj_key: str="spatial_connectivities",
+            return_mu_std: bool=False
+            ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Get latent representation from a trained VGAE model.
 
@@ -37,7 +43,11 @@ class VGAEModelMixin:
         Returns
         ----------
         z:
-            Numpy array containing latent dimensions.
+            Latent space encoding.
+        mu:
+            Expected values of the latent posterior.
+        std:
+            Standard deviations of the latent posterior.
         """
         self._check_if_trained(warn=False)
         device = next(self.model.parameters()).device
@@ -48,10 +58,8 @@ class VGAEModelMixin:
             dataset = SpatialAnnTorchDataset(self.adata,
                                              self.counts_key_,
                                              self.adj_key_)
-
         x = dataset.x.to(device)
         edge_index = dataset.edge_index.to(device) 
-        
         if self.model.log_variational:
             x = torch.log(1 + x)
 
@@ -74,7 +82,8 @@ class VGAEModelMixin:
     def get_zinb_gene_expr_params(self, 
                                   adata: Optional[AnnData]=None,
                                   counts_key: str="counts",
-                                  adj_key: str="spatial_connectivities",):
+                                  adj_key: str="spatial_connectivities"
+                                  ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Get ZINB gene expression reconstruction parameters from a trained VGAE 
         model.
@@ -107,7 +116,6 @@ class VGAEModelMixin:
             dataset = SpatialAnnTorchDataset(self.adata,
                                              self.counts_key_,
                                              self.adj_key_)
-
         x = dataset.x.to(device)
         edge_index = dataset.edge_index.to(device) 
         
@@ -118,13 +126,10 @@ class VGAEModelMixin:
             x=x,
             edge_index=edge_index,
             return_mu_std=True)
-
         log_library_size = torch.log(x.sum(1)).unsqueeze(1)
-        
+    
         nb_means, zi_prob_logits = self.model.get_zinb_gene_expr_params(
             mu,
             log_library_size)
-
         zi_probs = torch.sigmoid(zi_prob_logits)
-
         return nb_means, zi_probs

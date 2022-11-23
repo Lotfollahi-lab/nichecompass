@@ -1,5 +1,5 @@
 """
-This module contains neural network encoders used by the Autotalker model.
+This module contains encoders used by the Autotalker model.
 """
 
 import torch

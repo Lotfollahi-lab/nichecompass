@@ -5,7 +5,7 @@ import squidpy as sq
 from anndata import AnnData
 from sklearn.metrics import normalized_mutual_info_score
 
-from autotalker.utils import _compute_graph_connectivities
+from autotalker.utils import compute_graph_connectivities
 
 
 def compute_max_lnmi(
@@ -58,7 +58,7 @@ def compute_max_lnmi(
                                          dtype=np.float32)
 
     # Compute physical (ground truth) connectivities
-    adata.obsp["lnmi_spatial_connectivities"] = _compute_graph_connectivities(
+    adata.obsp["lnmi_spatial_connectivities"] = compute_graph_connectivities(
         adata=adata,
         feature_key=spatial_key,
         n_neighbors=n_neighbors,
@@ -83,7 +83,7 @@ def compute_max_lnmi(
                           legend_loc=None)
 
     # Compute latent connectivities
-    adata.obsp["lnmi_latent_connectivities"] = _compute_graph_connectivities(
+    adata.obsp["lnmi_latent_connectivities"] = compute_graph_connectivities(
         adata=adata,
         feature_key=latent_key,
         n_neighbors=n_neighbors,

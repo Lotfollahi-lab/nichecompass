@@ -1,3 +1,8 @@
+"""
+This module contains generic base functionalities, added as a Mixin to the 
+Autotalker model.
+"""
+
 import inspect
 import os
 import warnings
@@ -9,17 +14,21 @@ import scipy.sparse as sp
 import torch
 from anndata import AnnData
 
-from .utils import _initialize_model, _load_saved_files, _validate_var_names
+from .autotalker import Autotalker
+from .utils import initialize_model, load_saved_files, validate_var_names
 
 
 class BaseModelMixin():
     """
-    Base model mix in class for universal model functionalities. Adapted from
+    Base model mix in class for universal model functionalities. 
+    
+    Parts of the implementation are adapted from
     https://github.com/theislab/scarches/blob/master/scarches/models/base/_base.py#L15
-    and 
-    https://github.com/scverse/scvi-tools/blob/master/scvi/model/base/_base_model.py#L63.
+    (01.10.2022) and 
+    https://github.com/scverse/scvi-tools/blob/master/scvi/model/base/_base_model.py#L63
+    (01.10.2022).
     """
-    def _get_user_attributes(self):
+    def _get_user_attributes(self) -> list:
         """
         Get all the attributes defined in a model instance, for example 
         self.is_trained_.
@@ -35,7 +44,7 @@ class BaseModelMixin():
             a[0].startswith("__") and a[0].endswith("__"))]
         return attributes
 
-    def _get_public_attributes(self):
+    def _get_public_attributes(self) -> dict:
         """
         Get only public attributes defined in a model instance. By convention
         public attributes have a trailing underscore.
@@ -46,10 +55,11 @@ class BaseModelMixin():
             Public attributes defined in a model instance.
         """
         public_attributes = self._get_user_attributes()
-        public_attributes = {a[0]: a[1] for a in public_attributes if a[0][-1] == "_"}
+        public_attributes = {a[0]: a[1] for a in public_attributes if 
+                             a[0][-1] == "_"}
         return public_attributes
 
-    def _get_init_params(self, locals: dict):
+    def _get_init_params(self, locals: dict) -> dict:
         """
         Get the model init signature with associated passed in values from 
         locals (except the AnnData object passed in).
@@ -130,7 +140,7 @@ class BaseModelMixin():
              use_cuda: bool=False,
              n_addon_gps: int=0,
              gp_key: Optional[str]=None,
-             freeze_non_addon_weights: bool=False):
+             freeze_non_addon_weights: bool=False) -> Autotalker:
         """
         Instantiate a model from saved output. Can be used for transfer learning
         scenarios and to learn de-novo gene programs by adding add-on gene 
@@ -164,11 +174,11 @@ class BaseModelMixin():
         use_cuda = use_cuda and torch.cuda.is_available()
         map_location = torch.device("cpu") if use_cuda is False else None
 
-        model_state_dict, var_names, attr_dict, new_adata = _load_saved_files(
+        model_state_dict, var_names, attr_dict, new_adata = load_saved_files(
             dir_path, load_adata, adata_file_name, map_location=map_location)
         adata = new_adata if new_adata is not None else adata
 
-        _validate_var_names(adata, var_names)
+        validate_var_names(adata, var_names)
 
         if n_addon_gps != 0:
             attr_dict["n_addon_gps_"] = n_addon_gps
@@ -178,9 +188,10 @@ class BaseModelMixin():
                 raise ValueError("Please specify 'gp_key' so that addon gps can"
                                  " be added to the gene program list.")
 
-            adata.uns[gp_key] += ["addon_GP_" + str(i) for i in range(n_addon_gps)]
+            adata.uns[gp_key] += ["addon_GP_" + str(i) for i in 
+                                  range(n_addon_gps)]
 
-        model = _initialize_model(cls, adata, attr_dict)
+        model = initialize_model(cls, adata, attr_dict)
 
         # set saved attrs for loaded model
         for attr, val in attr_dict.items():
@@ -198,16 +209,13 @@ class BaseModelMixin():
         # Freeze pre-trained weights to only allow updates of addon gene program
         # weights
         if freeze_non_addon_weights:
-
             if not model.is_trained_:
                 raise ValueError("The model has not been pre-trained and "
                                  "therefore weights should not be frozen.")
-
             for param_name, param in model.model.named_parameters():
                 param.requires_grad = False
                 if "addon" in param_name or "theta" in param_name:
                     param.requires_grad = True
-
         return model
 
     def _check_if_trained(self,

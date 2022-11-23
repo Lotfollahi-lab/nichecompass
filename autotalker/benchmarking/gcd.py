@@ -4,7 +4,7 @@ import torch
 from anndata import AnnData
 from sklearn.metrics import roc_auc_score
 
-from autotalker.utils import _compute_graph_connectivities
+from autotalker.utils import compute_graph_connectivities
 
 
 def compute_avg_gcd(
@@ -63,7 +63,7 @@ def compute_gcd(
     Compute graph connectivity distance.
     """
     # Compute physical (ground truth) connectivities
-    spatial_connectivities = _compute_graph_connectivities(
+    spatial_connectivities = compute_graph_connectivities(
         adata=adata,
         feature_key=spatial_key,
         n_neighbors=n_neighbors,
@@ -71,7 +71,7 @@ def compute_gcd(
         seed=seed)
     
     # Compute latent connectivities
-    latent_connectivites = _compute_graph_connectivities(
+    latent_connectivites = compute_graph_connectivities(
         adata=adata,
         feature_key=latent_key,
         n_neighbors=n_neighbors,

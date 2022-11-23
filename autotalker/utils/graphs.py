@@ -1,6 +1,6 @@
 """
-This module contains all utilities to compute neighborhood graphs for use by
-the Autotalker model.
+This module contains utilities to compute neighborhood graphs for use by the 
+Autotalker model.
 """
 
 from typing import Literal, Tuple
@@ -13,7 +13,7 @@ from sklearn.neighbors import kneighbors_graph
 from umap.umap_ import nearest_neighbors, fuzzy_simplicial_set
 
 
-def _compute_graph_indices_and_distances(
+def compute_graph_indices_and_distances(
         adata: AnnData,
         feature_key: str,
         n_neighbors: int,
@@ -76,7 +76,7 @@ def _compute_graph_indices_and_distances(
     return knn_indices, knn_distances
 
 
-def _compute_graph_connectivities(
+def compute_graph_connectivities(
         adata: AnnData,
         feature_key: str,
         n_neighbors: int,
@@ -112,7 +112,7 @@ def _compute_graph_connectivities(
     # Compute graph connectivities using a fuzzy simplical set and approximate
     # neighbor graph
     elif mode == "umap":
-        knn_indices, knn_distances = _compute_graph_indices_and_distances(
+        knn_indices, knn_distances = compute_graph_indices_and_distances(
             adata=adata,
             feature_key=feature_key,
             n_neighbors=n_neighbors,
