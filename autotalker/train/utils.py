@@ -1,4 +1,7 @@
-from calendar import c
+"""
+This module contains helper functions for the ´train´ subpackage.
+"""
+
 import sys
 
 import matplotlib.pyplot as plt

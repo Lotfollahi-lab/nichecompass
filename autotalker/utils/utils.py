@@ -1,3 +1,7 @@
+"""
+This module contains helper functions for the ´utils´ subpackage.
+"""
+
 import os
 from typing import Optional
 

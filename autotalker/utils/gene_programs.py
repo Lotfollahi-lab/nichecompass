@@ -1,6 +1,6 @@
 """
-This module contains all utiilities to add interpretable communication gene
-programs as prior knowledge for use by the Autotalker model.
+This module contains utiilities to add interpretable communication gene programs
+as prior knowledge for use by the Autotalker model.
 """
 
 from typing import Literal, Optional

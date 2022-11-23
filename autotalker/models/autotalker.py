@@ -1,3 +1,8 @@
+"""
+This module contains the Autotalker model. Different analysis capabilities are
+integrated directly into the model API for easy use.
+"""
+
 from typing import Literal, Optional, Union
 
 import numpy as np
@@ -269,7 +274,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                            lr=lr,
                            weight_decay=weight_decay,
                            lambda_l1_addon=lambda_l1_addon,
-                           lambda_group_lasso=lambda_group_lasso
+                           lambda_group_lasso=lambda_group_lasso,
                            mlflow_experiment_id=mlflow_experiment_id)
         
         self.is_trained_ = True
