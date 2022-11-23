@@ -1,12 +1,16 @@
+"""
+This module contains helper functions for the ´data´ subpackage.
+"""
+
 import numpy as np
 import torch
 from scipy.sparse import csr_matrix
 from torch_sparse import SparseTensor
 
 
-def _sparse_mx_to_sparse_tensor(sparse_mx: csr_matrix):
+def sparse_mx_to_sparse_tensor(sparse_mx: csr_matrix) -> SparseTensor:
     """
-    Helper to convert a scipy sparse matrix into a torch_sparse SparseTensor.
+    Convert a scipy sparse matrix into a torch_sparse SparseTensor.
 
     Parameters
     ----------

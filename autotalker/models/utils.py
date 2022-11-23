@@ -1,5 +1,5 @@
 """
-This module contains helper functions for the models subpackage.
+This module contains helper functions for the ´models´ subpackage.
 """
 
 import logging
