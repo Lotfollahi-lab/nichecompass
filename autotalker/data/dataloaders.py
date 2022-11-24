@@ -1,6 +1,5 @@
 """
-This module contains edge- and node-level dataloaders for the training of an 
-Autotalker model.
+This module contains dataloaders for the training of an Autotalker model.
 """
 
 from torch_geometric.data import Data

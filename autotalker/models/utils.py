@@ -12,8 +12,6 @@ import anndata as ad
 import numpy as np
 import torch
 
-from .autotalker import Autotalker
-
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +94,7 @@ def validate_var_names(adata: ad.AnnData, source_var_names: str):
 
 def initialize_model(cls,
                      adata: ad.AnnData,
-                     attr_dict: dict) -> Autotalker:
+                     attr_dict: dict) -> torch.nn.Module:
     """
     Helper to initialize a model. Adapted from 
     https://github.com/scverse/scvi-tools/blob/master/scvi/model/base/_utils.py#L103.

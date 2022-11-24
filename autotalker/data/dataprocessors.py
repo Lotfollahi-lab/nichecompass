@@ -1,4 +1,8 @@
-from typing import Literal
+"""
+This module contains data processors for the training of an Autotalker model.
+"""
+
+from typing import Tuple
 
 from anndata import AnnData
 from torch_geometric.data import Data
@@ -11,7 +15,7 @@ def edge_level_split(data: Data,
                      val_ratio: float=0.1,
                      test_ratio: float=0.05,
                      is_undirected: bool=True,
-                     neg_sampling_ratio: float=0.0):
+                     neg_sampling_ratio: float=0.) -> Tuple[Data, Data, Data]:
     """
     Split a PyG Data object into training, validation and test PyG Data objects 
     using an edge-level split, i.e. training split does not include edges in 
@@ -55,8 +59,8 @@ def edge_level_split(data: Data,
 
 def node_level_split_mask(data: Data,
                           val_ratio: float=0.1,
-                          test_ratio: float=0.0,
-                          split_key: str="x"):
+                          test_ratio: float=0.,
+                          split_key: str="x") -> Data:
     """
     Split data on node-level into training, validation and test sets by adding
     node-level masks (train_mask, val_mask, test_mask) to the PyG Data object.
@@ -90,13 +94,10 @@ def node_level_split_mask(data: Data,
 def prepare_data(adata: AnnData,
                  counts_key: str="counts",
                  adj_key: str="spatial_connectivities",
-                 node_label_method: Literal["self",
-                                            "one-hop-sum",
-                                            "one-hop-norm"]="one-hop-norm",
                  edge_val_ratio: float=0.1,
                  edge_test_ratio: float=0.05,
                  node_val_ratio: float=0.1,
-                 node_test_ratio: float=0.0):
+                 node_test_ratio: float=0.) -> dict:
     """
     Prepare data for model training including edge-level (for edge
     reconstruction) and node-level (for gene expression reconstruction) train, 
@@ -105,23 +106,12 @@ def prepare_data(adata: AnnData,
     Parameters
     ----------
     adata:
-        AnnData object with raw counts stored in 
-        ´adata.layers[counts_key]´, and sparse adjacency matrix stored in 
-        ´adata.obsp[adj_key]´.
+        AnnData object with raw counts stored in ´adata.layers[counts_key]´, and
+        sparse adjacency matrix stored in ´adata.obsp[adj_key]´.
     counts_key:
         Key under which the raw counts are stored in ´adata.layer´.
     adj_key:
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
-    node_label_method:
-        Node label method that will be used for gene expression reconstruction. 
-        If ´self´, use only the input features of the node itself as node labels
-        for gene expression reconstruction. If ´one-hop-sum´, use a 
-        concatenation of the node's input features with the sum of the input 
-        features of all nodes in the node's one-hop neighborhood. If 
-        ´one-hop-norm´, use a concatenation of the node`s input features with
-        the node's one-hop neighbors input features normalized as per Kipf, T. 
-        N. & Welling, M. Semi-Supervised Classification with Graph Convolutional
-        Networks. arXiv [cs.LG] (2016))
     edge_val_ratio:
         Fraction of the data that is used as validation set on edge-level.
     edge_test_ratio:
@@ -164,5 +154,4 @@ def prepare_data(adata: AnnData,
         data=data,
         val_ratio=node_val_ratio,
         test_ratio=node_test_ratio)
-
     return data_dict

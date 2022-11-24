@@ -232,11 +232,11 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         weight_decay:
             Weight decay (L2 penalty).
         lambda_l1_addon:
-            Lambda (weighting) parameter for the L1 regularization of genes in addon
-            gene programs.
+            Lambda (weighting) parameter for the L1 regularization of genes in 
+            addon gene programs.
         lambda_group_lasso:
-            Lambda (weighting) parameter for the group lasso regularization of gene
-            programs.
+            Lambda (weighting) parameter for the group lasso regularization of 
+            gene programs.
         edge_val_ratio:
             Fraction of the data that is used as validation set on edge-level.
             The rest of the data will be used as training or test set (as 
@@ -315,7 +315,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         programs will be stored in ´adata.obs´.
 
         Parts of the implementation are inspired by
-        https://github.com/theislab/scarches/blob/master/scarches/models/expimap/expimap_model.py#L429.
+        https://github.com/theislab/scarches/blob/master/scarches/models/expimap/expimap_model.py#L429
+        (24.11.2022),
 
         Parameters
         ----------
@@ -427,7 +428,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                                         axis=0)
             norm_factors = np.repeat(norm_factors[np.newaxis, :],
                                      mu.shape[0],
-                                     axis=0) # dim: (n_obs, 2 x n_genes, n_selected_gps)
+                                     axis=0)
+                                     # dim: (n_obs, 2 x n_genes, n_selected_gps)
             norm_factors *= non_zi_probs_rep
 
         # Retrieve category values for each observation as well as all existing 
@@ -442,7 +444,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         # Check specified comparison categories
         if comparison_cats != "rest" and isinstance(comparison_cats, str):
             comparison_cats = [comparison_cats]
-        if comparison_cats != "rest" and not set(comparison_cats).issubset(cats):
+        if (comparison_cats != "rest" and 
+        not set(comparison_cats).issubset(cats)):
             raise ValueError("Comparison categories should be 'rest' (for "
                              "comparison with all other categories) or contain "
                              "existing categories")
@@ -466,13 +469,15 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                 norm_factors_cat = norm_factors_comparison_cat = norm_factors
             elif norm_factors.ndim == 2:
                 # Compute mean of normalization factors across genes
-                norm_factors_cat = norm_factors_comparison_cat = norm_factors.mean(0)       
+                norm_factors_cat = norm_factors.mean(0)
+                norm_factors_comparison_cat = norm_factors.mean(0)   
             elif norm_factors.ndim == 3:
                 # Compute mean of normalization factors across genes for the 
                 # category under consideration and the comparison categories 
                 # respectively     
                 norm_factors_cat = norm_factors[cat_mask].mean(1)
-                norm_factors_comparison_cat = norm_factors[comparison_cat_mask].mean(1)
+                norm_factors_comparison_cat = (norm_factors[comparison_cat_mask]
+                                               .mean(1))
 
             mu_cat = mu[cat_mask] * norm_factors_cat
             std_cat = std[cat_mask] * norm_factors_cat
@@ -562,7 +567,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                                                      return_index=True)
                 top_down_gps = top_down_gps[np.sort(top_down_gps_sort_idx)]
                 top_down_gps = top_down_gps[:n_top_down_gps_retrieved].to_list()
-                top_down_gps_idx = [selected_gps.index(gp) for gp in top_down_gps]
+                top_down_gps_idx = [selected_gps.index(gp) for 
+                                    gp in top_down_gps]
                 for gp, gp_idx in zip(top_down_gps, top_down_gps_idx):
                     adata.obs[gp] = mu[:, gp_idx]
                 top_unique_gps.extend(top_down_gps)
@@ -601,6 +607,9 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         if adata is None:
             adata = self.adata
 
+        if isinstance(adata.uns[self.gp_names_key_], np.ndarray):
+            adata.uns[self.gp_names_key_] = list(adata.uns[self.gp_names_key_])
+
         # Retrieve NB means gene expression decoder weights
         selected_gp_idx = adata.uns[self.gp_names_key_].index(selected_gp)
         if selected_gp_idx < self.n_nonaddon_gps_: # non-addon gp
@@ -625,19 +634,21 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                 adj_key=self.adj_key_)
             zi_probs = zi_probs.cpu().numpy()
             non_zi_probs = 1 - zi_probs
-            gp_weights_zi = gp_weights * non_zi_probs.sum(0) # sum over all obs / cells
+            gp_weights_zi = gp_weights * non_zi_probs.sum(0) # sum over all obs
             # Normalize gp weights to get gene importances
-            gp_gene_importances = gp_weights_zi / gp_weights_zi.sum(0)
+            gp_gene_importances = np.abs(gp_weights_zi / gp_weights_zi.sum(0))
         else:
             # Normalize gp weights to get gene importances
-            gp_gene_importances = gp_weights / gp_weights.sum(0)
+            gp_gene_importances = np.abs(gp_weights / gp_weights.sum(0))
 
         gp_gene_importances_df = pd.DataFrame()
         gp_gene_importances_df["gene"] = [gene for gene in 
                                           adata.var_names.tolist()] * 2
-        gp_gene_importances_df["gene_entity"] = (["target"] * len(adata.var_names) + 
-                                                ["source"] * len(adata.var_names))
-        gp_gene_importances_df["gene_weight"] = gp_weights
+        gp_gene_importances_df["gene_entity"] = (["target"] * 
+                                                 len(adata.var_names) + 
+                                                 ["source"] *
+                                                 len(adata.var_names))
+        gp_gene_importances_df["gene_weight_sign_corrected"] = gp_weights
         gp_gene_importances_df["gene_importance"] = gp_gene_importances
         gp_gene_importances_df = (gp_gene_importances_df
             [gp_gene_importances_df["gene_importance"] != 0])

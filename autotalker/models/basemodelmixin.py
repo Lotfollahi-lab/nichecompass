@@ -14,7 +14,6 @@ import scipy.sparse as sp
 import torch
 from anndata import AnnData
 
-from .autotalker import Autotalker
 from .utils import initialize_model, load_saved_files, validate_var_names
 
 
@@ -140,7 +139,7 @@ class BaseModelMixin():
              use_cuda: bool=False,
              n_addon_gps: int=0,
              gp_key: Optional[str]=None,
-             freeze_non_addon_weights: bool=False) -> Autotalker:
+             freeze_non_addon_weights: bool=False) -> torch.nn.Module:
         """
         Instantiate a model from saved output. Can be used for transfer learning
         scenarios and to learn de-novo gene programs by adding add-on gene 
