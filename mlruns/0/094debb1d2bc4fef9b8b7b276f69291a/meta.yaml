@@ -1,0 +1,15 @@
+artifact_uri: file:///home/cartalop/sebastianbirk/autotalker-dev/mlruns/0/094debb1d2bc4fef9b8b7b276f69291a/artifacts
+end_time: 1669288856472
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+name: ''
+run_id: 094debb1d2bc4fef9b8b7b276f69291a
+run_uuid: 094debb1d2bc4fef9b8b7b276f69291a
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1669288711746
+status: 3
+tags: []
+user_id: cartalop

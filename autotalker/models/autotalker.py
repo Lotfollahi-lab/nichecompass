@@ -3,7 +3,7 @@ This module contains the Autotalker model. Different analysis capabilities are
 integrated directly into the model API for easy use.
 """
 
-from typing import Literal, Optional, Union
+from typing import Literal, Tuple, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -261,7 +261,6 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             model=self.model,
             counts_key=self.counts_key_,
             adj_key=self.adj_key_,
-            node_label_method=self.node_label_method_,
             edge_val_ratio=edge_val_ratio,
             edge_test_ratio=edge_test_ratio,
             node_val_ratio=node_val_ratio,
@@ -696,14 +695,17 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             mode=mode,
             seed=seed)
 
-    def get_active_gps(self) -> list:
+    def get_active_gps_with_weight_sums(self) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Get active (non-zero weight) gene programs
+        Get active (non-zero weight) gene programs and the corresponding sums
+        of their gene weights.
 
         Returns
         ----------
         nonzero_gps:
             GP names of active (non-zero weight) gene programs.
+        gp_weights_sum:
+            Sum of gene program gene weights for each gene program.
         """
         gp_weights = (self.model.gene_expr_decoder
                       .nb_means_normalized_decoder.masked_l.weight.data)
@@ -712,8 +714,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                 [gp_weights, 
                 (self.model.gene_expr_decoder
                 .nb_means_normalized_decoder.addon_l.weight.data)])
-        nonzero_gp_weight_sum_gp_mask = ((gp_weights.norm(p=1, dim=0)>0)
-                                         .cpu().numpy())
-        nonzero_gps = (self.adata.uns[self.gp_names_key_]
+        gp_weights_sum = (gp_weights.norm(p=1, dim=0)).cpu().numpy()
+        nonzero_gp_weight_sum_gp_mask = gp_weights_sum>0
+        nonzero_gps = (np.array(self.adata.uns[self.gp_names_key_])
                        [nonzero_gp_weight_sum_gp_mask])
-        return nonzero_gps
+        return nonzero_gps, gp_weights_sum

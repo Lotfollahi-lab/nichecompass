@@ -30,10 +30,10 @@ def compute_group_lasso_reg_loss(
         Group lasso regularization loss for the decoder layer weights.    
     """
     # Compute L2 norm per group / gene program and sum across all gene programs
-    decoder_layerwise_param_gpgroupnorm_sum = torch.tensor(
+    decoder_layerwise_param_gpgroupnorm_sum = torch.stack(
         [param.norm(p=2, dim=0).sum() for param_name, param in 
          named_model_params if "gene_expr_decoder.nb_means_normalized_decoder" 
-         in param_name])
+         in param_name], dim=0)
     # Sum over ´masked_l´ layer and ´addon_l´ layer if addon gene programs exist
     group_lasso_reg_loss = torch.sum(decoder_layerwise_param_gpgroupnorm_sum)
     return group_lasso_reg_loss
@@ -56,9 +56,9 @@ def compute_addon_l1_reg_loss(
     addon_l1_reg_loss:
         L1 regularization loss for the add-on decoder layer weights.
     """
-    addon_decoder_layerwise_param_sum = torch.tensor(
+    addon_decoder_layerwise_param_sum = torch.stack(
         [abs(param).sum() for param_name, param in named_model_params 
-         if "nb_means_normalized_decoder.addon_l" in param_name])
+         if "nb_means_normalized_decoder.addon_l" in param_name], dim=0)
     addon_l1_reg_loss = torch.sum(addon_decoder_layerwise_param_sum)
     return addon_l1_reg_loss
 

@@ -41,18 +41,6 @@ class Trainer:
         Key under which the raw counts are stored in ´adata.layer´.
     adj_key:
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
-    node_label_method:
-        Node label method that will be used for gene expression reconstruction. 
-        If ´self´, use only the input features of the node itself as node labels
-        for gene expression reconstruction. If ´one-hop-sum´, use a 
-        concatenation of the node's input features with the sum of the input 
-        features of all nodes in the node's one-hop neighborhood. If 
-        ´one-hop-norm´, use a concatenation of the node`s input features with
-        the node's one-hop neighbors input features normalized as per Kipf, T. 
-        N. & Welling, M. Semi-Supervised Classification with Graph Convolutional
-        Networks. arXiv [cs.LG] (2016). If ´one-hop-attention´, use a 
-        concatenation of the node`s input features with the node's one-hop 
-        neighbors input features weighted by an attention mechanism.
     edge_val_ratio:
         Fraction of the data that is used as validation set on edge-level.
     edge_test_ratio:
@@ -84,11 +72,6 @@ class Trainer:
                  model: nn.Module,
                  counts_key: str="counts",
                  adj_key: str="spatial_connectivities",
-                 node_label_method: Literal[
-                    "self",
-                    "one-hop-sum",
-                    "one-hop-norm",
-                    "one-hop-attention"]="one-hop-attention",
                  edge_val_ratio: float=0.1,
                  edge_test_ratio: float=0.05,
                  node_val_ratio: float=0.1,
@@ -106,7 +89,6 @@ class Trainer:
         self.model = model
         self.counts_key = counts_key
         self.adj_key = adj_key
-        self.node_label_method = node_label_method
         self.edge_train_ratio = 1 - edge_val_ratio - edge_test_ratio
         self.edge_val_ratio = edge_val_ratio
         self.edge_test_ratio = edge_test_ratio
@@ -154,7 +136,6 @@ class Trainer:
         data_dict = prepare_data(adata=adata,
                                  counts_key=self.counts_key,
                                  adj_key=self.adj_key,
-                                 node_label_method=node_label_method,
                                  edge_val_ratio=self.edge_val_ratio,
                                  edge_test_ratio=self.edge_test_ratio,
                                  node_val_ratio=self.node_val_ratio,
@@ -228,7 +209,6 @@ class Trainer:
         
         # Log hyperparameters
         if self.mlflow_experiment_id is not None:
-            mlflow.log_param("node_label_method", self.node_label_method)
             mlflow.log_param("edge_train_ratio", self.edge_train_ratio)
             mlflow.log_param("edge_val_ratio", self.edge_val_ratio)
             mlflow.log_param("edge_test_ratio", self.edge_test_ratio)
@@ -299,6 +279,7 @@ class Trainer:
                 self.iter_logs["n_train_iter"] += 1
                 # Optimize for training loss
                 self.optimizer.zero_grad()
+                
                 train_loss.backward()
                 # Clip gradients
                 if self.grad_clip_value > 0:
