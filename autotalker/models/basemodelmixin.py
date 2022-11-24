@@ -138,7 +138,7 @@ class BaseModelMixin():
              adata_file_name: str="adata.h5ad",
              use_cuda: bool=False,
              n_addon_gps: int=0,
-             gp_key: Optional[str]=None,
+             gp_names_key: Optional[str]=None,
              freeze_non_addon_weights: bool=False) -> torch.nn.Module:
         """
         Instantiate a model from saved output. Can be used for transfer learning
@@ -159,6 +159,8 @@ class BaseModelMixin():
         n_addon_gps:
             Number of (new) add-on gene programs to be added to the model's
             architecture.
+        gp_names_key:
+            Key under which the gene program names are stored in ´adata.uns´.            
         freeze_non_addon_weights:
             If `True`, freeze non-addon weights to constrain training to add-on
             gene programs.
@@ -183,12 +185,13 @@ class BaseModelMixin():
             attr_dict["n_addon_gps_"] = n_addon_gps
             attr_dict["init_params_"]["n_addon_gps"] = n_addon_gps
 
-            if gp_key is None:
-                raise ValueError("Please specify 'gp_key' so that addon gps can"
-                                 " be added to the gene program list.")
-
-            adata.uns[gp_key] += ["addon_GP_" + str(i) for i in 
-                                  range(n_addon_gps)]
+            if gp_names_key is None:
+                raise ValueError("Please specify 'gp_names_key' so that addon "
+                                 "gps can be added to the gene program list.")
+                                 
+            adata.uns[gp_names_key] = (list(adata.uns[gp_names_key]) + 
+                                       ["addon_GP_" + str(i) for i in 
+                                        range(n_addon_gps)])
 
         model = initialize_model(cls, adata, attr_dict)
 

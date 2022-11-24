@@ -131,7 +131,7 @@ def add_gps_from_gp_dict_to_adata(
 
 
 def extract_gp_dict_from_nichenet_ligand_target_mx(
-        keep_target_ratio: float=0.1,
+        keep_target_ratio: float=0.01,
         load_from_disk: bool=False,
         save_to_disk: bool=False,
         file_path: Optional[str]="nichenet_ligand_target_matrix.csv") -> dict:
@@ -483,10 +483,16 @@ def filter_and_combine_gp_dict_gps(
                     n_avg_target_genes = (len(target_genes_i) + 
                                           len(target_genes_j)) / 2
                     n_avg_genes = n_avg_source_genes + n_avg_target_genes
-                    ratio_shared_source_genes = (n_source_gene_overlap / 
-                                                 n_avg_source_genes)
-                    ratio_shared_target_genes = (n_target_gene_overlap /
-                                                 n_avg_target_genes)
+                    if n_avg_source_genes > 0:
+                        ratio_shared_source_genes = (n_source_gene_overlap / 
+                                                     n_avg_source_genes)
+                    else: 
+                        ratio_shared_source_genes = 1
+                    if n_avg_target_genes > 0:
+                        ratio_shared_target_genes = (n_target_gene_overlap /
+                                                     n_avg_target_genes)
+                    else:
+                        ratio_shared_target_genes = 1
                     ratio_shared_genes = n_gene_overlap / n_avg_genes
                     if ((ratio_shared_source_genes >= 
                          overlap_thresh_source_genes) &

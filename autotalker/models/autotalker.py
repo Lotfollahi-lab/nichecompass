@@ -695,17 +695,26 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             mode=mode,
             seed=seed)
 
-    def get_active_gps_with_weight_sums(self) -> Tuple[np.ndarray, np.ndarray]:
+    def get_active_gps_with_weight_sums(self,
+                                        min_weight_sum_thresh: float=0.01
+                                        ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Get active (non-zero weight) gene programs and the corresponding sums
-        of their gene weights.
+        Get active gene programs (i.e. gene programs whose gene weights sum is 
+        greater than ´min_weight_sum´) and the corresponding sums of their gene
+        weights.
+
+        Parameters
+        ----------
+        min_weight_sum_thresh:
+            Minimun gene weight sum threshold. A gene program's weight sum needs
+            to exceed this threshold to be considered active.
 
         Returns
         ----------
-        nonzero_gps:
-            GP names of active (non-zero weight) gene programs.
+        active_gps:
+            Gene program names of active gene programs.
         gp_weights_sum:
-            Sum of gene program gene weights for each gene program.
+            Sum of gene program gene weights for each active gene program.
         """
         gp_weights = (self.model.gene_expr_decoder
                       .nb_means_normalized_decoder.masked_l.weight.data)
@@ -715,7 +724,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                 (self.model.gene_expr_decoder
                 .nb_means_normalized_decoder.addon_l.weight.data)])
         gp_weights_sum = (gp_weights.norm(p=1, dim=0)).cpu().numpy()
-        nonzero_gp_weight_sum_gp_mask = gp_weights_sum>0
-        nonzero_gps = (np.array(self.adata.uns[self.gp_names_key_])
-                       [nonzero_gp_weight_sum_gp_mask])
-        return nonzero_gps, gp_weights_sum
+        active_gp_weight_sum_gp_mask = gp_weights_sum>min_weight_sum
+        active_gps = (np.array(self.adata.uns[self.gp_names_key_])
+                      [active_gp_weight_sum_gp_mask])
+        gp_weights_sum = gp_weights_sum[active_gp_weight_sum_gp_mask]
+        return active_gps, gp_weights_sum
