@@ -370,13 +370,13 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
 
         # Get index of selected gps
         if selected_gps is None:
-            selected_gps = adata.uns[self.gp_names_key_]
+            selected_gps = list(adata.uns[self.gp_names_key_])
             selected_gps_idx = np.arange(len(selected_gps))
         else: 
             if isinstance(selected_gps, str):
                 selected_gps = [selected_gps]
-            selected_gps_idx = [adata.uns[self.gp_names_key_].index(gp) 
-                                for gp in selected_gps]
+            selected_gps_idx = np.array([list(adata.uns[self.gp_names_key_])
+                                         .index(gp) for gp in selected_gps])
 
         # Get gp / latent scores for selected gps
         mu, std = self.get_latent_representation(

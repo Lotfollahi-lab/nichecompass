@@ -189,9 +189,9 @@ class BaseModelMixin():
                 raise ValueError("Please specify 'gp_names_key' so that addon "
                                  "gps can be added to the gene program list.")
                                  
-            adata.uns[gp_names_key] = (list(adata.uns[gp_names_key]) + 
+            adata.uns[gp_names_key] = (adata.uns[gp_names_key] + 
                                        ["addon_GP_" + str(i) for i in 
-                                        range(n_addon_gps)])
+                                       range(n_addon_gps)])
 
         model = initialize_model(cls, adata, attr_dict)
 
@@ -217,7 +217,7 @@ class BaseModelMixin():
             for param_name, param in model.model.named_parameters():
                 param.requires_grad = False
                 if "addon" in param_name or "theta" in param_name:
-                    param.requires_grad = True
+                    param.requires_grad = True    
         return model
 
     def _check_if_trained(self,

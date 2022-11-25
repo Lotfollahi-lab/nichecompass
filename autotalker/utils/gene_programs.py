@@ -126,8 +126,9 @@ def add_gps_from_gp_dict_to_adata(
 
     # Add gene program names of gene programs that passed filter to adata.uns
     removed_gp_idx = np.where(~gp_mask_filter)[0]
-    adata.uns[gp_names_key] = [gp_name for i, (gp_name, _) in enumerate(
-                               gp_dict.items()) if i not in removed_gp_idx]
+    adata.uns[gp_names_key] = np.array([gp_name for i, (gp_name, _) in 
+                                        enumerate(gp_dict.items()) if i not in 
+                                        removed_gp_idx])
 
 
 def extract_gp_dict_from_nichenet_ligand_target_mx(
