@@ -7,6 +7,7 @@ from typing import Optional, Union
 
 import numpy as np
 from anndata import AnnData
+from sklearn.svm import LinearSVC
 from sklearn.linear_model import SGDClassifier
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
@@ -19,6 +20,7 @@ def compute_cell_cat_cls_accuracy(
         latent_key: str="autotalker_latent",
         selected_gps: Optional[Union[str,list]]=None,
         selected_cats: Optional[Union[str,list]]=None,
+        n_features_gt_n_samples: bool=False,
         seed: int=0) -> float:
     """
     Use the gene program / latent scores of a trained Autotalker model for cell
@@ -46,7 +48,11 @@ def compute_cell_cat_cls_accuracy(
     selected_cats:
         List of category labels which will be included as separate labels in the
         classification task. If ´None´, uses all category labels as separate
-        labels. 
+        labels.
+    n_features_gt_n_samples:
+        If ´True´, select algorithm to solve dual optimization problem. Only set
+        this to ´True´ if the number of features is greater than the number of
+        samples.
     seed:
         Random seed for reproducibility.
 
@@ -91,9 +97,9 @@ def compute_cell_cat_cls_accuracy(
 
     # Train SVM classifier and use it for scoring
     clf = make_pipeline(StandardScaler(),
-                        SGDClassifier(max_iter=1000,
-                                      tol=1e-5,
-                                      random_state=seed))
+                        LinearSVC(random_state=seed,
+                                  tol=1e-5,
+                                  dual=n_features_gt_n_samples))
     clf.fit(X=gp_scores, y=cell_cat_codes)
     accuracy = clf.score(X=gp_scores, y=cell_cat_codes)
     return accuracy
