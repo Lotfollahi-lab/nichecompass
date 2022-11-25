@@ -328,6 +328,9 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         selected_gps:
             List of gene program names for which differential gp scores will be
             computed. If ´None´, uses all gene programs.
+        selected_cats:
+            List of category labels for which differential gp scores will be 
+            computed. If ´None´, uses all category labels. 
         gp_scores_weight_normalization:
             If ´True´, normalize the gp scores by the nb means gene expression 
             decoder weights.
@@ -362,6 +365,10 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         """
         np.random.seed(seed)
 
+        if adata is None:
+            adata = self.adata
+
+        # Get index of selected gps
         if selected_gps is None:
             selected_gps = adata.uns[self.gp_names_key_]
             selected_gps_idx = np.arange(len(selected_gps))
@@ -371,10 +378,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             selected_gps_idx = [adata.uns[self.gp_names_key_].index(gp) 
                                 for gp in selected_gps]
 
-        if adata is None:
-            adata = self.adata
-
-        # Get gene program / latent posterior parameters of selected gps
+        # Get gp / latent scores for selected gps
         mu, std = self.get_latent_representation(
             adata=adata,
             counts_key=self.counts_key_,
@@ -724,7 +728,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                 (self.model.gene_expr_decoder
                 .nb_means_normalized_decoder.addon_l.weight.data)])
         gp_weights_sum = (gp_weights.norm(p=1, dim=0)).cpu().numpy()
-        active_gp_weight_sum_gp_mask = gp_weights_sum>min_weight_sum
+        active_gp_weight_sum_gp_mask = gp_weights_sum>min_weight_sum_thresh
         active_gps = (np.array(self.adata.uns[self.gp_names_key_])
                       [active_gp_weight_sum_gp_mask])
         gp_weights_sum = gp_weights_sum[active_gp_weight_sum_gp_mask]
