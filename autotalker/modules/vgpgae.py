@@ -59,6 +59,15 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     log_variational:
         If ´True´, transform x by log(x+1) prior to encoding for numerical 
         stability. Not normalization.
+    filter_latent_for_edge_recon:
+        If ´True´, filter the latent features / gene programs for edge
+        reconstruction to allow only the gene programs with the highest gene
+        program gene expression decoder weight sum to be included in the
+        dot product and, thus, contribute to edge reconstruction.
+    latent_filter_threshold_ratio:
+        If filter_latent_for_edge_recon is ´True´, this is the filter ratio
+        relative to the maximum gene program weight sum that a gene program's
+        weights must sum to to be included in the edge reconstruction.
 
     """
     def __init__(self,
@@ -77,7 +86,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     "one-hop-norm",
                     "one-hop-sum",
                     "one-hop-attention"]="one-hop-attention",
-                 log_variational: bool=True):
+                 log_variational: bool=True,
+                 filter_latent_for_edge_recon: bool=True,
+                 latent_filter_threshold_ratio: float=0.2):
         super().__init__()
         self.n_input = n_input
         self.n_hidden_encoder = n_hidden_encoder
@@ -90,6 +101,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.include_gene_expr_recon_loss = include_gene_expr_recon_loss
         self.node_label_method = node_label_method
         self.log_variational = log_variational
+        self.filter_latent_for_edge_recon = filter_latent_for_edge_recon
+        self.latent_filter_threshold_ratio = latent_filter_threshold_ratio
         self.freeze = False
 
         print("--- INITIALIZING NEW NETWORK MODULE: VARIATIONAL GENE PROGRAM "
@@ -170,6 +183,20 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         
         z = self.reparameterize(output["mu"], output["logstd"])
         if decoder == "graph":
+            if self.filter_latent_for_edge_recon == True:
+                gp_weights = (self.gene_expr_decoder.nb_means_normalized_decoder
+                              .masked_l.weight.data)
+                if self.n_addon_latent > 0:
+                    gp_weights = torch.cat(
+                        [gp_weights, 
+                         (self.gene_expr_decoder.nb_means_normalized_decoder.addon_l
+                          .weight.data)])
+                gp_weights_sum = (gp_weights.norm(p=1, dim=0))
+                max_gp_weights_sum = max(gp_weights_sum)
+                gp_weights_sum_thresh = (self.latent_filter_threshold_ratio * 
+                                         max_gp_weights_sum)
+                active_gp_mask = gp_weights_sum > gp_weights_sum_thresh
+                z = z[:, active_gp_mask]
             output["adj_recon_logits"] = self.graph_decoder(z)
         elif decoder == "gene_expr":
             # Compute aggregated neighborhood gene expression for gene 

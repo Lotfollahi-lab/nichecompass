@@ -8,7 +8,6 @@ from typing import Optional, Union
 import numpy as np
 from anndata import AnnData
 from sklearn.svm import LinearSVC
-from sklearn.linear_model import SGDClassifier
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
