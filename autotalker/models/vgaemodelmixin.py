@@ -85,7 +85,7 @@ class VGAEModelMixin:
             return z
 
     @torch.no_grad()
-    def get_gene_expr_decoder_params(self, 
+    def get_gene_expr_dist_params(self, 
                                   adata: Optional[AnnData]=None,
                                   counts_key: str="counts",
                                   adj_key: str="spatial_connectivities",
@@ -139,8 +139,7 @@ class VGAEModelMixin:
             return_mu_std=True)
         log_library_size = torch.log(x.sum(1)).unsqueeze(1)
     
-        nb_means, zi_prob_logits = self.model.get_gene_expr_decoder_params(
+        nb_means, zi_probs = self.model.get_gene_expr_dist_params(
             mu,
             log_library_size)
-        zi_probs = torch.sigmoid(zi_prob_logits)
         return nb_means, zi_probs

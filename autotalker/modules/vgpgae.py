@@ -206,7 +206,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 edge_index,
                 data_batch.batch_size)
 
-            output["gene_expr_decoder_params"] = self.gene_expr_decoder(
+            output["gene_expr_dist_params"] = self.gene_expr_decoder(
                     z[:data_batch.batch_size],
                     self.log_library_size[:data_batch.batch_size])
         return output
@@ -281,7 +281,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
         if self.include_gene_expr_recon_loss:
             if self.gene_expr_recon_dist == "nb":
-                nb_means = node_model_output["gene_expr_decoder_params"]
+                nb_means = node_model_output["gene_expr_dist_params"]
                 loss_dict["gene_expr_recon_loss"] = (
                 gene_expr_recon_loss_norm_factor * 
                     compute_gene_expr_recon_nb_loss(
@@ -290,7 +290,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                         theta=theta))
             elif self.gene_expr_recon_dist == "zinb":
                 nb_means, zi_prob_logits = (
-                node_model_output["gene_expr_decoder_params"])
+                node_model_output["gene_expr_dist_params"])
                 loss_dict["gene_expr_recon_loss"] = (
                     gene_expr_recon_loss_norm_factor * 
                         compute_gene_expr_recon_zinb_loss(
@@ -363,7 +363,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         # probabilities over all observations if zinb distribution is used to 
         # model gene expression
         if self.gene_expr_recon_dist == "zinb":
-            _, zi_probs = self.get_gene_expr_decoder_params(
+            _, zi_probs = self.get_gene_expr_dist_params(
                 z=self.mu,
                 log_library_size=self.log_library_size)
             non_zi_probs = 1 - zi_probs
@@ -465,33 +465,40 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             return z
 
     @torch.no_grad()
-    def get_gene_expr_decoder_params(
+    def get_gene_expr_dist_params(
             self,
             z: torch.Tensor,
             log_library_size: torch.Tensor
             ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Decode latent features ´z´ to return the parameters of the distribution
-        used for gene expression reconstruction (either (´nb_means´, 
-        ´zi_prob_logits´) for a zero-inflated negative binomial or ´nb_means´ 
-        for a negative binomial).
+        used for gene expression reconstruction (either (´nb_means´, ´zi_probs´)
+        if a zero-inflated negative binomial is used or ´nb_means´ if a negative
+        binomial is used).
 
         Parameters
         ----------
         z:
-            Tensor containing the latent features / gene program scores.
+            Tensor containing the latent features / gene program scores (dim: 
+            n_obs x n_gps).
         log_library_size:
-            Tensor containing the log library size of the observations / cells.
+            Tensor containing the log library size of the observations / cells 
+            (dim: n_obs x 1).
 
         Returns
         ----------
-        gene_expr_decoder_params:
-            Parameters of the gene expression decoder. Contains ´nb_means´ if
-            ´self.gene_expr_recon_dist´ == ´nb´ and 
-            (´nb_means´, ´zi_prob_logits´) if ´self.gene_expr_recon_dist´ == 
-            ´zinb´.
+        nb_means:
+            Expected values of the negative binomial distribution (dim: n_obs x
+            n_genes).
+        zi_probs:
+            Zero-inflation probabilities of the zero-inflated negative binomial
+            distribution (dim: n_obs x n_genes).
         """
-        gene_expr_decoder_params = self.gene_expr_decoder(
-            z,
-            log_library_size)
-        return gene_expr_decoder_params
+        if self.gene_expr_recon_dist == "nb":
+            nb_means = self.gene_expr_decoder(z, log_library_size)
+            return nb_means
+        if self.gene_expr_recon_dist == "zinb":
+            nb_means, zi_prob_logits = self.gene_expr_decoder(z,
+                                                              log_library_size)
+            zi_probs = torch.sigmoid(zi_prob_logits)
+            return nb_means, zi_probs
