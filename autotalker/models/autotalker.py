@@ -725,20 +725,24 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get active gene programs (i.e. gene programs whose absolute gene weights
-        aggregation is greater than ´min_agg_abs_weights_thresh´ (if defined) or the 
-        model's active gene program threshold for edge reconstruction (if not 
-        defined) as determined by ´self.active_gp_thresh_ratio_´). Depending on
+        aggregation is greater than ´min_agg_abs_weights_thresh´ (if it is 
+        defined) or the model's active gene program threshold for edge 
+        reconstruction as determined by ´self.active_gp_thresh_ratio_´ (if 
+        ´min_agg_abs_weights_thresh´ is not defined)). Depending on
         ´nzmeans_normalization´, the aggregation will be either a sum of
         absolute gene weights or a mean of non-zero absolute gene weights.
 
         Parameters
         ----------
         min_agg_abs_weights_thresh:
-            Minimum absolute gene weights sum threshold for gene programs to be 
-            considered active (a gene program's absolute weights sum needs to 
-            exceed this threshold). If ´None´ (default), the model's active gene
-            program threshold for edge reconstruction as determined by 
-            ´self.active_gp_thresh_ratio_´ will be used.
+            Minimum absolute gene weights aggregation threshold for gene 
+            programs to be considered active (a gene program's absolute weights 
+            aggregation needs to exceed this threshold). If ´None´ (default), 
+            the model's active gene program threshold for edge reconstruction as
+            determined by ´self.active_gp_thresh_ratio_´ will be used.
+        nzmeans_normalization:
+            If ´True´, use means of non-zero absolute weights as aggregation
+            method instead of sums of absolute weights.
         return_decoder_weights:
             If ´True´, in addition return the decoder weights of the active gene
             programs.
@@ -748,8 +752,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         active_gps:
             Gene program names of active gene programs.
         gp_weights:
-            Gene program gene weights for each active gene program (n_genes x 
-            n_gps).
+            Gene program gene weights for each active gene program 
+            (n_recon_genes x n_active_gps).
         """
         self._check_if_trained(warn=True)
 
