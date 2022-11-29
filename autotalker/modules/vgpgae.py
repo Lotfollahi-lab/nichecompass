@@ -62,13 +62,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     filter_latent_for_edge_recon:
         If ´True´, filter the latent features / gene programs for edge
         reconstruction to allow only the gene programs with the highest gene
-        program gene expression decoder weight sum to be included in the
+        program gene expression decoder weight sums to be included in the
         dot product and, thus, contribute to edge reconstruction.
     latent_filter_threshold_ratio:
         If filter_latent_for_edge_recon is ´True´, this is the filter ratio
         relative to the maximum gene program weight sum that a gene program's
         weights must sum to to be included in the edge reconstruction.
-
     """
     def __init__(self,
                  n_input: int,
@@ -189,13 +188,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 if self.n_addon_latent > 0:
                     gp_weights = torch.cat(
                         [gp_weights, 
-                         (self.gene_expr_decoder.nb_means_normalized_decoder.addon_l
-                          .weight.data)])
-                gp_weights_sum = (gp_weights.norm(p=1, dim=0))
-                max_gp_weights_sum = max(gp_weights_sum)
-                gp_weights_sum_thresh = (self.latent_filter_threshold_ratio * 
-                                         max_gp_weights_sum)
-                active_gp_mask = gp_weights_sum > gp_weights_sum_thresh
+                         (self.gene_expr_decoder.nb_means_normalized_decoder
+                         .addon_l.weight.data)])
+                gp_weights_sums = gp_weights.norm(p=1, dim=0)
+                max_gp_weights_sum = max(gp_weights_sums)
+                min_weights_sum_thresh = (self.latent_filter_threshold_ratio * 
+                                          max_gp_weights_sum)
+                active_gp_mask = gp_weights_sums > min_weights_sum_thresh
                 z = z[:, active_gp_mask]
             output["adj_recon_logits"] = self.graph_decoder(z)
         elif decoder == "gene_expr":

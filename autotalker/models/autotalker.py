@@ -71,6 +71,17 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         Networks. arXiv [cs.LG] (2016). If ´one-hop-attention´, use a 
         concatenation of the node`s input features with the node's one-hop 
         neighbors input features weighted by an attention mechanism.
+    use_active_gps_for_edge_recon:
+        If ´True´, filter the latent features / gene programs for edge
+        reconstruction to allow only the gene programs with the highest 
+        cumulative gene program gene expression decoder weight sums to be 
+        included in the dot product of the graph decoder and, thus, contribute 
+        to edge reconstruction.
+    active_gp_thresh_ratio:
+        The filter ratio relative to the maximum absolute gene program weights 
+        sum across all gene programs that a gene program's absolute weights must
+        sum to to be considered an active gp and to be included in the edge 
+        reconstruction.
     n_hidden_encoder:
         Number of nodes in the encoder hidden layer.
     dropout_rate_encoder:
@@ -106,6 +117,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                     "one-hop-sum",
                     "one-hop-norm",
                     "one-hop-attention"]="one-hop-attention",
+                 use_active_gps_for_edge_recon: bool=True,
+                 active_gp_thresh_ratio: float=0.1,
                  n_hidden_encoder: int=256,
                  dropout_rate_encoder: float=0.0,
                  dropout_rate_graph_decoder: float=0.0,
@@ -123,6 +136,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
         self.log_variational_ = log_variational
         self.node_label_method_ = node_label_method
+        self.use_active_gps_for_edge_recon_ = use_active_gps_for_edge_recon
+        self.active_gp_thresh_ratio_ = active_gp_thresh_ratio
         self.n_input_ = adata.n_vars
         self.n_output_ = adata.n_vars
         if node_label_method != "self":
@@ -201,7 +216,10 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             include_edge_recon_loss=self.include_edge_recon_loss_,
             include_gene_expr_recon_loss=self.include_gene_expr_recon_loss_,
             node_label_method=self.node_label_method_,
-            log_variational=self.log_variational_)
+            log_variational=self.log_variational_,
+            filter_latent_for_edge_recon=self.use_active_gps_for_edge_recon_,
+            latent_filter_threshold_ratio=self.active_gp_thresh_ratio_)
+
 
         self.is_trained_ = False
         # Store init params for saving and loading
@@ -699,37 +717,72 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             mode=mode,
             seed=seed)
 
-    def get_active_gps_with_weight_sums(self,
-                                        min_weight_sum_thresh: float=0.01
-                                        ) -> Tuple[np.ndarray, np.ndarray]:
+    def get_active_gps(
+            self,
+            min_agg_abs_weights_thresh: Optional[float]=None,
+            nzmeans_normalization: bool=True,
+            return_decoder_weights: bool=False
+            ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Get active gene programs (i.e. gene programs whose gene weights sum is 
-        greater than ´min_weight_sum´) and the corresponding sums of their gene
-        weights.
+        Get active gene programs (i.e. gene programs whose absolute gene weights
+        aggregation is greater than ´min_agg_abs_weights_thresh´ (if defined) or the 
+        model's active gene program threshold for edge reconstruction (if not 
+        defined) as determined by ´self.active_gp_thresh_ratio_´). Depending on
+        ´nzmeans_normalization´, the aggregation will be either a sum of
+        absolute gene weights or a mean of non-zero absolute gene weights.
 
         Parameters
         ----------
-        min_weight_sum_thresh:
-            Minimun gene weight sum threshold. A gene program's weight sum needs
-            to exceed this threshold to be considered active.
+        min_agg_abs_weights_thresh:
+            Minimum absolute gene weights sum threshold for gene programs to be 
+            considered active (a gene program's absolute weights sum needs to 
+            exceed this threshold). If ´None´ (default), the model's active gene
+            program threshold for edge reconstruction as determined by 
+            ´self.active_gp_thresh_ratio_´ will be used.
+        return_decoder_weights:
+            If ´True´, in addition return the decoder weights of the active gene
+            programs.
 
         Returns
         ----------
         active_gps:
             Gene program names of active gene programs.
-        gp_weights_sum:
-            Sum of gene program gene weights for each active gene program.
+        gp_weights:
+            Gene program gene weights for each active gene program (n_genes x 
+            n_gps).
         """
-        gp_weights = (self.model.gene_expr_decoder
-                      .nb_means_normalized_decoder.masked_l.weight.data)
+        self._check_if_trained(warn=True)
+
+        # Get gp gene expression decoder weights
+        gp_weights = (self.model.gene_expr_decoder.nb_means_normalized_decoder
+                      .masked_l.weight.data)
         if self.n_addon_gps_ > 0:
             gp_weights = torch.cat(
                 [gp_weights, 
-                (self.model.gene_expr_decoder
-                .nb_means_normalized_decoder.addon_l.weight.data)])
-        gp_weights_sum = (gp_weights.norm(p=1, dim=0)).cpu().numpy()
-        active_gp_weight_sum_gp_mask = gp_weights_sum>min_weight_sum_thresh
+                 (self.model.gene_expr_decoder.nb_means_normalized_decoder
+                  .addon_l.weight.data)])
+        
+        # Calculate aggregations of absolute gp weights per gp (either sums
+        # or non-zero means)
+        abs_agg_gp_weights = gp_weights.norm(p=1, dim=0) # absolute sums
+        if nzmeans_normalization:
+            abs_agg_gp_weights = (abs_agg_gp_weights / 
+                                  torch.count_nonzero(gp_weights, dim=0))
+                                  # absolute non-zero means
+        abs_agg_gp_weights = abs_agg_gp_weights.cpu().numpy()
+
+        # Get aggregated absolute gp weights threshold for active gps
+        if min_agg_abs_weights_thresh is None:
+            max_agg_abs_gp_weights = max(abs_agg_gp_weights)
+            min_agg_abs_weights_thresh = (self.active_gp_thresh_ratio_ *
+                                          max_agg_abs_gp_weights)
+
+        # Get active gps and their gp weights
+        active_gp_mask = abs_agg_gp_weights > min_agg_abs_weights_thresh
         active_gps = (np.array(self.adata.uns[self.gp_names_key_])
-                      [active_gp_weight_sum_gp_mask])
-        gp_weights_sum = gp_weights_sum[active_gp_weight_sum_gp_mask]
-        return active_gps, gp_weights_sum
+                      [active_gp_mask])
+        active_gp_weights = gp_weights[:, active_gp_mask]
+        if return_decoder_weights:
+            return active_gps, active_gp_weights
+        else:
+            return active_gps
