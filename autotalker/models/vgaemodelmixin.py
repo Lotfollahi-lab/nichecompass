@@ -21,6 +21,7 @@ class VGAEModelMixin:
             adata: Optional[AnnData]=None,
             counts_key: str="counts",
             adj_key: str="spatial_connectivities",
+            use_only_active_gps=True,
             return_mu_std: bool=False
             ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
@@ -36,6 +37,9 @@ class VGAEModelMixin:
         adj_key:
             Key under which the sparse adjacency matrix is stored in 
             ´adata.obsp´.
+        use_only_active_gps:
+            If `True`, only return the latent representation for active gene 
+            programs.            
         return_mu_std:
             If `True`, return mu and std instead of a random sample from the
             latent space.
@@ -67,6 +71,7 @@ class VGAEModelMixin:
             mu, std = self.model.get_latent_representation(
                 x=x,
                 edge_index=edge_index,
+                use_only_active_gps=use_only_active_gps,
                 return_mu_std=True)
             mu = mu.cpu()
             std = std.cpu()
@@ -75,6 +80,7 @@ class VGAEModelMixin:
             z = np.array(self.model.get_latent_representation(
                 x=x,
                 edge_index=edge_index,
+                use_only_active_gps=use_only_active_gps,
                 return_mu_std=False).cpu())
             return z
 
@@ -82,7 +88,8 @@ class VGAEModelMixin:
     def get_zinb_gene_expr_params(self, 
                                   adata: Optional[AnnData]=None,
                                   counts_key: str="counts",
-                                  adj_key: str="spatial_connectivities"
+                                  adj_key: str="spatial_connectivities",
+                                  use_only_active_gps=True,
                                   ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Get ZINB gene expression reconstruction parameters from a trained VGAE 
@@ -98,6 +105,9 @@ class VGAEModelMixin:
         adj_key:
             Key under which the sparse adjacency matrix is stored in 
             ´adata.obsp´.
+        use_only_active_gps:
+            If `True`, only return the zinb gene expression parametersfor active
+            gene programs.        
 
         Returns
         ----------
@@ -125,6 +135,7 @@ class VGAEModelMixin:
         mu, _ = self.model.get_latent_representation(
             x=x,
             edge_index=edge_index,
+            use_only_active_gps=use_only_active_gps,
             return_mu_std=True)
         log_library_size = torch.log(x.sum(1)).unsqueeze(1)
     

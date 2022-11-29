@@ -185,7 +185,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             if self.use_active_gps_for_edge_recon == True:
                 active_gp_mask = self.get_active_gp_mask(
                     abs_gp_weights_agg_mode="sum+nzmeans")
-                print("sum+nzmeans")
                 z = z[:, active_gp_mask]
             output["adj_recon_logits"] = self.graph_decoder(z)
         elif decoder == "gene_expr":
@@ -328,7 +327,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         edge_index:
             Edge index of the graph.
         use_only_active_gps:
-
+            If `True`, only return the latent representation for active gene 
+            programs.
         return_mu_std:
             If `True`, return mu and logstd instead of a random sample from the
             latent space.
@@ -387,13 +387,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             abs_gp_weights_agg_mode: Literal["sum",
                                              "nzmeans",
                                              "sum+nzmeans"]="sum+nzmeans",
-            return_decoder_weights: bool=False
+            return_gp_weights: bool=False
             ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Get a mask of active gene programs based on the gene expression decoder
         gene weights of gene programs. Active gene programs are gene programs
         whose absolute gene weights aggregated over all genes are greater than 
-        ´self.active_gp_thresh_ratio_´ times the absolute gene weights
+        ´self.active_gp_thresh_ratio´ times the absolute gene weights
         aggregation of the gene program with the maximum value across all gene 
         programs. Depending on ´abs_gp_weights_agg_mode´, the aggregation will 
         be either a sum of absolute gene weights (prioritizes gene programs that
@@ -409,15 +409,15 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             absolute gp weights for aggregation and active gp determination. If
             ´sum+nzmeans´, uses a combination of sums and means of non-zero
             absolute gp weights for aggregation and active gp determination.
-        return_decoder_weights:
-            If ´True´, in addition returns the decoder weights of the active
-            gene programs.
+        return_gp_weights:
+            If ´True´, in addition return the gene expression decoder gene 
+            weights of the active gene programs.
 
         Returns
         ----------
         active_gp_mask:
             Boolean tensor of gene programs which contains `True` for active
-            gene programs and ´False´ for inactive gene programs.
+            gene programs and `False` for inactive gene programs.
         active_gp_weights:
             Tensor containing the gene expression decoder gene weights of active
             gene programs.
@@ -431,8 +431,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  (self.gene_expr_decoder.nb_means_normalized_decoder.addon_l
                   .weight.data)])
         
-        # Calculate thresholds of aggregated absolute gp weights and get active
-        # gp mask
+        # Aggregate absolute gp weights based on ´abs_gp_weights_agg_mode´ and 
+        # calculate thresholds of aggregated absolute gp weights and get active
+        # gp mask and (optionally) active gp weights
         abs_gp_weights_sums = gp_weights.norm(p=1, dim=0)
         if abs_gp_weights_agg_mode in ["sum", "sum+nzmeans"]:
             max_abs_gp_weights_sum = max(abs_gp_weights_sums)
@@ -450,12 +451,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 active_gp_mask = (abs_gp_weights_nzmeans >= 
                                   min_abs_gp_weights_nzmean_thresh)
             elif abs_gp_weights_agg_mode == "sum+nzmeans":
-                # Combined active gp mask
+                # Combine active gp mask
                 active_gp_mask = active_gp_mask | (abs_gp_weights_nzmeans >= 
                                  min_abs_gp_weights_nzmean_thresh)
-
-        # Filter gp weights for active gps if required
-        if return_decoder_weights:
+        if return_gp_weights:
             active_gp_weights = gp_weights[:, active_gp_mask]
             return active_gp_mask, active_gp_weights
         else:

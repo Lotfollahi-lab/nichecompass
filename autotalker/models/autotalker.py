@@ -71,7 +71,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         Networks. arXiv [cs.LG] (2016). If ´one-hop-attention´, use a 
         concatenation of the node`s input features with the node's one-hop 
         neighbors input features weighted by an attention mechanism.
-    use_active_gps_for_edge_recon:
+    use_only_active_gps:
         If ´True´, filter the latent features / gene programs for edge
         reconstruction to allow only the gene programs with the highest 
         cumulative gene program gene expression decoder weight sums to be 
@@ -117,7 +117,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                     "one-hop-sum",
                     "one-hop-norm",
                     "one-hop-attention"]="one-hop-attention",
-                 use_active_gps_for_edge_recon: bool=True,
+                 use_only_active_gps: bool=True,
                  active_gp_thresh_ratio: float=0.1,
                  n_hidden_encoder: int=256,
                  dropout_rate_encoder: float=0.0,
@@ -136,7 +136,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
         self.log_variational_ = log_variational
         self.node_label_method_ = node_label_method
-        self.use_active_gps_for_edge_recon_ = use_active_gps_for_edge_recon
+        self.use_only_active_gps_ = use_only_active_gps
         self.active_gp_thresh_ratio_ = active_gp_thresh_ratio
         self.n_input_ = adata.n_vars
         self.n_output_ = adata.n_vars
@@ -217,7 +217,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             include_gene_expr_recon_loss=self.include_gene_expr_recon_loss_,
             node_label_method=self.node_label_method_,
             log_variational=self.log_variational_,
-            use_active_gps_for_edge_recon=self.use_active_gps_for_edge_recon_,
+            use_only_active_gps=self.use_only_active_gps_,
             active_gp_thresh_ratio=self.active_gp_thresh_ratio_)
 
 
@@ -386,21 +386,30 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         if adata is None:
             adata = self.adata
 
+        active_gps = self.get_active_gps()
+
         # Get index of selected gps
         if selected_gps is None:
-            selected_gps = list(adata.uns[self.gp_names_key_])
+            selected_gps = list(active_gps)
             selected_gps_idx = np.arange(len(selected_gps))
         else: 
             if isinstance(selected_gps, str):
                 selected_gps = [selected_gps]
-            selected_gps_idx = np.array([list(adata.uns[self.gp_names_key_])
-                                         .index(gp) for gp in selected_gps])
+            for gp in selected_gps:
+                if gp not in active_gps:
+                    raise ValueError(f"GP {gp} is not an active gene program. "
+                                     "Please only select active gene programs."
+                                     " You can retrieve active gene programs "
+                                     "via 'model.get_active_gps()'.")
+            selected_gps_idx = np.array([list(active_gps).index(gp) for gp in 
+                                        selected_gps])
 
         # Get gp / latent scores for selected gps
         mu, std = self.get_latent_representation(
             adata=adata,
             counts_key=self.counts_key_,
             adj_key=self.adj_key_,
+            use_only_active_gps=True,
             return_mu_std=True)
         mu = mu[:, selected_gps_idx].cpu().numpy()
         std = std[:, selected_gps_idx].cpu().numpy()
@@ -599,10 +608,11 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             self,
             selected_gp: str,
             adata: Optional[AnnData]=None,
+            use_active_gps: bool=True,
             gene_importances_zi_normalization: bool=True) -> pd.DataFrame:
         """
-        Compute gene importances for the genes of a given gene program. Gene
-        importances are determined by the normalized weights of the NB means 
+        Compute gene importances for the genes of a given gene program. 
+        Gene importances are determined by the normalized weights of the NB means 
         gene expression decoder, optionally corrected for gene expression zero
         inflation.
 
@@ -628,8 +638,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         if adata is None:
             adata = self.adata
 
-        if isinstance(adata.uns[self.gp_names_key_], np.ndarray):
-            adata.uns[self.gp_names_key_] = list(adata.uns[self.gp_names_key_])
+        gps = list(adata.uns[self.gp_names_key_])
+        active_gps, gp_weights = self.get_active_gps(return_gp_weights=True)
 
         # Retrieve NB means gene expression decoder weights
         selected_gp_idx = adata.uns[self.gp_names_key_].index(selected_gp)
@@ -719,51 +729,39 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
 
     def get_active_gps(
             self,
-            min_agg_abs_weights_thresh: Optional[float]=None,
-            nzmeans_normalization: bool=True,
-            return_decoder_weights: bool=False
-            ) -> Tuple[np.ndarray, np.ndarray]:
+            return_gp_weights: bool=False
+            ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         """
-        Get active gene programs (i.e. gene programs whose absolute gene weights
-        aggregation is greater than ´min_agg_abs_weights_thresh´ (if it is 
-        defined) or the model's active gene program threshold for edge 
-        reconstruction as determined by ´self.active_gp_thresh_ratio_´ (if 
-        ´min_agg_abs_weights_thresh´ is not defined)). Depending on
-        ´nzmeans_normalization´, the aggregation will be either a sum of
-        absolute gene weights or a mean of non-zero absolute gene weights.
+        Get active gene programs based on the gene expression decoder gene 
+        weights of gene programs. Active gene programs are gene programs
+        whose absolute gene weights aggregated over all genes are greater than 
+        ´self.active_gp_thresh_ratio_´ times the absolute gene weights
+        aggregation of the gene program with the maximum value across all gene 
+        programs.
 
         Parameters
         ----------
-        min_agg_abs_weights_thresh:
-            Minimum absolute gene weights aggregation threshold for gene 
-            programs to be considered active (a gene program's absolute weights 
-            aggregation needs to exceed this threshold). If ´None´ (default), 
-            the model's active gene program threshold for edge reconstruction as
-            determined by ´self.active_gp_thresh_ratio_´ will be used.
-        nzmeans_normalization:
-            If ´True´, use means of non-zero absolute weights as aggregation
-            method instead of sums of absolute weights.
-        return_decoder_weights:
-            If ´True´, in addition return the decoder weights of the active gene
-            programs.
+        return_gp_weights:
+            If ´True´, in addition return the gene expression decoder gene 
+            weights of the active gene programs.
 
         Returns
         ----------
         active_gps:
             Gene program names of active gene programs.
-        gp_weights:
+        active_gp_weights:
             Gene program gene weights for each active gene program 
             (n_recon_genes x n_active_gps).
         """
         self._check_if_trained(warn=True)
 
         active_gp_mask, active_gp_weights = self.model.get_active_gp_mask(
-            return_decoder_weights=True)
+            return_gp_weights=True)
 
         active_gp_mask = active_gp_mask.cpu().numpy()
 
         active_gps = self.adata.uns[self.gp_names_key_][active_gp_mask]
-        if return_decoder_weights:
+        if return_gp_weights:
             return active_gps, active_gp_weights
         else:
             return active_gps
