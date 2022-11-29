@@ -3,7 +3,7 @@ This module contains the Variational Gene Program Graph Autoencoder, the core
 module of the Autotalker model.
 """
 
-from typing import Literal
+from typing import Literal, Tuple, Union
 
 import mlflow
 import torch
@@ -39,7 +39,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     n_latent:
         Number of nodes in the latent space (gene programs from the gene program
         mask).
-    n_addon_latent:
+    n_addon_gps:
         Number of add-on nodes in the latent space (new gene programs).
     n_output:
         Number of nodes in the output layer.
@@ -59,13 +59,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     log_variational:
         If ´True´, transform x by log(x+1) prior to encoding for numerical 
         stability. Not normalization.
-    filter_latent_for_edge_recon:
+    use_active_gps_for_edge_recon:
         If ´True´, filter the latent features / gene programs for edge
         reconstruction to allow only the gene programs with the highest gene
         program gene expression decoder weight sums to be included in the
         dot product and, thus, contribute to edge reconstruction.
-    latent_filter_threshold_ratio:
-        If filter_latent_for_edge_recon is ´True´, this is the filter ratio
+    active_gp_thresh_ratio:
+        If ´use_active_gps_for_edge_recon´ is ´True´, this is the filter ratio
         relative to the maximum gene program weight sum that a gene program's
         weights must sum to to be included in the edge reconstruction.
     """
@@ -73,7 +73,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  n_input: int,
                  n_hidden_encoder: int,
                  n_latent: int,
-                 n_addon_latent: int,
+                 n_addon_gps: int,
                  n_output: int,
                  gene_expr_decoder_mask: torch.Tensor,
                  dropout_rate_encoder: float=0.0,
@@ -86,13 +86,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     "one-hop-sum",
                     "one-hop-attention"]="one-hop-attention",
                  log_variational: bool=True,
-                 filter_latent_for_edge_recon: bool=True,
-                 latent_filter_threshold_ratio: float=0.2):
+                 use_active_gps_for_edge_recon: bool=True,
+                 active_gp_thresh_ratio: float=0.2):
         super().__init__()
         self.n_input = n_input
         self.n_hidden_encoder = n_hidden_encoder
         self.n_latent = n_latent
-        self.n_addon_latent = n_addon_latent
+        self.n_addon_gps = n_addon_gps
         self.n_output = n_output
         self.dropout_rate_encoder = dropout_rate_encoder
         self.dropout_rate_graph_decoder = dropout_rate_graph_decoder
@@ -100,8 +100,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.include_gene_expr_recon_loss = include_gene_expr_recon_loss
         self.node_label_method = node_label_method
         self.log_variational = log_variational
-        self.filter_latent_for_edge_recon = filter_latent_for_edge_recon
-        self.latent_filter_threshold_ratio = latent_filter_threshold_ratio
+        self.use_active_gps_for_edge_recon = use_active_gps_for_edge_recon
+        self.active_gp_thresh_ratio = active_gp_thresh_ratio
         self.freeze = False
 
         print("--- INITIALIZING NEW NETWORK MODULE: VARIATIONAL GENE PROGRAM "
@@ -113,7 +113,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.encoder = GCNEncoder(n_input=n_input,
                                   n_hidden=n_hidden_encoder,
                                   n_latent=n_latent,
-                                  n_addon_latent=n_addon_latent,
+                                  n_addon_latent=n_addon_gps,
                                   dropout_rate=dropout_rate_encoder,
                                   activation=torch.relu)
         
@@ -124,7 +124,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_input=n_latent,
             n_output=n_output,
             mask=gene_expr_decoder_mask,
-            n_addon_input=n_addon_latent)
+            n_addon_input=n_addon_gps)
 
         if node_label_method == "self":
             self.gene_expr_node_label_aggregator = (
@@ -182,19 +182,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         
         z = self.reparameterize(output["mu"], output["logstd"])
         if decoder == "graph":
-            if self.filter_latent_for_edge_recon == True:
-                gp_weights = (self.gene_expr_decoder.nb_means_normalized_decoder
-                              .masked_l.weight.data)
-                if self.n_addon_latent > 0:
-                    gp_weights = torch.cat(
-                        [gp_weights, 
-                         (self.gene_expr_decoder.nb_means_normalized_decoder
-                         .addon_l.weight.data)])
-                gp_weights_sums = gp_weights.norm(p=1, dim=0)
-                max_gp_weights_sum = max(gp_weights_sums)
-                min_weights_sum_thresh = (self.latent_filter_threshold_ratio * 
-                                          max_gp_weights_sum)
-                active_gp_mask = gp_weights_sums > min_weights_sum_thresh
+            if self.use_active_gps_for_edge_recon == True:
+                active_gp_mask = self.get_active_gp_mask(
+                    abs_gp_weights_agg_mode="sum+nzmeans")
+                print("sum+nzmeans")
                 z = z[:, active_gp_mask]
             output["adj_recon_logits"] = self.graph_decoder(z)
         elif decoder == "gene_expr":
@@ -294,7 +285,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 compute_group_lasso_reg_loss(self.named_parameters()))
             loss_dict["loss"] += loss_dict["group_lasso_reg_loss" ]
 
-            if self.n_addon_latent != 0:
+            if self.n_addon_gps != 0:
                 loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon * 
                     compute_addon_l1_reg_loss(self.named_parameters()))
                 loss_dict["loss"] += loss_dict["addon_gp_l1_reg_loss"]
@@ -316,3 +307,156 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                          self.node_label_method)
         mlflow.log_param("log_variational", 
                          self.log_variational)
+
+    @torch.no_grad()
+    def get_latent_representation(
+            self,
+            x: torch.Tensor,
+            edge_index: torch.Tensor,
+            use_only_active_gps=True,
+            return_mu_std: bool=False
+            ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        """
+        Encode input features x and edge index into the latent space normal 
+        distribution parameters and return z. If the module is not in training
+        mode, mu will be returned.
+           
+        Parameters
+        ----------
+        x:
+            Feature matrix to be encoded into latent space.
+        edge_index:
+            Edge index of the graph.
+        use_only_active_gps:
+
+        return_mu_std:
+            If `True`, return mu and logstd instead of a random sample from the
+            latent space.
+
+        Returns
+        -------
+        z:
+            Latent space encoding.
+        mu:
+            Expected values of the latent posterior.
+        std:
+            Standard deviations of the latent posterior.
+        """
+        mu, logstd = self.encoder(x, edge_index)
+
+        if use_only_active_gps:
+            active_gp_mask = self.get_active_gp_mask()
+            mu, logstd = mu[:, active_gp_mask], logstd[:, active_gp_mask]
+
+        if return_mu_std:
+            std = torch.exp(logstd)
+            return mu, std
+        else:
+            z = self.reparameterize(mu, logstd)
+            return z
+
+    @torch.no_grad()
+    def get_zinb_gene_expr_params(self,
+                                  z: torch.Tensor,
+                                  log_library_size: torch.Tensor
+                                  ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Decode latent space features z using the log library size of the
+        input gene expression to return the parameters of the ZINB distribution
+        used for reconstruction of gene expression.
+
+        Parameters
+        ----------
+        z:
+            Tensor containing the latent space features.
+        log_library_size:
+            Tensor containing the log library size of the nodes.
+
+        Returns
+        ----------
+        zinb_parameters:
+            Parameters for the ZINB distribution to model gene expression.
+        """
+        zinb_parameters = self.gene_expr_decoder(
+            z,
+            log_library_size)
+        return zinb_parameters
+
+    def get_active_gp_mask(
+            self,
+            abs_gp_weights_agg_mode: Literal["sum",
+                                             "nzmeans",
+                                             "sum+nzmeans"]="sum+nzmeans",
+            return_decoder_weights: bool=False
+            ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        """
+        Get a mask of active gene programs based on the gene expression decoder
+        gene weights of gene programs. Active gene programs are gene programs
+        whose absolute gene weights aggregated over all genes are greater than 
+        ´self.active_gp_thresh_ratio_´ times the absolute gene weights
+        aggregation of the gene program with the maximum value across all gene 
+        programs. Depending on ´abs_gp_weights_agg_mode´, the aggregation will 
+        be either a sum of absolute gene weights (prioritizes gene programs that
+        reconstruct many genes) or a mean of non-zero absolute gene weights 
+        (normalizes for the number of genes that a gene program reconstructs) or
+        a combination of the two.
+
+        Parameters
+        ----------
+        abs_gp_weights_agg_mode:
+            If ´sum´, uses sums of absolute gp weights for aggregation and
+            active gp determination. If ´nzmeans´, uses means of non-zero 
+            absolute gp weights for aggregation and active gp determination. If
+            ´sum+nzmeans´, uses a combination of sums and means of non-zero
+            absolute gp weights for aggregation and active gp determination.
+        return_decoder_weights:
+            If ´True´, in addition returns the decoder weights of the active
+            gene programs.
+
+        Returns
+        ----------
+        active_gp_mask:
+            Boolean tensor of gene programs which contains `True` for active
+            gene programs and ´False´ for inactive gene programs.
+        active_gp_weights:
+            Tensor containing the gene expression decoder gene weights of active
+            gene programs.
+        """
+        # Get gp gene expression decoder gene weights
+        gp_weights = (self.gene_expr_decoder.nb_means_normalized_decoder
+                      .masked_l.weight.data)
+        if self.n_addon_gps > 0:
+            gp_weights = torch.cat(
+                [gp_weights, 
+                 (self.gene_expr_decoder.nb_means_normalized_decoder.addon_l
+                  .weight.data)])
+        
+        # Calculate thresholds of aggregated absolute gp weights and get active
+        # gp mask
+        abs_gp_weights_sums = gp_weights.norm(p=1, dim=0)
+        if abs_gp_weights_agg_mode in ["sum", "sum+nzmeans"]:
+            max_abs_gp_weights_sum = max(abs_gp_weights_sums)
+            min_abs_gp_weights_sum_thresh = (self.active_gp_thresh_ratio * 
+                                             max_abs_gp_weights_sum)
+            active_gp_mask = (abs_gp_weights_sums >= 
+                              min_abs_gp_weights_sum_thresh)
+        if abs_gp_weights_agg_mode in ["nzmeans", "sum+nzmeans"]:
+            abs_gp_weights_nzmeans = (abs_gp_weights_sums / 
+                                      torch.count_nonzero(gp_weights, dim=0))
+            max_abs_gp_weights_nzmean = max(abs_gp_weights_nzmeans)
+            min_abs_gp_weights_nzmean_thresh = (self.active_gp_thresh_ratio * 
+                                                max_abs_gp_weights_nzmean)
+            if abs_gp_weights_agg_mode == "nzmeans":
+                active_gp_mask = (abs_gp_weights_nzmeans >= 
+                                  min_abs_gp_weights_nzmean_thresh)
+            elif abs_gp_weights_agg_mode == "sum+nzmeans":
+                # Combined active gp mask
+                active_gp_mask = active_gp_mask | (abs_gp_weights_nzmeans >= 
+                                 min_abs_gp_weights_nzmean_thresh)
+
+        # Filter gp weights for active gps if required
+        if return_decoder_weights:
+            active_gp_weights = gp_weights[:, active_gp_mask]
+            return active_gp_mask, active_gp_weights
+        else:
+            return active_gp_mask

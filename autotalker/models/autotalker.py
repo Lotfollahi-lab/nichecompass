@@ -208,7 +208,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             n_input=self.n_input_,
             n_hidden_encoder=self.n_hidden_encoder_,
             n_latent=self.n_nonaddon_gps_,
-            n_addon_latent=self.n_addon_gps_,
+            n_addon_gps=self.n_addon_gps_,
             n_output=self.n_output_,
             gene_expr_decoder_mask=self.gp_mask_,
             dropout_rate_encoder=self.dropout_rate_encoder_,
@@ -217,8 +217,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             include_gene_expr_recon_loss=self.include_gene_expr_recon_loss_,
             node_label_method=self.node_label_method_,
             log_variational=self.log_variational_,
-            filter_latent_for_edge_recon=self.use_active_gps_for_edge_recon_,
-            latent_filter_threshold_ratio=self.active_gp_thresh_ratio_)
+            use_active_gps_for_edge_recon=self.use_active_gps_for_edge_recon_,
+            active_gp_thresh_ratio=self.active_gp_thresh_ratio_)
 
 
         self.is_trained_ = False
@@ -757,35 +757,12 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         """
         self._check_if_trained(warn=True)
 
-        # Get gp gene expression decoder weights
-        gp_weights = (self.model.gene_expr_decoder.nb_means_normalized_decoder
-                      .masked_l.weight.data)
-        if self.n_addon_gps_ > 0:
-            gp_weights = torch.cat(
-                [gp_weights, 
-                 (self.model.gene_expr_decoder.nb_means_normalized_decoder
-                  .addon_l.weight.data)])
-        
-        # Calculate aggregations of absolute gp weights per gp (either sums
-        # or non-zero means)
-        abs_agg_gp_weights = gp_weights.norm(p=1, dim=0) # absolute sums
-        if nzmeans_normalization:
-            abs_agg_gp_weights = (abs_agg_gp_weights / 
-                                  torch.count_nonzero(gp_weights, dim=0))
-                                  # absolute non-zero means
-        abs_agg_gp_weights = abs_agg_gp_weights.cpu().numpy()
+        active_gp_mask, active_gp_weights = self.model.get_active_gp_mask(
+            return_decoder_weights=True)
 
-        # Get aggregated absolute gp weights threshold for active gps
-        if min_agg_abs_weights_thresh is None:
-            max_agg_abs_gp_weights = max(abs_agg_gp_weights)
-            min_agg_abs_weights_thresh = (self.active_gp_thresh_ratio_ *
-                                          max_agg_abs_gp_weights)
+        active_gp_mask = active_gp_mask.cpu().numpy()
 
-        # Get active gps and their gp weights
-        active_gp_mask = abs_agg_gp_weights > min_agg_abs_weights_thresh
-        active_gps = (np.array(self.adata.uns[self.gp_names_key_])
-                      [active_gp_mask])
-        active_gp_weights = gp_weights[:, active_gp_mask]
+        active_gps = self.adata.uns[self.gp_names_key_][active_gp_mask]
         if return_decoder_weights:
             return active_gps, active_gp_weights
         else:
