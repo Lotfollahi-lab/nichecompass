@@ -103,6 +103,49 @@ def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
     return edge_recon_loss
 
 
+def compute_gene_expr_recon_nb_loss(x: torch.Tensor,
+                                    mu: torch.Tensor,
+                                    theta: torch.Tensor,
+                                    eps: float=1e-8) -> torch.Tensor:
+    """
+    Gene expression reconstruction loss according to a Negative Binomial gene
+    expression model which is used to model scRNA-seq count data.
+
+    Parts of the implementation are adapted from
+    https://github.com/scverse/scvi-tools/blob/main/scvi/distributions/_negative_binomial.py#L75.
+    (29.11.2022)
+
+    Parameters
+    ----------
+    x:
+        Reconstructed feature matrix.
+    mu:
+        Mean of the negative binomial with positive support.
+        (shape: batch_size x n_genes)
+    theta:
+        Inverse dispersion parameter with positive support.
+        (shape: batch_size x n_genes)
+    eps:
+        Numerical stability constant.
+
+    Returns
+    ----------
+    zinb_loss:
+        Gene expression reconstruction loss using a ZINB gene expression model.
+    """
+    log_theta_mu_eps = torch.log(theta + mu + eps)
+    log_likelihood_nb = (
+        theta * (torch.log(theta + eps) - log_theta_mu_eps)
+        + x * (torch.log(mu + eps) - log_theta_mu_eps)
+        + torch.lgamma(x + theta)
+        - torch.lgamma(theta)
+        - torch.lgamma(x + 1)
+    )
+
+    nb_loss = torch.mean(-log_likelihood_nb.sum(-1))
+    return nb_loss 
+
+
 def compute_gene_expr_recon_zinb_loss(x: torch.Tensor,
                                       mu: torch.Tensor,
                                       theta: torch.Tensor,

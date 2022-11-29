@@ -2,7 +2,7 @@
 This module contains decoders used by the Autotalker model.
 """
 
-from typing import Tuple
+from typing import Literal, Tuple
 
 import torch
 import torch.nn as nn
@@ -71,16 +71,24 @@ class MaskedGeneExprDecoder(nn.Module):
     n_addon_input:
         Number of non-maskable add-on input nodes to the decoder (non-maskable
         latent space dimensionality)
+    gene_expr_recon_dist:
+        The distribution used for gene expression reconstruction. If `nb`, uses
+        a Negative Binomial distribution. If `zinb`, uses a Zero-inflated
+        Negative Binomial distribution.
+        
     """
     def __init__(self,
                  n_input: int,
                  n_output: int,
                  mask: torch.Tensor,
-                 n_addon_input: int):
+                 n_addon_input: int,
+                 gene_expr_recon_dist: Literal["nb", "zinb"]):
         super().__init__()
 
         print(f"MASKED GENE EXPRESSION DECODER -> n_input: {n_input}, "
-              f"n_addon_input: {n_addon_input}, n_output: {n_output}")
+              f"n_addon_input: {n_addon_input}, n_output: {n_output}, ")
+
+        self.gene_expr_recon_dist = gene_expr_recon_dist
 
         self.nb_means_normalized_decoder = AddOnMaskedLayer(
             n_input=n_input,
@@ -90,13 +98,14 @@ class MaskedGeneExprDecoder(nn.Module):
             n_addon_input=n_addon_input,
             activation=nn.Softmax(dim=-1))
 
-        self.zi_prob_logits_decoder = AddOnMaskedLayer(
-            n_input=n_input,
-            n_output=n_output,
-            bias=False,
-            mask=mask,
-            n_addon_input=n_addon_input,
-            activation=nn.Identity())
+        if gene_expr_recon_dist == "zinb":
+            self.zi_prob_logits_decoder = AddOnMaskedLayer(
+                n_input=n_input,
+                n_output=n_output,
+                bias=False,
+                mask=mask,
+                n_addon_input=n_addon_input,
+                activation=nn.Identity())
 
     def forward(self,
                 z: torch.Tensor,
@@ -119,6 +128,9 @@ class MaskedGeneExprDecoder(nn.Module):
         """
         nb_means_normalized = self.nb_means_normalized_decoder(z)
         nb_means = torch.exp(log_library_size) * nb_means_normalized
-        zi_prob_logits = self.zi_prob_logits_decoder(z)
-        zinb_parameters = (nb_means, zi_prob_logits)
-        return zinb_parameters
+        if self.gene_expr_recon_dist == "nb":
+            gene_expr_decoder_params = nb_means
+        elif self.gene_expr_recon_dist == "zinb":
+            zi_prob_logits = self.zi_prob_logits_decoder(z)
+            gene_expr_decoder_params = (nb_means, zi_prob_logits)
+        return gene_expr_decoder_params

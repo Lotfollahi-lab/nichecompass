@@ -56,6 +56,10 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
     include_gene_expr_recon_loss:
         If `True`, include the gene expression reconstruction loss in the loss
         optimization.
+    gene_expr_recon_dist:
+        The distribution used for gene expression reconstruction. If `nb`, uses
+        a Negative Binomial distribution. If `zinb`, uses a Zero-inflated
+        Negative Binomial distribution.
     log_variational:
         If ´True´, transform x by log(x+1) prior to encoding for numerical 
         stability (not for normalization).
@@ -111,6 +115,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                  latent_key: str="autotalker_latent",
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
+                 gene_expr_recon_dist: Literal["nb", "zinb"]="nb",
                  log_variational: bool=True,
                  node_label_method: Literal[
                     "self",
@@ -134,6 +139,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         self.latent_key_ = latent_key
         self.include_edge_recon_loss_ = include_edge_recon_loss
         self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
+        self.gene_expr_recon_dist_ = gene_expr_recon_dist
         self.log_variational_ = log_variational
         self.node_label_method_ = node_label_method
         self.use_only_active_gps_ = use_only_active_gps
@@ -215,6 +221,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             dropout_rate_graph_decoder=self.dropout_rate_graph_decoder_,
             include_edge_recon_loss=self.include_edge_recon_loss_,
             include_gene_expr_recon_loss=self.include_gene_expr_recon_loss_,
+            gene_expr_recon_dist=self.gene_expr_recon_dist_,
             node_label_method=self.node_label_method_,
             log_variational=self.log_variational_,
             use_only_active_gps=self.use_only_active_gps_,
