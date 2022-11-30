@@ -233,7 +233,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         self.init_params_ = self._get_init_params(locals())
 
     def train(self,
-              n_epochs: int=200,
+              n_epochs: int=10,
+              n_epochs_no_edge_recon: int=1,
               lr: float=0.01,
               weight_decay: float=0,
               lambda_l1_addon: float=0.,
@@ -252,6 +253,9 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         ----------
         n_epochs:
             Number of epochs.
+        n_epochs_no_edge_recon:
+            Number of epochs without edge reconstruction loss for gene
+            expression decoder pretraining.
         lr:
             Learning rate.
         weight_decay:
@@ -295,6 +299,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             **trainer_kwargs)
 
         self.trainer.train(n_epochs=n_epochs,
+                           n_epochs_no_edge_recon=n_epochs_no_edge_recon,
                            lr=lr,
                            weight_decay=weight_decay,
                            lambda_l1_addon=lambda_l1_addon,

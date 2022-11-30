@@ -177,7 +177,8 @@ class Trainer:
         self.node_test_loader = loader_dict.pop("node_test_loader", None)
 
     def train(self,
-              n_epochs: int=30,
+              n_epochs: int=10,
+              n_epochs_no_edge_recon: int=1,
               lr: float=0.01,
               weight_decay: float=0.,
               lambda_l1_addon: float=0.,
@@ -190,6 +191,9 @@ class Trainer:
         ----------
         n_epochs:
             Number of epochs.
+        n_epochs_no_edge_recon:
+            Number of epochs without edge reconstruction loss for gene
+            expression decoder pretraining.
         lr:
             Learning rate.
         weight_decay:
@@ -199,6 +203,7 @@ class Trainer:
             addon gene programs.        Test time logic of Autotalker model.
         """
         self.n_epochs = n_epochs
+        self.n_epochs_no_edge_recon = n_epochs_no_edge_recon
         self.lr = lr
         self.weight_decay = weight_decay
         self.lambda_l1_addon = lambda_l1_addon
@@ -242,6 +247,12 @@ class Trainer:
                                           weight_decay=weight_decay)
 
         for self.epoch in range(n_epochs):
+            if self.epoch < self.n_epochs_no_edge_recon:
+                print("FALSE")
+                self.edge_recon_active = False
+            else:
+                print("TRUE")
+                self.edge_recon_active = True
             self.iter_logs = defaultdict(list)
             self.iter_logs["n_train_iter"] = 0
             self.iter_logs["n_val_iter"] = 0
@@ -269,7 +280,8 @@ class Trainer:
                     node_model_output=node_train_model_output,
                     device=self.device,
                     lambda_l1_addon=self.lambda_l1_addon,
-                    lambda_group_lasso=self.lambda_group_lasso)
+                    lambda_group_lasso=self.lambda_group_lasso,
+                    edge_recon_active=self.edge_recon_active)
                 train_loss = train_loss_dict["loss"]
                 if self.verbose:
                     for key, value in train_loss_dict.items():
@@ -383,7 +395,8 @@ class Trainer:
                     node_model_output=node_val_model_output,
                     device=self.device,
                     lambda_l1_addon=self.lambda_l1_addon,
-                    lambda_group_lasso=self.lambda_group_lasso)
+                    lambda_group_lasso=self.lambda_group_lasso,
+                    edge_recon_active=True)
             val_loss = val_loss_dict["loss"]
             if self.verbose:
                 for key, value in val_loss_dict.items():

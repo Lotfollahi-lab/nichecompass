@@ -216,32 +216,38 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
              edge_model_output: dict,
              node_model_output: dict,
              device: Literal["cpu", "cuda"],
-             lambda_l1_addon: float=0.,
-             lambda_group_lasso: float=0) -> dict:
+             lambda_l1_addon: float,
+             lambda_group_lasso: float,
+             edge_recon_active: bool) -> dict:
         """
-        Calculate loss of the VGPGAE module.
+        Calculate the loss of the VGPGAE neural network module.
 
         Parameters
         ----------
         edge_data_batch:
             PyG Data object containing an edge-level batch.
         edge_model_output:
-            Output of the forward pass for edge reconstruction.
+            Output of the edge-level forward pass for edge reconstruction.
         node_model_output:
-            Output of the forward pass for gene expression reconstruction.
+            Output of the node-level forward pass for gene expression 
+            reconstruction.
         device:
             Device where to send the loss parameters.
         lambda_l1_addon:
             Lambda (weighting) parameter for the L1 regularization of genes in 
-            addon gene programs.
+            addon gene programs to enforce gene sparsity in addon gene programs.
         lambda_group_lasso:
             Lambda (weighting) parameter for the group lasso regularization of 
-            gene programs.
+            gene programs to enforce gene program sparsity.
+        edge_recon_active:
+            If ´True´, uses edge reconstruction loss in backpropagation. Setting
+            this to ´False´ allows pretraining of the gene expression decoder.
 
         Returns
         ----------
         loss_dict:
-            Dictionary containing loss and all loss components.
+            Dictionary containing the loss used for backpropagation as well as 
+            all loss components.
         """
         loss_dict = {}
 
@@ -270,44 +276,48 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         loss_dict["loss"] = 0
         loss_dict["loss"] += loss_dict["kl_loss"]
 
-        if self.include_edge_recon_loss:
-            loss_dict["edge_recon_loss"] = (edge_recon_loss_norm_factor * 
-                compute_edge_recon_loss(
-                    adj_recon_logits=edge_model_output["adj_recon_logits"],
-                    edge_labels=edge_data_batch.edge_label,
-                    edge_label_index=edge_data_batch.edge_label_index,
-                    pos_weight=edge_recon_loss_pos_weight))
+        loss_dict["edge_recon_loss"] = (edge_recon_loss_norm_factor * 
+            compute_edge_recon_loss(
+                adj_recon_logits=edge_model_output["adj_recon_logits"],
+                edge_labels=edge_data_batch.edge_label,
+                edge_label_index=edge_data_batch.edge_label_index,
+                pos_weight=edge_recon_loss_pos_weight))
+
+        if self.include_edge_recon_loss and edge_recon_active:
             loss_dict["loss"] += loss_dict["edge_recon_loss"]
 
-        if self.include_gene_expr_recon_loss:
-            if self.gene_expr_recon_dist == "nb":
-                nb_means = node_model_output["gene_expr_dist_params"]
-                loss_dict["gene_expr_recon_loss"] = (
+        if self.gene_expr_recon_dist == "nb":
+            nb_means = node_model_output["gene_expr_dist_params"]
+            loss_dict["gene_expr_recon_loss"] = (
+            gene_expr_recon_loss_norm_factor * 
+                compute_gene_expr_recon_nb_loss(
+                    x=node_model_output["node_labels"],
+                    mu=nb_means,
+                    theta=theta))
+        elif self.gene_expr_recon_dist == "zinb":
+            nb_means, zi_prob_logits = (
+            node_model_output["gene_expr_dist_params"])
+            loss_dict["gene_expr_recon_loss"] = (
                 gene_expr_recon_loss_norm_factor * 
-                    compute_gene_expr_recon_nb_loss(
+                    compute_gene_expr_recon_zinb_loss(
                         x=node_model_output["node_labels"],
                         mu=nb_means,
-                        theta=theta))
-            elif self.gene_expr_recon_dist == "zinb":
-                nb_means, zi_prob_logits = (
-                node_model_output["gene_expr_dist_params"])
-                loss_dict["gene_expr_recon_loss"] = (
-                    gene_expr_recon_loss_norm_factor * 
-                        compute_gene_expr_recon_zinb_loss(
-                            x=node_model_output["node_labels"],
-                            mu=nb_means,
-                            theta=theta,
-                            zi_prob_logits=zi_prob_logits))
+                        theta=theta,
+                        zi_prob_logits=zi_prob_logits))
+
+        if self.n_addon_gps != 0:
+            loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon * 
+                compute_addon_l1_reg_loss(self.named_parameters()))
+
+        loss_dict["group_lasso_reg_loss"] = (lambda_group_lasso * 
+            compute_group_lasso_reg_loss(self.named_parameters()))
+
+        if self.include_gene_expr_recon_loss:
             loss_dict["loss"] += loss_dict["gene_expr_recon_loss"]
-
-            loss_dict["group_lasso_reg_loss"] = (lambda_group_lasso * 
-                compute_group_lasso_reg_loss(self.named_parameters()))
             loss_dict["loss"] += loss_dict["group_lasso_reg_loss" ]
-
             if self.n_addon_gps != 0:
-                loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon * 
-                    compute_addon_l1_reg_loss(self.named_parameters()))
                 loss_dict["loss"] += loss_dict["addon_gp_l1_reg_loss"]
+
         return loss_dict
 
     def get_active_gp_mask(
