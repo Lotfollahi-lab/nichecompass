@@ -63,14 +63,14 @@ class MaskedGeneExprDecoder(nn.Module):
     n_input:
         Number of maskable input nodes to the decoder (maskable latent space 
         dimensionality).
+    n_addon_input:
+        Number of non-maskable add-on input nodes to the decoder (non-maskable
+        latent space dimensionality)
     n_output:
         Number of output nodes from the decoder (number of genes).
     mask:
         Mask that determines which input nodes / latent features can contribute
         to the reconstruction of which genes.
-    n_addon_input:
-        Number of non-maskable add-on input nodes to the decoder (non-maskable
-        latent space dimensionality)
     gene_expr_recon_dist:
         The distribution used for gene expression reconstruction. If `nb`, uses
         a Negative Binomial distribution. If `zinb`, uses a Zero-inflated
@@ -79,16 +79,16 @@ class MaskedGeneExprDecoder(nn.Module):
     """
     def __init__(self,
                  n_input: int,
+                 n_addon_input: int,
                  n_output: int,
                  mask: torch.Tensor,
-                 n_addon_input: int,
-                 gene_expr_recon_dist: Literal["nb", "zinb"]):
+                 recon_dist: Literal["nb", "zinb"]):
         super().__init__()
 
         print(f"MASKED GENE EXPRESSION DECODER -> n_input: {n_input}, "
               f"n_addon_input: {n_addon_input}, n_output: {n_output}, ")
 
-        self.gene_expr_recon_dist = gene_expr_recon_dist
+        self.recon_dist = recon_dist
 
         self.nb_means_normalized_decoder = AddOnMaskedLayer(
             n_input=n_input,
@@ -98,7 +98,7 @@ class MaskedGeneExprDecoder(nn.Module):
             n_addon_input=n_addon_input,
             activation=nn.Softmax(dim=-1))
 
-        if gene_expr_recon_dist == "zinb":
+        if recon_dist == "zinb":
             self.zi_prob_logits_decoder = AddOnMaskedLayer(
                 n_input=n_input,
                 n_output=n_output,
@@ -128,9 +128,9 @@ class MaskedGeneExprDecoder(nn.Module):
         """
         nb_means_normalized = self.nb_means_normalized_decoder(z)
         nb_means = torch.exp(log_library_size) * nb_means_normalized
-        if self.gene_expr_recon_dist == "nb":
+        if self.recon_dist == "nb":
             gene_expr_decoder_params = nb_means
-        elif self.gene_expr_recon_dist == "zinb":
+        elif self.recon_dist == "zinb":
             zi_prob_logits = self.zi_prob_logits_decoder(z)
             gene_expr_decoder_params = (nb_means, zi_prob_logits)
         return gene_expr_decoder_params

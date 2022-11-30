@@ -129,7 +129,7 @@ class VGAEModelMixin:
         x = dataset.x.to(device)
         edge_index = dataset.edge_index.to(device) 
         
-        if self.model.log_variational:
+        if self.model.log_variational_:
             x = torch.log(1 + x)
 
         mu, _ = self.model.get_latent_representation(

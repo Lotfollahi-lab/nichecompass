@@ -3,6 +3,7 @@ This module contains generic base functionalities, added as a Mixin to the
 Variational Gene Program Graph Autoencoder module.
 """
 
+import inspect
 from collections import OrderedDict
 
 import torch
@@ -11,7 +12,42 @@ import torch
 class BaseModuleMixin:
     """
     Base module mix in class containing universal module functionalities.
+
+    Parts of the implementation are adapted from
+    https://github.com/scverse/scvi-tools/blob/master/scvi/model/base/_base_model.py#L63
+    (01.10.2022).
     """
+    def _get_user_attributes(self) -> list:
+        """
+        Get all the attributes defined in a model instance, for example 
+        self.is_trained_.
+
+        Returns
+        ----------
+        attributes:
+            Attributes defined in a model instance.
+        """
+        attributes = inspect.getmembers(
+            self, lambda a: not (inspect.isroutine(a)))
+        attributes = [a for a in attributes if not (
+            a[0].startswith("__") and a[0].endswith("__"))]
+        return attributes
+
+    def _get_public_attributes(self) -> dict:
+        """
+        Get only public attributes defined in a model instance. By convention
+        public attributes have a trailing underscore.
+
+        Returns
+        ----------
+        public_attributes:
+            Public attributes defined in a model instance.
+        """
+        public_attributes = self._get_user_attributes()
+        public_attributes = {a[0]: a[1] for a in public_attributes if 
+                             a[0][-1] == "_"}
+        return public_attributes
+
     def load_and_expand_state_dict(self,
                                    model_state_dict: OrderedDict):
         """

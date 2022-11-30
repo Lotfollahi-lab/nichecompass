@@ -122,7 +122,6 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                     "one-hop-sum",
                     "one-hop-norm",
                     "one-hop-attention"]="one-hop-attention",
-                 use_only_active_gps: bool=True,
                  active_gp_thresh_ratio: float=0.1,
                  n_hidden_encoder: int=256,
                  dropout_rate_encoder: float=0.0,
@@ -142,7 +141,6 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         self.gene_expr_recon_dist_ = gene_expr_recon_dist
         self.log_variational_ = log_variational
         self.node_label_method_ = node_label_method
-        self.use_only_active_gps_ = use_only_active_gps
         self.active_gp_thresh_ratio_ = active_gp_thresh_ratio
         self.n_input_ = adata.n_vars
         self.n_output_ = adata.n_vars
@@ -213,7 +211,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         self.model = VGPGAE(
             n_input=self.n_input_,
             n_hidden_encoder=self.n_hidden_encoder_,
-            n_latent=self.n_nonaddon_gps_,
+            n_nonaddon_gps=self.n_nonaddon_gps_,
             n_addon_gps=self.n_addon_gps_,
             n_output=self.n_output_,
             gene_expr_decoder_mask=self.gp_mask_,
@@ -224,7 +222,6 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             gene_expr_recon_dist=self.gene_expr_recon_dist_,
             node_label_method=self.node_label_method_,
             log_variational=self.log_variational_,
-            use_only_active_gps=self.use_only_active_gps_,
             active_gp_thresh_ratio=self.active_gp_thresh_ratio_)
 
 

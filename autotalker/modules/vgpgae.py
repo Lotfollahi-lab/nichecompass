@@ -1,6 +1,6 @@
 """
-This module contains the Variational Gene Program Graph Autoencoder, the neural
-network module underlying the Autotalker model.
+This module contains the Variational Gene Program Graph Autoencoder class, the 
+neural network module that underlies the Autotalker model.
 """
 
 from typing import Literal, Optional, Tuple, Union
@@ -10,20 +10,20 @@ import torch
 import torch.nn as nn
 from torch_geometric.data import Data
 
-from autotalker.nn import (OneHopAttentionNodeLabelAggregator,
-                           OneHopGCNNormNodeLabelAggregator,
-                           SelfNodeLabelNoneAggregator,
-                           OneHopSumNodeLabelAggregator,
-                           DotProductGraphDecoder,
+from autotalker.nn import (DotProductGraphDecoder,
                            GCNEncoder,
-                           MaskedGeneExprDecoder)
+                           MaskedGeneExprDecoder,
+                           OneHopAttentionNodeLabelAggregator,
+                           OneHopGCNNormNodeLabelAggregator,
+                           OneHopSumNodeLabelAggregator,
+                           SelfNodeLabelNoneAggregator)
 from .basemodulemixin import BaseModuleMixin
 from .losses import (compute_addon_l1_reg_loss,
                      compute_edge_recon_loss,
                      compute_gene_expr_recon_nb_loss,
                      compute_gene_expr_recon_zinb_loss,
                      compute_group_lasso_reg_loss,
-                     compute_kl_loss)
+                     compute_kl_reg_loss)
 from .vgaemodulemixin import VGAEModuleMixin
 
 
@@ -37,11 +37,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         Number of nodes in the input layer.
     n_hidden_encoder:
         Number of nodes in the encoder hidden layer.
-    n_latent:
+    n_nonaddon_gps:
         Number of nodes in the latent space (gene programs from the gene program
         mask).
     n_addon_gps:
-        Number of add-on nodes in the latent space (new gene programs).
+        Number of add-on nodes in the latent space (de-novo gene programs).
     n_output:
         Number of nodes in the output layer.
     gene_expr_decoder_mask:
@@ -52,37 +52,50 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         Probability that nodes will be dropped in the graph decoder during 
         training.
     include_edge_recon_loss:
-        If `True`, include the redge reconstruction loss in the loss 
+        If `True`, includes the redge reconstruction loss in the loss 
         optimization.
     include_gene_expr_recon_loss:
-        If `True`, include the gene expression reconstruction loss in the 
+        If `True`, includes the gene expression reconstruction loss in the 
         loss optimization.
     gene_expr_recon_dist:
         The distribution used for gene expression reconstruction. If `nb`, uses
-        a Negative Binomial distribution. If `zinb`, uses a Zero-inflated
-        Negative Binomial distribution.
+        a negative binomial distribution. If `zinb`, uses a zero-inflated
+        negative binomial distribution.
+    node_label_method:
+        Node label method that will be used for gene expression reconstruction. 
+        If ´self´, use only the input features of the node itself as node labels
+        for gene expression reconstruction. If ´one-hop-sum´, use a 
+        concatenation of the node's input features with the sum of the input 
+        features of all nodes in the node's one-hop neighborhood. If 
+        ´one-hop-norm´, use a concatenation of the node`s input features with
+        the node's one-hop neighbors input features normalized as per Kipf, T. 
+        N. & Welling, M. Semi-Supervised Classification with Graph Convolutional
+        Networks. arXiv [cs.LG] (2016). If ´one-hop-attention´, use a 
+        concatenation of the node`s input features with the node's one-hop 
+        neighbors input features weighted by an attention mechanism.
+    active_gp_thresh_ratio:
+        Ratio that determines which gene programs are considered active and are
+        used for edge reconstruction. All inactive gene programs will be dropped
+        out. Aggregations of the absolute values of the gene weights of the 
+        gene expression decoder per gene program are calculated. The maximum 
+        value, i.e. the value of the gene program with the highest aggregated 
+        value will be used as a benchmark and all gene programs whose aggregated
+        value is smaller than ´active_gp_thresh_ratio´ times this maximum value 
+        will be set to inactive. If ´==0´, all gene programs will be considered
+        active. More information can be found in ´self.get_active_gp_mask()´.
     log_variational:
         If ´True´, transform x by log(x+1) prior to encoding for numerical 
-        stability. Not normalization.
-    use_only_active_gps:
-        If ´True´, filter the latent features / gene programs for edge
-        reconstruction to allow only the gene programs with the highest gene
-        program gene expression decoder weight sums to be included in the
-        dot product and, thus, contribute to edge reconstruction.
-    active_gp_thresh_ratio:
-        If ´use_only_active_gps´ is ´True´, this is the filter ratio
-        relative to the maximum gene program weight sum that a gene program's
-        weights must sum to to be included in the edge reconstruction.
+        stability (not normalization).
     """
     def __init__(self,
                  n_input: int,
                  n_hidden_encoder: int,
-                 n_latent: int,
+                 n_nonaddon_gps: int,
                  n_addon_gps: int,
                  n_output: int,
                  gene_expr_decoder_mask: torch.Tensor,
-                 dropout_rate_encoder: float=0.0,
-                 dropout_rate_graph_decoder: float=0.0,
+                 dropout_rate_encoder: float=0.,
+                 dropout_rate_graph_decoder: float=0.,
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
                  gene_expr_recon_dist: Literal["nb", "zinb"]="nb",
@@ -91,25 +104,23 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     "one-hop-norm",
                     "one-hop-sum",
                     "one-hop-attention"]="one-hop-attention",
-                 log_variational: bool=True,
-                 use_only_active_gps: bool=True,
-                 active_gp_thresh_ratio: float=0.2):
+                 active_gp_thresh_ratio: float=1.,
+                 log_variational: bool=True):
         super().__init__()
-        self.n_input = n_input
-        self.n_hidden_encoder = n_hidden_encoder
-        self.n_latent = n_latent
-        self.n_addon_gps = n_addon_gps
-        self.n_output = n_output
-        self.dropout_rate_encoder = dropout_rate_encoder
-        self.dropout_rate_graph_decoder = dropout_rate_graph_decoder
-        self.include_edge_recon_loss = include_edge_recon_loss
-        self.include_gene_expr_recon_loss = include_gene_expr_recon_loss
-        self.gene_expr_recon_dist = gene_expr_recon_dist
-        self.node_label_method = node_label_method
-        self.log_variational = log_variational
-        self.use_only_active_gps = use_only_active_gps
-        self.active_gp_thresh_ratio = active_gp_thresh_ratio
-        self.freeze = False
+        self.n_input_ = n_input
+        self.n_hidden_encoder_ = n_hidden_encoder
+        self.n_nonaddon_gps_ = n_nonaddon_gps
+        self.n_addon_gps_ = n_addon_gps
+        self.n_output_ = n_output
+        self.dropout_rate_encoder_ = dropout_rate_encoder
+        self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
+        self.include_edge_recon_loss_ = include_edge_recon_loss
+        self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
+        self.gene_expr_recon_dist_ = gene_expr_recon_dist
+        self.node_label_method_ = node_label_method
+        self.active_gp_thresh_ratio_ = active_gp_thresh_ratio
+        self.log_variational_ = log_variational
+        self.freeze_ = False
 
         print("--- INITIALIZING NEW NETWORK MODULE: VARIATIONAL GENE PROGRAM "
               "GRAPH AUTOENCODER ---")
@@ -117,10 +128,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
               f"include_gene_expr_recon_loss: {include_gene_expr_recon_loss}, "
               f"gene_expr_recon_dist: {gene_expr_recon_dist}")
         print(f"NODE LABEL METHOD -> {node_label_method}")
+        print(f"ACTIVE GP THRESHOLD RATIO -> {active_gp_thresh_ratio}")
 
         self.encoder = GCNEncoder(n_input=n_input,
                                   n_hidden=n_hidden_encoder,
-                                  n_latent=n_latent,
+                                  n_latent=n_nonaddon_gps,
                                   n_addon_latent=n_addon_gps,
                                   dropout_rate=dropout_rate_encoder,
                                   activation=torch.relu)
@@ -129,11 +141,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             dropout_rate=dropout_rate_graph_decoder)
 
         self.gene_expr_decoder = MaskedGeneExprDecoder(
-            n_input=n_latent,
+            n_input=n_nonaddon_gps,
+            n_addon_input=n_addon_gps,
             n_output=n_output,
             mask=gene_expr_decoder_mask,
-            n_addon_input=n_addon_gps,
-            gene_expr_recon_dist=self.gene_expr_recon_dist)
+            recon_dist=self.gene_expr_recon_dist_)
 
         if node_label_method == "self":
             self.gene_expr_node_label_aggregator = (
@@ -149,66 +161,66 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 OneHopAttentionNodeLabelAggregator(n_input=n_input))
         
         # Gene-specific dispersion parameters
-        self.theta = torch.nn.Parameter(torch.randn(self.n_output))
+        self.theta = torch.nn.Parameter(torch.randn(n_output))
 
     def forward(self,
                 data_batch: Data,
-                decoder: Literal["graph", "gene_expr"]="graph") -> dict:
+                decoder: Literal["graph", "gene_expr"]) -> dict:
         """
         Forward pass of the VGPGAE module.
 
         Parameters
         ----------
-        x:
-            Tensor containing gene expression.
-        edge_index:
-            Tensor containing indeces of edges.
+        data_batch:
+            PyG Data object containing either an edge-level batch if 
+            ´decoder == graph´ or a node-level batch if ´decoder == gene_expr´.
         decoder:
-            Which decoder to use for the forward pass, either "graph" for edge
-            reconstruction or "gene_expr" for gene expression reconstruction.
+            Decoder to use for the forward pass, either ´graph´ for edge
+            reconstruction or ´gene_expr´ for gene expression reconstruction.
 
         Returns
         ----------
         output:
-            Dictionary containing reconstructed adjacency matrix logits, ZINB
-            parameters for gene expression reconstruction, mu and logstd from
-            the latent space distribution.
+            Dictionary containing reconstructed adjacency matrix logits if
+            ´decoder == graph´ or the parameters of the gene expression 
+            distribution if ´decoder == gene_expr´, as well as ´mu´ and ´logstd´ 
+            from the latent space distribution.
         """
-        x = data_batch.x
-        edge_index = data_batch.edge_index
+        x = data_batch.x # dim: n_obs x n_genes
+        edge_index = data_batch.edge_index # dim 2 x n_edges
         output = {}
-        # Use observed library size as scaling factor in nb mean of gene
-        # expression reconstruction distribution
+        # Use observed library size as scaling factor for the negative binomial 
+        # means of the gene expression distribution
         self.log_library_size = torch.log(x.sum(1)).unsqueeze(1)
         
         # Convert gene expression for numerical stability
-        if self.log_variational:
+        if self.log_variational_:
             x_enc = torch.log(1 + x)
         else:
             x_enc = x
 
-        self.mu, self.logstd = self.encoder(x_enc, edge_index)
+        # Use encoder to get latent distribution parameters and latent features
+        self.mu, self.logstd = self.encoder(x=x_enc, edge_index=edge_index)
         output["mu"] = self.mu
         output["logstd"] = self.logstd
-        
         z = self.reparameterize(output["mu"], output["logstd"])
+
+        # Use decoder to get either the reconstructed adjacency matrix logits
+        # or the gene expression parameters
         if decoder == "graph":
-            if self.use_only_active_gps == True:
-                active_gp_mask = self.get_active_gp_mask(
-                    abs_gp_weights_agg_mode="sum+nzmeans")
-                z = z[:, active_gp_mask]
-            output["adj_recon_logits"] = self.graph_decoder(z)
+            active_gp_mask = self.get_active_gp_mask()
+            z = z[:, active_gp_mask]
+            output["adj_recon_logits"] = self.graph_decoder(z=z)
         elif decoder == "gene_expr":
             # Compute aggregated neighborhood gene expression for gene 
             # expression reconstruction        
             output["node_labels"] = self.gene_expr_node_label_aggregator(
-                x, 
-                edge_index,
-                data_batch.batch_size)
-
+                x=x, 
+                edge_index=edge_index,
+                batch_size=data_batch.batch_size)
             output["gene_expr_dist_params"] = self.gene_expr_decoder(
-                    z[:data_batch.batch_size],
-                    self.log_library_size[:data_batch.batch_size])
+                z=z[:data_batch.batch_size],
+                log_library_size=self.log_library_size[:data_batch.batch_size])
         return output
 
     def loss(self,
@@ -276,7 +288,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             lambda_edge_recon = n_possible_edges / (n_neg_edges * 2)
 
         # Compute Kullback-Leibler divergence loss
-        loss_dict["kl_loss"] = compute_kl_loss(
+        loss_dict["kl_reg_loss"] = compute_kl_reg_loss(
             mu=edge_model_output["mu"],
             logstd=edge_model_output["logstd"],
             n_nodes=edge_data_batch.x.size(0))
@@ -291,14 +303,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         # Compute gene expression reconstruction negative binomial or
         # zero-inflated negative binomial loss
         theta = torch.exp(self.theta) # gene-specific inverse dispersion
-        if self.gene_expr_recon_dist == "nb":
+        if self.gene_expr_recon_dist_ == "nb":
             nb_means = node_model_output["gene_expr_dist_params"]
             loss_dict["gene_expr_recon_loss"] = (lambda_gene_expr_recon * 
             compute_gene_expr_recon_nb_loss(
                     x=node_model_output["node_labels"],
                     mu=nb_means,
                     theta=theta))
-        elif self.gene_expr_recon_dist == "zinb":
+        elif self.gene_expr_recon_dist_ == "zinb":
             nb_means, zi_prob_logits = (
                 node_model_output["gene_expr_dist_params"])
             loss_dict["gene_expr_recon_loss"] = (lambda_gene_expr_recon * 
@@ -313,7 +325,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         compute_group_lasso_reg_loss(self.named_parameters()))
 
         # Compute l1 regularization loss of genes in addon gene programs
-        if self.n_addon_gps != 0:
+        if self.n_addon_gps_ != 0:
             loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon * 
             compute_addon_l1_reg_loss(self.named_parameters()))
 
@@ -321,18 +333,18 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         # loss used for early stopping of model training and best model saving
         loss_dict["global_loss"] = 0
         loss_dict["optim_loss"] = 0
-        loss_dict["global_loss"] += loss_dict["kl_loss"]
-        loss_dict["optim_loss"] += loss_dict["kl_loss"]
-        if self.include_edge_recon_loss:
+        loss_dict["global_loss"] += loss_dict["kl_reg_loss"]
+        loss_dict["optim_loss"] += loss_dict["kl_reg_loss"]
+        if self.include_edge_recon_loss_:
             loss_dict["global_loss"] += loss_dict["edge_recon_loss"]
             if edge_recon_active:
                 loss_dict["optim_loss"] += loss_dict["edge_recon_loss"]
-        if self.include_gene_expr_recon_loss:
+        if self.include_gene_expr_recon_loss_:
             loss_dict["global_loss"] += loss_dict["gene_expr_recon_loss"]
             loss_dict["optim_loss"] += loss_dict["gene_expr_recon_loss"]
             loss_dict["global_loss"] += loss_dict["group_lasso_reg_loss"]
             loss_dict["optim_loss"] += loss_dict["group_lasso_reg_loss"]
-            if self.n_addon_gps != 0:
+            if self.n_addon_gps_ != 0:
                 loss_dict["global_loss"] += loss_dict["addon_gp_l1_reg_loss"]
                 loss_dict["optim_loss"] += loss_dict["addon_gp_l1_reg_loss"]
         return loss_dict
@@ -348,7 +360,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         Get a mask of active gene programs based on the gene expression decoder
         gene weights of gene programs. Active gene programs are gene programs
         whose absolute gene weights aggregated over all genes are greater than 
-        ´self.active_gp_thresh_ratio´ times the absolute gene weights
+        ´self.active_gp_thresh_ratio_´ times the absolute gene weights
         aggregation of the gene program with the maximum value across all gene 
         programs. Depending on ´abs_gp_weights_agg_mode´, the aggregation will 
         be either a sum of absolute gene weights (prioritizes gene programs that
@@ -380,7 +392,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         # Get gp gene expression decoder gene weights
         gp_weights = (self.gene_expr_decoder.nb_means_normalized_decoder
                       .masked_l.weight.data).clone().detach()
-        if self.n_addon_gps > 0:
+        if self.n_addon_gps_ > 0:
             gp_weights = torch.cat(
                 [gp_weights, 
                  (self.gene_expr_decoder.nb_means_normalized_decoder.addon_l
@@ -389,7 +401,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         # Correct gp weights for zero inflation using zero inflation 
         # probabilities over all observations if zinb distribution is used to 
         # model gene expression
-        if self.gene_expr_recon_dist == "zinb":
+        if self.gene_expr_recon_dist_ == "zinb":
             _, zi_probs = self.get_gene_expr_dist_params(
                 z=self.mu,
                 log_library_size=self.log_library_size)
@@ -403,7 +415,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         abs_gp_weights_sums = gp_weights.norm(p=1, dim=0)
         if abs_gp_weights_agg_mode in ["sum", "sum+nzmeans"]:
             max_abs_gp_weights_sum = max(abs_gp_weights_sums)
-            min_abs_gp_weights_sum_thresh = (self.active_gp_thresh_ratio * 
+            min_abs_gp_weights_sum_thresh = (self.active_gp_thresh_ratio_ * 
                                              max_abs_gp_weights_sum)
             active_gp_mask = (abs_gp_weights_sums >= 
                               min_abs_gp_weights_sum_thresh)
@@ -411,7 +423,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             abs_gp_weights_nzmeans = (abs_gp_weights_sums / 
                                       torch.count_nonzero(gp_weights, dim=0))
             max_abs_gp_weights_nzmean = max(abs_gp_weights_nzmeans)
-            min_abs_gp_weights_nzmean_thresh = (self.active_gp_thresh_ratio * 
+            min_abs_gp_weights_nzmean_thresh = (self.active_gp_thresh_ratio_ * 
                                                 max_abs_gp_weights_nzmean)
             if abs_gp_weights_agg_mode == "nzmeans":
                 active_gp_mask = (abs_gp_weights_nzmeans >= 
@@ -428,66 +440,54 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
     def log_module_hyperparams_to_mlflow(self):
         """Log module hyperparameters to Mlflow."""
-        mlflow.log_param("n_hidden", self.n_hidden_encoder)
-        mlflow.log_param("n_latent", self.n_latent)
-        mlflow.log_param("dropout_rate_encoder", 
-                         self.dropout_rate_encoder)
-        mlflow.log_param("dropout_rate_graph_decoder", 
-                         self.dropout_rate_graph_decoder)
-        mlflow.log_param("include_edge_recon_loss", 
-                         self.include_edge_recon_loss)
-        mlflow.log_param("include_gene_expr_recon_loss", 
-                         self.include_gene_expr_recon_loss)
-        mlflow.log_param("node_label_method", 
-                         self.node_label_method)
-        mlflow.log_param("log_variational", 
-                         self.log_variational)
+        for attr, attr_value in self._get_public_attributes().items():
+            mlflow.log_param(attr, attr_value)
 
     @torch.no_grad()
     def get_latent_representation(
             self,
             x: torch.Tensor,
             edge_index: torch.Tensor,
-            use_only_active_gps=True,
             return_mu_std: bool=False
             ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
-        Encode input features x and edge index into the latent space normal 
-        distribution parameters and return z. If the module is not in training
-        mode, mu will be returned.
+        Encode input features ´x´ and ´edge_index´ into the latent space 
+        distribution parameters and return either the distribution parameters 
+        themselves or sampled latent features ´z´.
            
         Parameters
         ----------
         x:
-            Feature matrix to be encoded into latent space.
+            Feature matrix to be encoded into latent space (dim: n_obs x 
+            n_genes).
         edge_index:
-            Edge index of the graph.
-        use_only_active_gps:
-            If `True`, only return the latent representation for active gene 
-            programs.
+            Edge index of the graph (dim: 2 x n_edges).
         return_mu_std:
-            If `True`, return mu and logstd instead of a random sample from the
-            latent space.
+            If `True`, return ´mu´ and ´logstd´ instead of a random sample from
+            the latent space.
 
         Returns
         -------
         z:
-            Latent space encoding.
+            Latent space encoding (dim: n_obs x n_active_gps).
         mu:
-            Expected values of the latent posterior.
+            Expected values of the latent posterior (dim: n_obs x n_active_gps).
         std:
-            Standard deviations of the latent posterior.
+            Standard deviations of the latent posterior (dim: n_obs x 
+            n_active_gps).
         """
-        mu, logstd = self.encoder(x, edge_index)
+        # Get latent distribution parameters
+        mu, logstd = self.encoder(x=x, edge_index=edge_index)
 
-        if use_only_active_gps:
-            active_gp_mask = self.get_active_gp_mask()
-            mu, logstd = mu[:, active_gp_mask], logstd[:, active_gp_mask]
+        # Filter to active gene programs only
+        active_gp_mask = self.get_active_gp_mask()
+        mu, logstd = mu[:, active_gp_mask], logstd[:, active_gp_mask]
 
         if return_mu_std:
             std = torch.exp(logstd)
             return mu, std
         else:
+            # Sample latent features
             z = self.reparameterize(mu, logstd)
             return z
 
@@ -521,11 +521,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Zero-inflation probabilities of the zero-inflated negative binomial
             distribution (dim: n_obs x n_genes).
         """
-        if self.gene_expr_recon_dist == "nb":
-            nb_means = self.gene_expr_decoder(z, log_library_size)
+        if self.gene_expr_recon_dist_ == "nb":
+            nb_means = self.gene_expr_decoder(z=z,
+                                              log_library_size=log_library_size)
             return nb_means
-        if self.gene_expr_recon_dist == "zinb":
-            nb_means, zi_prob_logits = self.gene_expr_decoder(z,
-                                                              log_library_size)
+        if self.gene_expr_recon_dist_ == "zinb":
+            nb_means, zi_prob_logits = self.gene_expr_decoder(
+                z=z,
+                log_library_size=log_library_size)
             zi_probs = torch.sigmoid(zi_prob_logits)
             return nb_means, zi_probs

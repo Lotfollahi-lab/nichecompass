@@ -204,9 +204,9 @@ def compute_gene_expr_recon_zinb_loss(x: torch.Tensor,
     return zinb_loss
 
 
-def compute_kl_loss(mu: torch.Tensor,
-                    logstd: torch.Tensor,
-                    n_nodes: int) -> torch.Tensor:
+def compute_kl_reg_loss(mu: torch.Tensor,
+                        logstd: torch.Tensor,
+                        n_nodes: int) -> torch.Tensor:
     """
     Compute Kullback-Leibler divergence as per Kingma, D. P. & Welling, M. 
     Auto-Encoding Variational Bayes. arXiv [stat.ML] (2013).
