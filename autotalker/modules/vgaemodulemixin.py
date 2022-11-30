@@ -20,16 +20,16 @@ class VGAEModuleMixin:
         Parameters
         ----------
         mu:
-            Expected values of the latent space distribution (dim: n_obs x 
+            Expected values of the latent space distribution (dim: n_obs, 
             n_gps).
         logstd:
-            Log standard deviations of the latent space distribution (dim: n_obs
-            x n_gps).
+            Log standard deviations of the latent space distribution (dim: n_obs,
+            n_gps).
 
         Returns
         ----------
         rep:
-            Reparameterized latent features (dim: n_obs x n_gps).
+            Reparameterized latent features (dim: n_obs, n_gps).
         """
         if self.training:
             std = torch.exp(logstd)

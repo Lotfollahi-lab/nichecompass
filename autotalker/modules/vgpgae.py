@@ -6,6 +6,7 @@ neural network module that underlies the Autotalker model.
 from typing import Literal, Optional, Tuple, Union
 
 import mlflow
+import numpy as np
 import torch
 import torch.nn as nn
 from torch_geometric.data import Data
@@ -84,7 +85,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         will be set to inactive. If ´==0´, all gene programs will be considered
         active. More information can be found in ´self.get_active_gp_mask()´.
     log_variational:
-        If ´True´, transform x by log(x+1) prior to encoding for numerical 
+        If ´True´, transforms x by log(x+1) prior to encoding for numerical 
         stability (not normalization).
     """
     def __init__(self,
@@ -443,17 +444,17 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         for attr, attr_value in self._get_public_attributes().items():
             mlflow.log_param(attr, attr_value)
 
-    @torch.no_grad()
     def get_latent_representation(
             self,
             x: torch.Tensor,
             edge_index: torch.Tensor,
+            only_active_gps: bool=True,
             return_mu_std: bool=False
             ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
-        Encode input features ´x´ and ´edge_index´ into the latent space 
-        distribution parameters and return either the distribution parameters 
-        themselves or latent features ´z´.
+        Encode input features ´x´ and ´edge_index´ into the latent distribution
+        parameters and return either the distribution parameters themselves or
+        latent features ´z´.
            
         Parameters
         ----------
@@ -462,8 +463,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_genes).
         edge_index:
             Edge index of the graph (dim: 2 x n_edges).
+        only_active_gps:
+            If ´True´, return only the latent representation of active gps.
         return_mu_std:
-            If `True`, return ´mu´ and ´logstd´ instead of latent features ´z´.
+            If ´True´, return ´mu´ and ´std´ instead of latent features ´z´.
 
         Returns
         -------
@@ -478,9 +481,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         # Get latent distribution parameters
         mu, logstd = self.encoder(x=x, edge_index=edge_index)
 
-        # Filter to active gene programs only
-        active_gp_mask = self.get_active_gp_mask()
-        mu, logstd = mu[:, active_gp_mask], logstd[:, active_gp_mask]
+        if only_active_gps:
+            # Filter to active gene programs only
+            active_gp_mask = self.get_active_gp_mask()
+            mu, logstd = mu[:, active_gp_mask], logstd[:, active_gp_mask]
 
         if return_mu_std:
             std = torch.exp(logstd)
@@ -491,7 +495,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             z = self.reparameterize(mu, logstd)
             return z
 
-    @torch.no_grad()
     def get_gene_expr_dist_params(
             self,
             z: torch.Tensor,
@@ -524,6 +527,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         if self.gene_expr_recon_dist_ == "nb":
             nb_means = self.gene_expr_decoder(z=z,
                                               log_library_size=log_library_size)
+            nb_means
             return nb_means
         if self.gene_expr_recon_dist_ == "zinb":
             nb_means, zi_prob_logits = self.gene_expr_decoder(

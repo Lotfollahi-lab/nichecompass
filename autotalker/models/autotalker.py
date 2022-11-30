@@ -3,7 +3,8 @@ This module contains the Autotalker model. Different analysis capabilities are
 integrated directly into the model API for easy use.
 """
 
-from typing import Literal, Tuple, Optional, Union
+import warnings
+from typing import Literal, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -12,13 +13,13 @@ from anndata import AnnData
 from scipy.special import erfc
 
 from .basemodelmixin import BaseModelMixin
-from .vgaemodelmixin import VGAEModelMixin
+from autotalker.data import SpatialAnnTorchDataset
 from autotalker.modules import VGPGAE
 from autotalker.train import Trainer
 from autotalker.utils import compute_graph_connectivities
 
 
-class Autotalker(BaseModelMixin, VGAEModelMixin):
+class Autotalker(BaseModelMixin):
     """
     Autotalker model class.
 
@@ -48,20 +49,20 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         This mask will only be used if no ´gp_sources_mask´ is passed explicitly
         to the model.
     latent_key:
-        Key under which the latent representation will be stored in ´adata.obsm´
-        after model training. 
+        Key under which the latent / gene program representation will be stored
+        in ´adata.obsm´ after model training. 
     include_edge_recon_loss:
-        If `True`, include the edge reconstruction loss in the loss 
+        If `True`, includes the edge reconstruction loss in the loss 
         optimization.
     include_gene_expr_recon_loss:
-        If `True`, include the gene expression reconstruction loss in the loss
+        If `True`, includes the gene expression reconstruction loss in the loss
         optimization.
     gene_expr_recon_dist:
         The distribution used for gene expression reconstruction. If `nb`, uses
-        a Negative Binomial distribution. If `zinb`, uses a Zero-inflated
-        Negative Binomial distribution.
+        a negative binomial distribution. If `zinb`, uses a zero-inflated
+        negative binomial distribution.
     log_variational:
-        If ´True´, transform x by log(x+1) prior to encoding for numerical 
+        If ´True´, transforms x by log(x+1) prior to encoding for numerical 
         stability (not for normalization).
     node_label_method:
         Node label method that will be used for gene expression reconstruction. 
@@ -75,17 +76,17 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         Networks. arXiv [cs.LG] (2016). If ´one-hop-attention´, use a 
         concatenation of the node`s input features with the node's one-hop 
         neighbors input features weighted by an attention mechanism.
-    use_only_active_gps:
-        If ´True´, filter the latent features / gene programs for edge
-        reconstruction to allow only the gene programs with the highest 
-        cumulative gene program gene expression decoder weight sums to be 
-        included in the dot product of the graph decoder and, thus, contribute 
-        to edge reconstruction.
     active_gp_thresh_ratio:
-        The filter ratio relative to the maximum absolute gene program weights 
-        sum across all gene programs that a gene program's absolute weights must
-        sum to to be considered an active gp and to be included in the edge 
-        reconstruction.
+        Ratio that determines which gene programs are considered active and are
+        used for edge reconstruction. All inactive gene programs will be dropped
+        out. Aggregations of the absolute values of the gene weights of the 
+        gene expression decoder per gene program are calculated. The maximum 
+        value, i.e. the value of the gene program with the highest aggregated 
+        value will be used as a benchmark and all gene programs whose aggregated
+        value is smaller than ´active_gp_thresh_ratio´ times this maximum value 
+        will be set to inactive. If ´==0´, all gene programs will be considered
+        active. More information can be found in 
+        ´self.model.get_active_gp_mask()´.
     n_hidden_encoder:
         Number of nodes in the encoder hidden layer.
     dropout_rate_encoder:
@@ -107,7 +108,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
     """
     def __init__(self,
                  adata: AnnData,
-                 counts_key="counts",
+                 counts_key: str="counts",
                  adj_key: str="spatial_connectivities",
                  gp_names_key: str="autotalker_gp_names",
                  gp_targets_mask_key: str="autotalker_gp_targets",
@@ -122,10 +123,10 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                     "one-hop-sum",
                     "one-hop-norm",
                     "one-hop-attention"]="one-hop-attention",
-                 active_gp_thresh_ratio: float=0.1,
+                 active_gp_thresh_ratio: float=1.,
                  n_hidden_encoder: int=256,
-                 dropout_rate_encoder: float=0.0,
-                 dropout_rate_graph_decoder: float=0.0,
+                 dropout_rate_encoder: float=0.,
+                 dropout_rate_graph_decoder: float=0.,
                  gp_targets_mask: Optional[Union[np.ndarray, list]]=None,
                  gp_sources_mask: Optional[Union[np.ndarray, list]]=None,
                  n_addon_gps: int=0):
@@ -207,7 +208,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                              "be stored in adata.uns['autotalker_gps'].")
         
         # Initialize model with Variational Gene Program Graph Autoencoder 
-        # module
+        # neural network module
         self.model = VGPGAE(
             n_input=self.n_input_,
             n_hidden_encoder=self.n_hidden_encoder_,
@@ -224,18 +225,17 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             log_variational=self.log_variational_,
             active_gp_thresh_ratio=self.active_gp_thresh_ratio_)
 
-
         self.is_trained_ = False
         # Store init params for saving and loading
         self.init_params_ = self._get_init_params(locals())
 
     def train(self,
               n_epochs: int=10,
-              n_epochs_no_edge_recon: int=1,
+              n_epochs_no_edge_recon: int=0,
               lr: float=0.01,
-              weight_decay: float=0,
+              weight_decay: float=0.,
               lambda_edge_recon: Optional[float]=None,
-              lambda_gene_expr_recon: float=1.0,
+              lambda_gene_expr_recon: float=1.,
               lambda_group_lasso: float=0.,
               lambda_l1_addon: float=0.,
               edge_val_ratio: float=0.1,
@@ -313,12 +313,11 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                            weight_decay=weight_decay,
                            lambda_edge_recon=lambda_edge_recon,
                            lambda_gene_expr_recon=lambda_gene_expr_recon,
-                            lambda_group_lasso=lambda_group_lasso,
+                           lambda_group_lasso=lambda_group_lasso,
                            lambda_l1_addon=lambda_l1_addon,
                            mlflow_experiment_id=mlflow_experiment_id)
         
         self.is_trained_ = True
-
         self.adata.obsm[self.latent_key_] = self.get_latent_representation()
 
     def compute_differential_gp_scores(
@@ -328,7 +327,6 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             selected_gps: Optional[Union[str,list]]=None,
             selected_cats: Optional[Union[str,list]]=None,
             gp_scores_weight_normalization: bool=True,
-            gp_scores_zi_normalization: bool=True,
             comparison_cats: Union[str, list]="rest",
             n_sample: int=1000,
             key_added: str="gp_enrichment_scores",
@@ -374,10 +372,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             computed. If ´None´, uses all category labels. 
         gp_scores_weight_normalization:
             If ´True´, normalize the gp scores by the nb means gene expression 
-            decoder weights.
-        gp_scores_zi_normalization:
-            If ´True´, normalize the gp scores by the zero inflation 
-            probabilities.        
+            decoder weights.       
         comparison_cats:
             Categories used as comparison group. If ´rest´, all categories other
             than the category under consideration are used as comparison group.
@@ -434,8 +429,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             adj_key=self.adj_key_,
             use_only_active_gps=True,
             return_mu_std=True)
-        mu = mu[:, selected_gps_idx].cpu().numpy()
-        std = std[:, selected_gps_idx].cpu().numpy()
+        mu = mu[:, selected_gps_idx]
+        std = std[:, selected_gps_idx]
 
         # Normalize gp scores using nb means gene expression decoder weights or 
         # signs of summed weights and, if specified, gene expression zero 
@@ -463,18 +458,17 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             gp_signs[gp_weights_sum<0] = -1. # reverse sign of gp score
             norm_factors = gp_signs
 
-        if gp_scores_zi_normalization:
+        if self.gene_expr_recon_dist_ == "zinb":
             # Get zero inflation probabilities
-            _, zi_probs = self.get_zinb_gene_expr_params(
+            _, zi_probs = self.get_gene_expr_dist_params(
                 adata=adata,
                 counts_key=self.counts_key_,
                 adj_key=self.adj_key_)
-            zi_probs = zi_probs.cpu().numpy()
             non_zi_probs = 1 - zi_probs
             non_zi_probs_rep = np.repeat(
                 non_zi_probs[:, :, np.newaxis],
                 len(selected_gps),
-                axis=2) # dim: (n_obs, 2 x n_genes, n_selected_gps)
+                axis=2) # (dim: n_obs, 2 x n_genes, n_selected_gps)
             if norm_factors.ndim == 1:               
                norm_factors = np.repeat(norm_factors[np.newaxis, :],
                                         2*len(adata.var_names),
@@ -577,12 +571,6 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                            "p_h1": p_h1,
                            "log_bayes_factor": log_bayes_factor} 
                           for gp, p_h0, p_h1, log_bayes_factor in zipped]
-            for score in cat_scores:
-                scores.append(score)
-
-        scores = pd.DataFrame(scores)
-        scores.sort_values(by="log_bayes_factor", ascending=False, inplace=True)
-        scores.reset_index(drop=True, inplace=True)
         adata.uns[key_added] = scores
 
         # Retrieve top unique gps and (normalized) gene program / latent scores
@@ -630,14 +618,12 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
     def compute_gp_gene_importances(
             self,
             selected_gp: str,
-            adata: Optional[AnnData]=None,
-            use_active_gps: bool=True,
-            gene_importances_zi_normalization: bool=True) -> pd.DataFrame:
+            adata: Optional[AnnData]=None) -> pd.DataFrame:
         """
         Compute gene importances for the genes of a given gene program. 
-        Gene importances are determined by the normalized weights of the NB means 
-        gene expression decoder, optionally corrected for gene expression zero
-        inflation.
+        Gene importances are determined by the normalized weights of the
+        gene expression decoder, corrected for gene expression zero
+        inflation in the case of ´self.edge_recon_dist == zinb´.
 
         Parameters
         ----------
@@ -646,10 +632,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             retrieved.
         adata:
             AnnData object to be used. If ´None´, uses the adata object stored 
-            in the model.
-        gene_importances_zi_normalization:
-            If ´True´, normalize the gene importances by the zero inflation 
-            probabilities.        
+            in the model. 
      
         Returns
         ----------
@@ -661,37 +644,42 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
         if adata is None:
             adata = self.adata
 
-        gps = list(adata.uns[self.gp_names_key_])
-        active_gps, gp_weights = self.get_active_gps(return_gp_weights=True)
+        # Check if gene program is active
+        active_gps = self.get_active_gps(adata=adata)
+        if selected_gp not in active_gps:
+            warnings.warn(f"GP '{selected_gp}' is not an active gene program.")
 
+        #gps = list(adata.uns[self.gp_names_key_])
+        #active_gps, gp_weights = self.get_active_gps(return_gp_weights=True)
         # Retrieve NB means gene expression decoder weights
-        selected_gp_idx = adata.uns[self.gp_names_key_].index(selected_gp)
+        selected_gp_idx = list(adata.uns[self.gp_names_key_]).index(selected_gp)
         if selected_gp_idx < self.n_nonaddon_gps_: # non-addon gp
             gp_weights = (
                 self.model.gene_expr_decoder.nb_means_normalized_decoder
-                .masked_l.weight[:, selected_gp_idx].data.cpu().numpy().copy())
+                .masked_l.weight[:, selected_gp_idx].data.cpu().detach()
+                .numpy())
         elif selected_gp_idx >= self.n_nonaddon_gps_: # addon gp
             selected_gp_idx -= self.n_nonaddon_gps_
             gp_weights = (
                 self.model.gene_expr_decoder.nb_means_normalized_decoder
-                .addon_l.weight[:, selected_gp_idx].data.cpu().numpy().copy())
+                .addon_l.weight[:, selected_gp_idx].data.cpu().detach().numpy())
 
         # Correct signs of gp weights to be aligned with (normalized) gp scores
         if gp_weights.sum(0) < 0:
             gp_weights *= -1
         
-        if gene_importances_zi_normalization:
+        if self.gene_expr_recon_dist_ == "zinb":
             # Get zero inflation probabilities
-            _, zi_probs = self.get_zinb_gene_expr_params(
+            _, zi_probs = self.get_gene_expr_dist_params(
                 adata=adata,
                 counts_key=self.counts_key_,
                 adj_key=self.adj_key_)
-            zi_probs = zi_probs.cpu().numpy()
+            zi_probs = zi_probs
             non_zi_probs = 1 - zi_probs
             gp_weights_zi = gp_weights * non_zi_probs.sum(0) # sum over all obs
             # Normalize gp weights to get gene importances
             gp_gene_importances = np.abs(gp_weights_zi / gp_weights_zi.sum(0))
-        else:
+        elif self.gene_expr_recon_dist_ == "nb":
             # Normalize gp weights to get gene importances
             gp_gene_importances = np.abs(gp_weights / gp_weights.sum(0))
 
@@ -752,6 +740,7 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
 
     def get_active_gps(
             self,
+            adata: Optional[AnnData]=None,
             return_gp_weights: bool=False
             ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         """
@@ -764,6 +753,8 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
 
         Parameters
         ----------
+        adata:
+            AnnData object to get the active gene programs for.
         return_gp_weights:
             If ´True´, in addition return the gene expression decoder gene 
             weights of the active gene programs.
@@ -774,17 +765,155 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             Gene program names of active gene programs.
         active_gp_weights:
             Gene program gene weights for each active gene program 
-            (n_recon_genes x n_active_gps).
+            (dim: n_recon_genes x n_active_gps).
         """
         self._check_if_trained(warn=True)
+        if adata is None:
+            adata = self.adata
 
         active_gp_mask, active_gp_weights = self.model.get_active_gp_mask(
             return_gp_weights=True)
 
-        active_gp_mask = active_gp_mask.cpu().numpy()
+        active_gp_mask = active_gp_mask.detach().cpu().numpy()
+        active_gp_weights = active_gp_weights.detach().cpu().numpy()
 
-        active_gps = self.adata.uns[self.gp_names_key_][active_gp_mask]
+        active_gps = adata.uns[self.gp_names_key_][active_gp_mask]
         if return_gp_weights:
             return active_gps, active_gp_weights
         else:
             return active_gps
+
+    def get_latent_representation(
+            self, 
+            adata: Optional[AnnData]=None,
+            counts_key: str="counts",
+            adj_key: str="spatial_connectivities",
+            only_active_gps: bool=True,
+            return_mu_std: bool=False
+            ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+        """
+        Get the latent / gene program representation from a trained model.
+
+        Parameters
+        ----------
+        adata:
+            AnnData object to get the latent representation for if not the one
+            from the model.
+        counts_key:
+            Key under which the raw counts are stored in ´adata.layer´.
+        adj_key:
+            Key under which the sparse adjacency matrix is stored in 
+            ´adata.obsp´.
+        only_active_gps:
+            If ´True´, return only the latent representation of active gps.            
+        return_mu_std:
+            If `True`, return ´mu´ and ´std´ instead of latent features ´z´.
+
+        Returns
+        ----------
+        z:
+            Latent space features (dim: n_obs x n_active_gps or n_obs x n_gps).
+        mu:
+            Expected values of the latent posterior (dim: n_obs x n_active_gps 
+            or n_obs x n_gps).
+        std:
+            Standard deviations of the latent posterior (dim: n_obs x 
+            n_active_gps or n_obs x n_gps).
+        """
+        self._check_if_trained(warn=False)
+        device = next(self.model.parameters()).device
+        if adata is None:
+            adata = self.adata
+        
+        dataset = SpatialAnnTorchDataset(adata=adata,
+                                         counts_key=counts_key,
+                                         adj_key=adj_key)
+        x = dataset.x.to(device)
+        edge_index = dataset.edge_index.to(device) 
+        if self.model.log_variational_:
+            x = torch.log(1 + x)
+
+        if return_mu_std:
+            mu, std = self.model.get_latent_representation(
+                x=x,
+                edge_index=edge_index,
+                only_active_gps=only_active_gps,
+                return_mu_std=True)
+            mu = mu.detach().cpu().numpy()
+            std = std.detach().cpu().numpy()
+            return mu, std
+        else:
+            z = self.model.get_latent_representation(
+                    x=x,
+                    edge_index=edge_index,
+                    only_active_gps=only_active_gps,
+                    return_mu_std=False)
+            z = z.detach().cpu().numpy()
+            return z
+
+    def get_gene_expr_dist_params(
+            self, 
+            adata: Optional[AnnData]=None,
+            counts_key: str="counts",
+            adj_key: str="spatial_connectivities",
+            ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+        """
+        Get the gene expression distribution parameters from a trained model. 
+        This is either (´nb_means´, ´zi_probs´) if a zero-inflated negative 
+        binomial is used to model gene expression or ´nb_means´ if a negative 
+        binomial is used to model gene expression.
+
+        Parameters
+        ----------
+        adata:
+            AnnData object to get the gene expression distribution parameters
+            for. If ´None´, uses the adata object stored in the model.
+        counts_key:
+            Key under which the raw counts are stored in ´adata.layer´.    
+        adj_key:
+            Key under which the sparse adjacency matrix is stored in 
+            ´adata.obsp´.       
+
+        Returns
+        ----------
+        nb_means:
+            Expected values of the negative binomial distribution (dim: n_obs x
+            n_genes).
+        zi_probs:
+            Zero-inflation probabilities of the zero-inflated negative binomial
+            distribution (dim: n_obs x n_genes).
+        """
+        self._check_if_trained(warn=False)
+        device = next(self.model.parameters()).device
+        if adata is None:
+            adata = self.adata
+
+        dataset = SpatialAnnTorchDataset(adata=adata,
+                                         counts_key=counts_key,
+                                         adj_key=adj_key)
+        x = dataset.x.to(device)
+        edge_index = dataset.edge_index.to(device)
+        log_library_size = torch.log(x.sum(1)).unsqueeze(1)
+        if self.model.log_variational_:
+            x = torch.log(1 + x)
+
+        mu, _ = self.model.get_latent_representation(
+            x=x,
+            edge_index=edge_index,
+            only_active_gps=False,
+            return_mu_std=True)
+
+        if self.gene_expr_recon_dist_ == "nb":
+            nb_means = self.model.get_gene_expr_dist_params(
+                z=mu,
+                log_library_size=log_library_size)
+            nb_means = nb_means.detach().cpu().numpy()
+            return nb_means
+        if self.gene_expr_recon_dist_ == "zinb":
+            nb_means, zi_prob_logits = self.model.get_gene_expr_dist_params(
+                z=mu,
+                log_library_size=log_library_size)
+            zi_probs = torch.sigmoid(zi_prob_logits)
+            nb_means = nb_means.detach().cpu().numpy()
+            zi_probs = zi_probs.detach().cpu().numpy()
+            return nb_means, zi_probs
