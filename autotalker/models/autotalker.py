@@ -571,6 +571,12 @@ class Autotalker(BaseModelMixin):
                            "p_h1": p_h1,
                            "log_bayes_factor": log_bayes_factor} 
                           for gp, p_h0, p_h1, log_bayes_factor in zipped]
+            for score in cat_scores:
+                scores.append(score)
+
+        scores = pd.DataFrame(scores)
+        scores.sort_values(by="log_bayes_factor", ascending=False, inplace=True)
+        scores.reset_index(drop=True, inplace=True)
         adata.uns[key_added] = scores
 
         # Retrieve top unique gps and (normalized) gene program / latent scores
