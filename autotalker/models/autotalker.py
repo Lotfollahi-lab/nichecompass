@@ -237,8 +237,10 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
               n_epochs_no_edge_recon: int=1,
               lr: float=0.01,
               weight_decay: float=0,
-              lambda_l1_addon: float=0.,
+              lambda_edge_recon: Optional[float]=None,
+              lambda_gene_expr_recon: float=1.0,
               lambda_group_lasso: float=0.,
+              lambda_l1_addon: float=0.,
               edge_val_ratio: float=0.1,
               edge_test_ratio: float=0.05,
               node_val_ratio: float=0.1,
@@ -260,12 +262,22 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
             Learning rate.
         weight_decay:
             Weight decay (L2 penalty).
-        lambda_l1_addon:
-            Lambda (weighting) parameter for the L1 regularization of genes in 
-            addon gene programs.
+        lambda_edge_recon:
+            Lambda (weighting factor) for the edge reconstruction loss. If ´>0´,
+            this will enforce gene programs to be meaningful for edge
+            reconstruction and, hence, to preserve spatial colocalization
+            information.
+        lambda_gene_expr_recon:
+            Lambda (weighting factor) for the gene expression reconstruction
+            loss. If ´>0´, this will enforce interpretable gene programs that
+            can be combined in a linear way to reconstruct gene expression.      
         lambda_group_lasso:
-            Lambda (weighting) parameter for the group lasso regularization of 
-            gene programs.
+            Lambda (weighting factor) for the group lasso regularization loss of
+            gene programs. If ´>0´, this will enforce sparsity of gene programs.
+        lambda_l1_addon:
+            Lambda (weighting factor) for the L1 regularization loss of genes in
+            addon gene programs. If ´>0´, this will enforce sparsity of genes in
+            addon gene programs.
         edge_val_ratio:
             Fraction of the data that is used as validation set on edge-level.
             The rest of the data will be used as training or test set (as 
@@ -302,8 +314,10 @@ class Autotalker(BaseModelMixin, VGAEModelMixin):
                            n_epochs_no_edge_recon=n_epochs_no_edge_recon,
                            lr=lr,
                            weight_decay=weight_decay,
+                           lambda_edge_recon=lambda_edge_recon,
+                           lambda_gene_expr_recon=lambda_gene_expr_recon,
+                            lambda_group_lasso=lambda_group_lasso,
                            lambda_l1_addon=lambda_l1_addon,
-                           lambda_group_lasso=lambda_group_lasso,
                            mlflow_experiment_id=mlflow_experiment_id)
         
         self.is_trained_ = True

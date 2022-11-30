@@ -234,22 +234,22 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         node_model_output:
             Output of the node-level forward pass for gene expression 
             reconstruction.
-        lambda_l1_addon:
-            Lambda (weighting factor) for the L1 regularization loss of genes in
-            addon gene programs. If ´>0´, this will enforce sparsity of genes in
-            addon gene programs.
-        lambda_group_lasso:
-            Lambda (weighting factor) for the group lasso regularization loss of
-            gene programs. If ´>0´, this will enforce sparsity of gene programs.
-        lambda_gene_expr_recon:
-            Lambda (weighting factor) for the gene expression reconstruction
-            loss. If ´>0´, this will enforce interpretable gene programs that
-            can be combined in a linear way to reconstruct gene expression.
         lambda_edge_recon:
             Lambda (weighting factor) for the edge reconstruction loss. If ´>0´,
             this will enforce gene programs to be meaningful for edge
             reconstruction and, hence, to preserve spatial colocalization
             information.
+        lambda_gene_expr_recon:
+            Lambda (weighting factor) for the gene expression reconstruction
+            loss. If ´>0´, this will enforce interpretable gene programs that
+            can be combined in a linear way to reconstruct gene expression.
+        lambda_group_lasso:
+            Lambda (weighting factor) for the group lasso regularization loss of
+            gene programs. If ´>0´, this will enforce sparsity of gene programs.
+        lambda_l1_addon:
+            Lambda (weighting factor) for the L1 regularization loss of genes in
+            addon gene programs. If ´>0´, this will enforce sparsity of genes in
+            addon gene programs.
         edge_recon_active:
             If ´True´, includes the edge reconstruction loss in the optimization
             / backpropagation. Setting this to ´False´ at the beginning of model

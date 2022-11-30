@@ -182,8 +182,10 @@ class Trainer:
               n_epochs_no_edge_recon: int=1,
               lr: float=0.01,
               weight_decay: float=0.,
-              lambda_l1_addon: float=0.,
+              lambda_edge_recon: Optional[float]=None,
+              lambda_gene_expr_recon: float=1.0,
               lambda_group_lasso: float=0.,
+              lambda_l1_addon: float=0.,
               mlflow_experiment_id: Optional[str]=None):
         """
         Train the Autotalker model.
@@ -199,16 +201,33 @@ class Trainer:
             Learning rate.
         weight_decay:
             Weight decay (L2 penalty).
+        lambda_edge_recon:
+            Lambda (weighting factor) for the edge reconstruction loss. If ´>0´,
+            this will enforce gene programs to be meaningful for edge
+            reconstruction and, hence, to preserve spatial colocalization
+            information.
+        lambda_gene_expr_recon:
+            Lambda (weighting factor) for the gene expression reconstruction
+            loss. If ´>0´, this will enforce interpretable gene programs that
+            can be combined in a linear way to reconstruct gene expression.
+        lambda_group_lasso:
+            Lambda (weighting factor) for the group lasso regularization loss of
+            gene programs. If ´>0´, this will enforce sparsity of gene programs.
         lambda_l1_addon:
-            Lambda (weighting) parameter for the L1 regularization of genes in 
-            addon gene programs.        Test time logic of Autotalker model.
+            Lambda (weighting factor) for the L1 regularization loss of genes in
+            addon gene programs. If ´>0´, this will enforce sparsity of genes in
+            addon gene programs.
+        mlflow_experiment_id:
+            ID of the mlflow experiment that will be used for tracking.
         """
         self.n_epochs = n_epochs
         self.n_epochs_no_edge_recon = n_epochs_no_edge_recon
         self.lr = lr
         self.weight_decay = weight_decay
-        self.lambda_l1_addon = lambda_l1_addon
+        self.lambda_edge_recon = lambda_edge_recon
+        self.lambda_gene_expr_recon = lambda_gene_expr_recon
         self.lambda_group_lasso = lambda_group_lasso
+        self.lambda_l1_addon = lambda_l1_addon
         self.mlflow_experiment_id = mlflow_experiment_id
 
         print("\n--- MODEL TRAINING ---")
@@ -277,8 +296,10 @@ class Trainer:
                     edge_data_batch=edge_train_data_batch,
                     edge_model_output=edge_train_model_output,
                     node_model_output=node_train_model_output,
-                    lambda_l1_addon=self.lambda_l1_addon,
+                    lambda_edge_recon=self.lambda_edge_recon,
+                    lambda_gene_expr_recon=self.lambda_gene_expr_recon,
                     lambda_group_lasso=self.lambda_group_lasso,
+                    lambda_l1_addon=self.lambda_l1_addon,
                     edge_recon_active=self.edge_recon_active)
                 train_global_loss = train_loss_dict["global_loss"]
                 train_optim_loss = train_loss_dict["optim_loss"]
@@ -398,8 +419,10 @@ class Trainer:
                     edge_data_batch=edge_val_data_batch,
                     edge_model_output=edge_val_model_output,
                     node_model_output=node_val_model_output,
-                    lambda_l1_addon=self.lambda_l1_addon,
+                    lambda_edge_recon=self.lambda_edge_recon,
+                    lambda_gene_expr_recon=self.lambda_gene_expr_recon,
                     lambda_group_lasso=self.lambda_group_lasso,
+                    lambda_l1_addon=self.lambda_l1_addon,
                     edge_recon_active=True)
             val_global_loss = val_loss_dict["global_loss"]
             val_optim_loss = val_loss_dict["optim_loss"]
