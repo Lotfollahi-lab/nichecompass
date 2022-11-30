@@ -106,8 +106,8 @@ class VGAEModelMixin:
             Key under which the sparse adjacency matrix is stored in 
             ´adata.obsp´.
         use_only_active_gps:
-            If `True`, only return the zinb gene expression parametersfor active
-            gene programs.        
+            If `True`, only return the gene expression distribution 
+            parameters for active gene programs.        
 
         Returns
         ----------
@@ -143,3 +143,13 @@ class VGAEModelMixin:
             mu,
             log_library_size)
         return nb_means, zi_probs
+
+        if self.gene_expr_recon_dist == "nb":
+            nb_means = self.model.get_gene_expr_dist_params(mu,
+                                                            log_library_size)
+            return nb_means
+        if self.gene_expr_recon_dist == "zinb":
+            nb_means, zi_prob_logits = self.gene_expr_decoder(z,
+                                                              log_library_size)
+            zi_probs = torch.sigmoid(zi_prob_logits)
+            return nb_means, zi_probs

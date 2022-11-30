@@ -103,10 +103,11 @@ class Trainer:
             early_stopping_kwargs else {})
         if not "early_stopping_metric" in self.early_stopping_kwargs:
             if edge_val_ratio > 0 and node_val_ratio > 0:
-                self.early_stopping_kwargs["early_stopping_metric"] = "val_loss"
+                self.early_stopping_kwargs["early_stopping_metric"] = (
+                    "val_global_loss")
             else:
                 self.early_stopping_kwargs["early_stopping_metric"] = (
-                    "train_loss")
+                    "train_global_loss")
         self.early_stopping = EarlyStopping(**self.early_stopping_kwargs)
         self.seed = seed
         self.monitor = monitor
@@ -248,10 +249,8 @@ class Trainer:
 
         for self.epoch in range(n_epochs):
             if self.epoch < self.n_epochs_no_edge_recon:
-                print("FALSE")
                 self.edge_recon_active = False
             else:
-                print("TRUE")
                 self.edge_recon_active = True
             self.iter_logs = defaultdict(list)
             self.iter_logs["n_train_iter"] = 0
@@ -278,21 +277,25 @@ class Trainer:
                     edge_data_batch=edge_train_data_batch,
                     edge_model_output=edge_train_model_output,
                     node_model_output=node_train_model_output,
-                    device=self.device,
                     lambda_l1_addon=self.lambda_l1_addon,
                     lambda_group_lasso=self.lambda_group_lasso,
                     edge_recon_active=self.edge_recon_active)
-                train_loss = train_loss_dict["loss"]
+                train_global_loss = train_loss_dict["global_loss"]
+                train_optim_loss = train_loss_dict["optim_loss"]
+                
                 if self.verbose:
                     for key, value in train_loss_dict.items():
                         self.iter_logs[f"train_{key}"].append(value.item())
                 else:
-                    self.iter_logs["train_loss"].append(train_loss.item())    
+                    self.iter_logs["train_global_loss"].append(
+                        train_global_loss.item())   
+                    self.iter_logs["train_optim_loss"].append(
+                        train_optim_loss.item())
                 self.iter_logs["n_train_iter"] += 1
                 # Optimize for training loss
                 self.optimizer.zero_grad()
                 
-                train_loss.backward()
+                train_optim_loss.backward()
                 # Clip gradients
                 if self.grad_clip_value > 0:
                     torch.nn.utils.clip_grad_value_(self.model.parameters(),
@@ -345,8 +348,10 @@ class Trainer:
         self.model.eval()
 
         # Track losses and eval metrics
-        losses = {"train_loss": self.epoch_logs["train_loss"],
-                  "val_loss": self.epoch_logs["val_loss"]}
+        losses = {"train_global_loss": self.epoch_logs["train_global_loss"],
+                  "train_optim_loss": self.epoch_logs["train_optim_loss"],
+                  "val_global_loss": self.epoch_logs["val_global_loss"],
+                  "val_optim_loss": self.epoch_logs["val_optim_loss"]}
         val_eval_metrics_over_epochs = {
             "auroc": self.epoch_logs["val_auroc_score"],
             "auprc": self.epoch_logs["val_auprc_score"],
@@ -393,16 +398,17 @@ class Trainer:
                     edge_data_batch=edge_val_data_batch,
                     edge_model_output=edge_val_model_output,
                     node_model_output=node_val_model_output,
-                    device=self.device,
                     lambda_l1_addon=self.lambda_l1_addon,
                     lambda_group_lasso=self.lambda_group_lasso,
                     edge_recon_active=True)
-            val_loss = val_loss_dict["loss"]
+            val_global_loss = val_loss_dict["global_loss"]
+            val_optim_loss = val_loss_dict["optim_loss"]
             if self.verbose:
                 for key, value in val_loss_dict.items():
                     self.iter_logs[f"val_{key}"].append(value.item())
             else:
-                self.iter_logs["val_loss"].append(val_loss.item())  
+                self.iter_logs["val_global_loss"].append(val_global_loss.item())
+                self.iter_logs["val_optim_loss"].append(val_optim_loss.item())  
             self.iter_logs["n_val_iter"] += 1
             
             # Calculate evaluation metrics

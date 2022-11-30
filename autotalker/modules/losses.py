@@ -65,8 +65,7 @@ def compute_addon_l1_reg_loss(
 
 def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
                             edge_labels: torch.Tensor,
-                            edge_label_index: torch.Tensor,
-                            pos_weight: torch.Tensor) -> torch.Tensor:
+                            edge_label_index: torch.Tensor) -> torch.Tensor:
     """
     Compute edge reconstruction weighted binary cross entropy loss with logits 
     using ground truth edge labels and predicted edge logits (retrieved from the
@@ -80,9 +79,6 @@ def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
         Edge ground truth labels for both positive and negatively sampled edges.
     edge_label_index:
         Index with edge labels for both positive and negatively sampled edges.
-    pos_weight:
-        Weight with which positive examples are reweighted in the loss 
-        calculation. Should be 1 if negative sampling ratio is 1.
 
     Returns
     ----------
@@ -98,8 +94,7 @@ def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
 
     # Compute weighted cross entropy loss
     edge_recon_loss = F.binary_cross_entropy_with_logits(edge_recon_logits,
-                                                         edge_labels_sorted,
-                                                         pos_weight=pos_weight)
+                                                         edge_labels_sorted)
     return edge_recon_loss
 
 

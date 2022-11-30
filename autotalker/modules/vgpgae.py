@@ -3,7 +3,7 @@ This module contains the Variational Gene Program Graph Autoencoder, the neural
 network module underlying the Autotalker model.
 """
 
-from typing import Literal, Tuple, Union
+from typing import Literal, Optional, Tuple, Union
 
 import mlflow
 import torch
@@ -215,12 +215,15 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
              edge_data_batch: Data,
              edge_model_output: dict,
              node_model_output: dict,
-             device: Literal["cpu", "cuda"],
              lambda_l1_addon: float,
              lambda_group_lasso: float,
-             edge_recon_active: bool) -> dict:
+             lambda_gene_expr_recon: float=1.0,
+             lambda_edge_recon: Optional[float]=None,
+             edge_recon_active: bool=True) -> dict:
         """
-        Calculate the loss of the VGPGAE neural network module.
+        Calculate the optimization loss for backpropagation as well as the 
+        global loss that also contains components omitted from optimization 
+        (not backpropagated).
 
         Parameters
         ----------
@@ -231,93 +234,107 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         node_model_output:
             Output of the node-level forward pass for gene expression 
             reconstruction.
-        device:
-            Device where to send the loss parameters.
         lambda_l1_addon:
-            Lambda (weighting) parameter for the L1 regularization of genes in 
-            addon gene programs to enforce gene sparsity in addon gene programs.
+            Lambda (weighting factor) for the L1 regularization loss of genes in
+            addon gene programs. If ´>0´, this will enforce sparsity of genes in
+            addon gene programs.
         lambda_group_lasso:
-            Lambda (weighting) parameter for the group lasso regularization of 
-            gene programs to enforce gene program sparsity.
+            Lambda (weighting factor) for the group lasso regularization loss of
+            gene programs. If ´>0´, this will enforce sparsity of gene programs.
+        lambda_gene_expr_recon:
+            Lambda (weighting factor) for the gene expression reconstruction
+            loss. If ´>0´, this will enforce interpretable gene programs that
+            can be combined in a linear way to reconstruct gene expression.
+        lambda_edge_recon:
+            Lambda (weighting factor) for the edge reconstruction loss. If ´>0´,
+            this will enforce gene programs to be meaningful for edge
+            reconstruction and, hence, to preserve spatial colocalization
+            information.
         edge_recon_active:
-            If ´True´, uses edge reconstruction loss in backpropagation. Setting
-            this to ´False´ allows pretraining of the gene expression decoder.
+            If ´True´, includes the edge reconstruction loss in the optimization
+            / backpropagation. Setting this to ´False´ at the beginning of model
+            training allows pretraining of the gene expression decoder.
 
         Returns
         ----------
         loss_dict:
-            Dictionary containing the loss used for backpropagation as well as 
-            all loss components.
+            Dictionary containing the loss used for backpropagation 
+            (loss_dict["optim_loss"]), which consists of all loss components 
+            used for optimization, the global loss (loss_dict["global_loss"]), 
+            which contains all loss components irrespective of whether they are
+            used for optimization (needed as metric for early stopping and best
+            model saving), as well as all individual loss components that 
+            contribute to the global loss.
         """
         loss_dict = {}
 
-        # Compute loss parameters
-        n_possible_edges = edge_data_batch.x.shape[0] ** 2
-        n_neg_edges = n_possible_edges - edge_data_batch.edge_index.shape[1]
-        # Factor with which edge reconstruction loss is weighted compared to 
-        # Kullback-Leibler divergence and gene expression reconstruction loss.
-        edge_recon_loss_norm_factor = n_possible_edges / (n_neg_edges * 2)
-        # Weight with which positive examples are reweighted in the 
-        # reconstruction loss calculation. Should be 1 if negative sampling 
-        # ratio is 1. 
-        edge_recon_loss_pos_weight = torch.Tensor([1]).to(device)
-        # Factor with which gene expression reconstruction loss is weighted 
-        # compared to Kullback-Leibler divergence and edge reconstruction loss.
-        gene_expr_recon_loss_norm_factor = 1
+        # If not specified explicitly, compute edge reconstruction loss 
+        # weighting factor based on number of possible edges and negative edges
+        if lambda_edge_recon is None:
+            n_possible_edges = edge_data_batch.x.shape[0] ** 2
+            n_neg_edges = n_possible_edges - edge_data_batch.edge_index.shape[1]
+            lambda_edge_recon = n_possible_edges / (n_neg_edges * 2)
 
+        # Compute Kullback-Leibler divergence loss
         loss_dict["kl_loss"] = compute_kl_loss(
             mu=edge_model_output["mu"],
             logstd=edge_model_output["logstd"],
             n_nodes=edge_data_batch.x.size(0))
 
-        # Gene-specific inverse dispersion
-        theta = torch.exp(self.theta)
+        # Compute edge reconstruction binary cross entropy loss
+        loss_dict["edge_recon_loss"] = (lambda_edge_recon * 
+        compute_edge_recon_loss(
+            adj_recon_logits=edge_model_output["adj_recon_logits"],
+            edge_labels=edge_data_batch.edge_label,
+            edge_label_index=edge_data_batch.edge_label_index))
 
-        loss_dict["loss"] = 0
-        loss_dict["loss"] += loss_dict["kl_loss"]
-
-        loss_dict["edge_recon_loss"] = (edge_recon_loss_norm_factor * 
-            compute_edge_recon_loss(
-                adj_recon_logits=edge_model_output["adj_recon_logits"],
-                edge_labels=edge_data_batch.edge_label,
-                edge_label_index=edge_data_batch.edge_label_index,
-                pos_weight=edge_recon_loss_pos_weight))
-
-        if self.include_edge_recon_loss and edge_recon_active:
-            loss_dict["loss"] += loss_dict["edge_recon_loss"]
-
+        # Compute gene expression reconstruction negative binomial or
+        # zero-inflated negative binomial loss
+        theta = torch.exp(self.theta) # gene-specific inverse dispersion
         if self.gene_expr_recon_dist == "nb":
             nb_means = node_model_output["gene_expr_dist_params"]
-            loss_dict["gene_expr_recon_loss"] = (
-            gene_expr_recon_loss_norm_factor * 
-                compute_gene_expr_recon_nb_loss(
+            loss_dict["gene_expr_recon_loss"] = (lambda_gene_expr_recon * 
+            compute_gene_expr_recon_nb_loss(
                     x=node_model_output["node_labels"],
                     mu=nb_means,
                     theta=theta))
         elif self.gene_expr_recon_dist == "zinb":
             nb_means, zi_prob_logits = (
-            node_model_output["gene_expr_dist_params"])
-            loss_dict["gene_expr_recon_loss"] = (
-                gene_expr_recon_loss_norm_factor * 
-                    compute_gene_expr_recon_zinb_loss(
-                        x=node_model_output["node_labels"],
-                        mu=nb_means,
-                        theta=theta,
-                        zi_prob_logits=zi_prob_logits))
+                node_model_output["gene_expr_dist_params"])
+            loss_dict["gene_expr_recon_loss"] = (lambda_gene_expr_recon * 
+            compute_gene_expr_recon_zinb_loss(
+                    x=node_model_output["node_labels"],
+                    mu=nb_means,
+                    theta=theta,
+                    zi_prob_logits=zi_prob_logits))
 
+        # Compute group lasso regularization loss of gene programs
+        loss_dict["group_lasso_reg_loss"] = (lambda_group_lasso * 
+        compute_group_lasso_reg_loss(self.named_parameters()))
+
+        # Compute l1 regularization loss of genes in addon gene programs
         if self.n_addon_gps != 0:
             loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon * 
-                compute_addon_l1_reg_loss(self.named_parameters()))
+            compute_addon_l1_reg_loss(self.named_parameters()))
 
-        loss_dict["group_lasso_reg_loss"] = (lambda_group_lasso * 
-            compute_group_lasso_reg_loss(self.named_parameters()))
-
+        # Compute optimization loss used for backpropagation as well as global
+        # loss used for early stopping of model training and best model saving
+        loss_dict["global_loss"] = 0
+        loss_dict["optim_loss"] = 0
+        loss_dict["global_loss"] += loss_dict["kl_loss"]
+        loss_dict["optim_loss"] += loss_dict["kl_loss"]
+        if self.include_edge_recon_loss:
+            loss_dict["global_loss"] += loss_dict["edge_recon_loss"]
+            if edge_recon_active:
+                loss_dict["optim_loss"] += loss_dict["edge_recon_loss"]
         if self.include_gene_expr_recon_loss:
-            loss_dict["loss"] += loss_dict["gene_expr_recon_loss"]
-            loss_dict["loss"] += loss_dict["group_lasso_reg_loss" ]
+            loss_dict["global_loss"] += loss_dict["gene_expr_recon_loss"]
+            loss_dict["optim_loss"] += loss_dict["gene_expr_recon_loss"]
+            loss_dict["global_loss"] += loss_dict["group_lasso_reg_loss"]
+            loss_dict["optim_loss"] += loss_dict["group_lasso_reg_loss"]
             if self.n_addon_gps != 0:
-                loss_dict["loss"] += loss_dict["addon_gp_l1_reg_loss"]
-
+                loss_dict["global_loss"] += loss_dict["addon_gp_l1_reg_loss"]
+                loss_dict["optim_loss"] += loss_dict["addon_gp_l1_reg_loss"]
         return loss_dict
 
     def get_active_gp_mask(

@@ -37,7 +37,7 @@ class EarlyStopping:
         Scaling factor for adjusting the learning rate.
      """
     def __init__(self,
-                 early_stopping_metric: str="val_loss",
+                 early_stopping_metric: str="val_global_loss",
                  metric_improvement_threshold: float=0.,
                  patience: int=6,
                  reduce_lr_on_plateau: bool=True,
