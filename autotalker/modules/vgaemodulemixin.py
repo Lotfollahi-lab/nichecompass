@@ -1,6 +1,6 @@
 """
 This module contains generic VGAE functionalities, added as a Mixin to the
-Variational Gene Program Graph Autoencoder module.
+Variational Gene Program Graph Autoencoder neural network module.
 """
 
 import torch
@@ -20,14 +20,16 @@ class VGAEModuleMixin:
         Parameters
         ----------
         mu:
-            Expected values of the latent space distribution.
+            Expected values of the latent space distribution (dim: n_obs x 
+            n_gps).
         logstd:
-            Log standard deviations of the latent space distribution.
+            Log standard deviations of the latent space distribution (dim: n_obs
+            x n_gps).
 
         Returns
         ----------
         rep:
-            Reparameterized latent space values.
+            Reparameterized latent features (dim: n_obs x n_gps).
         """
         if self.training:
             std = torch.exp(logstd)

@@ -19,13 +19,12 @@ class BaseModuleMixin:
     """
     def _get_user_attributes(self) -> list:
         """
-        Get all the attributes defined in a model instance, for example 
-        self.is_trained_.
+        Get all the attributes defined in a module instance.
 
         Returns
         ----------
         attributes:
-            Attributes defined in a model instance.
+            Attributes defined in a module instance.
         """
         attributes = inspect.getmembers(
             self, lambda a: not (inspect.isroutine(a)))
@@ -35,13 +34,13 @@ class BaseModuleMixin:
 
     def _get_public_attributes(self) -> dict:
         """
-        Get only public attributes defined in a model instance. By convention
+        Get only public attributes defined in a module instance. By convention
         public attributes have a trailing underscore.
 
         Returns
         ----------
         public_attributes:
-            Public attributes defined in a model instance.
+            Public attributes defined in a module instance.
         """
         public_attributes = self._get_user_attributes()
         public_attributes = {a[0]: a[1] for a in public_attributes if 
@@ -56,9 +55,10 @@ class BaseModuleMixin:
         
         Parts of the implementation are adapted from 
         https://github.com/theislab/scarches/blob/master/scarches/models/base/_base.py#L92
-        (01.10.2022)
+        (01.10.2022).
         """
-        load_state_dict = model_state_dict.copy() # old model architecture state dict
+        load_state_dict = model_state_dict.copy() # old model architecture state 
+        # dict
         new_state_dict = self.state_dict() # new model architecture state dict
         device = next(self.parameters()).device
 
@@ -70,12 +70,14 @@ class BaseModuleMixin:
                 continue # nothing needs to be updated
             else:
                 # new model architecture parameter tensors are different from
-                # old model architecture parameter tensors; updates are necessary
+                # old model architecture parameter tensors; updates are 
+                # necessary
                 load_param_tensor = load_param_tensor.to(device)
                 n_dims = len(new_param_tensor.shape)
                 idx_slicers = [slice(None)] * n_dims
                 for i in range(n_dims):
-                    dim_diff = new_param_tensor.shape[i] - load_param_tensor.shape[i]
+                    dim_diff = (new_param_tensor.shape[i] - 
+                                load_param_tensor.shape[i])
                     idx_slicers[i] = slice(-dim_diff, None)
                     if dim_diff > 0:
                         break

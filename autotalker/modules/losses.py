@@ -1,42 +1,14 @@
 """
 This module contains all loss functions used by the Variational Gene Program 
-Graph Autoencoder module for the optimization of the Autotalker model.
+Graph Autoencoder module.
 """
+
 from typing import Iterable, Tuple
 
 import torch
 import torch.nn.functional as F
 
 from .utils import edge_values_and_sorted_labels
-
-
-def compute_group_lasso_reg_loss(
-        named_model_params: Iterable[Tuple[str, torch.nn.Parameter]]
-        ) -> torch.Tensor:
-    """
-    Compute group lasso regularization loss for the decoder layer weights to 
-    enforce gene program sparsity (each gene program is a group; the number of 
-    weights per group normalization is omitted as each group / gene program has 
-    the same number of weights).
-
-    Parameters
-    ----------
-    named_model_params:
-        Named model parameters of the model.
-
-    Returns
-    ----------
-    group_lasso_reg_loss:
-        Group lasso regularization loss for the decoder layer weights.    
-    """
-    # Compute L2 norm per group / gene program and sum across all gene programs
-    decoder_layerwise_param_gpgroupnorm_sum = torch.stack(
-        [param.norm(p=2, dim=0).sum() for param_name, param in 
-         named_model_params if "gene_expr_decoder.nb_means_normalized_decoder" 
-         in param_name], dim=0)
-    # Sum over ´masked_l´ layer and ´addon_l´ layer if addon gene programs exist
-    group_lasso_reg_loss = torch.sum(decoder_layerwise_param_gpgroupnorm_sum)
-    return group_lasso_reg_loss
 
 
 def compute_addon_l1_reg_loss(
@@ -57,7 +29,7 @@ def compute_addon_l1_reg_loss(
         L1 regularization loss for the add-on decoder layer weights.
     """
     addon_decoder_layerwise_param_sum = torch.stack(
-        [abs(param).sum() for param_name, param in named_model_params 
+        [torch.abs(param).sum() for param_name, param in named_model_params 
          if "nb_means_normalized_decoder.addon_l" in param_name], dim=0)
     addon_l1_reg_loss = torch.sum(addon_decoder_layerwise_param_sum)
     return addon_l1_reg_loss
@@ -103,12 +75,12 @@ def compute_gene_expr_recon_nb_loss(x: torch.Tensor,
                                     theta: torch.Tensor,
                                     eps: float=1e-8) -> torch.Tensor:
     """
-    Gene expression reconstruction loss according to a Negative Binomial gene
+    Gene expression reconstruction loss according to a negative binomial gene
     expression model which is used to model scRNA-seq count data.
 
     Parts of the implementation are adapted from
-    https://github.com/scverse/scvi-tools/blob/main/scvi/distributions/_negative_binomial.py#L75.
-    (29.11.2022)
+    https://github.com/scverse/scvi-tools/blob/main/scvi/distributions/_negative_binomial.py#L75
+    (29.11.2022).
 
     Parameters
     ----------
@@ -116,26 +88,23 @@ def compute_gene_expr_recon_nb_loss(x: torch.Tensor,
         Reconstructed feature matrix.
     mu:
         Mean of the negative binomial with positive support.
-        (shape: batch_size x n_genes)
+        (dim: batch_size x n_genes)
     theta:
         Inverse dispersion parameter with positive support.
-        (shape: batch_size x n_genes)
+        (dim: batch_size x n_genes)
     eps:
         Numerical stability constant.
 
     Returns
     ----------
-    zinb_loss:
-        Gene expression reconstruction loss using a ZINB gene expression model.
+    nb_loss:
+        Gene expression reconstruction loss using a NB gene expression model.
     """
     log_theta_mu_eps = torch.log(theta + mu + eps)
     log_likelihood_nb = (
-        theta * (torch.log(theta + eps) - log_theta_mu_eps)
-        + x * (torch.log(mu + eps) - log_theta_mu_eps)
-        + torch.lgamma(x + theta)
-        - torch.lgamma(theta)
-        - torch.lgamma(x + 1)
-    )
+        theta * (torch.log(theta + eps) - log_theta_mu_eps) + x * 
+        (torch.log(mu + eps) - log_theta_mu_eps) + torch.lgamma(x + theta) - 
+        torch.lgamma(theta) - torch.lgamma(x + 1))
 
     nb_loss = torch.mean(-log_likelihood_nb.sum(-1))
     return nb_loss 
@@ -147,14 +116,15 @@ def compute_gene_expr_recon_zinb_loss(x: torch.Tensor,
                                       zi_prob_logits: torch.Tensor,
                                       eps: float=1e-8) -> torch.Tensor:
     """
-    Gene expression reconstruction loss according to a ZINB gene expression 
-    model, which is used to model scRNA-seq count data due to its capacity of 
-    modeling excess zeros and overdispersion. The Bernoulli distribution is 
-    parameterized using logits, hence the use of a softplus function.
+    Gene expression reconstruction loss according to a zero-inflated negative 
+    binomial gene expression model, which is used to model scRNA-seq count data
+    due to its capacity of modeling excess zeros and overdispersion. The 
+    bernoulli distribution is parameterized using logits, hence the use of a 
+    softplus function.
 
     Parts of the implementation are adapted from
-    https://github.com/scverse/scvi-tools/blob/master/scvi/distributions/_negative_binomial.py#L22.
-    (01.10.2022)
+    https://github.com/scverse/scvi-tools/blob/master/scvi/distributions/_negative_binomial.py#L22
+    (01.10.2022).
 
     Parameters
     ----------
@@ -162,13 +132,13 @@ def compute_gene_expr_recon_zinb_loss(x: torch.Tensor,
         Reconstructed feature matrix.
     mu:
         Mean of the negative binomial with positive support.
-        (shape: batch_size x n_genes)
+        (dim: batch_size x n_genes)
     theta:
         Inverse dispersion parameter with positive support.
-        (shape: batch_size x n_genes)
+        (dim: batch_size x n_genes)
     zi_prob_logits:
         Logits of the zero inflation probability with real support.
-        (shape: batch_size x n_genes)
+        (dim: batch_size x n_genes)
     eps:
         Numerical stability constant.
 
@@ -190,18 +160,45 @@ def compute_gene_expr_recon_zinb_loss(x: torch.Tensor,
     case_zero = F.softplus(zi_prob_logits_theta_log) - softplus_zi_prob_logits
     mul_case_zero = torch.mul((x < eps).type(torch.float32), case_zero)
 
-    case_non_zero = (-softplus_zi_prob_logits
-                     + zi_prob_logits_theta_log
-                     + x * (torch.log(mu + eps) - log_theta_mu_eps)
-                     + torch.lgamma(x + theta)
-                     - torch.lgamma(theta)
-                     - torch.lgamma(x + 1))
+    case_non_zero = (-softplus_zi_prob_logits + zi_prob_logits_theta_log + x * 
+                     (torch.log(mu + eps) - log_theta_mu_eps) + 
+                     torch.lgamma(x + theta) - torch.lgamma(theta) - 
+                     torch.lgamma(x + 1))
                      
     mul_case_non_zero = torch.mul((x > eps).type(torch.float32), case_non_zero)
 
     log_likehood_zinb = mul_case_zero + mul_case_non_zero
     zinb_loss = torch.mean(-log_likehood_zinb.sum(-1))
     return zinb_loss
+
+
+def compute_group_lasso_reg_loss(
+        named_model_params: Iterable[Tuple[str, torch.nn.Parameter]]
+        ) -> torch.Tensor:
+    """
+    Compute group lasso regularization loss for the decoder layer weights to 
+    enforce gene program sparsity (each gene program is a group; the number of 
+    weights per group normalization is omitted as each group / gene program has 
+    the same number of weights).
+
+    Parameters
+    ----------
+    named_model_params:
+        Named model parameters of the model.
+
+    Returns
+    ----------
+    group_lasso_reg_loss:
+        Group lasso regularization loss for the decoder layer weights.    
+    """
+    # Compute L2 norm per group / gene program and sum across all gene programs
+    decoder_layerwise_param_gpgroupnorm_sum = torch.stack(
+        [param.norm(p=2, dim=0).sum() for param_name, param in 
+         named_model_params if "gene_expr_decoder.nb_means_normalized_decoder" 
+         in param_name], dim=0)
+    # Sum over ´masked_l´ layer and ´addon_l´ layer if addon gene programs exist
+    group_lasso_reg_loss = torch.sum(decoder_layerwise_param_gpgroupnorm_sum)
+    return group_lasso_reg_loss
 
 
 def compute_kl_reg_loss(mu: torch.Tensor,
@@ -214,17 +211,17 @@ def compute_kl_reg_loss(mu: torch.Tensor,
     Parameters
     ----------
     mu:
-        Expected values of the latent space distribution.
+        Expected values of the latent distribution.
     logstd:
-        Log of standard deviations of the latent space distribution.
+        Log of standard deviations of the latent distribution.
     n_nodes:
         Number of nodes in the graph.
 
     Returns
     ----------
-    kl_loss:
+    kl_reg_loss:
         Kullback-Leibler divergence.
     """
-    kl_loss = (-0.5 / n_nodes) * torch.mean(
+    kl_reg_loss = (-0.5 / n_nodes) * torch.mean(
     torch.sum(1 + 2 * logstd - mu ** 2 - torch.exp(logstd) ** 2, 1))
-    return kl_loss
+    return kl_reg_loss

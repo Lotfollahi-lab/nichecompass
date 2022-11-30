@@ -453,7 +453,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         """
         Encode input features ´x´ and ´edge_index´ into the latent space 
         distribution parameters and return either the distribution parameters 
-        themselves or sampled latent features ´z´.
+        themselves or latent features ´z´.
            
         Parameters
         ----------
@@ -463,13 +463,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         edge_index:
             Edge index of the graph (dim: 2 x n_edges).
         return_mu_std:
-            If `True`, return ´mu´ and ´logstd´ instead of a random sample from
-            the latent space.
+            If `True`, return ´mu´ and ´logstd´ instead of latent features ´z´.
 
         Returns
         -------
         z:
-            Latent space encoding (dim: n_obs x n_active_gps).
+            Latent space features (dim: n_obs x n_active_gps).
         mu:
             Expected values of the latent posterior (dim: n_obs x n_active_gps).
         std:
@@ -487,7 +486,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             std = torch.exp(logstd)
             return mu, std
         else:
-            # Sample latent features
+            # Sample latent features from the latent normal distribution if in 
+            # training mode or return ´mu´ if not in training mode
             z = self.reparameterize(mu, logstd)
             return z
 

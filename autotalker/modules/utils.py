@@ -1,6 +1,7 @@
 """
 This module contains helper functions for the ´modules´ subpackage.
 """
+
 from typing import Tuple
 
 import torch
@@ -61,7 +62,7 @@ def edge_values_and_sorted_labels(adj: torch.Tensor,
     return adj_values, edge_labels_sorted
 
 
-def _unique_sorted_index(x: torch.Tensor, dim=-1) -> torch.Tensor:
+def _unique_sorted_index(x: torch.Tensor, dim: int=-1) -> torch.Tensor:
     """
     Utility function to remove duplicates from a tensor and return a sorted 
     index containing only indeces from unique values.
