@@ -40,6 +40,9 @@ class Autotalker(BaseModelMixin):
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
     gp_names_key:
         Key under which the gene program names are stored in ´adata.uns´.
+    active_gp_names_key:
+        Key under which the active gene program names will be stored in 
+        ´adata.uns´.
     gp_targets_mask_key:
         Key under which the gene program targets mask is stored in ´adata.varm´. 
         This mask will only be used if no ´gp_targets_mask´ is passed explicitly
@@ -111,6 +114,7 @@ class Autotalker(BaseModelMixin):
                  counts_key: str="counts",
                  adj_key: str="spatial_connectivities",
                  gp_names_key: str="autotalker_gp_names",
+                 active_gp_names_key: str="autotalker_active_gp_names",
                  gp_targets_mask_key: str="autotalker_gp_targets",
                  gp_sources_mask_key: str="autotalker_gp_sources",
                  latent_key: str="autotalker_latent",
@@ -134,6 +138,7 @@ class Autotalker(BaseModelMixin):
         self.counts_key_ = counts_key
         self.adj_key_ = adj_key
         self.gp_names_key_ = gp_names_key
+        self.active_gp_names_key_ = active_gp_names_key
         self.gp_targets_mask_key_ = gp_targets_mask_key
         self.gp_sources_mask_key_ = gp_sources_mask_key
         self.latent_key_ = latent_key
@@ -205,7 +210,7 @@ class Autotalker(BaseModelMixin):
         if gp_names_key not in adata.uns:
             raise ValueError("Please specify an adequate ´gp_names_key´. "
                              "By default the gene program names are assumed to "
-                             "be stored in adata.uns['autotalker_gps'].")
+                             "be stored in adata.uns['autotalker_gp_names'].")
         
         # Initialize model with Variational Gene Program Graph Autoencoder 
         # neural network module
@@ -324,6 +329,8 @@ class Autotalker(BaseModelMixin):
             adj_key=self.adj_key_,
             only_active_gps=True,
             return_mu_std=True)
+        self.adata.uns[self.active_gp_names_key_] = self.get_active_gps(
+            adata=self.adata)
 
     def compute_differential_gp_scores(
             self,
@@ -412,7 +419,7 @@ class Autotalker(BaseModelMixin):
         if adata is None:
             adata = self.adata
 
-        active_gps = self.get_active_gps(adata=adata)
+        active_gps = adata.uns[self.active_gp_names_key_]
 
         # Get selected gps as well as their index and gp weights
         if selected_gps is None:
@@ -659,7 +666,7 @@ class Autotalker(BaseModelMixin):
             adata = self.adata
 
         # Check if selected gene program is active
-        active_gps = self.get_active_gps(adata=adata)
+        active_gps = adata.uns[self.active_gp_names_key_]
         if selected_gp not in active_gps:
             print(f"GP '{selected_gp}' is not an active gene program. "
                   "Continuing anyways.")

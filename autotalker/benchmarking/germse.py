@@ -17,7 +17,7 @@ from sklearn.preprocessing import StandardScaler
 def compute_gene_expression_regression_mse(
         adata: AnnData,
         cat_key: str="celltype_mapped_refined",
-        gp_names_key: str="autotalker_gp_names",
+        active_gp_names_key: str="autotalker_active_gp_names",
         latent_key: str="autotalker_latent",
         selected_gps: Optional[Union[str,list]]=None,
         selected_genes: Optional[Union[str,list]]=None,
@@ -37,14 +37,14 @@ def compute_gene_expression_regression_mse(
     cat_key:
         Key under which the cell categories / annotations which serve as 
         classification label are stored in ´adata.obs´.
-    gp_names_key:
-        Key under which the gene program names are stored in ´adata.uns´
+    active_gp_names_key:
+        Key under which the active gene program names are stored in ´adata.uns´.
     latent_key:
         Key under which the latent representation from the model is stored in 
         ´adata.obsm´.
     selected_gps:
         List of gene program names which will be used for the classification 
-        task. If ´None´, uses all gene programs.
+        task. If ´None´, uses all active gene programs.
     selected_cats:
         List of category labels which will be included as separate labels in the
         classification task. If ´None´, uses all category labels as separate
@@ -62,15 +62,16 @@ def compute_gene_expression_regression_mse(
         Cell category SVM classification accuracy.        
     """
     # Get index of selected gps
+    active_gps = adata.uns[active_gp_names_key]
     if selected_gps is None:
-        selected_gps = list(adata.uns[gp_names_key])
-        selected_gps_idx = np.arange(len(selected_gps))
+        selected_gps = list(active_gps)
     else:
         if isinstance(selected_gps, str):
             selected_gps = [selected_gps]
-        selected_gps_idx = np.array([list(adata.uns[gp_names_key]).index(gp) for
-                                     gp in selected_gps])
+    selected_gps_idx = np.array([list(active_gps).index(gp) for gp in 
+                                 selected_gps])
 
+    # Get selected genes
     if selected_genes is None:
         selected_genes = list(adata.var_names)
     else:
