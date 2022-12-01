@@ -1,6 +1,6 @@
 """
-This module contains all utiilities to add interpretable communication gene
-programs as prior knowledge for use by the Autotalker model.
+This module contains utiilities to add interpretable communication gene programs
+as prior knowledge for use by the Autotalker model.
 """
 
 from typing import Literal, Optional
@@ -10,7 +10,7 @@ import omnipath as op
 import pandas as pd
 from anndata import AnnData
 
-from .utils import _load_R_file_as_df
+from .utils import load_R_file_as_df
 
 
 def add_gps_from_gp_dict_to_adata(
@@ -126,12 +126,13 @@ def add_gps_from_gp_dict_to_adata(
 
     # Add gene program names of gene programs that passed filter to adata.uns
     removed_gp_idx = np.where(~gp_mask_filter)[0]
-    adata.uns[gp_names_key] = [gp_name for i, (gp_name, _) in enumerate(
-                               gp_dict.items()) if i not in removed_gp_idx]
+    adata.uns[gp_names_key] = np.array([gp_name for i, (gp_name, _) in 
+                                        enumerate(gp_dict.items()) if i not in 
+                                        removed_gp_idx])
 
 
 def extract_gp_dict_from_nichenet_ligand_target_mx(
-        keep_target_ratio: float=0.1,
+        keep_target_ratio: float=0.01,
         load_from_disk: bool=False,
         save_to_disk: bool=False,
         file_path: Optional[str]="nichenet_ligand_target_matrix.csv") -> dict:
@@ -173,7 +174,7 @@ def extract_gp_dict_from_nichenet_ligand_target_mx(
     if not load_from_disk:
         print("Downloading NicheNet ligand target potential matrix from the "
               "web. This might take a while...")
-        ligand_target_df = _load_R_file_as_df(
+        ligand_target_df = load_R_file_as_df(
             R_file_path="ligand_target_matrix.rds",
             url="https://zenodo.org/record/3260758/files/ligand_target_matrix.rds",
             save_df_to_disk=save_to_disk,
@@ -483,10 +484,16 @@ def filter_and_combine_gp_dict_gps(
                     n_avg_target_genes = (len(target_genes_i) + 
                                           len(target_genes_j)) / 2
                     n_avg_genes = n_avg_source_genes + n_avg_target_genes
-                    ratio_shared_source_genes = (n_source_gene_overlap / 
-                                                 n_avg_source_genes)
-                    ratio_shared_target_genes = (n_target_gene_overlap /
-                                                 n_avg_target_genes)
+                    if n_avg_source_genes > 0:
+                        ratio_shared_source_genes = (n_source_gene_overlap / 
+                                                     n_avg_source_genes)
+                    else: 
+                        ratio_shared_source_genes = 1
+                    if n_avg_target_genes > 0:
+                        ratio_shared_target_genes = (n_target_gene_overlap /
+                                                     n_avg_target_genes)
+                    else:
+                        ratio_shared_target_genes = 1
                     ratio_shared_genes = n_gene_overlap / n_avg_genes
                     if ((ratio_shared_source_genes >= 
                          overlap_thresh_source_genes) &
@@ -557,4 +564,4 @@ def filter_and_combine_gp_dict_gps(
                                         sorted(list(set(new_gp_sources)))}
             new_gp_dict[new_gp_name]["targets"] = sorted(
                 list(set(new_gp_targets)))
-        return new_gp_dict
+    return new_gp_dict

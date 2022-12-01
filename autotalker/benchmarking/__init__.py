@@ -1,3 +1,4 @@
+from .caca import compute_cell_cat_cls_accuracy
 from .cad import compute_avg_cad, compute_cad
 from .gcd import compute_avg_gcd
 from .rclisi import compute_per_cell_log_rclisi

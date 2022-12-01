@@ -1,47 +1,13 @@
+"""
+This module contains decoders used by the Autotalker model.
+"""
+
+from typing import Literal, Tuple
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from .layers import AddOnMaskedLayer
-
-
-class FCGraphDecoder(nn.Module):
-    """
-    Fully connected graph decoder class.
-    """
-    def __init__(self,
-                 n_input: int,
-                 n_output: int,
-                 bias: bool=False,
-                 dropout_rate: float=0.0,
-                 activation: nn.Module=nn.Identity):
-        super().__init__()
-
-        print(f"FULLY CONNECTED GRAPH DECODER -> dropout_rate: {dropout_rate}")
-
-        self.linear = nn.Linear(n_input * 2, n_output, bias=bias)
-        self.dropout = nn.Dropout(dropout_rate)
-        self.activation = activation
-
-    def forward(self, z: torch.Tensor):
-        """
-        Forward pass of the fully connected graph decoder.
-
-        Parameters
-        ----------
-        z:
-            Tensor containing the latent space features.
-
-        Returns
-        ----------
-        adj_rec_logits:
-            Tensor containing the reconstructed adjacency matrix with logits.
-        """
-        z_cat = torch.cat((z, z.t()), dim=-1)
-        print(z_cat.shape)
-        z_cat = self.linear(self.dropout(z_cat))
-        adj_rec_logits = self.activation(z_cat)
-        return adj_rec_logits
 
 
 class DotProductGraphDecoder(nn.Module):
@@ -59,14 +25,14 @@ class DotProductGraphDecoder(nn.Module):
     dropout_rate:
         Probability of nodes to be dropped during training.
     """
-    def __init__(self, dropout_rate: float=0.0):
+    def __init__(self, dropout_rate: float=0.):
         super().__init__()
 
         print(f"DOT PRODUCT GRAPH DECODER -> dropout_rate: {dropout_rate}")
 
         self.dropout = nn.Dropout(dropout_rate)
 
-    def forward(self, z: torch.Tensor):
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
         """
         Forward pass of the dot product graph decoder.
 
@@ -97,42 +63,32 @@ class MaskedGeneExprDecoder(nn.Module):
     n_input:
         Number of maskable input nodes to the decoder (maskable latent space 
         dimensionality).
+    n_addon_input:
+        Number of non-maskable add-on input nodes to the decoder (non-maskable
+        latent space dimensionality)
     n_output:
         Number of output nodes from the decoder (number of genes).
     mask:
         Mask that determines which input nodes / latent features can contribute
         to the reconstruction of which genes.
-    n_addon_input:
-        Number of non-maskable add-on input nodes to the decoder (non-maskable
-        latent space dimensionality)
+    gene_expr_recon_dist:
+        The distribution used for gene expression reconstruction. If `nb`, uses
+        a Negative Binomial distribution. If `zinb`, uses a Zero-inflated
+        Negative Binomial distribution.
+        
     """
     def __init__(self,
                  n_input: int,
+                 n_addon_input: int,
                  n_output: int,
                  mask: torch.Tensor,
-                 n_addon_input: int):
+                 recon_dist: Literal["nb", "zinb"]):
         super().__init__()
 
         print(f"MASKED GENE EXPRESSION DECODER -> n_input: {n_input}, "
-              f"n_addon_input: {n_addon_input}, n_output: {n_output}")
+              f"n_addon_input: {n_addon_input}, n_output: {n_output}, ")
 
-        """
-        self.shared_decoder = AddOnMaskedLayer(
-            n_input=n_input,
-            n_output=n_output,
-            bias=False,
-            mask=mask,
-            n_addon_input=n_addon_input,
-            activation=nn.Identity())
-
-        self.nb_means_normalized_decoder = nn.Sequential(
-            self.shared_decoder,
-            nn.Softmax(dim=-1))
-
-        self.zi_prob_logits_decoder = nn.Sequential(
-            self.shared_decoder,
-            nn.Identity())
-        """
+        self.recon_dist = recon_dist
 
         self.nb_means_normalized_decoder = AddOnMaskedLayer(
             n_input=n_input,
@@ -142,15 +98,19 @@ class MaskedGeneExprDecoder(nn.Module):
             n_addon_input=n_addon_input,
             activation=nn.Softmax(dim=-1))
 
-        self.zi_prob_logits_decoder = AddOnMaskedLayer(
-            n_input=n_input,
-            n_output=n_output,
-            bias=False,
-            mask=mask,
-            n_addon_input=n_addon_input,
-            activation=nn.Identity())
+        if recon_dist == "zinb":
+            self.zi_prob_logits_decoder = AddOnMaskedLayer(
+                n_input=n_input,
+                n_output=n_output,
+                bias=False,
+                mask=mask,
+                n_addon_input=n_addon_input,
+                activation=nn.Identity())
 
-    def forward(self, z: torch.Tensor, log_library_size: torch.Tensor):
+    def forward(self,
+                z: torch.Tensor,
+                log_library_size: torch.Tensor
+                ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass of the masked gene expression decoder.
 
@@ -168,6 +128,9 @@ class MaskedGeneExprDecoder(nn.Module):
         """
         nb_means_normalized = self.nb_means_normalized_decoder(z)
         nb_means = torch.exp(log_library_size) * nb_means_normalized
-        zi_prob_logits = self.zi_prob_logits_decoder(z)
-        zinb_parameters = (nb_means, zi_prob_logits)
-        return zinb_parameters
+        if self.recon_dist == "nb":
+            gene_expr_decoder_params = nb_means
+        elif self.recon_dist == "zinb":
+            zi_prob_logits = self.zi_prob_logits_decoder(z)
+            gene_expr_decoder_params = (nb_means, zi_prob_logits)
+        return gene_expr_decoder_params

@@ -1,4 +1,8 @@
-from re import A
+"""
+This module contains (full) neural network layers used by the Autotalker model.
+"""
+
+
 from typing import Optional
 
 import torch
@@ -27,7 +31,7 @@ class GCNLayer(nn.Module):
     def __init__(self,
                  n_input: int,
                  n_output: int,
-                 dropout_rate: float=0.0,
+                 dropout_rate: float=0.,
                  activation=torch.relu):
         super().__init__()
         self.dropout_rate = dropout_rate
@@ -40,7 +44,7 @@ class GCNLayer(nn.Module):
         """Initialize weights with Glorot weight initialization"""
         torch.nn.init.xavier_uniform_(self.weights)
 
-    def forward(self, input: torch.Tensor, adj :torch.Tensor):
+    def forward(self, input: torch.Tensor, adj :torch.Tensor) -> torch.Tensor:
         """
         Forward pass of the GCN layer.
 
@@ -65,8 +69,11 @@ class GCNLayer(nn.Module):
 
 class AddOnMaskedLayer(nn.Module):
     """
-    Add-on masked layer class. Adapted from 
-    https://github.com/theislab/scarches/blob/7980a187294204b5fb5d61364bb76c0b809eb945/scarches/models/expimap/modules.py#L28.
+    Add-on masked layer class. 
+    
+    Parts of the implementation are adapted from 
+    https://github.com/theislab/scarches/blob/7980a187294204b5fb5d61364bb76c0b809eb945/scarches/models/expimap/modules.py#L28
+    (01.10.2022).
 
     Parameters
     ----------
@@ -106,7 +113,7 @@ class AddOnMaskedLayer(nn.Module):
 
         self.activation = activation
 
-    def forward(self, input: torch.Tensor):
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         """
         Forward pass of the add-on masked layer.
 
@@ -133,5 +140,4 @@ class AddOnMaskedLayer(nn.Module):
         if self.n_addon_input != 0:
             output = output + self.addon_l(addon_input)
         output = self.activation(output)
-
         return output

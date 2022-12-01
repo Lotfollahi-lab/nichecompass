@@ -5,7 +5,7 @@ import numpy as np
 import squidpy as sq
 from anndata import AnnData
 
-from autotalker.utils import _compute_graph_connectivities
+from autotalker.utils import compute_graph_connectivities
 
 
 def compute_avg_cad(
@@ -106,7 +106,7 @@ def compute_cad(
         as measured by the Frobenius norm of the element-wise matrix differences.
     """
     # Compute physical (ground truth) connectivities
-    adata.obsp["cad_spatial_connectivities"] = _compute_graph_connectivities(
+    adata.obsp["cad_spatial_connectivities"] = compute_graph_connectivities(
         adata=adata,
         feature_key=spatial_key,
         n_neighbors=n_neighbors,
@@ -114,7 +114,7 @@ def compute_cad(
         seed=seed)
 
     # Compute latent connectivities
-    adata.obsp["cad_latent_connectivities"] = _compute_graph_connectivities(
+    adata.obsp["cad_latent_connectivities"] = compute_graph_connectivities(
         adata=adata,
         feature_key=latent_key,
         n_neighbors=n_neighbors,

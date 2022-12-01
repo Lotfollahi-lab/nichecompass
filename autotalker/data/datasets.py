@@ -1,11 +1,13 @@
-from typing import Literal
+"""
+This module contains the SpatialAnnTorchDataset class to provide a standardized
+dataset format for the training of an Autotalker model.
+"""
 
 import scipy.sparse as sp
 import torch
-import torch_geometric
 from anndata import AnnData
 
-from .utils import _sparse_mx_to_sparse_tensor
+from .utils import sparse_mx_to_sparse_tensor
 
 
 class SpatialAnnTorchDataset():
@@ -36,9 +38,9 @@ class SpatialAnnTorchDataset():
 
         # Store adjacency matrix in torch_sparse SparseTensor format
         if sp.issparse(adata.obsp[adj_key]):
-            self.adj = _sparse_mx_to_sparse_tensor(adata.obsp[adj_key])
+            self.adj = sparse_mx_to_sparse_tensor(adata.obsp[adj_key])
         else:
-            self.adj = _sparse_mx_to_sparse_tensor(
+            self.adj = sparse_mx_to_sparse_tensor(
                 sp.csr_matrix(adata.obsp[adj_key]))
 
         # Validate adjacency matrix symmetry
@@ -50,4 +52,5 @@ class SpatialAnnTorchDataset():
         self.size_factors = self.x.sum(1)
 
     def __len__(self):
+        """Return the number of observations stored in SpatialAnnTorchDataset"""
         return self.x.size(0)

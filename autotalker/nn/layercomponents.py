@@ -1,11 +1,19 @@
+"""
+This module contains neural network layer components used by the Autotalker 
+model.
+"""
+
 import torch
 import torch.nn as nn
 
 
 class MaskedLinear(nn.Linear):
     """
-    Masked linear class adapted from
-    https://github.com/theislab/scarches/blob/master/scarches/models/expimap/modules.py#L9.
+    Masked linear class.
+    
+    Parts of the implementation are adapted from
+    https://github.com/theislab/scarches/blob/master/scarches/models/expimap/modules.py#L9
+    (01.10.2022).
 
     Uses a binary mask to mask connections from the input layer to the output 
     layer so that only unmasked connections can be used.
@@ -40,7 +48,7 @@ class MaskedLinear(nn.Linear):
         # them
         self.weight.data *= self.mask
 
-    def forward(self, input: torch.Tensor):
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         """
         Forward pass of the masked linear class.
 

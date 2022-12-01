@@ -1,3 +1,7 @@
+"""
+This module contains data readers for the training of an Autotalker model.
+"""
+
 from typing import Optional
 
 import anndata as ad
@@ -10,7 +14,7 @@ def load_spatial_adata_from_csv(counts_file_path: str,
                                 cell_type_file_path: Optional[str]=None,
                                 adj_key: str="spatial_connectivities",
                                 cell_type_col: str="cell_type",
-                                cell_type_key: str="cell_type"):
+                                cell_type_key: str="cell_type") -> ad.AnnData:
     """
     Create AnnData object from two csv files containing gene expression feature 
     matrix and adjacency matrix respectively. Optionally, a third csv file with

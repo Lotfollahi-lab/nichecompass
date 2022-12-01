@@ -1,3 +1,7 @@
+"""
+This module contains gene expression aggregators used by the Autotalker model.
+"""
+
 import torch
 import torch.nn as nn
 from torch_geometric.nn.inits import glorot
@@ -13,7 +17,7 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
                  n_input: int,
                  n_heads: int=4,
                  leaky_relu_negative_slope: float=0.2,
-                 dropout_rate: float=0.0):
+                 dropout_rate: float=0.):
         """
         One-hop Attention Node Label Aggregator class that uses a weighted sum
         of the gene expression of a node's 1-hop neighbors to build an
@@ -21,9 +25,11 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         determined by an attention mechanism with learnable weights. It returns 
         a concatenation of the node's own gene expression and the 
         attention-aggregated neighbor gene expression vector as node labels for
-        the gene expression reconstruction task. Implementation inspired by
+        the gene expression reconstruction task. 
+        
+        Parts of the implementation are inspired by
         https://github.com/pyg-team/pytorch_geometric/blob/master/torch_geometric/nn/conv/gatv2_conv.py#L16
-        but adjusted to return weighted gene expression vector.
+        (01.10.2022).
 
         Parameters
         ----------
@@ -66,10 +72,10 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         glorot(self.attn)
 
     def forward(self,
-                x: torch.tensor,
-                edge_index: torch.tensor,
+                x: torch.Tensor,
+                edge_index: torch.Tensor,
                 batch_size: int,
-                return_attention_weights: bool=False):
+                return_attention_weights: bool=False) -> torch.Tensor:
         """
         Forward pass of the One-hop Attention Node Label Aggregator.
         
@@ -86,8 +92,6 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         batch_size:
             Node batch size. Is used to return only node labels for the nodes
             in the current node batch.
-        return_attention_weights:
-            If ´True´, in addition return the learned attention weights.
 
         Returns
         ----------
@@ -104,18 +108,8 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         output = self.propagate(edge_index, x=(x_l, x_r), g=(g_l, g_r))
         x_neighbors_att = output.mean(dim=1)
         node_labels = torch.cat((x, x_neighbors_att), dim=-1)[:batch_size]
-
-        alpha = self._alpha
         self._alpha = None
-
-        if return_attention_weights:
-            assert alpha is not None
-            if isinstance(edge_index, torch.Tensor):
-                return node_labels, (edge_index, alpha)
-            elif isinstance(edge_index, SparseTensor):
-                return node_labels, edge_index.set_value(alpha, layout="coo")
-        else:
-            return node_labels
+        return node_labels
 
     def message(self,
                 x_j: torch.Tensor,
@@ -152,9 +146,9 @@ class OneHopGCNNormNodeLabelAggregator(nn.Module):
         super().__init__()
 
     def forward(self,
-                x: torch.tensor,
-                edge_index: torch.tensor,
-                batch_size: int) -> torch.tensor:
+                x: torch.Tensor,
+                edge_index: torch.Tensor,
+                batch_size: int) -> torch.Tensor:
         """
         Forward pass of the One-hop GCN Norm Node Label Aggregator.
         
@@ -229,12 +223,6 @@ class OneHopSumNodeLabelAggregator(nn.Module):
             gene expression reconstruction task.
             (Size: n_nodes_batch x (2 x n_node_features))
         """
-        # Get adjacency matrix with edges of nodes in the current batch with 
-        # sampled neighbors only (exluding edges between sampled neighbors)
-        #batch_nodes_edge_index = edge_index[:, (edge_index[1] < batch_size)]
-        #adj = SparseTensor.from_edge_index(
-        #    batch_nodes_edge_index,
-        #    sparse_sizes=(max(batch_nodes_edge_index[0]+1), batch_size))
         adj = SparseTensor.from_edge_index(edge_index,
                                            sparse_sizes=(x.shape[0],
                                                          x.shape[0]))
@@ -258,9 +246,9 @@ class SelfNodeLabelNoneAggregator(nn.Module):
         super().__init__()
 
     def forward(self,
-                x: torch.tensor,
-                edge_index: torch.tensor,
-                batch_size: int):
+                x: torch.Tensor,
+                edge_index: torch.Tensor,
+                batch_size: int) -> torch.Tensor:
         """
         Forward pass of the One-hop Sum Node Label Aggregator.
         
