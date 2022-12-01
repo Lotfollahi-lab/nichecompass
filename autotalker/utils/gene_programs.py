@@ -564,4 +564,4 @@ def filter_and_combine_gp_dict_gps(
                                         sorted(list(set(new_gp_sources)))}
             new_gp_dict[new_gp_name]["targets"] = sorted(
                 list(set(new_gp_targets)))
-        return new_gp_dict
+    return new_gp_dict
