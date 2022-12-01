@@ -49,8 +49,8 @@ class Autotalker(BaseModelMixin):
         This mask will only be used if no ´gp_sources_mask´ is passed explicitly
         to the model.
     latent_key:
-        Key under which the latent / gene program representation will be stored
-        in ´adata.obsm´ after model training. 
+        Key under which the latent / gene program representation of active gene
+        programs will be stored in ´adata.obsm´ after model training. 
     include_edge_recon_loss:
         If `True`, includes the edge reconstruction loss in the loss 
         optimization.
@@ -318,39 +318,45 @@ class Autotalker(BaseModelMixin):
                            mlflow_experiment_id=mlflow_experiment_id)
         
         self.is_trained_ = True
-        self.adata.obsm[self.latent_key_] = self.get_latent_representation()
+        self.adata.obsm[self.latent_key_], _ = self.get_latent_representation(
+            adata=self.adata,
+            counts_key=self.counts_key_,
+            adj_key=self.adj_key_,
+            only_active_gps=True,
+            return_mu_std=True)
 
     def compute_differential_gp_scores(
             self,
             cat_key: str,
-            adata: Optional[AnnData]=None,
             selected_gps: Optional[Union[str,list]]=None,
             selected_cats: Optional[Union[str,list]]=None,
             gp_scores_weight_normalization: bool=True,
             comparison_cats: Union[str, list]="rest",
             n_sample: int=1000,
-            key_added: str="gp_enrichment_scores",
+            key_added: str="autotalker_differential_gp_scores",
             n_top_up_gps_retrieved: int=10,
             n_top_down_gps_retrieved: int=10,
-            seed: int=42) -> list:
+            seed: int=42,
+            adata: Optional[AnnData]=None) -> list:
         """
         Compute differential gene program / latent scores between a category and 
         specified comparison categories for all categories in 
-        ´adata.obs[cat_key]´. Differential gp scores are measured through the 
-        log Bayes Factor between the hypothesis h0 that the (normalized) gene 
-        program / latent scores of the category under consideration (z0) are 
-        higher than the (normalized) gene program / latent score of the 
-        comparison categories (z1) versus the alternative hypothesis h1 that the
-        (normalized) gene program / latent scores of the comparison categories 
-        (z1) are higher or equal to the (normalized) gene program / latent 
-        scores of the category under consideration (z0). The log Bayes Factors 
-        per category are stored in a pandas DataFrame under 
-        ´adata.uns[key_added]´. The DataFrame also stores p_h0, the probability
-        that z0 > z1 and p_h1, the probability that z1 >= z0. The rows are 
-        ordered by the log Bayes Factor. In addition, the (normalized) gene 
-        program / latent scores of the ´n_top_up_gps_retrieved´ top upregulated
-        gene programs and ´n_top_down_gps_retrieved´ top downregulated gene 
-        programs will be stored in ´adata.obs´.
+        ´selected_cats´ (by default all categories in ´adata.obs[cat_key]´). 
+        Differential gp scores are measured through the log Bayes Factor between
+        the hypothesis h0 that the (normalized) gene program / latent scores of
+        the category under consideration (z0) are higher than the (normalized) 
+        gene program / latent score of the comparison categories (z1) versus the
+        alternative hypothesis h1 that the (normalized) gene program / latent 
+        scores of the comparison categories (z1) are higher or equal to the 
+        (normalized) gene program / latent scores of the category under 
+        consideration (z0). The log Bayes Factors per category are stored in a 
+        pandas DataFrame under ´adata.uns[key_added]´. The DataFrame also stores
+        p_h0, the probability that z0 > z1 and p_h1, the probability that 
+        z1 >= z0. The rows are ordered by the log Bayes Factor. In addition, the
+        (normalized) gene program / latent scores of the 
+        ´n_top_up_gps_retrieved´ top upregulated gene programs and 
+        ´n_top_down_gps_retrieved´ top downregulated gene programs will be 
+        stored in ´adata.obs´.
 
         Parts of the implementation are inspired by
         https://github.com/theislab/scarches/blob/master/scarches/models/expimap/expimap_model.py#L429
@@ -361,18 +367,17 @@ class Autotalker(BaseModelMixin):
         cat_key:
             Key under which the categories and comparison categories are stored 
             in ´adata.obs´.
-        adata:
-            AnnData object to be used. If ´None´, uses the adata object stored 
-            in the model.
         selected_gps:
             List of gene program names for which differential gp scores will be
-            computed. If ´None´, uses all gene programs.
+            computed. If ´None´, uses all active gene programs.
         selected_cats:
             List of category labels for which differential gp scores will be 
-            computed. If ´None´, uses all category labels. 
+            computed. If ´None´, uses all category labels from 
+            ´adata.obs[cat_key]´. 
         gp_scores_weight_normalization:
             If ´True´, normalize the gp scores by the nb means gene expression 
-            decoder weights.       
+            decoder weights. If ´False´, normalize the gp scores by the signs of
+            the summed nb means gene expression decoder weights.
         comparison_cats:
             Categories used as comparison group. If ´rest´, all categories other
             than the category under consideration are used as comparison group.
@@ -390,94 +395,88 @@ class Autotalker(BaseModelMixin):
             whose (normalized) gp scores will be stored in ´adata.obs´.
         seed:
             Random seed for reproducible sampling.
+        adata:
+            AnnData object to be used. If ´None´, uses the adata object stored 
+            in the model instance.
 
         Returns
         ----------
         top_unique_gps:
             Names of ´n_top_up_gps_retrieved´ upregulated and 
             ´n_top_down_gps_retrieved´ downregulated unique differential gene 
-            programs (duplicate gene programs that appear for multiple catgories
-            are not considered).
+            programs across all categories (duplicate gene programs that appear
+            for multiple catgories are only considered once).
         """
         np.random.seed(seed)
 
         if adata is None:
             adata = self.adata
 
-        active_gps = self.get_active_gps()
+        active_gps = self.get_active_gps(adata=adata)
 
-        # Get index of selected gps
+        # Get selected gps as well as their index and gp weights
         if selected_gps is None:
             selected_gps = list(active_gps)
-            selected_gps_idx = np.arange(len(selected_gps))
         else: 
             if isinstance(selected_gps, str):
                 selected_gps = [selected_gps]
             for gp in selected_gps:
                 if gp not in active_gps:
-                    raise ValueError(f"GP {gp} is not an active gene program. "
-                                     "Please only select active gene programs."
-                                     " You can retrieve active gene programs "
-                                     "via 'model.get_active_gps()'.")
-            selected_gps_idx = np.array([list(active_gps).index(gp) for gp in 
-                                        selected_gps])
+                    print(f"GP '{gp}' is not an active gene program. Continuing"
+                          " anyways.")
+        selected_gps_idx, selected_gps_weights = self.get_gp_data(
+            selected_gps=None,
+            adata=adata)
 
         # Get gp / latent scores for selected gps
         mu, std = self.get_latent_representation(
             adata=adata,
             counts_key=self.counts_key_,
             adj_key=self.adj_key_,
-            use_only_active_gps=True,
+            only_active_gps=False,
             return_mu_std=True)
         mu = mu[:, selected_gps_idx]
         std = std[:, selected_gps_idx]
 
-        # Normalize gp scores using nb means gene expression decoder weights or 
-        # signs of summed weights and, if specified, gene expression zero 
-        # inflation to accurately reflect up- & downregulation directionalities
-        # and strengths across gene programs (naturally the gp scores do not 
-        # necessarily correspond to up- & downregulation directionalities and 
-        # strengths as nb means gene expression decoder weights are different 
-        # for different genes and gene programs and gene expression zero 
-        # inflation is different for different observations / cells and genes)
-        gp_weights = (self.model.gene_expr_decoder
-                      .nb_means_normalized_decoder.masked_l.weight.data)
-        if self.n_addon_gps_ > 0:
-            gp_weights = torch.cat(
-                [gp_weights, 
-                (self.model.gene_expr_decoder
-                .nb_means_normalized_decoder.addon_l.weight.data)])
-        gp_weights = gp_weights[:, selected_gps_idx].cpu().numpy().copy()
-
+        # Normalize gp scores using the gene expression negative binomial means 
+        # decoder weights (if ´gp_scores_weight_normaliztion == True´), and, in
+        # addition, correct them for zero inflation probabilities if
+        # ´self.gene_expr_recon_dist == zinb´. Alternatively (if 
+        # ´gp_scores_weight_normaliztion == False´), just use the signs of the
+        # summed gene expression negative binomial means decoder weights for 
+        # normalization. The normalization is used to accurately reflect up- & 
+        # downregulation directionalities and strengths across gene programs 
+        # (naturally the gp scores do not necessarily correspond to up- & 
+        # downregulation directionalities and strengths as nb means gene 
+        # expression decoder weights are different for different genes and gene
+        # programs and gene expression zero inflation is different for different
+        # observations / cells and genes)
         if gp_scores_weight_normalization:
-            norm_factors = gp_weights
+            norm_factors = selected_gps_weights # dim: (2 x n_genes, 
+            # n_selected_gps)
+
+            if self.gene_expr_recon_dist_ == "zinb":
+                # Get zero inflation probabilities
+                _, zi_probs = self.get_gene_expr_dist_params(
+                    adata=adata,
+                    counts_key=self.counts_key_,
+                    adj_key=self.adj_key_)
+                non_zi_probs = 1 - zi_probs # dim: (n_obs, 2 x n_genes)
+                non_zi_probs_rep = np.repeat(non_zi_probs[:, :, np.newaxis],
+                                             len(selected_gps),
+                                             axis=2) # dim: (n_obs, 2 x n_genes,
+                                             # n_selected_gps)
+                norm_factors = np.repeat(norm_factors[np.newaxis, :],
+                                         mu.shape[0],
+                                         axis=0) # dim: (n_obs, 2 x n_genes, 
+                                         # n_selected_gps)
+                norm_factors *= non_zi_probs_rep
         else:
-            gp_weights_sum = gp_weights.sum(0) # sum over genes
+            gp_weights_sum = selected_gps_weights.sum(0) # sum over genes
             gp_signs = np.zeros_like(gp_weights_sum)
             gp_signs[gp_weights_sum>0] = 1. # keep sign of gp score
             gp_signs[gp_weights_sum<0] = -1. # reverse sign of gp score
-            norm_factors = gp_signs
-
-        if self.gene_expr_recon_dist_ == "zinb":
-            # Get zero inflation probabilities
-            _, zi_probs = self.get_gene_expr_dist_params(
-                adata=adata,
-                counts_key=self.counts_key_,
-                adj_key=self.adj_key_)
-            non_zi_probs = 1 - zi_probs
-            non_zi_probs_rep = np.repeat(
-                non_zi_probs[:, :, np.newaxis],
-                len(selected_gps),
-                axis=2) # (dim: n_obs, 2 x n_genes, n_selected_gps)
-            if norm_factors.ndim == 1:               
-               norm_factors = np.repeat(norm_factors[np.newaxis, :],
-                                        2*len(adata.var_names),
-                                        axis=0)
-            norm_factors = np.repeat(norm_factors[np.newaxis, :],
-                                     mu.shape[0],
-                                     axis=0)
-                                     # dim: (n_obs, 2 x n_genes, n_selected_gps)
-            norm_factors *= non_zi_probs_rep
+            norm_factors = gp_signs # dim: (n_selected_gps,)
 
         # Retrieve category values for each observation as well as all existing 
         # categories
@@ -503,7 +502,6 @@ class Autotalker(BaseModelMixin):
         for cat in selected_cats:
             if cat in comparison_cats:
                 continue
-
             # Filter gp scores and normalization factors for the category under
             # consideration and comparison categories
             cat_mask = cat_values == cat
@@ -512,20 +510,25 @@ class Autotalker(BaseModelMixin):
             else:
                 comparison_cat_mask = cat_values.isin(comparison_cats)
 
+            # Aggregate normalization factors
             if norm_factors.ndim == 1:
                 norm_factors_cat = norm_factors_comparison_cat = norm_factors
+                # dim: (n_selected_gps,)
             elif norm_factors.ndim == 2:
                 # Compute mean of normalization factors across genes
-                norm_factors_cat = norm_factors.mean(0)
-                norm_factors_comparison_cat = norm_factors.mean(0)   
+                norm_factors_cat = norm_factors.mean(0) # dim: (n_selected_gps,)
+                norm_factors_comparison_cat = norm_factors.mean(0) # dim: 
+                # (n_selected_gps,)
             elif norm_factors.ndim == 3:
                 # Compute mean of normalization factors across genes for the 
                 # category under consideration and the comparison categories 
                 # respectively     
                 norm_factors_cat = norm_factors[cat_mask].mean(1)
                 norm_factors_comparison_cat = (norm_factors[comparison_cat_mask]
-                                               .mean(1))
+                                               .mean(1)) # dim: 
+                                               # (n_selected_gps,)
 
+            # Normalize gp scores
             mu_cat = mu[cat_mask] * norm_factors_cat
             std_cat = std[cat_mask] * norm_factors_cat
             mu_comparison_cat = (mu[comparison_cat_mask] * 
@@ -574,21 +577,24 @@ class Autotalker(BaseModelMixin):
             for score in cat_scores:
                 scores.append(score)
 
+        # Create result dataframe
         scores = pd.DataFrame(scores)
         scores.sort_values(by="log_bayes_factor", ascending=False, inplace=True)
         scores.reset_index(drop=True, inplace=True)
         adata.uns[key_added] = scores
 
-        # Retrieve top unique gps and (normalized) gene program / latent scores
+        # Retrieve top unique gps and (normalized) gp scores
         top_unique_gps = []
         if n_top_up_gps_retrieved > 0 or n_top_down_gps_retrieved > 0:
             if norm_factors.ndim == 1:
-                norm_factors = norm_factors
+                norm_factors = norm_factors # dim: (n_selected_gps,)
             elif norm_factors.ndim == 2:
-                norm_factors = norm_factors.mean(0) # mean over genes
+                norm_factors = norm_factors.mean(0) # mean over genes, dim: 
+                # (n_selected_gps,)
             elif norm_factors.ndim == 3:
-                norm_factors = norm_factors.mean(1) # mean over genes
-            mu *= norm_factors
+                norm_factors = norm_factors.mean(1) # mean over genes, dim: 
+                # (n_obs, n_selected_gps)
+            mu *= norm_factors # use broadcasting
 
             # Store ´n_top_up_gps_retrieved´ top upregulated gene program scores
             # in ´adata.obs´
@@ -626,10 +632,10 @@ class Autotalker(BaseModelMixin):
             selected_gp: str,
             adata: Optional[AnnData]=None) -> pd.DataFrame:
         """
-        Compute gene importances for the genes of a given gene program. 
-        Gene importances are determined by the normalized weights of the
-        gene expression decoder, corrected for gene expression zero
-        inflation in the case of ´self.edge_recon_dist == zinb´.
+        Compute gene importances for the genes of a given gene program. Gene 
+        importances are determined by the normalized weights of the gene 
+        expression decoder, corrected for gene expression zero inflation in the
+        case of ´self.edge_recon_dist == zinb´.
 
         Parameters
         ----------
@@ -638,49 +644,39 @@ class Autotalker(BaseModelMixin):
             retrieved.
         adata:
             AnnData object to be used. If ´None´, uses the adata object stored 
-            in the model. 
+            in the model instance. 
      
         Returns
         ----------
         gp_gene_importances_df:
-            Pandas DataFrame containing genes, gene weights, gene importances 
-            and an indicator whether the gene belongs to the communication 
-            source or target, stored in ´gene_entity´.
+            Pandas DataFrame containing genes, sign-corrected gene weights, gene
+            importances and an indicator whether the gene belongs to the 
+            communication source or target, stored in ´gene_entity´.
         """
+        self._check_if_trained(warn=True)
+        
         if adata is None:
             adata = self.adata
 
-        # Check if gene program is active
+        # Check if selected gene program is active
         active_gps = self.get_active_gps(adata=adata)
         if selected_gp not in active_gps:
-            warnings.warn(f"GP '{selected_gp}' is not an active gene program.")
+            print(f"GP '{selected_gp}' is not an active gene program. "
+                  "Continuing anyways.")
 
-        #gps = list(adata.uns[self.gp_names_key_])
-        #active_gps, gp_weights = self.get_active_gps(return_gp_weights=True)
-        # Retrieve NB means gene expression decoder weights
-        selected_gp_idx = list(adata.uns[self.gp_names_key_]).index(selected_gp)
-        if selected_gp_idx < self.n_nonaddon_gps_: # non-addon gp
-            gp_weights = (
-                self.model.gene_expr_decoder.nb_means_normalized_decoder
-                .masked_l.weight[:, selected_gp_idx].data.cpu().detach()
-                .numpy())
-        elif selected_gp_idx >= self.n_nonaddon_gps_: # addon gp
-            selected_gp_idx -= self.n_nonaddon_gps_
-            gp_weights = (
-                self.model.gene_expr_decoder.nb_means_normalized_decoder
-                .addon_l.weight[:, selected_gp_idx].data.cpu().detach().numpy())
+        _, gp_weights = self.get_gp_data(selected_gps=selected_gp,
+                                         adata=adata)
 
         # Correct signs of gp weights to be aligned with (normalized) gp scores
         if gp_weights.sum(0) < 0:
             gp_weights *= -1
-        
+
         if self.gene_expr_recon_dist_ == "zinb":
-            # Get zero inflation probabilities
+            # Correct for zero inflation probabilities
             _, zi_probs = self.get_gene_expr_dist_params(
                 adata=adata,
                 counts_key=self.counts_key_,
                 adj_key=self.adj_key_)
-            zi_probs = zi_probs
             non_zi_probs = 1 - zi_probs
             gp_weights_zi = gp_weights * non_zi_probs.sum(0) # sum over all obs
             # Normalize gp weights to get gene importances
@@ -689,6 +685,7 @@ class Autotalker(BaseModelMixin):
             # Normalize gp weights to get gene importances
             gp_gene_importances = np.abs(gp_weights / gp_weights.sum(0))
 
+        # Create result dataframe
         gp_gene_importances_df = pd.DataFrame()
         gp_gene_importances_df["gene"] = [gene for gene in 
                                           adata.var_names.tolist()] * 2
@@ -708,28 +705,31 @@ class Autotalker(BaseModelMixin):
 
     def compute_latent_graph_connectivities(
             self,
-            adata: Optional[AnnData]=None,
             n_neighbors: int=15,
             mode: Literal["knn", "umap"]="knn",
-            seed: int=42):
+            seed: int=42,
+            adata: Optional[AnnData]=None):
         """
         Compute latent graph connectivities.
 
         Parameters
         ----------
-        adata:
-            AnnData object to be used. If ´None´, uses the adata object stored 
-            in the model.
         n_neighbors:
             Number of neighbors for graph connectivities computation.
         mode:
             Mode to be used for graph connectivities computation.
         seed:
             Random seed for reproducible computation.
+        adata:
+            AnnData object to be used. If ´None´, uses the adata object stored 
+            in the model instance.
         """
+        self._check_if_trained(warn=True)
+
         if adata is None:
             adata = self.adata
 
+        # Validate that latent representation exists
         if self.latent_key_ not in adata.obsm:
             raise ValueError(f"Key '{self.latent_key_}' not found in "
                               "'adata.obsm'. Please make sure to first train "
@@ -744,10 +744,54 @@ class Autotalker(BaseModelMixin):
             mode=mode,
             seed=seed)
 
+    def get_gp_data(self,
+                    selected_gps: Optional[Union[str, list]]=None,
+                    adata: Optional[AnnData]=None
+                    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Get the index of selected gene programs as well as their gene weights of 
+        the gene expression negative binomial means decoder.
+
+        Parameters:
+        ----------
+        selected_gps:
+            Names of the selected gene programs for which data should be
+            retrieved.
+        adata:
+            AnnData object to be used. If ´None´, uses the adata object stored 
+            in the model instance.
+
+        Returns:
+        ----------
+        selected_gps_idx:
+            Index of the selected gene programs (dim: n_selected_gps,)
+        selected_gp_weights:
+            Gene expression decoder gene weights of the selected gene programs
+            (dim: (n_genes, n_gps) if ´self.node_label_method == self´ or 
+            (2 x n_genes, n_gps) otherwise).
+        """
+        self._check_if_trained(warn=True)
+        
+        if adata is None:
+            adata = self.adata
+
+        # Get selected gps and their index
+        all_gps = list(adata.uns[self.gp_names_key_])
+        if selected_gps is None:
+            selected_gps = all_gps
+        elif isinstance(selected_gps, str):
+            selected_gps = [selected_gps]
+        selected_gps_idx = np.array([all_gps.index(gp) for gp in selected_gps])
+
+        # Get gene weights of selected gps
+        gp_weights = self.model.get_gp_weights()
+        selected_gps_weights = (gp_weights[:, selected_gps_idx].cpu().detach()
+                                .numpy())
+        return selected_gps_idx, selected_gps_weights
+
     def get_active_gps(
             self,
             adata: Optional[AnnData]=None,
-            return_gp_weights: bool=False
             ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         """
         Get active gene programs based on the gene expression decoder gene 
@@ -760,34 +804,23 @@ class Autotalker(BaseModelMixin):
         Parameters
         ----------
         adata:
-            AnnData object to get the active gene programs for.
-        return_gp_weights:
-            If ´True´, in addition return the gene expression decoder gene 
-            weights of the active gene programs.
+            AnnData object to get the active gene programs for. If ´None´, uses
+            the adata object stored in the model instance.
 
         Returns
         ----------
         active_gps:
-            Gene program names of active gene programs.
-        active_gp_weights:
-            Gene program gene weights for each active gene program 
-            (dim: n_recon_genes x n_active_gps).
+            Gene program names of active gene programs (dim: n_active_gps,)
         """
         self._check_if_trained(warn=True)
+
         if adata is None:
             adata = self.adata
 
-        active_gp_mask, active_gp_weights = self.model.get_active_gp_mask(
-            return_gp_weights=True)
-
+        active_gp_mask = self.model.get_active_gp_mask()
         active_gp_mask = active_gp_mask.detach().cpu().numpy()
-        active_gp_weights = active_gp_weights.detach().cpu().numpy()
-
         active_gps = adata.uns[self.gp_names_key_][active_gp_mask]
-        if return_gp_weights:
-            return active_gps, active_gp_weights
-        else:
-            return active_gps
+        return active_gps
 
     def get_latent_representation(
             self, 
@@ -803,8 +836,8 @@ class Autotalker(BaseModelMixin):
         Parameters
         ----------
         adata:
-            AnnData object to get the latent representation for if not the one
-            from the model.
+            AnnData object to get the latent representation for. If ´None´, uses
+            the adata object stored in the model instance.
         counts_key:
             Key under which the raw counts are stored in ´adata.layer´.
         adj_key:
@@ -827,7 +860,9 @@ class Autotalker(BaseModelMixin):
             n_active_gps or n_obs x n_gps).
         """
         self._check_if_trained(warn=False)
+        
         device = next(self.model.parameters()).device
+        
         if adata is None:
             adata = self.adata
         
@@ -873,7 +908,7 @@ class Autotalker(BaseModelMixin):
         ----------
         adata:
             AnnData object to get the gene expression distribution parameters
-            for. If ´None´, uses the adata object stored in the model.
+            for. If ´None´, uses the adata object stored in the model instance.
         counts_key:
             Key under which the raw counts are stored in ´adata.layer´.    
         adj_key:
@@ -890,7 +925,9 @@ class Autotalker(BaseModelMixin):
             distribution (dim: n_obs x n_genes).
         """
         self._check_if_trained(warn=False)
+
         device = next(self.model.parameters()).device
+        
         if adata is None:
             adata = self.adata
 

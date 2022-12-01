@@ -350,6 +350,27 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 loss_dict["optim_loss"] += loss_dict["addon_gp_l1_reg_loss"]
         return loss_dict
 
+    def get_gp_weights(self) -> torch.Tensor:
+        """
+        Get the gene weights of the gene expression negative binomial means 
+        decoder.
+
+        Returns:
+        ----------
+        gp_weights:
+            Tensor containing the gene expression decoder gene weights.
+        """
+        # Get gp gene expression decoder gene weights
+        gp_weights = (self.gene_expr_decoder.nb_means_normalized_decoder
+                      .masked_l.weight.data).clone()
+        if self.n_addon_gps_ > 0:
+            gp_weights = torch.cat(
+                [gp_weights, 
+                 (self.gene_expr_decoder.nb_means_normalized_decoder.addon_l
+                  .weight.data).clone()])
+        return gp_weights
+
+
     def get_active_gp_mask(
             self,
             abs_gp_weights_agg_mode: Literal["sum",
@@ -390,14 +411,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Tensor containing the gene expression decoder gene weights of active
             gene programs.
         """
-        # Get gp gene expression decoder gene weights
-        gp_weights = (self.gene_expr_decoder.nb_means_normalized_decoder
-                      .masked_l.weight.data).clone().detach()
-        if self.n_addon_gps_ > 0:
-            gp_weights = torch.cat(
-                [gp_weights, 
-                 (self.gene_expr_decoder.nb_means_normalized_decoder.addon_l
-                  .weight.data).clone().detach()])
+        gp_weights = self.get_gp_weights()
 
         # Correct gp weights for zero inflation using zero inflation 
         # probabilities over all observations if zinb distribution is used to 
@@ -462,7 +476,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Feature matrix to be encoded into latent space (dim: n_obs x 
             n_genes).
         edge_index:
-            Edge index of the graph (dim: 2 x n_edges).
+            Edge index of the graph (dim: 2, n_edges).
         only_active_gps:
             If ´True´, return only the latent representation of active gps.
         return_mu_std:
@@ -471,11 +485,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         Returns
         -------
         z:
-            Latent space features (dim: n_obs x n_active_gps).
+            Latent space features (dim: n_obs, n_active_gps).
         mu:
-            Expected values of the latent posterior (dim: n_obs x n_active_gps).
+            Expected values of the latent posterior (dim: n_obs, n_active_gps).
         std:
-            Standard deviations of the latent posterior (dim: n_obs x 
+            Standard deviations of the latent posterior (dim: n_obs, 
             n_active_gps).
         """
         # Get latent distribution parameters

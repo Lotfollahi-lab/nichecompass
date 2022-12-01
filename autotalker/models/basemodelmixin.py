@@ -1,5 +1,5 @@
 """
-This module contains generic base functionalities, added as a Mixin to the 
+This module contains generic base model functionalities, added as a Mixin to the 
 Autotalker model.
 """
 
