@@ -3,15 +3,18 @@ This module contains a benchmark for testing how informative the gene program
 scores are for gene expression regression.
 """
 
-from typing import Optional, Union
+from typing import Optional, Literal, Union
 
 import numpy as np
 from anndata import AnnData
 from sklearn.metrics import mean_squared_error
 from sklearn.multioutput import MultiOutputRegressor
+from sklearn.neural_network import MLPRegressor
 from sklearn.svm import SVR
+from sklearn.tree import DecisionTreeRegressor
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
+
 
 from autotalker.data import SpatialAnnTorchDataset
 from autotalker.nn import OneHopGCNNormNodeLabelAggregator
@@ -20,13 +23,15 @@ from autotalker.nn import SelfNodeLabelNoneAggregator
 
 def compute_gene_expression_regression_mse(
         adata: AnnData,
+        regressor: Literal["baseline", "mlp", "tree", "multisvm"]="mlp",
         counts_key: str="counts",
         adj_key: str="spatial_connectivities",
         active_gp_names_key: str="autotalker_active_gp_names",
         latent_key: str="autotalker_latent",
         node_label_method: str="one-hop-agg",
         selected_gps: Optional[Union[str,list]]=None,
-        selected_genes: Optional[Union[str,list]]=None) -> float:
+        selected_genes: Optional[Union[str,list]]=None,
+        seed: int=0) -> float:
     """
     Use the gene program / latent scores of a trained Autotalker model for gene
     expression regression using a support vector machine regressor.
@@ -99,18 +104,25 @@ def compute_gene_expression_regression_mse(
                                        batch_size=len(dataset.x)).detach().cpu()
                                        .numpy())
 
-    adata_selected_genes = adata[:, adata.var_names.isin(selected_genes)]
-    gene_expr = adata_selected_genes.X.toarray()
+    if regressor == "baseline":
+        gene_expr_preds = np.repeat(gene_expr_labels.mean(0)[np.newaxis, :],
+                                    gene_expr_labels.shape[0],
+                                    axis=0)
+    else:
+        # Get gene program / latent scores for selected gene programs
+        gp_scores = adata.obsm[latent_key][:, selected_gps_idx]
 
-    return 1
-
-    # Get gene program / latent scores for selected gene programs
-    gp_scores = adata.obsm[latent_key][:, selected_gps_idx]
-
-    # Train SVM classifier and use it for scoring
-    clf = make_pipeline(StandardScaler(),
-                        MultiOutputRegressor(SVR(C=1.0, epsilon=0.2)))
-    clf.fit(X=gp_scores, y=gene_expr)
-    gene_expr_preds = clf.predict(X=gp_scores)
-    mse = mean_squared_error(gene_expr, gene_expr_preds)
+        # Train regressor and use it for scoring
+        if regressor == "mlp":
+            regr = MLPRegressor(random_state=seed, max_iter=500)
+        elif regressor == "tree":
+            regr = DecisionTreeRegressor(random_state=seed)
+        elif regressor == "multisvm":
+            regr = make_pipeline(StandardScaler(),
+                                 MultiOutputRegressor(SVR(C=1.0, epsilon=0.2)))
+    
+        regr.fit(X=gp_scores, y=gene_expr_labels)
+        gene_expr_preds = regr.predict(X=gp_scores)
+    return gene_expr_labels, gene_expr_preds
+    mse = mean_squared_error(gene_expr_labels, gene_expr_preds)
     return mse
