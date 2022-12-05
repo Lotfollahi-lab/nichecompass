@@ -21,7 +21,9 @@ def compute_abs_log_rclisi_mean(
         n_neighbors: int=15,
         seed: int=0) -> pd.DataFrame:
     """
-    Compute the mean of absolute log rclisi across all cells.
+    Compute the mean absolute log rclisi across all cells. A lower mean value 
+    indicates a latent representation that more accurately preserves the spatial
+    cell-type heterogeneity of the ground truth.
 
     Parameters
     ----------
@@ -142,7 +144,7 @@ def _compute_per_cell_clisi_from_feature(
     effective number of different categories represented in the local
     neighborhood of each cell. If the cells are well-mixed, we might expect the
     CLISI score to be close to the number of unique cell types (e.g. 
-    neigborhoods with an equal number of cells from 2 cell types get a cliSI of 
+    neigborhoods with an equal number of cells from 2 cell types get a CLISI of 
     2). Note, however, that even under perfect mixing, the value would be 
     smaller than the number of unique cell types if the absolute number of cells
     is different for different cell types.
@@ -210,7 +212,9 @@ def _compute_per_cell_clisi(
     the same category. Thus, this index reports the effective number of 
     categories in a local neighborhood. LISI combines perplexity-based 
     neighborhood construction with the Inverse Simpson's Index to account for 
-    distances between neighbors. Adapted from 
+    distances between neighbors. 
+    
+    Parts of the implementation are adapted from 
     https://github.com/theislab/scib/blob/29f79d0135f33426481f9ff05dd1ae55c8787142/scib/metrics/lisi.py#L310
     (05.12.22).
 
