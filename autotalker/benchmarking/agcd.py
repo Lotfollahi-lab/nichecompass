@@ -1,7 +1,6 @@
 """
-This module contains a benchmark for testing how good the latent space / latent
-neighbor graph preserves spatial information from the original spatial 
-coordinates / spatial neighbor graph.
+This module contains a benchmark for testing how good the latent neighbor graph
+preserves edges from the original spatial neighbor graph.
 """
 
 import numpy as np
@@ -14,7 +13,7 @@ def compute_avg_gcd(
         adata: AnnData,
         spatial_key: str="spatial",
         latent_key: str="autotalker_latent",
-        seed: int=42) -> np.float64:
+        seed: int=0) -> float:
     """
     Compute multiple graph connectivity distances by varying the number of 
     neighbors used for nearest neighbor graph construction (between 1 and 15)
@@ -59,8 +58,8 @@ def _compute_gcd(
         n_neighbors: int=15,
         seed: int=0):
     """
-    Compute graph connectivity distance between the latent connectivity graph
-    and the spatial connectivity graph.
+    Compute the graph connectivity distance (GCD) between the latent 
+    connectivity graph and the spatial connectivity graph.
 
     Parameters
     ----------
@@ -74,7 +73,9 @@ def _compute_gcd(
         Key under which the latent representation from the model is stored in 
         ´adata.obsm´.
     n_neighbors:
-        Number of neighbors used for the graph connectivity computation.
+        Number of neighbors used for the construction of the nearest neighbor
+        graphs from the spatial coordinates and the latent representation from
+        the model.
     seed:
         Random seed to get reproducible results.
 

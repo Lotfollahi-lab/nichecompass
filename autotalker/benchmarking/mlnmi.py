@@ -1,7 +1,12 @@
+"""
+This module contains a benchmark for testing how good the latent space preserves
+spatial organization from the original spatial space by comparing cluster 
+overlaps.
+"""
+
 import matplotlib.pyplot as plt
 import numpy as np
 import scanpy as sc
-import squidpy as sq
 from anndata import AnnData
 from sklearn.metrics import normalized_mutual_info_score
 
@@ -13,10 +18,10 @@ def compute_max_lnmi(
         spatial_key: str="spatial",
         latent_key: str="autotalker_latent",
         n_neighbors: int=15,
-        seed: int=42,
+        seed: int=0,
         visualize_leiden_clustering: bool=False):
     """
-    Compute the maximum Leiden Normalized Mutual Info (LNMI). First, graph
+    Compute the maximum leiden normalized mutual info (LNMI). First, graph
     connectivites are computed from the spatial coordinates (ground truth) and
     from the latent representation of the model (latent) respectively.
     Leiden clusterings with different resolutions are computed for both nearest
@@ -29,9 +34,7 @@ def compute_max_lnmi(
     adata:
         AnnData object with spatial coordinates stored in 
         ´adata.obsm[spatial_key]´ and the latent representation from the model
-        stored in adata.obsm[latent_key].
-    cell_type_key:
-        Key under which the cell type annotations are stored in ´adata.obs´.
+        stored in ´adata.obsm[latent_key]´.
     spatial_key:
         Key under which the spatial coordinates are stored in ´adata.obsm´.
     latent_key:
@@ -44,7 +47,7 @@ def compute_max_lnmi(
     seed:
         Random seed to get reproducible results.
     visualize_leiden_clustering:
-        If ´True´, also visualize the spatial/physical and latent Leiden 
+        If ´True´, also visualize the (physical) spatial and latent Leiden 
         clusterings.
 
     Returns
@@ -52,12 +55,13 @@ def compute_max_lnmi(
     max_lnmi:
         Maximum cluster overlap between all resolution pairs.
     """
+    # Define search space of clustering resolutions
     clustering_resolutions = np.linspace(start=0.1,
                                          stop=1.0,
                                          num=10,
                                          dtype=np.float32)
 
-    # Compute physical (ground truth) connectivities
+    # Compute physical (ground truth) spatial connectivities
     adata.obsp["lnmi_spatial_connectivities"] = compute_graph_connectivities(
         adata=adata,
         feature_key=spatial_key,
@@ -77,7 +81,8 @@ def compute_max_lnmi(
     if visualize_leiden_clustering:
         with plt.rc_context({"figure.figsize": (5, 5)}):
             sc.pl.spatial(adata,
-                          color=[f"leiden_spatial_{str(resolution)}" for resolution in clustering_resolutions],
+                          color=[f"leiden_spatial_{str(resolution)}" for 
+                                 resolution in clustering_resolutions],
                           ncols=5,
                           spot_size=0.03,
                           legend_loc=None)
@@ -102,7 +107,8 @@ def compute_max_lnmi(
     if visualize_leiden_clustering:
         with plt.rc_context({"figure.figsize": (5, 5)}):
             sc.pl.spatial(adata,
-                          color=[f"leiden_latent_{str(resolution)}" for resolution in clustering_resolutions],
+                          color=[f"leiden_latent_{str(resolution)}" for 
+                                 resolution in clustering_resolutions],
                           ncols=5,
                           spot_size=0.03,
                           legend_loc=None)
@@ -114,7 +120,6 @@ def compute_max_lnmi(
             lnmi_list.append(_compute_nmi(adata,
                              f"leiden_spatial_{str(spatial_resolution)}",
                              f"leiden_latent_{str(latent_resolution)}"))
-
     max_lnmi = np.max(lnmi_list)
     return max_lnmi
 
@@ -148,8 +153,8 @@ def _compute_nmi(adata: AnnData,
 
     if len(cluster_group1) != len(cluster_group2):
         raise ValueError(
-            f"Different lengths in cluster_group1 ({len(cluster_group1)}) "
-            f"and cluster_group2 ({len(cluster_group2)})")
+            f"Different lengths in 'cluster_group1' ({len(cluster_group1)}) "
+            f"and 'cluster_group2' ({len(cluster_group2)})")
 
     nmi = normalized_mutual_info_score(cluster_group1,
                                        cluster_group2,

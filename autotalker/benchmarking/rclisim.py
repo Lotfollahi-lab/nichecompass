@@ -1,20 +1,71 @@
+"""
+This module contains a benchmark for testing how good the latent space preserves
+neighborhood cell-type heterogeneity from the original spatial space.
+"""
+
 from typing import Optional, Tuple
 
 import numpy as np
 import pandas as pd
 from anndata import AnnData
 
-from .utils import _convert_to_one_hot
+from .utils import convert_to_one_hot
 from autotalker.utils import compute_graph_indices_and_distances
+
+
+def compute_abs_log_rclisi_mean(
+        adata: AnnData,
+        cell_type_key: str="cell-type",
+        spatial_key: str="spatial",
+        latent_key: str="autotalker_latent",
+        n_neighbors: int=15,
+        seed: int=0) -> pd.DataFrame:
+    """
+    Compute the mean of absolute log rclisi across all cells.
+
+    Parameters
+    ----------
+    adata:
+        AnnData object with cell type annotations stored in 
+        ´adata.obs[cell_type_key]´, spatial coordinates stored in 
+        ´adata.obsm[spatial_key]´ and the latent representation from the model
+        stored in adata.obsm[latent_rep_key].
+    cell_type_key:
+        Key under which the cell type annotations are stored in ´adata.obs´.
+    spatial_key:
+        Key under which the spatial coordinates are stored in ´adata.obsm´.
+    latent_key:
+        Key under which the latent representation from the model is stored in 
+        ´adata.obsm´.
+    n_neighbors:
+        Number of neighbors used for the construction of the knn graph.
+    seed:
+        Random seed to get reproducible results.
+
+    Returns
+    ----------
+    abs_log_rclisi_sum:
+        The mean of absolute log rclisi across all cells.  
+    """
+    per_cell_log_rclisi_df = compute_per_cell_log_rclisi(
+        adata=adata,
+        cell_type_key=cell_type_key,
+        spatial_key=spatial_key,
+        latent_key=latent_key,
+        n_neighbors=n_neighbors,
+        seed=seed)
+
+    abs_log_rclisi_sum = abs(per_cell_log_rclisi_df["log_rclisi"]).mean()
+    return abs_log_rclisi_sum
 
 
 def compute_per_cell_log_rclisi(
         adata: AnnData,
-        cell_type_key: str="celltype_mapped_refined",
+        cell_type_key: str="cell-type",
         spatial_key: str="spatial",
-        latent_key: str="latent_autotalker_fc_gps",
+        latent_key: str="autotalker_latent",
         n_neighbors: int=15,
-        seed: int=42) -> pd.DataFrame:
+        seed: int=0) -> pd.DataFrame:
     """
     First compute the per-cell Cell-type Local Inverse Simpson's Index (CLISI)
     from the spatial coordinates (ground truth) and from the latent 
@@ -24,7 +75,8 @@ def compute_per_cell_log_rclisi(
     Supervised spatial inference of dissociated single-cell data with SageNet. 
     bioRxiv 2022.04.14.488419 (2022) doi:10.1101/2022.04.14.488419. 
     A log RCLISI closer to 0 indicates a latent representation that more 
-    accurately preserves the spatial cell-type heterogeneity of the ground truth.
+    accurately preserves the spatial cell-type heterogeneity of the ground 
+    truth.
 
     Parameters
     ----------
@@ -68,12 +120,10 @@ def compute_per_cell_log_rclisi(
 
     per_cell_rclisi = latent_per_cell_clisi / spatial_per_cell_clisi
     per_cell_log_rclisi = np.log2(per_cell_rclisi)
-
     per_cell_log_rclisi_df = pd.DataFrame(
         data=per_cell_log_rclisi,
         index=np.arange(0, len(spatial_per_cell_clisi)),
         columns=["log_rclisi"])
-
     return per_cell_log_rclisi_df
 
 
@@ -83,7 +133,7 @@ def _compute_per_cell_clisi_from_feature(
         n_neighbors: int,
         cell_type_key: str,
         perplexity: Optional[float]=None,
-        seed: int=42) -> np.ndarray:
+        seed: int=0) -> np.ndarray:
     """
     Compute the per-cell Cell-type Local Inverse Simpson's Index (CLISI) by
     constructing a k-nearest-neighbors (knn) graph based on features stored in 
@@ -91,11 +141,11 @@ def _compute_per_cell_clisi_from_feature(
     in a local neighborhood around a given cell. The CLISI score indicates the
     effective number of different categories represented in the local
     neighborhood of each cell. If the cells are well-mixed, we might expect the
-    CLISI score to be close to the number of unique cell types (e.g. neigborhoods 
-    with an equal number of cells from 2 cell types get a cliSI of 2). Note,
-    however, that even under perfect mixing, the value would be smaller than the
-    number of unique cell types if the absolute number of cells is different for 
-    different cell types.
+    CLISI score to be close to the number of unique cell types (e.g. 
+    neigborhoods with an equal number of cells from 2 cell types get a cliSI of 
+    2). Note, however, that even under perfect mixing, the value would be 
+    smaller than the number of unique cell types if the absolute number of cells
+    is different for different cell types.
 
     Parameters
     ----------
@@ -112,7 +162,7 @@ def _compute_per_cell_clisi_from_feature(
         Key under which the cell type annotations are stored in ´adata.obs´.
     perplexity:
         Perplexity used for Simpson's Index calculation. By default, perplexity
-        is chosen as 1/3 * n_neighbors used in the knn graph.
+        is chosen as ´1/3 * n_neighbors´ used in the knn graph.
     seed:
         Random seed to get reproducible results.
 
@@ -141,7 +191,6 @@ def _compute_per_cell_clisi_from_feature(
         cell_type_labels=cell_type_labels,
         n_cell_types=n_cell_types,
         perplexity=perplexity)
-
     return per_cell_clisi
 
     
@@ -157,12 +206,13 @@ def _compute_per_cell_clisi(
     knn graph. Local Inverse Simpson's Index was first proposed in Korsunsky, I.
     et al. Fast, sensitive and accurate integration of single-cell data with 
     Harmony. Nat. Methods 16, 1289–1296 (2019). The Inverse Simpson's Index is 
-    the expected number of cells needed to be sampled before two are drawm from 
+    the expected number of cells needed to be sampled before two are drawn from 
     the same category. Thus, this index reports the effective number of 
     categories in a local neighborhood. LISI combines perplexity-based 
     neighborhood construction with the Inverse Simpson's Index to account for 
     distances between neighbors. Adapted from 
-    https://github.com/theislab/scib/blob/29f79d0135f33426481f9ff05dd1ae55c8787142/scib/metrics/lisi.py#L310.
+    https://github.com/theislab/scib/blob/29f79d0135f33426481f9ff05dd1ae55c8787142/scib/metrics/lisi.py#L310
+    (05.12.22).
 
     Parameters
     ----------
@@ -173,7 +223,8 @@ def _compute_per_cell_clisi(
         2-D NumPy array that contains the indices of the k-nearest-neighbors for
         each observation/cell (dimensionality: n_cells x n_neighbors).
     cell_type_labels:
-        1-D NumPy array that contains the encoded cell type labels for all cells.
+        1-D NumPy array that contains the encoded cell type labels for all 
+        cells.
     n_cell_types:
         Number of unique cell types.
     perplexity:
@@ -242,7 +293,7 @@ def _compute_per_cell_clisi(
         ## 2) Compute per-cell CLSI values
         cell_knn_indices = knn_indices[i, :]
         neighbor_cell_type_labels = cell_type_labels[cell_knn_indices]
-        neighbor_cell_types_one_hot = _convert_to_one_hot(
+        neighbor_cell_types_one_hot = convert_to_one_hot(
             neighbor_cell_type_labels, n_cell_types)
         # Sum P per cell type
         P_cell_type_sum = np.matmul(P, neighbor_cell_types_one_hot)
@@ -251,7 +302,6 @@ def _compute_per_cell_clisi(
 
     ## 3) Compute CLISI by inversing CLSI
     per_cell_clisi = 1 / per_cell_clsi
-
     return per_cell_clisi
 
 

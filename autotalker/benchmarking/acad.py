@@ -1,5 +1,7 @@
-
-
+"""
+This module contains a benchmark for testing how good the latent neighbor graph
+preserves cell type neighborhoods from the original spatial neighbor graph.
+"""
 
 import numpy as np
 import squidpy as sq
@@ -10,14 +12,15 @@ from autotalker.utils import compute_graph_connectivities
 
 def compute_avg_cad(
         adata: AnnData,
-        cell_type_key: str="celltype_mapped_refined",
+        cell_type_key: str="cell-type",
         spatial_key: str="spatial",
-        latent_key: str="latent_autotalker_fc_gps",
-        seed: int=42) -> np.float64:
+        latent_key: str="latent_autotalker",
+        seed: int=0,
+        visualize_ccc_maps: bool=False) -> float:
     """
-    Compute multiple cell-type affinity distances (CAD) by varying the number
-    of neighbors used for nearest neighbor graph construction (between 1 and 15)
-    and return the average CAD.
+    Compute multiple cell-type affinity distances by varying the number of 
+    neighbors used for nearest neighbor graph construction (between 1 and 15)
+    and return the average cad.
 
     Parameters
     ----------
@@ -35,35 +38,38 @@ def compute_avg_cad(
         ´adata.obsm´.
     seed:
         Random seed to get reproducible results.
+    visualize_ccc_maps:
+        If ´True´, also visualize the spatial/physical and latent cell-type
+        affinity matrices (cell-cell contact maps).
 
     Returns
     ----------
     avg_cad:
-        Average CAD computed over different nearest neighbor graphs with varying
-        number of neighbors.
+        Average cell-type affinity distance computed over different nearest 
+        neighbor graphs with varying number of neighbors.
     """
     cad_list = []
     for n_neighbors in range(1,15):
-        cad_list.append(compute_cad(
+        cad_list.append(_compute_cad(
             adata=adata,
             cell_type_key=cell_type_key,
             spatial_key=spatial_key,
             latent_key=latent_key,
             n_neighbors=n_neighbors,
             seed=seed,
-            visualize_ccc_maps=False))
+            visualize_ccc_maps=visualize_ccc_maps))
     avg_cad = np.mean(cad_list)
     return avg_cad
 
 
-def compute_cad(
+def _compute_cad(
         adata: AnnData,
-        cell_type_key: str="celltype_mapped_refined",
+        cell_type_key: str="cell-type",
         spatial_key: str="spatial",
-        latent_key: str="latent_autotalker_fc_gps",
+        latent_key: str="autotalker_latent",
         n_neighbors: int=15,
-        seed: int=42,
-        visualize_ccc_maps: bool=False) -> np.float64:
+        seed: int=0,
+        visualize_ccc_maps: bool=False) -> float:
     """
     Compute the cell-type affinity distance (CAD) as first introduced by Lohoff,
     T. et al. Integration of spatial and single-cell transcriptomic data 
@@ -103,7 +109,8 @@ def compute_cad(
     cell_type_affinity_distance:
         Matrix distance between the spatial coordinate (ground truth) cell-type
         affinity matrix and the latent representation cell-type affinity matrix
-        as measured by the Frobenius norm of the element-wise matrix differences.
+        as measured by the Frobenius norm of the element-wise matrix 
+        differences.
     """
     # Compute physical (ground truth) connectivities
     adata.obsp["cad_spatial_connectivities"] = compute_graph_connectivities(
@@ -131,8 +138,8 @@ def compute_cad(
 
     # Save results in adata (no ´key_added´ functionality in squidpy)
     adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"] = {}
-    adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"] = adata.uns[
-        f"{cell_type_key}_nhood_enrichment"]["zscore"]
+    adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"] = (
+        adata.uns[f"{cell_type_key}_nhood_enrichment"]["zscore"])
 
     if visualize_ccc_maps:
         sq.pl.nhood_enrichment(adata=adata,
