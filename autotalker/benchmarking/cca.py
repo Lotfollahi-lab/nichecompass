@@ -25,26 +25,26 @@ def compute_cell_cls_accuracy(
         n_features_gt_n_samples: bool=False,
         seed: int=0) -> float:
     """
-    Use the gene program / latent scores of a trained Autotalker model for cell
-    (e.g. cell-type) classification using different benchmark classifiers. 
-    Compute the accuracy between the predicted cell labels and the ground truth
-    cell labels for the entire dataset.
+    Use the active gene program / latent scores of a trained Autotalker model 
+    for cell (e.g. cell-type) classification using different benchmark 
+    classifiers. Compute the accuracy between the predicted cell labels and the 
+    ground truth cell labels for the entire dataset.
 
     Parameters
     ----------
     adata:
         AnnData object with cell categories for classification stored in 
         ´adata.obs[cell_cat_key]´, active gene program names stored in
-        ´adata.uns[active_gp_names_key]´ and the latent / active gene program 
-        representation from the model stored in adata.obsm[latent_key].
+        ´adata.uns[active_gp_names_key]´ and the latent representation stored in
+        adata.obsm[latent_key].
     cell_cat_key:
-        Key under which the cell categories which serve as classification label
+        Key under which the cell categories which serve as classification labels
         are stored in ´adata.obs´.
     active_gp_names_key:
         Key under which the active gene program names are stored in ´adata.uns´.
     latent_key:
-        Key under which the latent / active gene program representation from the
-        model is stored in ´adata.obsm´.
+        Key under which the latent representation from the model is stored in 
+        ´adata.obsm´.
     classifier:
         Model algorithm used for cell classification. If ´baseline´, predict
         the majority class for all cells.
