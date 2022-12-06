@@ -189,9 +189,9 @@ class BaseModelMixin():
                 raise ValueError("Please specify 'gp_names_key' so that addon "
                                  "gps can be added to the gene program list.")
                                  
-            adata.uns[gp_names_key] = (adata.uns[gp_names_key] + 
-                                       ["addon_GP_" + str(i) for i in 
-                                       range(n_addon_gps)])
+            adata.uns[gp_names_key] = np.array(
+                list(adata.uns[gp_names_key]) + 
+                ["addon_GP_" + str(i) for i in range(n_addon_gps)])
 
         model = initialize_model(cls, adata, attr_dict)
 

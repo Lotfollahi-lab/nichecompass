@@ -372,7 +372,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             gp_weights = torch.cat(
                 [gp_weights, 
                  (self.gene_expr_decoder.nb_means_normalized_decoder.addon_l
-                  .weight.data).clone()])
+                  .weight.data).clone()], axis=1)
         return gp_weights
 
 
