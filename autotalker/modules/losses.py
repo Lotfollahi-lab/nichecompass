@@ -102,9 +102,11 @@ def compute_gene_expr_recon_nb_loss(x: torch.Tensor,
     """
     log_theta_mu_eps = torch.log(theta + mu + eps)
     log_likelihood_nb = (
-        theta * (torch.log(theta + eps) - log_theta_mu_eps) + x * 
-        (torch.log(mu + eps) - log_theta_mu_eps) + torch.lgamma(x + theta) - 
-        torch.lgamma(theta) - torch.lgamma(x + 1))
+        theta * (torch.log(theta + eps) - log_theta_mu_eps)
+        + x * (torch.log(mu + eps) - log_theta_mu_eps)
+        + torch.lgamma(x + theta)
+        - torch.lgamma(theta)
+        - torch.lgamma(x + 1))
 
     nb_loss = torch.mean(-log_likelihood_nb.sum(-1))
     return nb_loss 
@@ -160,10 +162,13 @@ def compute_gene_expr_recon_zinb_loss(x: torch.Tensor,
     case_zero = F.softplus(zi_prob_logits_theta_log) - softplus_zi_prob_logits
     mul_case_zero = torch.mul((x < eps).type(torch.float32), case_zero)
 
-    case_non_zero = (-softplus_zi_prob_logits + zi_prob_logits_theta_log + x * 
-                     (torch.log(mu + eps) - log_theta_mu_eps) + 
-                     torch.lgamma(x + theta) - torch.lgamma(theta) - 
-                     torch.lgamma(x + 1))
+    case_non_zero = (
+        -softplus_zi_prob_logits
+        + zi_prob_logits_theta_log
+        + x * (torch.log(mu + eps) - log_theta_mu_eps)
+        + torch.lgamma(x + theta)
+        - torch.lgamma(theta)
+        - torch.lgamma(x + 1))
                      
     mul_case_non_zero = torch.mul((x > eps).type(torch.float32), case_non_zero)
 

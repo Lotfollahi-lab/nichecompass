@@ -7,7 +7,7 @@ import itertools
 import time
 import warnings
 from collections import defaultdict
-from typing import Literal, Optional
+from typing import Optional
 
 import mlflow
 import numpy as np
@@ -15,13 +15,14 @@ import torch
 import torch.nn as nn
 from anndata import AnnData
 
+from .basetrainermixin import BaseTrainerMixin
 from .metrics import eval_metrics, plot_eval_metrics
 from .utils import plot_loss_curves, print_progress, EarlyStopping
 from autotalker.data import initialize_dataloaders, prepare_data
 from autotalker.modules.utils import edge_values_and_sorted_labels
 
 
-class Trainer:
+class Trainer(BaseTrainerMixin):
     """
     Trainer class. Encapsulates all logic for Autotalker model training 
     preparation and model training.
@@ -89,33 +90,33 @@ class Trainer:
         self.model = model
         self.counts_key = counts_key
         self.adj_key = adj_key
-        self.edge_train_ratio = 1 - edge_val_ratio - edge_test_ratio
-        self.edge_val_ratio = edge_val_ratio
-        self.edge_test_ratio = edge_test_ratio
-        self.node_train_ratio = 1 - node_val_ratio - node_test_ratio
-        self.node_val_ratio = node_val_ratio
-        self.node_test_ratio = node_test_ratio
-        self.edge_batch_size = edge_batch_size
-        self.node_batch_size = node_batch_size
-        self.use_early_stopping = use_early_stopping
-        self.reload_best_model = reload_best_model
-        self.early_stopping_kwargs = (early_stopping_kwargs if 
+        self.edge_train_ratio_ = 1 - edge_val_ratio - edge_test_ratio
+        self.edge_val_ratio_ = edge_val_ratio
+        self.edge_test_ratio_ = edge_test_ratio
+        self.node_train_ratio_ = 1 - node_val_ratio - node_test_ratio
+        self.node_val_ratio_ = node_val_ratio
+        self.node_test_ratio_ = node_test_ratio
+        self.edge_batch_size_ = edge_batch_size
+        self.node_batch_size_ = node_batch_size
+        self.use_early_stopping_ = use_early_stopping
+        self.reload_best_model_ = reload_best_model
+        self.early_stopping_kwargs_ = (early_stopping_kwargs if 
             early_stopping_kwargs else {})
-        if not "early_stopping_metric" in self.early_stopping_kwargs:
+        if not "early_stopping_metric" in self.early_stopping_kwargs_:
             if edge_val_ratio > 0 and node_val_ratio > 0:
-                self.early_stopping_kwargs["early_stopping_metric"] = (
+                self.early_stopping_kwargs_["early_stopping_metric"] = (
                     "val_global_loss")
             else:
-                self.early_stopping_kwargs["early_stopping_metric"] = (
+                self.early_stopping_kwargs_["early_stopping_metric"] = (
                     "train_global_loss")
-        self.early_stopping = EarlyStopping(**self.early_stopping_kwargs)
-        self.seed = seed
-        self.monitor = monitor
-        self.verbose = verbose
-        self.loaders_n_direct_neighbors = kwargs.pop(
+        self.early_stopping = EarlyStopping(**self.early_stopping_kwargs_)
+        self.seed_ = seed
+        self.monitor_ = monitor
+        self.verbose_ = verbose
+        self.loaders_n_direct_neighbors_ = kwargs.pop(
             "loaders_n_direct_neighbors", -1)
-        self.loaders_n_hops = kwargs.pop("loaders_n_hops", 2)
-        self.grad_clip_value = kwargs.pop("grad_clip_value", 0.)
+        self.loaders_n_hops_ = kwargs.pop("loaders_n_hops", 2)
+        self.grad_clip_value_ = kwargs.pop("grad_clip_value", 0.)
         self.epoch = -1
         self.training_time = 0
         self.optimizer = None
@@ -125,9 +126,9 @@ class Trainer:
         print("--- INITIALIZING TRAINER ---")
         
         # Use GPU if available
-        torch.manual_seed(self.seed)
+        torch.manual_seed(self.seed_)
         if torch.cuda.is_available():
-            torch.cuda.manual_seed(self.seed)
+            torch.cuda.manual_seed(self.seed_)
             self.model.cuda()
         self.device = torch.device("cuda" if torch.cuda.is_available() else 
                                    "cpu")
@@ -137,10 +138,10 @@ class Trainer:
         data_dict = prepare_data(adata=adata,
                                  counts_key=self.counts_key,
                                  adj_key=self.adj_key,
-                                 edge_val_ratio=self.edge_val_ratio,
-                                 edge_test_ratio=self.edge_test_ratio,
-                                 node_val_ratio=self.node_val_ratio,
-                                 node_test_ratio=self.node_test_ratio)
+                                 edge_val_ratio=self.edge_val_ratio_,
+                                 edge_test_ratio=self.edge_test_ratio_,
+                                 node_val_ratio=self.node_val_ratio_,
+                                 node_test_ratio=self.node_test_ratio_)
         self.node_masked_data = data_dict["node_masked_data"]
         self.edge_train_data = data_dict["edge_train_data"]
         self.edge_val_data = data_dict["edge_val_data"]
@@ -164,10 +165,10 @@ class Trainer:
             edge_train_data=self.edge_train_data,
             edge_val_data=self.edge_val_data,
             edge_test_data=self.edge_test_data,
-            edge_batch_size=self.edge_batch_size,
-            node_batch_size=self.node_batch_size,
-            n_direct_neighbors=self.loaders_n_direct_neighbors,
-            n_hops=self.loaders_n_hops,
+            edge_batch_size=self.edge_batch_size_,
+            node_batch_size=self.node_batch_size_,
+            n_direct_neighbors=self.loaders_n_direct_neighbors_,
+            n_hops=self.loaders_n_hops_,
             edges_directed=False,
             neg_edge_sampling_ratio=1.)
         self.edge_train_loader = loader_dict["edge_train_loader"]
@@ -179,7 +180,8 @@ class Trainer:
 
     def train(self,
               n_epochs: int=10,
-              n_epochs_no_edge_recon: int=1,
+              n_epochs_all_gps: int=0,
+              n_epochs_no_edge_recon: int=0,
               lr: float=0.01,
               weight_decay: float=0.,
               lambda_edge_recon: Optional[float]=None,
@@ -194,6 +196,9 @@ class Trainer:
         ----------
         n_epochs:
             Number of epochs.
+        n_epochs_all_gps:
+            Number of epochs in which all gene programs (not only active ones)
+            will be used in edge reconstruction loss.
         n_epochs_no_edge_recon:
             Number of epochs without edge reconstruction loss for gene
             expression decoder pretraining.
@@ -220,42 +225,23 @@ class Trainer:
         mlflow_experiment_id:
             ID of the mlflow experiment that will be used for tracking.
         """
-        self.n_epochs = n_epochs
-        self.n_epochs_no_edge_recon = n_epochs_no_edge_recon
-        self.lr = lr
-        self.weight_decay = weight_decay
-        self.lambda_edge_recon = lambda_edge_recon
-        self.lambda_gene_expr_recon = lambda_gene_expr_recon
-        self.lambda_group_lasso = lambda_group_lasso
-        self.lambda_l1_addon = lambda_l1_addon
+        self.n_epochs_ = n_epochs
+        self.n_epochs_all_gps_ = n_epochs_all_gps
+        self.n_epochs_no_edge_recon_ = n_epochs_no_edge_recon
+        self.lr_ = lr
+        self.weight_decay_ = weight_decay
+        self.lambda_edge_recon_ = lambda_edge_recon
+        self.lambda_gene_expr_recon_ = lambda_gene_expr_recon
+        self.lambda_group_lasso_ = lambda_group_lasso
+        self.lambda_l1_addon_ = lambda_l1_addon
         self.mlflow_experiment_id = mlflow_experiment_id
 
         print("\n--- MODEL TRAINING ---")
         
         # Log hyperparameters
         if self.mlflow_experiment_id is not None:
-            mlflow.log_param("edge_train_ratio", self.edge_train_ratio)
-            mlflow.log_param("edge_val_ratio", self.edge_val_ratio)
-            mlflow.log_param("edge_test_ratio", self.edge_test_ratio)
-            mlflow.log_param("node_train_ratio", self.node_train_ratio)
-            mlflow.log_param("node_val_ratio", self.node_val_ratio)
-            mlflow.log_param("node_test_ratio", self.node_test_ratio)
-            mlflow.log_param("edge_batch_size", self.edge_batch_size)
-            mlflow.log_param("node_batch_size", self.node_batch_size)
-            mlflow.log_param("use_early_stopping", self.use_early_stopping)
-            mlflow.log_param("reload_best_model", self.reload_best_model)
-            mlflow.log_param("early_stopping_kwargs", 
-                             self.early_stopping_kwargs)
-            mlflow.log_param("seed", self.seed)
-            mlflow.log_param("loaders_n_hops", self.loaders_n_hops)
-            mlflow.log_param("loaders_n_direct_neighbors", 
-                             self.loaders_n_direct_neighbors)
-            mlflow.log_param("grad_clip_value", self.grad_clip_value)
-            mlflow.log_param("n_epochs", self.n_epochs)
-            mlflow.log_param("lr", self.lr)
-            mlflow.log_param("weight_decay", self.weight_decay)
-            mlflow.log_param("lambda_l1_addon", self.lambda_l1_addon)
-            mlflow.log_param("lambda_group_lasso", self.lambda_group_lasso)
+            for attr, attr_value in self._get_public_attributes().items():
+                mlflow.log_param(attr, attr_value)
             self.model.log_module_hyperparams_to_mlflow()
 
         start_time = time.time()
@@ -267,10 +253,14 @@ class Trainer:
                                           weight_decay=weight_decay)
 
         for self.epoch in range(n_epochs):
-            if self.epoch < self.n_epochs_no_edge_recon:
+            if self.epoch < self.n_epochs_no_edge_recon_:
                 self.edge_recon_active = False
             else:
                 self.edge_recon_active = True
+            if self.epoch < self.n_epochs_all_gps_:
+                self.use_only_active_gps = False
+            else:
+                self.use_only_active_gps = True
             self.iter_logs = defaultdict(list)
             self.iter_logs["n_train_iter"] = 0
             self.iter_logs["n_val_iter"] = 0
@@ -285,7 +275,8 @@ class Trainer:
                 # Forward pass edge-level batch
                 edge_train_model_output = self.model(
                     data_batch=edge_train_data_batch,
-                    decoder="graph")
+                    decoder="graph",
+                    use_only_active_gps=self.use_only_active_gps)
                 # Forward pass node-level batch
                 node_train_model_output = self.model(
                     data_batch=node_train_data_batch,
@@ -296,15 +287,15 @@ class Trainer:
                     edge_data_batch=edge_train_data_batch,
                     edge_model_output=edge_train_model_output,
                     node_model_output=node_train_model_output,
-                    lambda_edge_recon=self.lambda_edge_recon,
-                    lambda_gene_expr_recon=self.lambda_gene_expr_recon,
-                    lambda_group_lasso=self.lambda_group_lasso,
-                    lambda_l1_addon=self.lambda_l1_addon,
+                    lambda_edge_recon=self.lambda_edge_recon_,
+                    lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
+                    lambda_group_lasso=self.lambda_group_lasso_,
+                    lambda_l1_addon=self.lambda_l1_addon_,
                     edge_recon_active=self.edge_recon_active)
                 train_global_loss = train_loss_dict["global_loss"]
                 train_optim_loss = train_loss_dict["optim_loss"]
                 
-                if self.verbose:
+                if self.verbose_:
                     for key, value in train_loss_dict.items():
                         self.iter_logs[f"train_{key}"].append(value.item())
                 else:
@@ -318,9 +309,9 @@ class Trainer:
                 
                 train_optim_loss.backward()
                 # Clip gradients
-                if self.grad_clip_value > 0:
+                if self.grad_clip_value_ > 0:
                     torch.nn.utils.clip_grad_value_(self.model.parameters(),
-                                                    self.grad_clip_value)
+                                                    self.grad_clip_value_)
                 self.optimizer.step()
 
             # Validate model
@@ -348,11 +339,11 @@ class Trainer:
                         self.iter_logs["n_val_iter"])
 
             # Monitor epoch level logs
-            if self.monitor:
-                print_progress(self.epoch, self.epoch_logs, self.n_epochs)
+            if self.monitor_:
+                print_progress(self.epoch, self.epoch_logs, self.n_epochs_)
 
             # Check early stopping
-            if self.use_early_stopping:
+            if self.use_early_stopping_:
                 if self.is_early_stopping():
                     break
 
@@ -361,7 +352,7 @@ class Trainer:
         minutes, seconds = divmod(self.training_time, 60)
         print(f"Model training finished after {int(minutes)} min {int(seconds)}"
                " sec.")
-        if self.best_model_state_dict is not None and self.reload_best_model:
+        if self.best_model_state_dict is not None and self.reload_best_model_:
             print("Using best model state, which was in epoch "
                   f"{self.best_epoch + 1}.")
             self.model.load_state_dict(self.best_model_state_dict)
@@ -408,7 +399,8 @@ class Trainer:
             # Forward pass edge level batch
             edge_val_model_output = self.model(
                 data_batch=edge_val_data_batch,
-                decoder="graph")
+                decoder="graph",
+                use_only_active_gps=True)
             # Forward pass node level batch
             node_val_model_output = self.model(
                 data_batch=node_val_data_batch,
@@ -419,14 +411,14 @@ class Trainer:
                     edge_data_batch=edge_val_data_batch,
                     edge_model_output=edge_val_model_output,
                     node_model_output=node_val_model_output,
-                    lambda_edge_recon=self.lambda_edge_recon,
-                    lambda_gene_expr_recon=self.lambda_gene_expr_recon,
-                    lambda_group_lasso=self.lambda_group_lasso,
-                    lambda_l1_addon=self.lambda_l1_addon,
+                    lambda_edge_recon=self.lambda_edge_recon_,
+                    lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
+                    lambda_group_lasso=self.lambda_group_lasso_,
+                    lambda_l1_addon=self.lambda_l1_addon_,
                     edge_recon_active=True)
             val_global_loss = val_loss_dict["global_loss"]
             val_optim_loss = val_loss_dict["optim_loss"]
-            if self.verbose:
+            if self.verbose_:
                 for key, value in val_loss_dict.items():
                     self.iter_logs[f"val_{key}"].append(value.item())
             else:
@@ -451,7 +443,7 @@ class Trainer:
         val_eval_dict = eval_metrics(
             edge_recon_probs=edge_recon_probs_val_accumulated,
             edge_labels=edge_labels_val_accumulated)
-        if self.verbose:
+        if self.verbose_:
             self.epoch_logs["val_auroc_score"].append(
                 val_eval_dict["auroc_score"])
             self.epoch_logs["val_auprc_score"].append(
@@ -477,7 +469,8 @@ class Trainer:
             edge_test_data_batch = edge_test_data_batch.to(self.device)
 
             edge_test_model_output = self.model(data_batch=edge_test_data_batch,
-                                                decoder="graph")
+                                                decoder="graph",
+                                                use_only_active_gps=True)
     
             # Calculate evaluation metrics
             adj_recon_probs_test = torch.sigmoid(
@@ -512,7 +505,6 @@ class Trainer:
                               test_eval_dict["best_acc_score"])
             mlflow.log_metric("test_best_f1_score",
                               test_eval_dict["best_f1_score"])
-            mlflow.end_run()
 
     def is_early_stopping(self) -> bool:
         """
