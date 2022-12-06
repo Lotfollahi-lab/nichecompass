@@ -166,7 +166,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
     def forward(self,
                 data_batch: Data,
-                decoder: Literal["graph", "gene_expr"]) -> dict:
+                decoder: Literal["graph", "gene_expr"],
+                use_only_active_gps: bool=False) -> dict:
         """
         Forward pass of the VGPGAE module.
 
@@ -178,6 +179,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         decoder:
             Decoder to use for the forward pass, either ´graph´ for edge
             reconstruction or ´gene_expr´ for gene expression reconstruction.
+        use_only_active_gps:
+            Only relevant if ´decoder == graph´. If ´True´, use only active gene
+            programs for edge reconstruction.
 
         Returns
         ----------
@@ -209,8 +213,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         # Use decoder to get either the reconstructed adjacency matrix logits
         # or the gene expression parameters
         if decoder == "graph":
-            active_gp_mask = self.get_active_gp_mask()
-            z = z[:, active_gp_mask]
+            if use_only_active_gps:
+                active_gp_mask = self.get_active_gp_mask()
+                z = z[:, active_gp_mask]
             output["adj_recon_logits"] = self.graph_decoder(z=z)
         elif decoder == "gene_expr":
             # Compute aggregated neighborhood gene expression for gene 

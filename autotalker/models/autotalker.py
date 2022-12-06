@@ -236,6 +236,7 @@ class Autotalker(BaseModelMixin):
 
     def train(self,
               n_epochs: int=10,
+              n_epochs_all_gps: int=0,
               n_epochs_no_edge_recon: int=0,
               lr: float=0.01,
               weight_decay: float=0.,
@@ -314,6 +315,7 @@ class Autotalker(BaseModelMixin):
 
         self.trainer.train(n_epochs=n_epochs,
                            n_epochs_no_edge_recon=n_epochs_no_edge_recon,
+                           n_epochs_all_gps=n_epochs_all_gps,
                            lr=lr,
                            weight_decay=weight_decay,
                            lambda_edge_recon=lambda_edge_recon,
@@ -799,7 +801,7 @@ class Autotalker(BaseModelMixin):
     def get_active_gps(
             self,
             adata: Optional[AnnData]=None,
-            ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+            ) -> np.ndarray:
         """
         Get active gene programs based on the gene expression decoder gene 
         weights of gene programs. Active gene programs are gene programs

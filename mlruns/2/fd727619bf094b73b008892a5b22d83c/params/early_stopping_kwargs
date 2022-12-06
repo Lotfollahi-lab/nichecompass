@@ -1,0 +1,1 @@
+{'early_stopping_metric': 'val_global_loss'}
