@@ -271,29 +271,26 @@ class Autotalker(BaseModelMixin):
             reconstruction and, hence, to preserve spatial colocalization
             information.
         lambda_gene_expr_recon:
-            Lambda (weighting factor) for the gene expression reconstruction
-            loss. If ´>0´, this will enforce interpretable gene programs that
-            can be combined in a linear way to reconstruct gene expression.      
-        lambda_group_lasso:
-            Lambda (weighting factor) for the group lasso regularization loss of
-            gene programs. If ´>0´, this will enforce sparsity of gene programs.
-        lambda_l1_addon:
-            Lambda (weighting factor) for the L1 regularization loss of genes in
-            addon gene programs. If ´>0´, this will enforce sparsity of genes in
-            addon gene programs.
-        edge_val_ratio:
-            Fraction of the data that is used as validation set on edge-level.
-            The rest of the data will be used as training or test set (as 
-            defined in edge_test_ratio) on edge-level.
-        edge_test_ratio:
-            Fraction of the data that is used as test set on edge-level.
-        node_val_ratio:
-            Fraction of the data that is used as validation set on node-level.
-            The rest of the data will be used as training set on node-level.
-        edge_batch_size:
-            Batch size for the edge-level dataloaders.
-        node_batch_size:
-            Batch size for the node-level dataloaders.
+            Lambda (weighting factor) for the gene expression reconstructionmodel = Autotalker(adata,
+                   counts_key=counts_key,
+                   adj_key=adj_key,
+                   gp_names_key=gp_names_key,
+                   active_gp_names_key=active_gp_names_key,
+                   gp_targets_mask_key=gp_targets_mask_key,
+                   gp_sources_mask_key=gp_sources_mask_key,
+                   latent_key=latent_key,
+                   include_edge_recon_loss=True,
+                   include_gene_expr_recon_loss=True,
+                   gene_expr_recon_dist=gene_expr_recon_dist,
+                   log_variational=True,
+                   node_label_method=node_label_method,
+                   active_gp_thresh_ratio=active_gp_thresh_ratio,
+                   n_hidden_encoder=n_hidden_encoder,
+                   dropout_rate_encoder=dropout_rate_encoder,
+                   dropout_rate_graph_decoder=dropout_rate_graph_decoder,
+                   gp_targets_mask=None,
+                   gp_sources_mask=None,
+                   n_addon_gps=0)
         mlflow_experiment_id:
             ID of the Mlflow experiment used for tracking training parameters
             and metrics.

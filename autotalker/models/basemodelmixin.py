@@ -182,16 +182,23 @@ class BaseModelMixin():
         validate_var_names(adata, var_names)
 
         if n_addon_gps != 0:
-            attr_dict["n_addon_gps_"] = n_addon_gps
-            attr_dict["init_params_"]["n_addon_gps"] = n_addon_gps
+            attr_dict["n_addon_gps_"] += n_addon_gps
+            attr_dict["init_params_"]["n_addon_gps"] += n_addon_gps
 
             if gp_names_key is None:
                 raise ValueError("Please specify 'gp_names_key' so that addon "
                                  "gps can be added to the gene program list.")
-                                 
-            adata.uns[gp_names_key] = np.array(
-                list(adata.uns[gp_names_key]) + 
-                ["addon_GP_" + str(i) for i in range(n_addon_gps)])
+
+            gps = list(adata.uns[gp_names_key])
+
+            if any("addon_GP_" in gp for gp in gps):
+                addon_gp_idx = int(gps[-1][-1]) + 1
+                adata.uns[gp_names_key] = np.array(
+                    gps + ["addon_GP_" + str(addon_gp_idx + i) for i in 
+                    range(n_addon_gps)])
+            else:
+                adata.uns[gp_names_key] = np.array(
+                    gps + ["addon_GP_" + str(i) for i in range(n_addon_gps)])
 
         model = initialize_model(cls, adata, attr_dict)
 
