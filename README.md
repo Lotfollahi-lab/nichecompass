@@ -9,4 +9,4 @@ The tool will be open sourced once published.
 see /poster/autotalker_poster.pdf
 
 ## Setup
-´´´conda env create -f env/environment.yml´´´
+```conda env create -f env/environment.yml```
