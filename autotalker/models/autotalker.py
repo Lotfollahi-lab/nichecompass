@@ -13,6 +13,12 @@ from anndata import AnnData
 from scipy.special import erfc
 
 from .basemodelmixin import BaseModelMixin
+from autotalker.benchmarking import (compute_avg_abs_log_rclisi,
+                                     compute_cad,
+                                     compute_gcd,
+                                     compute_cell_cls_accuracy,
+                                     compute_gene_expr_regr_mse,
+                                     compute_max_lnmi)
 from autotalker.data import SpatialAnnTorchDataset
 from autotalker.modules import VGPGAE
 from autotalker.train import Trainer
@@ -127,7 +133,7 @@ class Autotalker(BaseModelMixin):
                     "one-hop-sum",
                     "one-hop-norm",
                     "one-hop-attention"]="one-hop-attention",
-                 active_gp_thresh_ratio: float=1.,
+                 active_gp_thresh_ratio: float=0.,
                  n_hidden_encoder: int=256,
                  dropout_rate_encoder: float=0.,
                  dropout_rate_graph_decoder: float=0.,
@@ -342,7 +348,7 @@ class Autotalker(BaseModelMixin):
             key_added: str="autotalker_differential_gp_scores",
             n_top_up_gps_retrieved: int=10,
             n_top_down_gps_retrieved: int=10,
-            seed: int=42,
+            seed: int=0,
             adata: Optional[AnnData]=None) -> list:
         """
         Compute differential gene program / latent scores between a category and 
@@ -966,3 +972,75 @@ class Autotalker(BaseModelMixin):
             nb_means = nb_means.detach().cpu().numpy()
             zi_probs = zi_probs.detach().cpu().numpy()
             return nb_means, zi_probs
+
+    def run_benchmarks(self,
+                       adata: Optional[AnnData]=None,
+                       seed: int=0) -> dict:
+        """
+        Parameters
+        ----------
+        adata:
+            AnnData object to run the benchmarks for. If ´None´, uses the adata
+            object stored in the model instance.
+        seed:
+            Random seed for reproducible computation.   
+
+        Returns
+        ----------
+        benchmark_dict:
+            Dictionary containing the calculated benchmarking metrics under keys
+            ´agcd´, ´mlnmi´, ´acad´, ´arclisi´, ´germse´, ´cca´.
+        """
+        self._check_if_trained(warn=False)
+
+        if adata is None:
+            adata = self.adata
+
+        # Compute benchmarking metrics
+        benchmark_dict = {}
+        benchmark_dict["gcd"] = compute_gcd(
+            adata=adata,
+            spatial_key=self.spatial_key_,
+            latent_key=self.latent_key_,
+            seed=seed)
+        benchmark_dict["mlnmi"] = compute_max_lnmi(
+            adata=adata,
+            spatial_key=self.spatial_key_,
+            latent_key=self.latent_key_,
+            n_neighbors=n_neighs,
+            seed=seed,
+            visualize_leiden_clustering=False)
+        benchmark_dict["acad"] = compute_avg_cad(
+            adata=adata,
+            cell_type_key=self.cell_type_key_,
+            spatial_key=self.spatial_key_,
+            latent_key=self.latent_key_,
+            seed=seed,
+            visualize_ccc_maps=False)
+        benchmark_dict["arclisi"] = compute_avg_abs_log_rclisi(
+            adata=model.adata,
+            cell_type_key=cell_type_key,
+            spatial_key=self.spatial_key_,
+            latent_key=self.latent_key_,
+            n_neighbors=n_neighs,
+            seed=seed)
+        benchmark_dict["germse"] = compute_gene_expr_regr_mse(
+            adata=adata,
+            counts_key=self.counts_key_,
+            adj_key=self.adj_key_,
+            active_gp_names_key=self.active_gp_names_key_,
+            latent_key=self.latent_key_,
+            node_label_method="one-hop-agg",
+            regressor="mlp",
+            model=model,
+            selected_gps=None,
+            selected_genes=None)
+        benchmark_dict["cca"] = compute_cell_cls_accuracy(
+            adata=adata,
+            cell_cat_key=cell_type_key,
+            active_gp_names_key=self.active_gp_names_key_,
+            latent_key=self.latent_key_,
+            classifier="knn",
+            selected_gps=None,
+            selected_cats=None)
+        return benchmark_dict
