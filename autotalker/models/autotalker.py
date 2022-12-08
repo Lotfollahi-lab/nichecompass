@@ -973,36 +973,64 @@ class Autotalker(BaseModelMixin):
             zi_probs = zi_probs.detach().cpu().numpy()
             return nb_means, zi_probs
 
-    def run_benchmarks(self,
-                       adata: Optional[AnnData]=None,
-                       seed: int=0) -> dict:
+    def run_benchmarks(
+            self,
+            adata: Optional[AnnData]=None,
+            spatial_connectivities_key: str="autotalker_spatial_connectivities",
+            latent_connectivities_key: str="autotalker_latent_connectivities",
+            seed: int=0) -> dict:
         """
         Parameters
         ----------
         adata:
             AnnData object to run the benchmarks for. If ´None´, uses the adata
             object stored in the model instance.
+        spatial_connectivities_key:
+            Key under which the spatial nearest neighbor graph is / will be 
+            stored in ´adata.obsp´.       
+        latent_connectivities_key:
+            Key under which the latent nearest neighbor graph is / will be
+            stored in ´adata.obsp´.           
         seed:
-            Random seed for reproducible computation.   
+            Random seed for reproducibility.   
 
         Returns
         ----------
         benchmark_dict:
             Dictionary containing the calculated benchmarking metrics under keys
-            ´agcd´, ´mlnmi´, ´acad´, ´arclisi´, ´germse´, ´cca´.
+            ´gcd´, ´mlnmi´, ´cad´, ´arclisi´, ´germse´, ´cca´.
         """
         self._check_if_trained(warn=False)
 
         if adata is None:
             adata = self.adata
 
+        if spatial_connectivities_key not in adata.obsp:
+            # Compute spatial (ground truth) connectivities        
+            adata.obsp[spatial_connectivities_key] = (
+                compute_graph_connectivities(
+                    adata=adata,
+                    feature_key=self.spatial_key_,
+                    n_neighbors=self.n_neighbors_,
+                    mode="knn",
+                    seed=seed))
+
+        if latent_connectivities_key not in adata.obsp:
+            # Compute latent connectivities
+            adata.obsp[latent_connectivities_key] = (
+                compute_graph_connectivities(
+                    adata=adata,
+                    feature_key=self.latent_key_,
+                    n_neighbors=self.n_neighbors_,
+                    mode="knn",
+                    seed=seed))
+
         # Compute benchmarking metrics
         benchmark_dict = {}
         benchmark_dict["gcd"] = compute_gcd(
             adata=adata,
-            spatial_key=self.spatial_key_,
-            latent_key=self.latent_key_,
-            seed=seed)
+            spatial_connectivities=adata.obsp[spatial_connectivities_key],
+            latent_connectivites=adata.obsp[latent_connectivities_key])
         benchmark_dict["mlnmi"] = compute_max_lnmi(
             adata=adata,
             spatial_key=self.spatial_key_,
