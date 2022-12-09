@@ -1,7 +1,7 @@
 """
 This module contains the Gene Expression Regression Mean Squared Error (GERMSE)
-benchmark for testing how good the latent feature space is for prediction of
-gene expression of a cell and its aggregated neighborhood.
+benchmark for testing how accureately the latent feature space can predict gene
+expression of a cell and its aggregated neighborhood.
 """
 
 from typing import Literal, Optional, Union
@@ -38,7 +38,8 @@ def compute_germse(
     Use the latent representation / active gene program scores of a trained
     Autotalker model for gene expression regression using a benchmark regressor.
     Compute the mean squared error between the predicted gene expression and the
-    ground truth gene expression for the entire dataset.
+    ground truth gene expression for the entire dataset. A higher value 
+    indicates that the latent space can more accurately predict cell categories.
 
     Parameters
     ----------

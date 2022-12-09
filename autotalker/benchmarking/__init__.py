@@ -1,5 +1,4 @@
-from .arclisi import compute_arclisi
-from .arclisi import compute_per_cell_log_rclisi
+from .arclisi import compute_arclisi, compute_per_cell_log_rclisi
 from .cad import compute_avg_cad, compute_cad
 from .gcd import compute_avg_gcd, compute_gcd
 from .cca import compute_cca

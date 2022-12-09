@@ -10,9 +10,11 @@ import numpy as np
 def convert_to_one_hot(vector: np.ndarray,
                        n_classes: Optional[int]):
     """
-    Converts an input 1D vector of integer labels into a 2D array of one-hot 
-    vectors, where for an i'th input value of j, a '1' will be inserted in the 
-    i'th row and j'th column of the output one-hot vector. Adapted from 
+    Converts an input 1-D vector of integer labels into a 2-D array of one-hot
+    vectors, where for an i'th input value of j, a '1' will be inserted in the
+    i'th row and j'th column of the output one-hot vector.
+    
+    Implementation is adapted from
     https://github.com/theislab/scib/blob/29f79d0135f33426481f9ff05dd1ae55c8787142/scib/metrics/lisi.py#L498
     (05.12.22).
 
@@ -27,7 +29,7 @@ def convert_to_one_hot(vector: np.ndarray,
     Returns
     ----------
     one_hot:
-        2D NumPy array of one-hot-encoded vectors.
+        2-D NumPy array of one-hot-encoded vectors.
 
     Example:
     ´´´

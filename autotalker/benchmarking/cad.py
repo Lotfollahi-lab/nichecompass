@@ -1,7 +1,7 @@
 """
 This module contains the Cell-Type Affinity Distance (CAD) benchmark for testing
-how good the latent nearest neighbor graph preserves cell-type-pair edges from
-the original spatial nearest neighbor graph.
+how accurately the latent nearest neighbor graph preserves cell-type-pair edges
+from the original spatial nearest neighbor graph.
 """
 
 from typing import Optional

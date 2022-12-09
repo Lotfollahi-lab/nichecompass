@@ -1,7 +1,7 @@
 """
 This module contains the Cell Classification Accuracy (CCA) benchmark for
-testing how good the latent feature space can predict cell categories (e.g.
-cell-type).
+testing how accurately the latent feature space can predict cell categories
+(e.g. cell-type).
 """
 
 from typing import Literal, Optional, Union
@@ -31,7 +31,9 @@ def compute_cca(
     Use the latent representation / active gene program scores of a trained
     Autotalker model for cell category (e.g. cell-type) classification using a
     benchmark classifier. Compute the accuracy between the predicted cell
-    categories and the ground truth cell categories for the entire dataset.
+    categories and the ground truth cell categories for the entire dataset. A
+    higher value indicates that the latent space can more accurately predict
+    cell categories.
 
     Parameters
     ----------

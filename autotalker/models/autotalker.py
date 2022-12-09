@@ -12,7 +12,6 @@ import torch
 from anndata import AnnData
 from scipy.special import erfc
 
-from .basemodelmixin import BaseModelMixin
 from autotalker.benchmarking import (compute_arclisi,
                                      compute_cad,
                                      compute_cca,
@@ -23,6 +22,7 @@ from autotalker.data import SpatialAnnTorchDataset
 from autotalker.modules import VGPGAE
 from autotalker.train import Trainer
 from autotalker.utils import compute_graph_connectivities
+from .basemodelmixin import BaseModelMixin
 
 
 class Autotalker(BaseModelMixin):
@@ -994,10 +994,10 @@ class Autotalker(BaseModelMixin):
             Key under which the spatial coordinates are stored in ´adata.obsm´.
         spatial_knng_key:
             Key under which the spatial nearest neighbor graph is / will be
-            stored in ´adata.obsp´.
+            stored in ´adata.obsp´ with the suffix '_connectivities'.
         latent_knng_key:
-            Key under which the latent nearest neighbor graph is / will be
-            stored in ´adata.obsp´.
+            Key under which the latent nearest neighbor graph is / will be 
+            stored in ´adata.obsp´ with the suffix '_connectivities'.
         n_neighbors:
             Number of neighbors used for the construction of the nearest
             neighbor graphs from the spatial coordinates and the latent

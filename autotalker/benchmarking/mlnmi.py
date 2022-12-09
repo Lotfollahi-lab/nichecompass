@@ -1,7 +1,8 @@
 """
 This module contains the Maximum Leiden Normalized Mutual Info (MLNMI) benchmark
-for testing how good the latent feature space preserves spatial organization
-from the original spatial feature space by comparing clustering overlaps.
+for testing how accurately the latent feature space preserves spatial
+organization from the original spatial feature space by comparing clustering
+overlaps.
 """
 
 from typing import Optional
@@ -26,7 +27,9 @@ def compute_mlnmi(
         visualize_leiden_clustering: bool=False):
     """
     Compute the Maximum Leiden Normalized Mutual Info (MLNMI) between the latent
-    nearest neighbor graph and the spatial nearest neighbor graph. If existent,
+    nearest neighbor graph and the spatial nearest neighbor graph. A higher
+    value indicates that the latent feature space more accurately preserves 
+    spatial organization from the original spatial feature space. If existent,
     use precomputed nearest neighbor graphs stored in
     ´adata.obsp[spatial_knng_key + '_connectivities']´ and
     ´adata.obsp[latent_knng_key + '_connectivities']´.
