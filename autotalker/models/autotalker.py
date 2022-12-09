@@ -6,6 +6,7 @@ integrated directly into the model API for easy use.
 import warnings
 from typing import Literal, Optional, Tuple, Union
 
+import mlflow
 import numpy as np
 import pandas as pd
 import torch
@@ -981,7 +982,8 @@ class Autotalker(BaseModelMixin):
             spatial_knng_key: str="autotalker_spatial_8nng",
             latent_knng_key: str="autotalker_latent_8nng",
             n_neighbors: int=8,
-            seed: int=0) -> dict:
+            seed: int=0,
+            mlflow_experiment_id: Optional[str]=None) -> dict:
         """
         Parameters
         ----------
@@ -1004,6 +1006,9 @@ class Autotalker(BaseModelMixin):
             representation from the model.
         seed:
             Random seed for reproducibility.
+        mlflow_experiment_id:
+            ID of the Mlflow experiment used for tracking training parameters
+            and metrics.
 
         Returns
         ----------
@@ -1081,4 +1086,10 @@ class Autotalker(BaseModelMixin):
             classifier="knn",
             selected_gps=None,
             selected_cats=None)
+
+        # Track metrics with mlflow
+        if mlflow_experiment_id is not None:
+            for key, value in benchmark_dict.items():
+                mlflow.log_metric(key, value)
+
         return benchmark_dict
