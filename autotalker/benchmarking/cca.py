@@ -1,6 +1,7 @@
 """
-This module contains a benchmark for testing how informative the (active) gene 
-program scores are for cell (e.g. cell-type) classification.
+This module contains the Cell Classification Accuracy (CCA) benchmark for
+testing how good the latent feature space can predict cell categories (e.g.
+cell-type).
 """
 
 from typing import Literal, Optional, Union
@@ -14,7 +15,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 
-def compute_cell_cls_accuracy(
+def compute_cell_cls_acc(
         adata: AnnData,
         cell_cat_key: str="cell-type",
         active_gp_names_key: str="autotalker_active_gp_names",
@@ -22,52 +23,60 @@ def compute_cell_cls_accuracy(
         classifier: Literal["baseline", "knn", "svm"]="knn",
         selected_gps: Optional[Union[str,list]]=None,
         selected_cats: Optional[Union[str,list]]=None,
+        n_neighbors: int=8,
         n_features_gt_n_samples: bool=False,
-        seed: int=0) -> float:
+        seed: int=0,
+        verbose: bool=False) -> float:
     """
-    Use the active gene program / latent scores of a trained Autotalker model 
-    for cell (e.g. cell-type) classification using different benchmark 
-    classifiers. Compute the accuracy between the predicted cell labels and the 
-    ground truth cell labels for the entire dataset.
+    Use the latent representation / active gene program scores of a trained
+    Autotalker model for cell category (e.g. cell-type) classification using a
+    benchmark classifier. Compute the accuracy between the predicted cell
+    categories and the ground truth cell categories for the entire dataset.
 
     Parameters
     ----------
     adata:
-        AnnData object with cell categories for classification stored in 
+        AnnData object with cell categories for classification stored in
         ´adata.obs[cell_cat_key]´, active gene program names stored in
         ´adata.uns[active_gp_names_key]´ and the latent representation stored in
         adata.obsm[latent_key].
     cell_cat_key:
-        Key under which the cell categories which serve as classification labels
+        Key under which the cell categories that serve as classification labels
         are stored in ´adata.obs´.
     active_gp_names_key:
         Key under which the active gene program names are stored in ´adata.uns´.
     latent_key:
-        Key under which the latent representation from the model is stored in 
+        Key under which the latent representation from the model is stored in
         ´adata.obsm´.
     classifier:
-        Model algorithm used for cell classification. If ´baseline´, predict
-        the majority class for all cells.
+        Model algorithm used for cell category classification. If ´baseline´,
+        predict the majority class for all cells.
     selected_gps:
-        List of active gene program names which will be used for the 
+        List of active gene program names which will be used for the
         classification task. If ´None´, uses all active gene programs.
     selected_cats:
-        List of category labels which will be included as separate labels in the
-        classification task. If ´None´, uses all category labels as separate
+        List of cell categories which will be included as separate labels in the
+        classification task. If ´None´, uses all cell categories as separate
         labels.
+    n_neighbors:
+        Only relevant if ´classifier == knn´. Number of neighbors used for knn
+        classification.
     n_features_gt_n_samples:
-        Only relevant if ´classifier == svm´. If ´True´, select svm to solve 
-        dual optimization problem. Only set this to ´True´ if the number of 
+        Only relevant if ´classifier == svm´. If ´True´, select svm to solve
+        dual optimization problem. Only set this to ´True´ if the number of
         features is greater than the number of samples.
     seed:
         Random seed for reproducibility.
+    verbose:
+        If ´True´, display ground truth label information for the classification
+        task.
 
     Returns
     ----------
-    accuracy:
-        Cell classification accuracy.        
+    cca:
+        Cell classification accuracy.
     """
-    # Assign classification labels. All categories that are not in 
+    # Assign classification labels. All categories that are not in
     # ´selected_cats´ will be assigned the label ´0´. All categories in
     # ´selected_cats´ will get their own label for multiclass classification
     cell_cat_values = adata.obs[cell_cat_key]
@@ -81,19 +90,20 @@ def compute_cell_cls_accuracy(
         cell_labels[cat_mask] = i + 1
 
     # Display classification label information
-    if len(selected_cats) < len(list(cell_cat_values.unique())):
-        selected_cats = ["Other"] + selected_cats
-    print("Cell categories used for classification and corresponding number of "
-          "cells:")
-    for i, cat in enumerate(selected_cats):
-        print(f"{cat}: {np.unique(cell_labels, return_counts=True)[1][i]}")
+    if verbose:
+        if len(selected_cats) < len(list(cell_cat_values.unique())):
+            selected_cats = ["Other"] + selected_cats
+        print("Cell categories used for classification and corresponding number"
+              " of cells:")
+        for i, cat in enumerate(selected_cats):
+            print(f"{cat}: {np.unique(cell_labels, return_counts=True)[1][i]}")
 
     # Use classifier to predict cell labels and get accuracy
     if classifier == "baseline":
         # Predict majority class
         cell_labels_pred = np.full_like(cell_labels, 
                                         np.bincount(cell_labels).argmax())
-        accuracy = accuracy_score(cell_labels, cell_labels_pred)
+        cca = accuracy_score(cell_labels, cell_labels_pred)
     else:
         # Get selected gps and their index in all active gps
         active_gps = list(adata.uns[active_gp_names_key])
@@ -102,19 +112,25 @@ def compute_cell_cls_accuracy(
         else:
             if isinstance(selected_gps, str):
                 selected_gps = [selected_gps]
-        selected_gps_idx = np.array([active_gps.index(gp) for gp in 
+        for gp in selected_gps:
+            if gp not in active_gps:
+                raise ValueError(f"GP {gp} is not an active gene program. "
+                                 "Please only select active gene programs. ")
+        selected_gps_idx = np.array([active_gps.index(gp) for gp in
                                      selected_gps])
         
-        # Get latent / active gene program scores for selected gene programs
+        # Get latent representation / active gene program scores for selected
+        # gene programs
         gp_scores = adata.obsm[latent_key][:, selected_gps_idx]
 
+        # Predict cell categories using classifier
         if classifier == "knn":
-            clf = KNeighborsClassifier(n_neighbors=3)
+            clf = KNeighborsClassifier(n_neighbors=n_neighbors)
         elif classifier == "svm":
             clf = make_pipeline(StandardScaler(),
                                 LinearSVC(random_state=seed,
                                           tol=1e-5,
                                           dual=n_features_gt_n_samples))
         clf.fit(X=gp_scores, y=cell_labels)
-        accuracy = clf.score(X=gp_scores, y=cell_labels)
-    return accuracy
+        cca = clf.score(X=gp_scores, y=cell_labels)
+    return cca

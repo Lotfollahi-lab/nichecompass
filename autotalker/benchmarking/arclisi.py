@@ -1,6 +1,8 @@
 """
-This module contains a benchmark for testing how good the latent space preserves
-neighborhood cell-type heterogeneity from the original spatial space.
+This module contains the Average Absolute Log Relative Cell-Type Local Inverse
+Simpson's Index (ARCLISI) benchmark for testing how good the latent feature
+space preserves neighborhood cell-type heterogeneity from the original spatial
+feature space.
 """
 
 from typing import Optional, Tuple
@@ -9,45 +11,47 @@ import numpy as np
 import pandas as pd
 from anndata import AnnData
 
-from .utils import convert_to_one_hot
 from autotalker.utils import compute_graph_indices_and_distances
+from .utils import convert_to_one_hot
 
 
-def compute_avg_abs_log_rclisi(
+def compute_arclisi(
         adata: AnnData,
         cell_type_key: str="cell-type",
         spatial_key: str="spatial",
         latent_key: str="autotalker_latent",
-        n_neighbors: int=15,
-        seed: int=0) -> pd.DataFrame:
+        n_neighbors: int=8,
+        seed: int=0) -> float:
     """
-    Compute the average absolute log rclisi across all cells. A lower value 
-    indicates a latent representation that more accurately preserves the spatial
-    cell-type heterogeneity of the ground truth.
+    Compute the average absolute log rclisi (ARCLISI) across all cells. A lower
+    value indicates a latent representation that more accurately preserves the
+    spatial cell-type heterogeneity of the ground truth.
 
     Parameters
     ----------
     adata:
-        AnnData object with cell type annotations stored in 
-        ´adata.obs[cell_type_key]´, spatial coordinates stored in 
+        AnnData object with cell type annotations stored in
+        ´adata.obs[cell_type_key]´, spatial coordinates stored in
         ´adata.obsm[spatial_key]´ and the latent representation from the model
-        stored in adata.obsm[latent_rep_key].
+        stored in adata.obsm[latent_key].
     cell_type_key:
         Key under which the cell type annotations are stored in ´adata.obs´.
     spatial_key:
         Key under which the spatial coordinates are stored in ´adata.obsm´.
     latent_key:
-        Key under which the latent representation from the model is stored in 
+        Key under which the latent representation from the model is stored in
         ´adata.obsm´.
     n_neighbors:
-        Number of neighbors used for the construction of the knn graph.
+        Number of neighbors used for the construction of the nearest neighbor
+        graphs from the spatial coordinates and the latent representation from
+        the model.
     seed:
-        Random seed to get reproducible results.
+        Random seed for reproducibility.
 
     Returns
     ----------
-    avg_abs_log_rclisi:
-        The average absolute log rclisi across all cells.  
+    arclisi:
+        The average ARCLISI computed over all cells.
     """
     per_cell_log_rclisi_df = compute_per_cell_log_rclisi(
         adata=adata,
@@ -57,8 +61,8 @@ def compute_avg_abs_log_rclisi(
         n_neighbors=n_neighbors,
         seed=seed)
 
-    avg_abs_log_rclisi = abs(per_cell_log_rclisi_df["log_rclisi"]).mean()
-    return avg_abs_log_rclisi
+    arclisi = abs(per_cell_log_rclisi_df["log_rclisi"]).mean()
+    return arclisi
 
 
 def compute_per_cell_log_rclisi(

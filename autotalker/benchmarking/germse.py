@@ -1,11 +1,13 @@
 """
-This module contains a benchmark for testing how informative the (active) gene 
-program scores are for gene expression regression.
+This module contains the Gene Expression Regression Mean Squared Error (GERMSE)
+benchmark for testing how good the latent feature space is for prediction of
+gene expression of a cell and its aggregated neighborhood.
 """
 
 from typing import Literal, Optional, Union
 
 import numpy as np
+import torch.nn as nn
 from anndata import AnnData
 from sklearn.metrics import mean_squared_error
 from sklearn.multioutput import MultiOutputRegressor
@@ -16,7 +18,6 @@ from sklearn.svm import SVR
 from sklearn.tree import DecisionTreeRegressor
 
 from autotalker.data import SpatialAnnTorchDataset
-from autotalker.models import Autotalker
 from autotalker.nn import OneHopGCNNormNodeLabelAggregator
 from autotalker.nn import SelfNodeLabelNoneAggregator
 
@@ -29,21 +30,21 @@ def compute_gene_expr_regr_mse(
         latent_key: str="autotalker_latent",
         node_label_method: Literal["self", "one-hop-agg"]="one-hop-agg",
         regressor: Literal["baseline", "decoder", "mlp", "tree", "svm"]="mlp",
-        model: Optional[Autotalker]=None,
+        model: Optional[nn.Module]=None,
         selected_gps: Optional[Union[str,list]]=None,
         selected_genes: Optional[Union[str,list]]=None,
         seed: int=0) -> float:
     """
-    Use the active gene program / latent scores of a trained Autotalker model 
-    for gene expression regression using a benchmark regressor. Compute the mean
-    squared error between the predicted gene expression and the ground truth 
-    gene expression for the entire dataset.
+    Use the latent representation / active gene program scores of a trained
+    Autotalker model for gene expression regression using a benchmark regressor.
+    Compute the mean squared error between the predicted gene expression and the
+    ground truth gene expression for the entire dataset.
 
     Parameters
     ----------
     adata:
-        AnnData object with raw counts stored in ´adata.layers[counts_key]´, 
-        sparse adjacency matrix stored in ´adata.obsp[adj_key]´, active gene 
+        AnnData object with raw counts stored in ´adata.layers[counts_key]´,
+        sparse adjacency matrix stored in ´adata.obsp[adj_key]´, active gene
         program names stored in ´adata.uns[active_gp_names_key]´, and the latent
         representation stored in ´adata.obsm[latent_key]´.
     counts_key:
@@ -53,21 +54,21 @@ def compute_gene_expr_regr_mse(
     active_gp_names_key:
         Key under which the active gene program names are stored in ´adata.uns´.
     latent_key:
-        Key under which the latent representation from the model is stored in 
+        Key under which the latent representation from the model is stored in
         ´adata.obsm´.
     node_label_method:
-        Node label method used to determine the regression target. If ´self´, 
+        Node label method used to determine the regression target. If ´self´,
         only the gene expression of the cell itself will be used as regression
         target. If ´one-hop-agg´, a concatentation between the gene expression
         of the cell itself and an aggregation of the neighboring cells will be
-        used for gene expresion regression. The aggregation of neighboring 
-        cells' gene expression is done with a gcn norm as per Kipf, T. N. & 
-        Welling, M. Semi-Supervised Classification with Graph Convolutional 
+        used for gene expresion regression. The aggregation of neighboring
+        cells' gene expression is done with a gcn norm as per Kipf, T. N. &
+        Welling, M. Semi-Supervised Classification with Graph Convolutional
         Networks. arXiv [cs.LG] (2016).
     regressor:
-        Model algorithm used for gene expression regression. If ´baseline´, 
+        Model algorithm used for gene expression regression. If ´baseline´,
         predict the average gene expression of a gene across all cells for all
-        genes. If ´decoder´, use the gene expression decoder of a trained 
+        genes. If ´decoder´, use the gene expression decoder of a trained
         Autotalker model.
     model:
         Only relevant if ´regressor == decoder´. A trained Autotalker model
@@ -76,15 +77,15 @@ def compute_gene_expr_regr_mse(
         List of active gene program names which will be used for the regression
         task. If ´None´, uses all active gene programs.
     selected_genes:
-        List of genes used as regression target in the regression task. If 
+        List of genes used as regression target in the regression task. If
         ´None´, use all probed genes.
     seed:
         Random seed for reproducibility.
 
     Returns
     ----------
-    mse:
-        Gene expression regression mean squared error.       
+    germse:
+        Gene expression regression mean squared error.
     """
     # Get selected genes
     if selected_genes is None:
@@ -114,6 +115,7 @@ def compute_gene_expr_regr_mse(
 
     # Use regressor to get gene expression predictions
     if regressor == "baseline":
+        # Predict average gene expression across cells
         gene_expr_preds = np.repeat(gene_expr.mean(0)[np.newaxis, :],
                                     gene_expr.shape[0],
                                     axis=0)
@@ -125,12 +127,18 @@ def compute_gene_expr_regr_mse(
         else:
             if isinstance(selected_gps, str):
                 selected_gps = [selected_gps]
-        selected_gps_idx = np.array([active_gps.index(gp) for gp in 
+        for gp in selected_gps:
+            if gp not in active_gps:
+                raise ValueError(f"GP {gp} is not an active gene program. "
+                                 "Please only select active gene programs. ")
+        selected_gps_idx = np.array([active_gps.index(gp) for gp in
                                      selected_gps])
 
-        # Get gene program / latent scores for selected gene programs
+        # Get latent representation / active gene program scores for selected
+        # gene programs
         gp_scores = adata.obsm[latent_key][:, selected_gps_idx]
 
+        # Predict gene expression using regressor
         if regressor == "decoder":
             if model is None:
                 raise ValueError("Please provide an Autotalker model instance "
@@ -160,5 +168,5 @@ def compute_gene_expr_regr_mse(
             gene_expr_preds = regr.predict(X=gp_scores)
 
     # Compute mse between ground truth and predicted gene expression
-    mse = mean_squared_error(gene_expr, gene_expr_preds)
-    return mse
+    germse = mean_squared_error(gene_expr, gene_expr_preds)
+    return germse
