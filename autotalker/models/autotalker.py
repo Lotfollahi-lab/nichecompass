@@ -15,10 +15,10 @@ from scipy.special import erfc
 from .basemodelmixin import BaseModelMixin
 from autotalker.benchmarking import (compute_arclisi,
                                      compute_cad,
-                                     compute_cell_cls_acc,
+                                     compute_cca,
                                      compute_gcd,
-                                     compute_gene_expr_regr_mse,
-                                     compute_max_lnmi)
+                                     compute_germse,
+                                     compute_mlnmi)
 from autotalker.data import SpatialAnnTorchDataset
 from autotalker.modules import VGPGAE
 from autotalker.train import Trainer
@@ -133,7 +133,7 @@ class Autotalker(BaseModelMixin):
                     "one-hop-sum",
                     "one-hop-norm",
                     "one-hop-attention"]="one-hop-attention",
-                 active_gp_thresh_ratio: float=0.1,
+                 active_gp_thresh_ratio: float=0.,
                  n_hidden_encoder: int=256,
                  dropout_rate_encoder: float=0.,
                  dropout_rate_graph_decoder: float=0.,
@@ -1016,23 +1016,29 @@ class Autotalker(BaseModelMixin):
         if adata is None:
             adata = self.adata
 
-        if spatial_knng_key not in adata.obsp:
-            # Compute spatial (ground truth) connectivities
-            adata.obsp[spatial_knng_key] = compute_graph_connectivities(
-                adata=adata,
-                feature_key=spatial_key,
-                n_neighbors=n_neighbors,
-                mode="knn",
-                seed=seed)
+        # Adding '_connectivities' as required by squidpy
+        spatial_knng_connectivities_key = spatial_knng_key + "_connectivities"
+        latent_knng_connectivities_key = latent_knng_key + "_connectivities"
     
-        if latent_knng_key not in adata.obsp:
+        if spatial_knng_connectivities_key not in adata.obsp:
+            # Compute spatial (ground truth) connectivities
+            adata.obsp[spatial_knng_connectivities_key] = (
+                compute_graph_connectivities(
+                    adata=adata,
+                    feature_key=spatial_key,
+                    n_neighbors=n_neighbors,
+                    mode="knn",
+                    seed=seed))
+    
+        if latent_knng_connectivities_key not in adata.obsp:
             # Compute latent connectivities
-            adata.obsp[latent_knng_key] = compute_graph_connectivities(
-                adata=adata,
-                feature_key=self.latent_key_,
-                n_neighbors=n_neighbors,
-                mode="knn",
-                seed=seed)
+            adata.obsp[latent_knng_connectivities_key] = (
+                compute_graph_connectivities(
+                    adata=adata,
+                    feature_key=self.latent_key_,
+                    n_neighbors=n_neighbors,
+                    mode="knn",
+                    seed=seed))
 
         # Compute benchmarking metrics
         benchmark_dict = {}
@@ -1040,22 +1046,23 @@ class Autotalker(BaseModelMixin):
             adata=adata,
             spatial_knng_key=spatial_knng_key,
             latent_knng_key=latent_knng_key)
-        benchmark_dict["mlnmi"] = compute_max_lnmi(
+        benchmark_dict["mlnmi"] = compute_mlnmi(
             adata=adata,
             spatial_knng_key=spatial_knng_key,
             latent_knng_key=latent_knng_key)
         benchmark_dict["acad"] = compute_cad(
             adata=adata,
+            cell_type_key=cell_type_key,
             spatial_knng_key=spatial_knng_key,
             latent_knng_key=latent_knng_key)
-        benchmark_dict["arclisi"] = compute_avg_abs_log_rclisi(
+        benchmark_dict["arclisi"] = compute_arclisi(
             adata=adata,
             cell_type_key=cell_type_key,
             spatial_key=spatial_key,
             latent_key=self.latent_key_,
             n_neighbors=n_neighbors,
             seed=seed)
-        benchmark_dict["germse"] = compute_gene_expr_regr_mse(
+        benchmark_dict["germse"] = compute_germse(
             adata=adata,
             counts_key=self.counts_key_,
             adj_key=self.adj_key_,
@@ -1063,10 +1070,10 @@ class Autotalker(BaseModelMixin):
             latent_key=self.latent_key_,
             node_label_method="one-hop-agg",
             regressor="mlp",
-            model=model,
+            model=self,
             selected_gps=None,
             selected_genes=None)
-        benchmark_dict["cca"] = compute_cell_cls_acc(
+        benchmark_dict["cca"] = compute_cca(
             adata=adata,
             cell_cat_key=cell_type_key,
             active_gp_names_key=self.active_gp_names_key_,

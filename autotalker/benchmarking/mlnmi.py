@@ -15,7 +15,7 @@ from sklearn.metrics import normalized_mutual_info_score
 from autotalker.utils import compute_graph_connectivities
 
 
-def compute_max_lnmi(
+def compute_mlnmi(
         adata: AnnData,
         spatial_knng_key: Optional[str]="autotalker_spatial_8nng",
         latent_knng_key: Optional[str]="autotalker_latent_8nng",
@@ -26,9 +26,10 @@ def compute_max_lnmi(
         visualize_leiden_clustering: bool=False):
     """
     Compute the Maximum Leiden Normalized Mutual Info (MLNMI) between the latent
-    nearest neighbor graph and the spatial nearest neighbor graph. If provided
-    and existent, use precomputed nearest neighbor graphs stored in
-    ´adata.obsp[spatial_knng_key]´ and ´adata.obsp[latent_knng_key]´.
+    nearest neighbor graph and the spatial nearest neighbor graph. If existent,
+    use precomputed nearest neighbor graphs stored in
+    ´adata.obsp[spatial_knng_key + '_connectivities']´ and
+    ´adata.obsp[latent_knng_key + '_connectivities']´.
     Alternatively, compute them on the fly using ´spatial_key´, ´latent_key´ and
     ´n_neighbors´. Leiden clusterings with different resolutions are computed
     for both nearest neighbor graphs. The Normalized Mutual Info (NMI) between
@@ -40,16 +41,16 @@ def compute_max_lnmi(
     ----------
     adata:
         AnnData object with precomputed nearest neighbor graphs stored in
-        ´adata.obsp[spatial_knng_key]´ and ´adata.obsp[latent_knng_key]´ or,
-        alternatively, spatial coordinates stored in ´adata.obsm[spatial_key]´
-        and the latent representation from the model stored in
-        ´adata.obsm[latent_key]´.
+        ´adata.obsp[spatial_knng_key + '_connectivities']´ and
+        ´adata.obsp[latent_knng_key + '_connectivities']´ or, alternatively,
+        spatial coordinates stored in ´adata.obsm[spatial_key]´ and the latent
+        representation from the model stored in ´adata.obsm[latent_key]´.
     spatial_knng_key:
         Key under which the spatial nearest neighbor graph is / will be stored
-        in ´adata.obsp´.
+        in ´adata.obsp´ with the suffix '_connectivities'.
     latent_knng_key:
         Key under which the latent nearest neighbor graph is / will be stored in
-        ´adata.obsp´.
+        ´adata.obsp´ with the suffix '_connectivities'.
     spatial_key:
         Key under which the spatial coordinates are stored in ´adata.obsm´.
     latent_key:
@@ -69,23 +70,29 @@ def compute_max_lnmi(
     max_lnmi:
         MLNMI between all clustering resolution pairs.
     """
-    if spatial_knng_key not in adata.obsp:
-        # Compute spatial (ground truth) connectivities
-        adata.obsp[spatial_knng_key] = compute_graph_connectivities(
-            adata=adata,
-            feature_key=spatial_key,
-            n_neighbors=n_neighbors,
-            mode="knn",
-            seed=seed)
+    # Adding '_connectivities' as required by squidpy
+    spatial_knng_connectivities_key = spatial_knng_key + "_connectivities"
+    latent_knng_connectivities_key = latent_knng_key + "_connectivities"
 
-    if latent_knng_key not in adata.obsp:
+    if spatial_knng_connectivities_key not in adata.obsp:
+        # Compute spatial (ground truth) connectivities
+        adata.obsp[spatial_knng_connectivities_key] = (
+            compute_graph_connectivities(
+                adata=adata,
+                feature_key=spatial_key,
+                n_neighbors=n_neighbors,
+                mode="knn",
+                seed=seed))
+
+    if latent_knng_connectivities_key not in adata.obsp:
         # Compute latent connectivities
-        adata.obsp[latent_knng_key] = compute_graph_connectivities(
-            adata=adata,
-            feature_key=latent_key,
-            n_neighbors=n_neighbors,
-            mode="knn",
-            seed=seed)
+        adata.obsp[latent_knng_connectivities_key] = (
+            compute_graph_connectivities(
+                adata=adata,
+                feature_key=latent_key,
+                n_neighbors=n_neighbors,
+                mode="knn",
+                seed=seed))
 
     # Define search space of clustering resolutions
     clustering_resolutions = np.linspace(start=0.1,
@@ -99,7 +106,7 @@ def compute_max_lnmi(
                      resolution=resolution,
                      random_state=seed,
                      key_added=f"leiden_spatial_{str(resolution)}",
-                     adjacency=adata.obsp[spatial_knng_key])
+                     adjacency=adata.obsp[spatial_knng_connectivities_key])
 
     # Plot Leiden clustering
     if visualize_leiden_clustering:
@@ -117,7 +124,7 @@ def compute_max_lnmi(
                      resolution=resolution,
                      random_state=seed,
                      key_added=f"leiden_latent_{str(resolution)}",
-                     adjacency=adata.obsp[latent_knng_key])
+                     adjacency=adata.obsp[latent_knng_connectivities_key])
             
     # Plot Leiden clustering
     if visualize_leiden_clustering:

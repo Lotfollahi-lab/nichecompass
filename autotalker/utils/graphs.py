@@ -1,6 +1,6 @@
 """
-This module contains utilities to compute neighborhood graphs for use by the 
-Autotalker model.
+This module contains utilities to compute nearest neighbor graphs and graph
+indices and distances for use by the Autotalker model.
 """
 
 from typing import Literal, Tuple
@@ -18,43 +18,42 @@ def compute_graph_indices_and_distances(
         feature_key: str,
         n_neighbors: int,
         mode: Literal["knn", "umap"]="knn",
-        seed: int=42) -> Tuple[np.ndarray, np.ndarray]:
+        seed: int=0) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Compute indices of and distances to the  ´n_neighbors´ nearest neighbors
-    for each observation by constructing a nearest neighbors graph based on 
-    feature values stored in the  ´obsm´ attribute of an AnnData object.
-    If ´mode´ == ´knn´, this will be an exact knn graph and if ´mode´ == ´umap´,
-    this may be exact but is likely approximated via nearest neighbor descent
-    for better performance.
+    Compute indices of and distances to the ´n_neighbors´ nearest neighbors for
+    each observation by constructing a nearest neighbors graph based on feature
+    values stored in ´adata.obsm[feature_key]´. If ´mode´ == ´knn´, this will be
+    an exact knn graph and if ´mode´ == ´umap´, this may be exact but is likely
+    approximated via nearest neighbor descent for better performance.
 
     Parameters
     ----------
     adata:
-        AnnData object with feature values for distance calculation stored in 
+        AnnData object with feature values for distance calculation stored in
         ´adata.obsm[feature_key]´.
     feature_key:
-        Key under which the feature values for distance calculation are stored 
+        Key under which the feature values for distance calculation are stored
         in ´adata.obsm´.
     n_neighbors:
-        Number of neighbors for the nearest neighbors graph construction.
+        Number of neighbors used for the nearest neighbors graph construction.
     mode:
-        If ´knn´, compute an exact k-nearest-neighbors (knn) graph using 
-        sklearn. If ´umap´, compute a nearest neighbor graph with nearest 
+        If ´knn´, compute an exact k-nearest-neighbors (knn) graph using
+        sklearn. If ´umap´, compute a nearest neighbor graph with nearest
         neighbor descent using umap.
     seed:
-        Random seed to get reproducible results.
+        Random seed for reproducibility.
 
     Returns
     ----------
     knn_indices:
-        2-D NumPy array that contains the indices of the ´n_neighbors´ nearest 
+        2-D NumPy array that contains the indices of the ´n_neighbors´ nearest
         neighbors for each observation.
     knn_distances:
-        2-D NumPy array that contains the distances to the ´n_neighbors´ nearest 
+        2-D NumPy array that contains the distances to the ´n_neighbors´ nearest
         neighbors for each observation.
     """
     if mode == "knn":
-        # Calculate pairwise feature distances and retrieve knn indices and 
+        # Calculate pairwise feature distances and retrieve knn indices and
         # distances
         distances = pairwise_distances(X=adata.obsm[feature_key],
                                        metric="euclidean")
@@ -81,30 +80,34 @@ def compute_graph_connectivities(
         feature_key: str,
         n_neighbors: int,
         mode: Literal["knn", "umap"]="knn",
-        seed: int=42) -> sp.csr_matrix:
+        seed: int=0) -> sp.csr_matrix:
     """
+    Compute graph connectivities by constructing a nearest neighbor graph based
+    on ´adata.obsm[feature_key]´.
+
     Parameters
     ----------
     adata:
-        AnnData object with feature values for distance calculation stored in 
-        ´adata.obsm[feature_key]´.
+        AnnData object with feature values for nearest neighbor computation
+        stored in ´adata.obsm[feature_key]´.
     feature_key:
-        Key under which the feature values for distance calculation are stored 
-        in ´adata.obsm´.
+        Key under which the feature values for nearest neighbor computation are
+        stored in ´adata.obsm´.
     n_neighbors:
-        Number of neighbors for the nearest neighbors graph construction.
+        Number of neighbors used for the nearest neighbors graph construction.
     mode:
-        If ´knn´, compute exact connectivities from a knn graph using sklearn.
-        If ´umap´, compute a fuzzy simplical set based on an approximated 
+        If ´knn´, computes exact connectivities from a knn graph using sklearn.
+        If ´umap´, computes a fuzzy simplical set based on an approximated
         neighbor graph.
     seed:
-        Random seed to get reproducible results.
+        Random seed for reproducibility.
 
     Returns
     ----------
     connectivities:
-         Sparse matrix that contains the connectivity weights between all cells.
-    """ 
+        Sparse matrix that contains the nearest neighbor graph connectivity 
+        between all observations.
+    """
     # Compute exact graph connectivities
     if mode == "knn":
         connectivities = kneighbors_graph(X=adata.obsm[feature_key],
@@ -126,7 +129,7 @@ def compute_graph_connectivities(
             knn_indices=knn_indices,
             knn_dists=knn_distances)
         if isinstance(connectivities, tuple):
-            # In umap-learn 0.4, fuzzy_simplical_set() returns 
+            # In umap-learn 0.4, fuzzy_simplical_set() returns
             # (result, sigmas, rhos)
             connectivities = connectivities[0]
     return connectivities

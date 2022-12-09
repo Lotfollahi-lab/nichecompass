@@ -22,7 +22,7 @@ from autotalker.nn import OneHopGCNNormNodeLabelAggregator
 from autotalker.nn import SelfNodeLabelNoneAggregator
 
 
-def compute_gene_expr_regr_mse(
+def compute_germse(
         adata: AnnData,
         counts_key: str="counts",
         adj_key: str="spatial_connectivities",

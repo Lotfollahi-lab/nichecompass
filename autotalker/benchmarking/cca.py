@@ -15,7 +15,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 
-def compute_cell_cls_acc(
+def compute_cca(
         adata: AnnData,
         cell_cat_key: str="cell-type",
         active_gp_names_key: str="autotalker_active_gp_names",
@@ -23,7 +23,7 @@ def compute_cell_cls_acc(
         classifier: Literal["baseline", "knn", "svm"]="knn",
         selected_gps: Optional[Union[str,list]]=None,
         selected_cats: Optional[Union[str,list]]=None,
-        n_neighbors: int=8,
+        n_neighbors: int=3,
         n_features_gt_n_samples: bool=False,
         seed: int=0,
         verbose: bool=False) -> float:
