@@ -1055,7 +1055,7 @@ class Autotalker(BaseModelMixin):
             adata=adata,
             spatial_knng_key=spatial_knng_key,
             latent_knng_key=latent_knng_key)
-        benchmark_dict["acad"] = compute_cad(
+        benchmark_dict["cad"] = compute_cad(
             adata=adata,
             cell_type_key=cell_type_key,
             spatial_knng_key=spatial_knng_key,

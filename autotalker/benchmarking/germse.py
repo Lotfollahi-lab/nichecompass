@@ -38,8 +38,8 @@ def compute_germse(
     Use the latent representation / active gene program scores of a trained
     Autotalker model for gene expression regression using a benchmark regressor.
     Compute the mean squared error between the predicted gene expression and the
-    ground truth gene expression for the entire dataset. A higher value 
-    indicates that the latent space can more accurately predict cell categories.
+    ground truth gene expression for the entire dataset. A lower value 
+    indicates that the latent space can more accurately predict gene expression.
 
     Parameters
     ----------
