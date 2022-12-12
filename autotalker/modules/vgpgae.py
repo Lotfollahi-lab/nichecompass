@@ -12,7 +12,7 @@ import torch.nn as nn
 from torch_geometric.data import Data
 
 from autotalker.nn import (DotProductGraphDecoder,
-                           GCNEncoder,
+                           GraphEncoder,
                            MaskedGeneExprDecoder,
                            OneHopAttentionNodeLabelAggregator,
                            OneHopGCNNormNodeLabelAggregator,
@@ -47,6 +47,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         Number of nodes in the output layer.
     gene_expr_decoder_mask:
         Gene program mask for the gene expression decoder.
+    conv_layer_encoder:
+        Convolutional layer used in the graph encoder.
+    encoder_n_attention_heads:
+        Only relevant if ´conv_layer_encoder == gatv2conv´. Number of attention
+        heads used.
     dropout_rate_encoder:
         Probability that nodes will be dropped in the encoder during training.
     dropout_rate_graph_decoder:
@@ -95,6 +100,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  n_addon_gps: int,
                  n_output: int,
                  gene_expr_decoder_mask: torch.Tensor,
+                 conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
+                 encoder_n_attention_heads: int=4,
                  dropout_rate_encoder: float=0.,
                  dropout_rate_graph_decoder: float=0.,
                  include_edge_recon_loss: bool=True,
@@ -113,6 +120,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.n_nonaddon_gps_ = n_nonaddon_gps
         self.n_addon_gps_ = n_addon_gps
         self.n_output_ = n_output
+        self.conv_layer_encoder_ = conv_layer_encoder
+        self.encoder_n_attention_heads = encoder_n_attention_heads
         self.dropout_rate_encoder_ = dropout_rate_encoder
         self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
         self.include_edge_recon_loss_ = include_edge_recon_loss
@@ -131,12 +140,15 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         print(f"NODE LABEL METHOD -> {node_label_method}")
         print(f"ACTIVE GP THRESHOLD RATIO -> {active_gp_thresh_ratio}")
 
-        self.encoder = GCNEncoder(n_input=n_input,
-                                  n_hidden=n_hidden_encoder,
-                                  n_latent=n_nonaddon_gps,
-                                  n_addon_latent=n_addon_gps,
-                                  dropout_rate=dropout_rate_encoder,
-                                  activation=torch.relu)
+        self.encoder = GraphEncoder(
+            n_input=n_input,
+            n_hidden=n_hidden_encoder,
+            n_latent=n_nonaddon_gps,
+            n_addon_latent=n_addon_gps,
+            conv_layer=conv_layer_encoder,
+            n_attention_heads=encoder_n_attention_heads,
+            dropout_rate=dropout_rate_encoder,
+            activation=torch.relu)
         
         self.graph_decoder = DotProductGraphDecoder(
             dropout_rate=dropout_rate_graph_decoder)

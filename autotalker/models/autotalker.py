@@ -99,6 +99,11 @@ class Autotalker(BaseModelMixin):
         ´self.model.get_active_gp_mask()´.
     n_hidden_encoder:
         Number of nodes in the encoder hidden layer.
+    conv_layer_encoder:
+        Convolutional layer used in the graph encoder.
+    encoder_n_attention_heads:
+        Only relevant if ´conv_layer_encoder == gatv2conv´. Number of attention
+        heads used in the graph encoder.
     dropout_rate_encoder:
         Probability that nodes will be dropped in the encoder during training.
     dropout_rate_graph_decoder:
@@ -136,6 +141,8 @@ class Autotalker(BaseModelMixin):
                     "one-hop-attention"]="one-hop-attention",
                  active_gp_thresh_ratio: float=0.,
                  n_hidden_encoder: int=256,
+                 conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
+                 encoder_n_attention_heads: int=4,
                  dropout_rate_encoder: float=0.,
                  dropout_rate_graph_decoder: float=0.,
                  gp_targets_mask: Optional[Union[np.ndarray, list]]=None,
@@ -160,6 +167,8 @@ class Autotalker(BaseModelMixin):
         if node_label_method != "self":
             self.n_output_ *= 2
         self.n_hidden_encoder_ = n_hidden_encoder
+        self.conv_layer_encoder_ = conv_layer_encoder
+        self.encoder_n_attention_heads_ = encoder_n_attention_heads
         self.dropout_rate_encoder_ = dropout_rate_encoder
         self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
 
@@ -228,6 +237,8 @@ class Autotalker(BaseModelMixin):
             n_addon_gps=self.n_addon_gps_,
             n_output=self.n_output_,
             gene_expr_decoder_mask=self.gp_mask_,
+            conv_layer_encoder=self.conv_layer_encoder_,
+            encoder_n_attention_heads=self.encoder_n_attention_heads_,
             dropout_rate_encoder=self.dropout_rate_encoder_,
             dropout_rate_graph_decoder=self.dropout_rate_graph_decoder_,
             include_edge_recon_loss=self.include_edge_recon_loss_,
@@ -278,26 +289,29 @@ class Autotalker(BaseModelMixin):
             reconstruction and, hence, to preserve spatial colocalization
             information.
         lambda_gene_expr_recon:
-            Lambda (weighting factor) for the gene expression reconstructionmodel = Autotalker(adata,
-                   counts_key=counts_key,
-                   adj_key=adj_key,
-                   gp_names_key=gp_names_key,
-                   active_gp_names_key=active_gp_names_key,
-                   gp_targets_mask_key=gp_targets_mask_key,
-                   gp_sources_mask_key=gp_sources_mask_key,
-                   latent_key=latent_key,
-                   include_edge_recon_loss=True,
-                   include_gene_expr_recon_loss=True,
-                   gene_expr_recon_dist=gene_expr_recon_dist,
-                   log_variational=True,
-                   node_label_method=node_label_method,
-                   active_gp_thresh_ratio=active_gp_thresh_ratio,
-                   n_hidden_encoder=n_hidden_encoder,
-                   dropout_rate_encoder=dropout_rate_encoder,
-                   dropout_rate_graph_decoder=dropout_rate_graph_decoder,
-                   gp_targets_mask=None,
-                   gp_sources_mask=None,
-                   n_addon_gps=0)
+            Lambda (weighting factor) for the gene expression reconstruction
+            loss. If ´>0´, this will enforce interpretable gene programs that
+            can be combined in a linear way to reconstruct gene expression.      
+        lambda_group_lasso:
+            Lambda (weighting factor) for the group lasso regularization loss of
+            gene programs. If ´>0´, this will enforce sparsity of gene programs.
+        lambda_l1_addon:
+            Lambda (weighting factor) for the L1 regularization loss of genes in
+            addon gene programs. If ´>0´, this will enforce sparsity of genes in
+            addon gene programs.
+        edge_val_ratio:
+            Fraction of the data that is used as validation set on edge-level.
+            The rest of the data will be used as training or test set (as 
+            defined in edge_test_ratio) on edge-level.
+        edge_test_ratio:
+            Fraction of the data that is used as test set on edge-level.
+        node_val_ratio:
+            Fraction of the data that is used as validation set on node-level.
+            The rest of the data will be used as training set on node-level.
+        edge_batch_size:
+            Batch size for the edge-level dataloaders.
+        node_batch_size:
+            Batch size for the node-level dataloaders.
         mlflow_experiment_id:
             ID of the Mlflow experiment used for tracking training parameters
             and metrics.

@@ -188,8 +188,11 @@ def _compute_per_cell_clisi_from_feature(
         seed=seed)
 
     if perplexity is None:
-        # Use LISI default perplexity
-        perplexity = np.floor(knn_indices.shape[1] / 3)
+        if knn_indices.shape[1] < 3:
+            perplexity = 1.0
+        else:
+            # Use LISI default perplexity
+            perplexity = np.floor(knn_indices.shape[1] / 3)
 
     cell_type_labels = adata.obs[cell_type_key].cat.codes.values
     n_cell_types = len(np.unique(adata.obs[cell_type_key]))
