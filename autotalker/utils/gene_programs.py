@@ -280,8 +280,9 @@ def extract_gp_dict_from_omnipath_lr_interactions(
 
 
 def extract_gp_dict_from_mebocost_es_interactions(
-        species: Literal["mouse", "human"],
-        genes_uppercase: bool = False) -> dict:
+        dir_path: str="../datasets/gp_data/metabolite_enzyme_sensor_gps/",
+        species: Literal["mouse", "human"]="mouse",
+        genes_uppercase: bool=False) -> dict:
     """
     Retrieve metabolite enzyme-sensor interactions from the Human Metabolome
     Database (HMDB) data curated in Chen, K. et al. MEBOCOST: 
@@ -308,7 +309,6 @@ def extract_gp_dict_from_mebocost_es_interactions(
         genes.    
     """
     # Read data from directory
-    dir_path = "datasets/gp_data/metabolite_enzyme_sensor_gps/"
     if species == "human":
         metabolite_enzymes_df = pd.read_csv(
             dir_path + "human_metabolite_enzymes.tsv", sep="\t")

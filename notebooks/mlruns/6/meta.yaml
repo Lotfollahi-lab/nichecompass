@@ -1,0 +1,4 @@
+artifact_location: file:///home/sbirk/projects/autotalker/notebooks/mlruns/6
+experiment_id: '6'
+lifecycle_stage: active
+name: benchmark_n_neighs
