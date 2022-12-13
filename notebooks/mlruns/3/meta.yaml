@@ -1,4 +1,5 @@
 artifact_location: file:///home/sbirk/projects/autotalker/notebooks/mlruns/3
 experiment_id: '3'
 lifecycle_stage: active
-name: benchmark_conv_layer_encoder
+name: old_benchmark_conv_layer_encoder
+tags: {}

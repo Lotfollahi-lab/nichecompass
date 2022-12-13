@@ -1,5 +1,5 @@
 artifact_location: file:///home/sbirk/projects/autotalker/notebooks/mlruns/1
 experiment_id: '1'
 lifecycle_stage: active
-name: benchmark_loss_inclusions
+name: old_benchmark_loss_inclusions
 tags: {}

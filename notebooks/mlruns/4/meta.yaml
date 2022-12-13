@@ -1,4 +1,5 @@
 artifact_location: file:///home/sbirk/projects/autotalker/notebooks/mlruns/4
 experiment_id: '4'
 lifecycle_stage: active
-name: benchmark_gene_expr_recon_dist
+name: old_benchmark_gene_expr_recon_dist
+tags: {}
