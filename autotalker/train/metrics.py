@@ -2,7 +2,7 @@
 This module contains metrics to evaluate the Autotalker model training.
 """
 
-from typing import Union
+from typing import Optional, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,11 +11,14 @@ import torch
 from matplotlib.ticker import MaxNLocator
 
 
-def eval_metrics(edge_recon_probs: Union[torch.Tensor, np.ndarray],
-                 edge_labels: Union[torch.Tensor, np.ndarray]) -> dict:
+def eval_metrics(
+        edge_recon_probs: Union[torch.Tensor, np.ndarray],
+        edge_labels: Union[torch.Tensor, np.ndarray],
+        gene_expr_preds: Optional[Union[torch.Tensor, np.ndarray]]=None,
+        gene_expr: Optional[Union[torch.Tensor, np.ndarray]]=None) -> dict:
     """
     Get the evaluation metrics for a (balanced) sample of positive and negative 
-    edges.
+    edges and a sample of nodes.
 
     Parameters
     ----------
@@ -23,6 +26,10 @@ def eval_metrics(edge_recon_probs: Union[torch.Tensor, np.ndarray],
         Tensor or array containing reconstructed edge probabilities.
     edge_labels:
         Tensor or array containing ground truth labels of edges.
+    gene_expr_preds:
+        Tensor or array containing the predicted gene expression.
+    gene_expr:
+        Tensor or array containing the ground truth gene expression.
 
     Returns
     ----------
@@ -39,11 +46,20 @@ def eval_metrics(edge_recon_probs: Union[torch.Tensor, np.ndarray],
         edge_recon_probs = edge_recon_probs.detach().cpu().numpy()
     if isinstance(edge_labels, torch.Tensor):
         edge_labels = edge_labels.detach().cpu().numpy()
+    if isinstance(gene_expr_preds, torch.Tensor):
+        gene_expr_preds = gene_expr_preds.detach().cpu().numpy()
+    if isinstance(gene_expr, torch.Tensor):
+        gene_expr = gene_expr.detach().cpu().numpy()
+
+    if gene_expr_preds is not None and gene_expr is not None:
+        # Calculate the gene expression mean squared error
+        eval_dict["mse_score"] = skm.mean_squared_error(gene_expr,
+                                                        gene_expr_preds)
 
     # Calculate threshold independent metrics
     eval_dict["auroc_score"] = skm.roc_auc_score(edge_labels, edge_recon_probs)
-    eval_dict["auprc_score"] = skm.average_precision_score(
-        edge_labels, edge_recon_probs)
+    eval_dict["auprc_score"] = skm.average_precision_score(edge_labels,
+                                                           edge_recon_probs)
         
     # Get the optimal classification probability threshold above which an edge 
     # is classified as positive so that the threshold optimizes the accuracy 
