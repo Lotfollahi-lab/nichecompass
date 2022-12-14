@@ -122,6 +122,7 @@ class BaseModelMixin():
                     self.adata.obsp["spatial_connectivities"])
             self.adata.write(
                 os.path.join(dir_path, adata_file_name), **anndata_write_kwargs)
+            
 
         var_names = self.adata.var_names.astype(str).to_numpy()
         public_attributes = self._get_public_attributes()
