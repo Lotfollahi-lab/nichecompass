@@ -530,7 +530,7 @@ class Trainer(BaseTrainerMixin):
         
         # Log evaluation metrics
         if self.mlflow_experiment_id is not None:
-            for key, value in test_eval_dict:
+            for key, value in test_eval_dict.items():
                 mlflow.log_metric(f"test_{key}", value)
 
     def is_early_stopping(self) -> bool:
