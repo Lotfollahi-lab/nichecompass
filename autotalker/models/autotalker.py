@@ -262,9 +262,10 @@ class Autotalker(BaseModelMixin):
               lambda_gene_expr_recon: float=1.,
               lambda_group_lasso: float=0.,
               lambda_l1_addon: float=0.,
-              edge_val_ratio: float=0.1,
+              edge_val_ratio: float=0.05,
               edge_test_ratio: float=0.05,
               node_val_ratio: float=0.1,
+              node_test_ratio: float=0.1,
               edge_batch_size: int=64,
               node_batch_size: int=64,
               mlflow_experiment_id: Optional[str]=None,
@@ -291,7 +292,7 @@ class Autotalker(BaseModelMixin):
         lambda_gene_expr_recon:
             Lambda (weighting factor) for the gene expression reconstruction
             loss. If ´>0´, this will enforce interpretable gene programs that
-            can be combined in a linear way to reconstruct gene expression.      
+            can be combined in a linear way to reconstruct gene expression.   
         lambda_group_lasso:
             Lambda (weighting factor) for the group lasso regularization loss of
             gene programs. If ´>0´, this will enforce sparsity of gene programs.
@@ -301,13 +302,16 @@ class Autotalker(BaseModelMixin):
             addon gene programs.
         edge_val_ratio:
             Fraction of the data that is used as validation set on edge-level.
-            The rest of the data will be used as training or test set (as 
-            defined in edge_test_ratio) on edge-level.
+            The rest of the data will be used as training or test set (as
+            defined in ´edge_test_ratio´) on edge-level.
         edge_test_ratio:
             Fraction of the data that is used as test set on edge-level.
         node_val_ratio:
             Fraction of the data that is used as validation set on node-level.
-            The rest of the data will be used as training set on node-level.
+            The rest of the data will be used as training or test set (as
+            defined in ´node_test_ratio´) on node-level.
+        node_test_ratio:
+            Fraction of the data that is used as test set on node-level.
         edge_batch_size:
             Batch size for the edge-level dataloaders.
         node_batch_size:
@@ -326,7 +330,7 @@ class Autotalker(BaseModelMixin):
             edge_val_ratio=edge_val_ratio,
             edge_test_ratio=edge_test_ratio,
             node_val_ratio=node_val_ratio,
-            node_test_ratio=0.0,
+            node_test_ratio=node_test_ratio,
             edge_batch_size=edge_batch_size,
             node_batch_size=node_batch_size,
             **trainer_kwargs)

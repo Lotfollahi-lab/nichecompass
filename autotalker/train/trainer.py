@@ -73,10 +73,10 @@ class Trainer(BaseTrainerMixin):
                  model: nn.Module,
                  counts_key: str="counts",
                  adj_key: str="spatial_connectivities",
-                 edge_val_ratio: float=0.1,
+                 edge_val_ratio: float=0.05,
                  edge_test_ratio: float=0.05,
                  node_val_ratio: float=0.1,
-                 node_test_ratio: float=0.,
+                 node_test_ratio: float=0.1,
                  edge_batch_size: int=64,
                  node_batch_size: int=64,
                  use_early_stopping: bool=True,
@@ -462,9 +462,9 @@ class Trainer(BaseTrainerMixin):
         """
         self.model.eval()
 
+        # Get edge-level ground truth and predictions
         edge_recon_probs_test_accumulated = np.array([])
         edge_labels_test_accumulated = np.array([])
-
         for edge_test_data_batch in self.edge_test_loader:
             edge_test_data_batch = edge_test_data_batch.to(self.device)
 
@@ -486,25 +486,52 @@ class Trainer(BaseTrainerMixin):
             edge_labels_test_accumulated = np.append(
                 edge_labels_test_accumulated,
                 edge_labels_test.detach().cpu().numpy())
+
+        # Get node-level ground truth and predictions
+        gene_expr_preds_test_accumulated = np.array([])
+        gene_expr_test_accumulated = np.array([])
+        for node_test_data_batch in self.node_test_loader:
+            node_test_data_batch = node_test_data_batch.to(self.device)
+
+            node_test_model_output = self.model(data_batch=node_test_data_batch,
+                                                decoder="gene_expr")
+
+            gene_expr_test = node_test_model_output["node_labels"]
+
+            if self.model.gene_expr_recon_dist_ == "nb":
+                nb_means_test = node_test_model_output["gene_expr_dist_params"]
+                gene_expr_preds_test = nb_means_test
+            elif self.model.gene_expr_recon_dist_ == "zinb":
+                nb_means_test, zi_prob_logits_test = (
+                    node_test_model_output["gene_expr_dist_params"])
+                zi_probs_test = torch.sigmoid(zi_prob_logits_test)
+                zi_mask_test = np.random.binomial(1, p=zi_probs_test)
+                gene_expr_preds_test = nb_means_test
+                gene_expr_preds_test[zi_mask_test] = 0
+
+            gene_expr_preds_test_accumulated = np.append(
+                gene_expr_preds_test_accumulated,
+                gene_expr_preds_test.detach().cpu().numpy())
+            gene_expr_test_accumulated = np.append(
+                gene_expr_test_accumulated,
+                gene_expr_test.detach().cpu().numpy())
+
         test_eval_dict = eval_metrics(
             edge_recon_probs=edge_recon_probs_test_accumulated,
-            edge_labels=edge_labels_test_accumulated)
+            edge_labels=edge_labels_test_accumulated,
+            gene_expr_preds=gene_expr_preds_test_accumulated,
+            gene_expr=gene_expr_test_accumulated)
         print("\n--- MODEL EVALUATION ---")
         print(f"Test AUROC score: {test_eval_dict['auroc_score']:.4f}")
         print(f"Test AUPRC score: {test_eval_dict['auprc_score']:.4f}")
         print(f"Test best accuracy score: {test_eval_dict['best_acc_score']:.4f}")
         print(f"Test best F1 score: {test_eval_dict['best_f1_score']:.4f}")
+        print(f"Test MSE score: {test_eval_dict['mse_score']:.4f}")
         
         # Log evaluation metrics
         if self.mlflow_experiment_id is not None:
-            mlflow.log_metric("test_auroc_score", 
-                              test_eval_dict["auroc_score"])
-            mlflow.log_metric("test_auprc_score",
-                              test_eval_dict["auprc_score"])
-            mlflow.log_metric("test_best_acc_score",
-                              test_eval_dict["best_acc_score"])
-            mlflow.log_metric("test_best_f1_score",
-                              test_eval_dict["best_f1_score"])
+            for key, value in test_eval_dict:
+                mlflow.log_metric(f"test_{key}", value)
 
     def is_early_stopping(self) -> bool:
         """

@@ -12,7 +12,7 @@ from .datasets import SpatialAnnTorchDataset
 
 
 def edge_level_split(data: Data,
-                     val_ratio: float=0.1,
+                     val_ratio: float=0.05,
                      test_ratio: float=0.05,
                      is_undirected: bool=True,
                      neg_sampling_ratio: float=0.) -> Tuple[Data, Data, Data]:
@@ -59,7 +59,7 @@ def edge_level_split(data: Data,
 
 def node_level_split_mask(data: Data,
                           val_ratio: float=0.1,
-                          test_ratio: float=0.,
+                          test_ratio: float=0.1,
                           split_key: str="x") -> Data:
     """
     Split data on node-level into training, validation and test sets by adding
@@ -94,10 +94,10 @@ def node_level_split_mask(data: Data,
 def prepare_data(adata: AnnData,
                  counts_key: str="counts",
                  adj_key: str="spatial_connectivities",
-                 edge_val_ratio: float=0.1,
+                 edge_val_ratio: float=0.05,
                  edge_test_ratio: float=0.05,
                  node_val_ratio: float=0.1,
-                 node_test_ratio: float=0.) -> dict:
+                 node_test_ratio: float=0.1) -> dict:
     """
     Prepare data for model training including edge-level (for edge
     reconstruction) and node-level (for gene expression reconstruction) train, 
