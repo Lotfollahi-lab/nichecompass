@@ -9,7 +9,6 @@ from torch_geometric.loader import LinkNeighborLoader, NeighborLoader
 def initialize_dataloaders(node_masked_data: Data,
                            edge_train_data: Data,
                            edge_val_data: Data,
-                           edge_test_data: Data,
                            edge_batch_size: int=64,
                            node_batch_size: int=64,
                            n_direct_neighbors: int=-1,
@@ -18,7 +17,7 @@ def initialize_dataloaders(node_masked_data: Data,
                            neg_edge_sampling_ratio: float=1.) -> dict:
     """
     Initialize edge-level (for edge reconstruction) and node-level (for gene
-    expression reconstruction) training, validation and test dataloaders.
+    expression reconstruction) training and validation dataloaders.
 
     Parameters
     ----------
@@ -27,9 +26,7 @@ def initialize_dataloaders(node_masked_data: Data,
     edge_train_data:
         PyG Data object containing the edge-level training set.
     edge_val_data:
-        PyG Data object containing the edge-level validation set.
-    edge_test_data:
-        PyG Data object containing the edge-level test set.        
+        PyG Data object containing the edge-level validation set.       
     edge_batch_size:
         Batch size for the edge-level dataloaders.
     node_batch_size:
@@ -53,9 +50,9 @@ def initialize_dataloaders(node_masked_data: Data,
     Returns
     ----------
     loader_dict:
-        Dictionary containing training, validation and test PyG 
-        LinkNeighborLoader (for edge reconstruction) and NeighborLoader (for
-        gene expression reconstruction) objects.
+        Dictionary containing training and validation PyG LinkNeighborLoader 
+        (for edge reconstruction) and NeighborLoader (for gene expression 
+        reconstruction) objects.
     """
     loader_dict = {}
 
@@ -75,14 +72,6 @@ def initialize_dataloaders(node_masked_data: Data,
             directed=False,
             shuffle=True,
             input_nodes=node_masked_data.val_mask)
-    if node_masked_data.test_mask.sum() != 0:
-        loader_dict["node_test_loader"] = NeighborLoader(
-            node_masked_data,
-            num_neighbors=[n_direct_neighbors] * n_hops,
-            batch_size=node_batch_size,
-            directed=False,
-            shuffle=True,
-            input_nodes=node_masked_data.test_mask)
 
     # Edge-level dataloaders
     loader_dict["edge_train_loader"] = LinkNeighborLoader(
@@ -102,13 +91,5 @@ def initialize_dataloaders(node_masked_data: Data,
             directed=edges_directed,
             shuffle=True,
             neg_sampling_ratio=neg_edge_sampling_ratio)
-    if edge_test_data.edge_label.sum() != 0:
-        loader_dict["edge_test_loader"] = LinkNeighborLoader(
-            edge_test_data,
-            num_neighbors=[n_direct_neighbors] * n_hops,
-            batch_size=edge_batch_size,
-            edge_label_index=edge_test_data.edge_label_index,
-            directed=edges_directed,
-            shuffle=True,
-            neg_sampling_ratio=neg_edge_sampling_ratio)
+
     return loader_dict

@@ -43,13 +43,11 @@ class Trainer(BaseTrainerMixin):
     adj_key:
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
     edge_val_ratio:
-        Fraction of the data that is used as validation set on edge-level.
-    edge_test_ratio:
-        Fraction of the data that is used as test set on edge-level.
+        Fraction of the data that is used as validation set on edge-level. The
+        rest of the data will be used as training set on edge-level.
     node_val_ratio:
-        Fraction of the data that is used as validation set on node-level.
-    node_test_ratio:
-        Fraction of the data that is used as test set on node-level.
+        Fraction of the data that is used as validation set on node-level. The
+        rest of the data will be used as training set on edge-level.
     edge_batch_size:
         Batch size for the edge-level dataloaders.
     node_batch_size:
@@ -74,9 +72,7 @@ class Trainer(BaseTrainerMixin):
                  counts_key: str="counts",
                  adj_key: str="spatial_connectivities",
                  edge_val_ratio: float=0.05,
-                 edge_test_ratio: float=0.05,
                  node_val_ratio: float=0.1,
-                 node_test_ratio: float=0.1,
                  edge_batch_size: int=64,
                  node_batch_size: int=64,
                  use_early_stopping: bool=True,
@@ -90,12 +86,10 @@ class Trainer(BaseTrainerMixin):
         self.model = model
         self.counts_key = counts_key
         self.adj_key = adj_key
-        self.edge_train_ratio_ = 1 - edge_val_ratio - edge_test_ratio
+        self.edge_train_ratio_ = 1 - edge_val_ratio
         self.edge_val_ratio_ = edge_val_ratio
-        self.edge_test_ratio_ = edge_test_ratio
-        self.node_train_ratio_ = 1 - node_val_ratio - node_test_ratio
+        self.node_train_ratio_ = 1 - node_val_ratio
         self.node_val_ratio_ = node_val_ratio
-        self.node_test_ratio_ = node_test_ratio
         self.edge_batch_size_ = edge_batch_size
         self.node_batch_size_ = node_batch_size
         self.use_early_stopping_ = use_early_stopping
@@ -133,38 +127,32 @@ class Trainer(BaseTrainerMixin):
         self.device = torch.device("cuda" if torch.cuda.is_available() else 
                                    "cpu")
 
-        # Prepare data and get node-level and edge-level training, validation
-        # and test splits
+        # Prepare data and get node-level and edge-level training and validation
+        # splits
         data_dict = prepare_data(adata=adata,
                                  counts_key=self.counts_key,
                                  adj_key=self.adj_key,
                                  edge_val_ratio=self.edge_val_ratio_,
-                                 edge_test_ratio=self.edge_test_ratio_,
+                                 edge_test_ratio=0.,
                                  node_val_ratio=self.node_val_ratio_,
-                                 node_test_ratio=self.node_test_ratio_)
+                                 node_test_ratio=0.)
         self.node_masked_data = data_dict["node_masked_data"]
         self.edge_train_data = data_dict["edge_train_data"]
         self.edge_val_data = data_dict["edge_val_data"]
-        self.edge_test_data = data_dict["edge_test_data"]
         self.n_nodes_train = self.node_masked_data.train_mask.sum().item()
         self.n_nodes_val = self.node_masked_data.val_mask.sum().item()
-        self.n_nodes_test = self.node_masked_data.test_mask.sum().item()
         self.n_edges_train = self.edge_train_data.edge_label_index.size(1)
         self.n_edges_val = self.edge_val_data.edge_label_index.size(1)
-        self.n_edges_test = self.edge_test_data.edge_label_index.size(1)
         print(f"Number of training nodes: {self.n_nodes_train}")
         print(f"Number of validation nodes: {self.n_nodes_val}")
-        print(f"Number of test nodes: {self.n_nodes_test}")
         print(f"Number of training edges: {self.n_edges_train}")
         print(f"Number of validation edges: {self.n_edges_val}")
-        print(f"Number of test edges: {self.n_edges_test}")
         
         # Initialize node-level and edge-level dataloaders
         loader_dict = initialize_dataloaders(
             node_masked_data=self.node_masked_data,
             edge_train_data=self.edge_train_data,
             edge_val_data=self.edge_val_data,
-            edge_test_data=self.edge_test_data,
             edge_batch_size=self.edge_batch_size_,
             node_batch_size=self.node_batch_size_,
             n_direct_neighbors=self.loaders_n_direct_neighbors_,
@@ -173,14 +161,12 @@ class Trainer(BaseTrainerMixin):
             neg_edge_sampling_ratio=1.)
         self.edge_train_loader = loader_dict["edge_train_loader"]
         self.edge_val_loader = loader_dict.pop("edge_val_loader", None)
-        self.edge_test_loader = loader_dict.pop("edge_test_loader", None)
         self.node_train_loader = loader_dict["node_train_loader"]
         self.node_val_loader = loader_dict.pop("node_val_loader", None)
-        self.node_test_loader = loader_dict.pop("node_test_loader", None)
 
     def train(self,
               n_epochs: int=10,
-              n_epochs_all_gps: int=0,
+              n_epochs_all_gps: int=5,
               n_epochs_no_edge_recon: int=0,
               lr: float=0.01,
               weight_decay: float=0.,
@@ -197,8 +183,8 @@ class Trainer(BaseTrainerMixin):
         n_epochs:
             Number of epochs.
         n_epochs_all_gps:
-            Number of epochs in which all gene programs (not only active ones)
-            will be used in edge reconstruction loss.
+            Number of epochs during which all gene programs are used for model
+            training. After that only active gene programs are retained.
         n_epochs_no_edge_recon:
             Number of epochs without edge reconstruction loss for gene
             expression decoder pretraining.
@@ -280,7 +266,8 @@ class Trainer(BaseTrainerMixin):
                 # Forward pass node-level batch
                 node_train_model_output = self.model(
                     data_batch=node_train_data_batch,
-                    decoder="gene_expr")
+                    decoder="gene_expr",
+                    use_only_active_gps=self.use_only_active_gps)
                 # Calculate training loss (edge reconstruction loss + gene 
                 # expression reconstruction loss + regularization losses)
                 train_loss_dict = self.model.loss(
@@ -317,7 +304,7 @@ class Trainer(BaseTrainerMixin):
             # Validate model
             if (self.edge_val_loader is not None and 
                 self.node_val_loader is not None):
-                    self.validate()
+                    self.eval_epoch()
             elif (self.edge_val_loader is None and 
             self.node_val_loader is not None):
                 warnings.warn("You have specified a node validation set but no "
@@ -372,18 +359,18 @@ class Trainer(BaseTrainerMixin):
         fig = plot_loss_curves(losses)
         if self.mlflow_experiment_id is not None:
             mlflow.log_figure(fig, "loss_curves.png")
-        fig = plot_eval_metrics(val_eval_metrics_over_epochs)  
+        fig = plot_eval_metrics(val_eval_metrics_over_epochs) 
         if self.mlflow_experiment_id is not None:
-            mlflow.log_figure(fig, "val_eval_metrics.png") 
+            mlflow.log_figure(fig, "val_eval_metrics.png")
 
-        # Test model
-        if self.edge_test_loader is not None:
-            self.test()
+        # Calculate after training validation metrics
+        if self.edge_val_loader is not None:
+            self.eval_end()
 
     @torch.no_grad()
-    def validate(self):
+    def eval_epoch(self):
         """
-        Validate time logic of Autotalker model used during training.
+        Epoch evaluation logic of Autotalker model used during training.
         """
         self.model.eval()
 
@@ -404,7 +391,8 @@ class Trainer(BaseTrainerMixin):
             # Forward pass node level batch
             node_val_model_output = self.model(
                 data_batch=node_val_data_batch,
-                decoder="gene_expr")
+                decoder="gene_expr",
+                use_only_active_gps=True)
             # Calculate validation loss (edge reconstruction loss + gene 
             # expression reconstruction loss + regularization losses)
             val_loss_dict = self.model.loss(
@@ -456,83 +444,84 @@ class Trainer(BaseTrainerMixin):
         self.model.train()
 
     @torch.no_grad()
-    def test(self):
+    def eval_end(self):
         """
-        Test time logic of Autotalker model used during training.
+        End evaluation logic of Autotalker model used after model training.
         """
         self.model.eval()
 
         # Get edge-level ground truth and predictions
-        edge_recon_probs_test_accumulated = np.array([])
-        edge_labels_test_accumulated = np.array([])
-        for edge_test_data_batch in self.edge_test_loader:
-            edge_test_data_batch = edge_test_data_batch.to(self.device)
+        edge_recon_probs_val_accumulated = np.array([])
+        edge_labels_val_accumulated = np.array([])
+        for edge_val_data_batch in self.edge_val_loader:
+            edge_val_data_batch = edge_val_data_batch.to(self.device)
 
-            edge_test_model_output = self.model(data_batch=edge_test_data_batch,
-                                                decoder="graph",
-                                                use_only_active_gps=True)
+            edge_val_model_output = self.model(data_batch=edge_val_data_batch,
+                                               decoder="graph",
+                                               use_only_active_gps=True)
     
             # Calculate evaluation metrics
-            adj_recon_probs_test = torch.sigmoid(
-                edge_test_model_output["adj_recon_logits"])
-            edge_recon_probs_test, edge_labels_test = (
+            adj_recon_probs_val = torch.sigmoid(
+                edge_val_model_output["adj_recon_logits"])
+            edge_recon_probs_val, edge_labels_val = (
                 edge_values_and_sorted_labels(
-                    adj=adj_recon_probs_test,
-                    edge_label_index=edge_test_data_batch.edge_label_index,
-                    edge_labels=edge_test_data_batch.edge_label))
-            edge_recon_probs_test_accumulated = np.append(
-                edge_recon_probs_test_accumulated,
-                edge_recon_probs_test.detach().cpu().numpy())
-            edge_labels_test_accumulated = np.append(
-                edge_labels_test_accumulated,
-                edge_labels_test.detach().cpu().numpy())
+                    adj=adj_recon_probs_val,
+                    edge_label_index=edge_val_data_batch.edge_label_index,
+                    edge_labels=edge_val_data_batch.edge_label))
+            edge_recon_probs_val_accumulated = np.append(
+                edge_recon_probs_val_accumulated,
+                edge_recon_probs_val.detach().cpu().numpy())
+            edge_labels_val_accumulated = np.append(
+                edge_labels_val_accumulated,
+                edge_labels_val.detach().cpu().numpy())
 
         # Get node-level ground truth and predictions
-        gene_expr_preds_test_accumulated = np.array([])
-        gene_expr_test_accumulated = np.array([])
-        for node_test_data_batch in self.node_test_loader:
-            node_test_data_batch = node_test_data_batch.to(self.device)
+        gene_expr_preds_val_accumulated = np.array([])
+        gene_expr_val_accumulated = np.array([])
+        for node_val_data_batch in self.node_val_loader:
+            node_val_data_batch = node_val_data_batch.to(self.device)
 
-            node_test_model_output = self.model(data_batch=node_test_data_batch,
-                                                decoder="gene_expr")
+            node_val_model_output = self.model(data_batch=node_val_data_batch,
+                                                decoder="gene_expr",
+                                                use_only_active_gps=True)
 
-            gene_expr_test = node_test_model_output["node_labels"]
+            gene_expr_val = node_val_model_output["node_labels"]
 
             if self.model.gene_expr_recon_dist_ == "nb":
-                nb_means_test = node_test_model_output["gene_expr_dist_params"]
-                gene_expr_preds_test = nb_means_test
+                nb_means_val = node_val_model_output["gene_expr_dist_params"]
+                gene_expr_preds_val = nb_means_val
             elif self.model.gene_expr_recon_dist_ == "zinb":
-                nb_means_test, zi_prob_logits_test = (
-                    node_test_model_output["gene_expr_dist_params"])
-                zi_probs_test = torch.sigmoid(zi_prob_logits_test)
-                zi_probs_test = zi_probs_test.detach().cpu().numpy()
-                zi_mask_test = np.random.binomial(1, p=zi_probs_test)
-                gene_expr_preds_test = nb_means_test
-                gene_expr_preds_test[zi_mask_test] = 0
+                nb_means_val, zi_prob_logits_val = (
+                    node_val_model_output["gene_expr_dist_params"])
+                zi_probs_val = torch.sigmoid(zi_prob_logits_val)
+                zi_probs_val = zi_probs_val.detach().cpu().numpy()
+                zi_mask_val = np.random.binomial(1, p=zi_probs_val)
+                gene_expr_preds_val = nb_means_val
+                gene_expr_preds_val[zi_mask_val] = 0
 
-            gene_expr_preds_test_accumulated = np.append(
-                gene_expr_preds_test_accumulated,
-                gene_expr_preds_test.detach().cpu().numpy())
-            gene_expr_test_accumulated = np.append(
-                gene_expr_test_accumulated,
-                gene_expr_test.detach().cpu().numpy())
+            gene_expr_preds_val_accumulated = np.append(
+                gene_expr_preds_val_accumulated,
+                gene_expr_preds_val.detach().cpu().numpy())
+            gene_expr_val_accumulated = np.append(
+                gene_expr_val_accumulated,
+                gene_expr_val.detach().cpu().numpy())
 
-        test_eval_dict = eval_metrics(
-            edge_recon_probs=edge_recon_probs_test_accumulated,
-            edge_labels=edge_labels_test_accumulated,
-            gene_expr_preds=gene_expr_preds_test_accumulated,
-            gene_expr=gene_expr_test_accumulated)
+        val_eval_dict = eval_metrics(
+            edge_recon_probs=edge_recon_probs_val_accumulated,
+            edge_labels=edge_labels_val_accumulated,
+            gene_expr_preds=gene_expr_preds_val_accumulated,
+            gene_expr=gene_expr_val_accumulated)
         print("\n--- MODEL EVALUATION ---")
-        print(f"Test AUROC score: {test_eval_dict['auroc_score']:.4f}")
-        print(f"Test AUPRC score: {test_eval_dict['auprc_score']:.4f}")
-        print(f"Test best accuracy score: {test_eval_dict['best_acc_score']:.4f}")
-        print(f"Test best F1 score: {test_eval_dict['best_f1_score']:.4f}")
-        print(f"Test MSE score: {test_eval_dict['mse_score']:.4f}")
+        print(f"Val AUROC score: {val_eval_dict['auroc_score']:.4f}")
+        print(f"Val AUPRC score: {val_eval_dict['auprc_score']:.4f}")
+        print(f"Val best accuracy score: {val_eval_dict['best_acc_score']:.4f}")
+        print(f"Val best F1 score: {val_eval_dict['best_f1_score']:.4f}")
+        print(f"Val MSE score: {val_eval_dict['mse_score']:.4f}")
         
         # Log evaluation metrics
         if self.mlflow_experiment_id is not None:
-            for key, value in test_eval_dict.items():
-                mlflow.log_metric(f"test_{key}", value)
+            for key, value in val_eval_dict.items():
+                mlflow.log_metric(f"val_{key}", value)
 
     def is_early_stopping(self) -> bool:
         """
