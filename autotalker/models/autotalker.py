@@ -139,7 +139,7 @@ class Autotalker(BaseModelMixin):
                     "one-hop-sum",
                     "one-hop-norm",
                     "one-hop-attention"]="one-hop-attention",
-                 active_gp_thresh_ratio: float=0.,
+                 active_gp_thresh_ratio: float=0.03,
                  n_hidden_encoder: int=256,
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=1,
@@ -254,7 +254,7 @@ class Autotalker(BaseModelMixin):
 
     def train(self,
               n_epochs: int=10,
-              n_epochs_all_gps: int=2,
+              n_epochs_all_gps: int=5,
               n_epochs_no_edge_recon: int=0,
               lr: float=0.01,
               weight_decay: float=0.,
@@ -263,9 +263,7 @@ class Autotalker(BaseModelMixin):
               lambda_group_lasso: float=0.,
               lambda_l1_addon: float=0.,
               edge_val_ratio: float=0.05,
-              edge_test_ratio: float=0.05,
               node_val_ratio: float=0.1,
-              node_test_ratio: float=0.1,
               edge_batch_size: int=64,
               node_batch_size: int=64,
               mlflow_experiment_id: Optional[str]=None,
@@ -277,6 +275,9 @@ class Autotalker(BaseModelMixin):
         ----------
         n_epochs:
             Number of epochs.
+        n_epochs_all_gps:
+            Number of epochs during which all gene programs are used for model
+            training. After that only active gene programs are retained.
         n_epochs_no_edge_recon:
             Number of epochs without edge reconstruction loss for gene
             expression decoder pretraining.
@@ -302,16 +303,10 @@ class Autotalker(BaseModelMixin):
             addon gene programs.
         edge_val_ratio:
             Fraction of the data that is used as validation set on edge-level.
-            The rest of the data will be used as training or test set (as
-            defined in ´edge_test_ratio´) on edge-level.
-        edge_test_ratio:
-            Fraction of the data that is used as test set on edge-level.
+            The rest of the data will be used as training set on edge-level.
         node_val_ratio:
             Fraction of the data that is used as validation set on node-level.
-            The rest of the data will be used as training or test set (as
-            defined in ´node_test_ratio´) on node-level.
-        node_test_ratio:
-            Fraction of the data that is used as test set on node-level.
+            The rest of the data will be used as training set on node-level.
         edge_batch_size:
             Batch size for the edge-level dataloaders.
         node_batch_size:
@@ -328,9 +323,7 @@ class Autotalker(BaseModelMixin):
             counts_key=self.counts_key_,
             adj_key=self.adj_key_,
             edge_val_ratio=edge_val_ratio,
-            edge_test_ratio=edge_test_ratio,
             node_val_ratio=node_val_ratio,
-            node_test_ratio=node_test_ratio,
             edge_batch_size=edge_batch_size,
             node_batch_size=node_batch_size,
             **trainer_kwargs)
@@ -355,6 +348,10 @@ class Autotalker(BaseModelMixin):
             return_mu_std=True)
         self.adata.uns[self.active_gp_names_key_] = self.get_active_gps(
             adata=self.adata)
+
+        if mlflow_experiment_id is not None:
+            mlflow.log_metric("n_active_gps",
+                              len(self.adata.uns[self.active_gp_names_key_]))
 
     def compute_differential_gp_scores(
             self,
