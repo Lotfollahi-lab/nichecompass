@@ -505,6 +505,7 @@ class Trainer(BaseTrainerMixin):
                 nb_means_test, zi_prob_logits_test = (
                     node_test_model_output["gene_expr_dist_params"])
                 zi_probs_test = torch.sigmoid(zi_prob_logits_test)
+                zi_probs_test = zi_probs_test.detach().cpu().numpy()
                 zi_mask_test = np.random.binomial(1, p=zi_probs_test)
                 gene_expr_preds_test = nb_means_test
                 gene_expr_preds_test[zi_mask_test] = 0
