@@ -121,7 +121,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.n_addon_gps_ = n_addon_gps
         self.n_output_ = n_output
         self.conv_layer_encoder_ = conv_layer_encoder
-        self.encoder_n_attention_heads = encoder_n_attention_heads
+        self.encoder_n_attention_heads_ = encoder_n_attention_heads
         self.dropout_rate_encoder_ = dropout_rate_encoder
         self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
         self.include_edge_recon_loss_ = include_edge_recon_loss

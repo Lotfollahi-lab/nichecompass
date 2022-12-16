@@ -54,7 +54,7 @@ class GraphEncoder(nn.Module):
         print(f"GRAPH ENCODER -> n_input: {n_input}, n_hidden: {n_hidden}, "
               f"n_latent: {n_latent}, n_addon_latent: {n_addon_latent}, "
               f"conv_layer: {conv_layer}, n_attention_heads: "
-              f" {n_attention_heads if conv_layer == 'gatv2conv' else '-'} "
+              f"{n_attention_heads if conv_layer == 'gatv2conv' else '-'}, "
               f"dropout_rate: {dropout_rate}")
 
         if conv_layer == "gcnconv":
