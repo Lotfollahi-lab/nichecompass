@@ -494,8 +494,7 @@ class Trainer(BaseTrainerMixin):
                 nb_means_val, zi_prob_logits_val = (
                     node_val_model_output["gene_expr_dist_params"])
                 zi_probs_val = torch.sigmoid(zi_prob_logits_val)
-                zi_probs_val = zi_probs_val.detach().cpu().numpy()
-                zi_mask_val = np.random.binomial(1, p=zi_probs_val)
+                zi_mask_val = torch.bernoulli(zi_probs_val) > 0
                 gene_expr_preds_val = nb_means_val
                 gene_expr_preds_val[zi_mask_val] = 0
 
