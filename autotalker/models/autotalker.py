@@ -20,6 +20,7 @@ from autotalker.benchmarking import (compute_arclisi,
                                      compute_germse,
                                      compute_mlnmi)
 from autotalker.data import SpatialAnnTorchDataset
+from autotalker.data import initialize_dataloaders, prepare_data
 from autotalker.modules import VGPGAE
 from autotalker.train import Trainer
 from autotalker.utils import compute_graph_connectivities
@@ -168,7 +169,10 @@ class Autotalker(BaseModelMixin):
             self.n_output_ *= 2
         self.n_hidden_encoder_ = n_hidden_encoder
         self.conv_layer_encoder_ = conv_layer_encoder
-        self.encoder_n_attention_heads_ = encoder_n_attention_heads
+        if conv_layer_encoder == "gatv2conv":
+            self.encoder_n_attention_heads_ = encoder_n_attention_heads
+        else:
+            self.encoder_n_attention_heads_ = 0
         self.dropout_rate_encoder_ = dropout_rate_encoder
         self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
 
@@ -341,11 +345,11 @@ class Autotalker(BaseModelMixin):
         
         self.is_trained_ = True
         self.adata.obsm[self.latent_key_], _ = self.get_latent_representation(
-            adata=self.adata,
-            counts_key=self.counts_key_,
-            adj_key=self.adj_key_,
-            only_active_gps=True,
-            return_mu_std=True)
+           adata=self.adata,
+           counts_key=self.counts_key_,
+           adj_key=self.adj_key_,
+           only_active_gps=True,
+           return_mu_std=True)
         self.adata.uns[self.active_gp_names_key_] = self.get_active_gps(
             adata=self.adata)
 
@@ -856,7 +860,8 @@ class Autotalker(BaseModelMixin):
             counts_key: str="counts",
             adj_key: str="spatial_connectivities",
             only_active_gps: bool=True,
-            return_mu_std: bool=False
+            return_mu_std: bool=False,
+            node_batch_size: int=64,
             ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         """
         Get the latent / gene program representation from a trained model.
@@ -890,34 +895,70 @@ class Autotalker(BaseModelMixin):
         self._check_if_trained(warn=False)
         
         device = next(self.model.parameters()).device
-        
+
         if adata is None:
             adata = self.adata
-        
-        dataset = SpatialAnnTorchDataset(adata=adata,
-                                         counts_key=counts_key,
-                                         adj_key=adj_key)
-        x = dataset.x.to(device)
-        edge_index = dataset.edge_index.to(device) 
-        if self.model.log_variational_:
-            x = torch.log(1 + x)
 
+        # Create single dataloader containing entire dataset
+        data_dict = prepare_data(adata=adata,
+                                 counts_key=counts_key,
+                                 adj_key=adj_key,
+                                 edge_val_ratio=0.,
+                                 edge_test_ratio=0.,
+                                 node_val_ratio=0.,
+                                 node_test_ratio=0.)
+        node_masked_data = data_dict["node_masked_data"]
+        loader_dict = initialize_dataloaders(
+            node_masked_data=node_masked_data,
+            edge_train_data=None,
+            edge_val_data=None,
+            edge_batch_size=None,
+            node_batch_size=node_batch_size,
+            shuffle=False)
+        node_loader = loader_dict["node_train_loader"]
+
+        # Initialize latent vectors
         if return_mu_std:
-            mu, std = self.model.get_latent_representation(
-                x=x,
-                edge_index=edge_index,
-                only_active_gps=only_active_gps,
-                return_mu_std=True)
-            mu = mu.detach().cpu().numpy()
-            std = std.detach().cpu().numpy()
-            return mu, std
+            mu = np.empty(shape=(adata.shape[0],
+                                 (self.n_nonaddon_gps_ + self.n_addon_gps_ )))
+            std = np.empty(shape=(adata.shape[0],
+                                  (self.n_nonaddon_gps_ + self.n_addon_gps_ )))
         else:
-            z = self.model.get_latent_representation(
+            z = np.empty(shape=(adata.shape[0],
+                                (self.n_nonaddon_gps_ + self.n_addon_gps_ )))
+
+        # Get latent representation for each batch of the dataloader and put it
+        # into latent vectors
+        for i, node_batch in enumerate(node_loader):
+            n_obs_before_batch = i * node_batch_size
+            n_obs_after_batch = n_obs_before_batch + node_batch.batch_size
+            node_batch = node_batch.to(device)
+            x = node_batch.x
+            edge_index = node_batch.edge_index
+            if self.model.log_variational_:
+                x = torch.log(1 + x)
+
+            if return_mu_std:
+                mu_batch, std_batch = self.model.get_latent_representation(
+                    x=x,
+                    edge_index=edge_index,
+                    only_active_gps=only_active_gps,
+                    return_mu_std=True)
+                mu[n_obs_before_batch:n_obs_after_batch, :] = (
+                    mu_batch[:node_batch.batch_size].detach().cpu().numpy())
+                std[n_obs_before_batch:n_obs_after_batch, :] = (
+                    std_batch[:node_batch.batch_size].detach().cpu().numpy())
+            else:
+                z_batch = self.model.get_latent_representation(
                     x=x,
                     edge_index=edge_index,
                     only_active_gps=only_active_gps,
                     return_mu_std=False)
-            z = z.detach().cpu().numpy()
+                z[n_obs_after_batch:n_obs_after_batch, :] = (
+                    z_batch[:node_batch.batch_size].detach().cpu().numpy())
+        if return_mu_std:
+            return mu, std
+        else:
             return z
 
     def get_gene_expr_dist_params(
