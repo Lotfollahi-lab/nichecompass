@@ -222,12 +222,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         output["logstd"] = self.logstd
         z = self.reparameterize(output["mu"], output["logstd"])
 
+        # Only retain active gene programs
+        if use_only_active_gps:
+            active_gp_mask = self.get_active_gp_mask()
+            z[:, ~active_gp_mask] = 0
+
         # Use decoder to get either the reconstructed adjacency matrix logits
         # or the gene expression parameters
         if decoder == "graph":
-            if use_only_active_gps:
-                active_gp_mask = self.get_active_gp_mask()
-                z = z[:, active_gp_mask]
             output["adj_recon_logits"] = self.graph_decoder(z=z)
         elif decoder == "gene_expr":
             # Compute aggregated neighborhood gene expression for gene 
@@ -236,9 +238,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 x=x, 
                 edge_index=edge_index,
                 batch_size=data_batch.batch_size)
-            if use_only_active_gps:
-                active_gp_mask = self.get_active_gp_mask()
-                z[:, ~active_gp_mask] = 0
+
             output["gene_expr_dist_params"] = self.gene_expr_decoder(
                 z=z[:data_batch.batch_size],
                 log_library_size=self.log_library_size[:data_batch.batch_size])
