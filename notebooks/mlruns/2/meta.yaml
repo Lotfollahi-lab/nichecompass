@@ -1,5 +1,0 @@
-artifact_location: file:///home/sbirk/projects/autotalker/notebooks/mlruns/2
-experiment_id: '2'
-lifecycle_stage: active
-name: old_benchmark_gene_expr_recon
-tags: {}

@@ -1,0 +1,15 @@
+artifact_uri: file:///home/sebastian.birk/workspace/projects/autotalker/notebooks/mlruns/12/42fe3c548650421f8e0abc2c750f1f6a/artifacts
+end_time: 1671299731101
+entry_point_name: ''
+experiment_id: '12'
+lifecycle_stage: active
+name: ''
+run_id: 42fe3c548650421f8e0abc2c750f1f6a
+run_uuid: 42fe3c548650421f8e0abc2c750f1f6a
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1671299386645
+status: 3
+tags: []
+user_id: sebastian.birk

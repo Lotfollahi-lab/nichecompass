@@ -1,5 +1,0 @@
-artifact_location: file:///home/sbirk/projects/autotalker/notebooks/mlruns/5
-experiment_id: '5'
-lifecycle_stage: active
-name: old_benchmark_conv_layer_and_node_label_method
-tags: {}
