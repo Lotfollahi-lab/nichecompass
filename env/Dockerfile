@@ -38,7 +38,7 @@ RUN wget \
     && mkdir /root/.conda \
     && bash Miniconda3-latest-Linux-x86_64.sh -b \
     && rm -f Miniconda3-latest-Linux-x86_64.sh 
-RUN conda --version
+RUN conda init bash
 
 # Create conda environment
 COPY environment.yml .
@@ -46,6 +46,9 @@ RUN conda env create -f environment.yml
 
 # Copy environment file (for Charliecloud)
 COPY environment /environment
+
+# Expose mlflow server port
+EXPOSE 8338
 
 # Remove retrieved packages from local cache and remove orphaned dependency packages 
 RUN apt-get clean -y && apt-get autoremove -y
