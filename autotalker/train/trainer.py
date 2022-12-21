@@ -356,12 +356,15 @@ class Trainer(BaseTrainerMixin):
             "auprc": self.epoch_logs["val_auprc_score"],
             "best_acc": self.epoch_logs["val_best_acc_score"],
             "best_f1": self.epoch_logs["val_best_f1_score"]}
+
+        """
         fig = plot_loss_curves(losses)
         if self.mlflow_experiment_id is not None:
             mlflow.log_figure(fig, "loss_curves.png")
         fig = plot_eval_metrics(val_eval_metrics_over_epochs) 
         if self.mlflow_experiment_id is not None:
             mlflow.log_figure(fig, "val_eval_metrics.png")
+        """
 
         # Calculate after training validation metrics
         if self.edge_val_loader is not None:

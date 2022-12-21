@@ -257,10 +257,10 @@ class Autotalker(BaseModelMixin):
         self.init_params_ = self._get_init_params(locals())
 
     def train(self,
-              n_epochs: int=10,
-              n_epochs_all_gps: int=5,
+              n_epochs: int=20,
+              n_epochs_all_gps: int=10,
               n_epochs_no_edge_recon: int=0,
-              lr: float=0.01,
+              lr: float=0.001,
               weight_decay: float=0.,
               lambda_edge_recon: Optional[float]=1.,
               lambda_gene_expr_recon: float=1.,
