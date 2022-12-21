@@ -10,3 +10,5 @@ see /poster/autotalker_poster.pdf
 
 ## Setup
 ```conda env create -f env/environment.yml```
+
+```python DeepLinc.py -e ./dataset/squidpy_seqfish_mouse_organogenesis/counts.csv -a ./dataset/squidpy_seqfish_mouse_organogenesis/adj.csv -c ./dataset/squdipy_seqfish_mouse_organogenesis/coords.csv -r ./dataset/squidpy_seqfish_mouse_organogenesis/cell_types.csv -n avg_n_neighbors_4```
