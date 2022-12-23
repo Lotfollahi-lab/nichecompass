@@ -263,7 +263,7 @@ class Autotalker(BaseModelMixin):
               lr: float=0.001,
               weight_decay: float=0.,
               lambda_edge_recon: Optional[float]=1.,
-              lambda_gene_expr_recon: float=1.,
+              lambda_gene_expr_recon: float=0.33,
               lambda_group_lasso: float=0.,
               lambda_l1_addon: float=0.,
               edge_val_ratio: float=0.05,
