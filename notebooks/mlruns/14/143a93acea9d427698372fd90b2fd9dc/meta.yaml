@@ -1,0 +1,15 @@
+artifact_uri: file:///home/sbirk/projects/autotalker/notebooks/mlruns/14/143a93acea9d427698372fd90b2fd9dc/artifacts
+end_time: 1671914121734
+entry_point_name: ''
+experiment_id: '14'
+lifecycle_stage: active
+name: ''
+run_id: 143a93acea9d427698372fd90b2fd9dc
+run_uuid: 143a93acea9d427698372fd90b2fd9dc
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1671913402350
+status: 3
+tags: []
+user_id: sbirk

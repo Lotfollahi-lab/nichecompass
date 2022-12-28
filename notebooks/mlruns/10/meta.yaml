@@ -1,4 +1,0 @@
-artifact_location: file:///home/sbirk/projects/autotalker/notebooks/mlruns/10
-experiment_id: '10'
-lifecycle_stage: active
-name: benchmark_active_gps

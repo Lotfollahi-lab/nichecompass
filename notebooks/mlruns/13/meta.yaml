@@ -1,5 +1,0 @@
-artifact_location: file:///home/sebastian.birk/workspace/projects/autotalker/notebooks/mlruns/13
-experiment_id: '13'
-lifecycle_stage: active
-name: benchmark_loss_weights_high_lr
-tags: {}
