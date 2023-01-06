@@ -22,8 +22,8 @@ from .mlnmi import compute_mlnmi
 def compute_benchmarking_metrics(
         adata: Optional[AnnData]=None,
         spatial_model: bool=True,
-        latent_key: str="",
-        active_gp_names_key: str="",
+        latent_key: str="autotalker_latent",
+        active_gp_names_key: str="autotalker_active_gp_names",
         cell_type_key: str="cell-type",
         spatial_key: str="spatial",
         spatial_knng_key: str="autotalker_spatial_8nng",
@@ -43,11 +43,11 @@ def compute_benchmarking_metrics(
     spatial_key:
         Key under which the spatial coordinates are stored in ´adata.obsm´.
     spatial_knng_key:
-        Key under which the spatial nearest neighbor graph is / will be
-        stored in ´adata.obsp´ with the suffix '_connectivities'.
+        Key under which the spatial nearest neighbor graph will be stored in
+        ´adata.obsp´ with the suffix '_connectivities'.
     latent_knng_key:
-        Key under which the latent nearest neighbor graph is / will be 
-        stored in ´adata.obsp´ with the suffix '_connectivities'.
+        Key under which the latent nearest neighbor graph will be stored in
+        ´adata.obsp´ with the suffix '_connectivities'.
     n_neighbors:
         Number of neighbors used for the construction of the nearest
         neighbor graphs from the spatial coordinates and the latent
@@ -69,25 +69,23 @@ def compute_benchmarking_metrics(
     latent_knng_connectivities_key = latent_knng_key + "_connectivities"
 
     if spatial_model:
-        if spatial_knng_connectivities_key not in adata.obsp:
-            # Compute spatial (ground truth) connectivities
-            adata.obsp[spatial_knng_connectivities_key] = (
-                compute_graph_connectivities(
-                    adata=adata,
-                    feature_key=spatial_key,
-                    n_neighbors=n_neighbors,
-                    mode="knn",
-                    seed=seed))
-
-    if latent_knng_connectivities_key not in adata.obsp:
-        # Compute latent connectivities
-        adata.obsp[latent_knng_connectivities_key] = (
+        # Compute spatial (ground truth) connectivities
+        adata.obsp[spatial_knng_connectivities_key] = (
             compute_graph_connectivities(
                 adata=adata,
-                feature_key=latent_key,
+                feature_key=spatial_key,
                 n_neighbors=n_neighbors,
                 mode="knn",
                 seed=seed))
+
+    # Compute latent connectivities
+    adata.obsp[latent_knng_connectivities_key] = (
+        compute_graph_connectivities(
+            adata=adata,
+            feature_key=latent_key,
+            n_neighbors=n_neighbors,
+            mode="knn",
+            seed=seed))
 
     # Compute benchmarking metrics
     benchmark_dict = {}
