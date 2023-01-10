@@ -775,7 +775,7 @@ class Autotalker(BaseModelMixin):
                     adata: Optional[AnnData]=None
                     ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Get the index of selected gene programs as well as their gene weights of 
+        Get the index of selected gene programs as well as their gene weights of
         the gene expression negative binomial means decoder.
 
         Parameters:
@@ -784,7 +784,7 @@ class Autotalker(BaseModelMixin):
             Names of the selected gene programs for which data should be
             retrieved.
         adata:
-            AnnData object to be used. If ´None´, uses the adata object stored 
+            AnnData object to be used. If ´None´, uses the adata object stored
             in the model instance.
 
         Returns:
@@ -793,7 +793,7 @@ class Autotalker(BaseModelMixin):
             Index of the selected gene programs (dim: n_selected_gps,)
         selected_gp_weights:
             Gene expression decoder gene weights of the selected gene programs
-            (dim: (n_genes, n_gps) if ´self.node_label_method == self´ or 
+            (dim: (n_genes, n_gps) if ´self.node_label_method == self´ or
             (2 x n_genes, n_gps) otherwise).
         """
         self._check_if_trained(warn=True)
@@ -911,15 +911,18 @@ class Autotalker(BaseModelMixin):
             shuffle=False)
         node_loader = loader_dict["node_train_loader"]
 
+        # Get number of gene programs
+        if only_active_gps:
+            n_gps = self.get_active_gps(adata=adata).shape[0]
+        else:
+            n_gps = (self.n_nonaddon_gps_ + self.n_addon_gps_ )
+
         # Initialize latent vectors
         if return_mu_std:
-            mu = np.empty(shape=(adata.shape[0],
-                                 (self.n_nonaddon_gps_ + self.n_addon_gps_ )))
-            std = np.empty(shape=(adata.shape[0],
-                                  (self.n_nonaddon_gps_ + self.n_addon_gps_ )))
+            mu = np.empty(shape=(adata.shape[0], n_gps))
+            std = np.empty(shape=(adata.shape[0], n_gps))
         else:
-            z = np.empty(shape=(adata.shape[0],
-                                (self.n_nonaddon_gps_ + self.n_addon_gps_ )))
+            z = np.empty(shape=(adata.shape[0], n_gps))
 
         # Get latent representation for each batch of the dataloader and put it
         # into latent vectors
