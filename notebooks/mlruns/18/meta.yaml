@@ -1,0 +1,4 @@
+artifact_location: file:///home/sbirk/projects/autotalker/notebooks/mlruns/18
+experiment_id: '18'
+lifecycle_stage: active
+name: benchmark_encoder_layer_arch

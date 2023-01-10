@@ -1,0 +1,4 @@
+artifact_location: file:///home/sbirk/projects/autotalker/notebooks/mlruns/17
+experiment_id: '17'
+lifecycle_stage: active
+name: benchmark_node_label_method
