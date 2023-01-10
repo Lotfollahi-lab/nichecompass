@@ -260,7 +260,7 @@ class Autotalker(BaseModelMixin):
               lambda_gene_expr_recon: float=1.,
               lambda_group_lasso: float=0.,
               lambda_l1_addon: float=0.,
-              edge_val_ratio: float=0.05,
+              edge_val_ratio: float=0.1,
               node_val_ratio: float=0.1,
               edge_batch_size: int=64,
               node_batch_size: int=64,

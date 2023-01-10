@@ -71,7 +71,7 @@ class Trainer(BaseTrainerMixin):
                  model: nn.Module,
                  counts_key: str="counts",
                  adj_key: str="spatial_connectivities",
-                 edge_val_ratio: float=0.05,
+                 edge_val_ratio: float=0.1,
                  node_val_ratio: float=0.1,
                  edge_batch_size: int=64,
                  node_batch_size: int=64,
@@ -119,12 +119,12 @@ class Trainer(BaseTrainerMixin):
 
         print("--- INITIALIZING TRAINER ---")
         
-        # Use GPU if available
+        # Set seed and use GPU if available
         torch.manual_seed(self.seed_)
         if torch.cuda.is_available():
             torch.cuda.manual_seed(self.seed_)
             self.model.cuda()
-        self.device = torch.device("cuda" if torch.cuda.is_available() else 
+        self.device = torch.device("cuda" if torch.cuda.is_available() else
                                    "cpu")
 
         # Prepare data and get node-level and edge-level training and validation

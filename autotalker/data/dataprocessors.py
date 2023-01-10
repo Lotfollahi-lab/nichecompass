@@ -12,7 +12,7 @@ from .datasets import SpatialAnnTorchDataset
 
 
 def edge_level_split(data: Data,
-                     val_ratio: float=0.05,
+                     val_ratio: float=0.1,
                      test_ratio: float=0.,
                      is_undirected: bool=True,
                      neg_sampling_ratio: float=0.) -> Tuple[Data, Data, Data]:
@@ -94,7 +94,7 @@ def node_level_split_mask(data: Data,
 def prepare_data(adata: AnnData,
                  counts_key: str="counts",
                  adj_key: str="spatial_connectivities",
-                 edge_val_ratio: float=0.05,
+                 edge_val_ratio: float=0.1,
                  edge_test_ratio: float=0.,
                  node_val_ratio: float=0.1,
                  node_test_ratio: float=0.) -> dict:
