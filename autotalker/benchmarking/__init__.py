@@ -9,7 +9,7 @@ from .mlnmi import compute_mlnmi
 __all__ = ["compute_arclisi",
            "compute_avg_cad",
            "compute_avg_gcd",
-           "compute_benchmarking_metrics"
+           "compute_benchmarking_metrics",
            "compute_cad",
            "compute_cca",
            "compute_gcd",
