@@ -8,6 +8,7 @@ expression conservation.
 from typing import Optional
 
 import mlflow
+import scanpy as sc
 from anndata import AnnData
 
 from autotalker.utils import compute_graph_connectivities
@@ -65,27 +66,37 @@ def compute_benchmarking_metrics(
         ´gcd´, ´mlnmi´, ´cad´, ´arclisi´, ´germse´, ´cca´.
     """
     # Adding '_connectivities' as required by squidpy
-    spatial_knng_connectivities_key = spatial_knng_key + "_connectivities"
-    latent_knng_connectivities_key = latent_knng_key + "_connectivities"
+    # spatial_knng_connectivities_key = spatial_knng_key + "_connectivities"
+    # latent_knng_connectivities_key = latent_knng_key + "_connectivities"
 
     if spatial_model:
         # Compute spatial (ground truth) connectivities
-        adata.obsp[spatial_knng_connectivities_key] = (
-            compute_graph_connectivities(
-                adata=adata,
-                feature_key=spatial_key,
-                n_neighbors=n_neighbors,
-                mode="knn",
-                seed=seed))
+        sc.pp.neighbors(adata=adata,
+                        use_rep=spatial_key,
+                        n_neighbors=n_neighbors,
+                        random_state=seed,
+                        key_added=spatial_knng_key)
+        #adata.obsp[spatial_knng_connectivities_key] = (
+        #    compute_graph_connectivities(
+        #        adata=adata,
+        #        feature_key=spatial_key,
+        #        n_neighbors=n_neighbors,
+        #        mode="knn",
+        #        seed=seed))
 
     # Compute latent connectivities
-    adata.obsp[latent_knng_connectivities_key] = (
-        compute_graph_connectivities(
-            adata=adata,
-            feature_key=latent_key,
-            n_neighbors=n_neighbors,
-            mode="knn",
-            seed=seed))
+    sc.pp.neighbors(adata=adata,
+                    use_rep=latent_key,
+                    n_neighbors=n_neighbors,
+                    random_state=seed,
+                    key_added=latent_knng_key)
+    #adata.obsp[latent_knng_connectivities_key] = (
+    #    compute_graph_connectivities(
+    #        adata=adata,
+    #        feature_key=latent_key,
+    #        n_neighbors=n_neighbors,
+    #        mode="knn",
+    #        seed=seed))
 
     # Compute benchmarking metrics
     benchmark_dict = {}

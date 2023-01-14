@@ -9,6 +9,7 @@ from typing import Literal, Optional, Tuple, Union
 import mlflow
 import numpy as np
 import pandas as pd
+import scanpy as sc
 import torch
 from anndata import AnnData
 from scipy.special import erfc
@@ -380,7 +381,7 @@ class Autotalker(BaseModelMixin):
         p_h0, the probability that z0 > z1 and p_h1, the probability that 
         z1 >= z0. The rows are ordered by the log Bayes Factor. In addition, the
         (normalized) gene program / latent scores of the 
-        ´n_top_up_gps_retrieved´ top upregulated gene programs and 
+        ´n_top_up_gps_retrieved´ top upregulated gene programs and
         ´n_top_down_gps_retrieved´ top downregulated gene programs will be 
         stored in ´adata.obs´.
 
@@ -763,12 +764,17 @@ class Autotalker(BaseModelMixin):
                               " 'adata.obsm'.")
 
         # Compute latent connectivities
-        adata.obsp["latent_connectivities"] = compute_graph_connectivities(
-            adata=adata,
-            feature_key=self.latent_key_,
-            n_neighbors=n_neighbors,
-            mode=mode,
-            seed=seed)
+        sc.pp.neighbors(adata=adata,
+                        use_rep=self.latent_key_,
+                        n_neighbors=n_neighbors,
+                        random_state=seed,
+                        key_added="latent")
+        #adata.obsp["latent_connectivities"] = compute_graph_connectivities(
+        #    adata=adata,
+        #    feature_key=self.latent_key_,
+        #    n_neighbors=n_neighbors,
+        #    mode=mode,
+        #    seed=seed)
 
     def get_gp_data(self,
                     selected_gps: Optional[Union[str, list]]=None,

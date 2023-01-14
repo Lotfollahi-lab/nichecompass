@@ -79,23 +79,33 @@ def compute_mlnmi(
 
     if spatial_knng_connectivities_key not in adata.obsp:
         # Compute spatial (ground truth) connectivities
-        adata.obsp[spatial_knng_connectivities_key] = (
-            compute_graph_connectivities(
-                adata=adata,
-                feature_key=spatial_key,
-                n_neighbors=n_neighbors,
-                mode="knn",
-                seed=seed))
+        sc.pp.neighbors(adata=adata,
+                        use_rep=spatial_key,
+                        n_neighbors=n_neighbors,
+                        random_state=seed,
+                        key_added=spatial_knng_key)
+        #adata.obsp[spatial_knng_connectivities_key] = (
+        #    compute_graph_connectivities(
+        #        adata=adata,
+        #        feature_key=spatial_key,
+        #        n_neighbors=n_neighbors,
+        #        mode="knn",
+        #        seed=seed))
 
     if latent_knng_connectivities_key not in adata.obsp:
         # Compute latent connectivities
-        adata.obsp[latent_knng_connectivities_key] = (
-            compute_graph_connectivities(
-                adata=adata,
-                feature_key=latent_key,
-                n_neighbors=n_neighbors,
-                mode="knn",
-                seed=seed))
+        sc.pp.neighbors(adata=adata,
+                        use_rep=latent_key,
+                        n_neighbors=n_neighbors,
+                        random_state=seed,
+                        key_added=latent_knng_key)
+        #adata.obsp[latent_knng_connectivities_key] = (
+        #    compute_graph_connectivities(
+        #        adata=adata,
+        #        feature_key=latent_key,
+        #        n_neighbors=n_neighbors,
+        #        mode="knn",
+        #        seed=seed))
 
     # Define search space of clustering resolutions
     clustering_resolutions = np.linspace(start=0.1,

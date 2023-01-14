@@ -7,6 +7,7 @@ from the original spatial nearest neighbor graph.
 from typing import Optional
 
 import numpy as np
+import scanpy as sc
 import squidpy as sq
 from anndata import AnnData
 
@@ -154,23 +155,33 @@ def compute_cad(
 
     if spatial_knng_connectivities_key not in adata.obsp:
         # Compute spatial (ground truth) connectivities
-        adata.obsp[spatial_knng_connectivities_key] = (
-            compute_graph_connectivities(
-                adata=adata,
-                feature_key=spatial_key,
-                n_neighbors=n_neighbors,
-                mode="knn",
-                seed=seed))
+        sc.pp.neighbors(adata=adata,
+                        use_rep=spatial_key,
+                        n_neighbors=n_neighbors,
+                        random_state=seed,
+                        key_added=spatial_knng_key)
+        #adata.obsp[spatial_knng_connectivities_key] = (
+        #    compute_graph_connectivities(
+        #        adata=adata,
+        #        feature_key=spatial_key,
+        #        n_neighbors=n_neighbors,
+        #        mode="knn",
+        #        seed=seed))
 
     if latent_knng_connectivities_key not in adata.obsp:
         # Compute latent connectivities
-        adata.obsp[latent_knng_connectivities_key] = (
-            compute_graph_connectivities(
-                adata=adata,
-                feature_key=latent_key,
-                n_neighbors=n_neighbors,
-                mode="knn",
-                seed=seed))
+        sc.pp.neighbors(adata=adata,
+                        use_rep=latent_key,
+                        n_neighbors=n_neighbors,
+                        random_state=seed,
+                        key_added=latent_knng_key)
+        #adata.obsp[latent_knng_connectivities_key] = (
+        #    compute_graph_connectivities(
+        #        adata=adata,
+        #        feature_key=latent_key,
+        #        n_neighbors=n_neighbors,
+        #        mode="knn",
+        #        seed=seed))
 
     # Compute cell-type affinity matrix for spatial nearest neighbor graph
     sq.gr.nhood_enrichment(adata,
@@ -219,6 +230,11 @@ def compute_cad(
     nhood_enrichment_zscores_diff = (
         adata.uns[f"{cell_type_key}_latent_nhood_enrichment"]["zscore"] -
         adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"])
-    cad = np.linalg.norm(nhood_enrichment_zscores_diff,
-                         ord="fro")
+
+    # Remove np.nan ´z_scores´ which can happen as a result of 
+    # ´sq.pl.nhood_enrichment´ permutation
+    nhood_enrichment_zscores_diff = (
+        nhood_enrichment_zscores_diff[~np.isnan(nhood_enrichment_zscores_diff)])
+
+    cad = np.linalg.norm(nhood_enrichment_zscores_diff)
     return cad

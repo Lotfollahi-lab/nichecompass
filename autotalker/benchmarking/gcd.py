@@ -7,6 +7,7 @@ original spatial nearest neighbor graph.
 from typing import Optional
 
 import numpy as np
+import scanpy as sc
 from anndata import AnnData
 
 from autotalker.utils import compute_graph_connectivities
@@ -127,23 +128,33 @@ def compute_gcd(
 
     if spatial_knng_connectivities_key not in adata.obsp:
         # Compute spatial (ground truth) connectivities
-        adata.obsp[spatial_knng_connectivities_key] = (
-            compute_graph_connectivities(
-                adata=adata,
-                feature_key=spatial_key,
-                n_neighbors=n_neighbors,
-                mode="knn",
-                seed=seed))
+        sc.pp.neighbors(adata=adata,
+                        use_rep=spatial_key,
+                        n_neighbors=n_neighbors,
+                        random_state=seed,
+                        key_added=spatial_knng_key)
+        #adata.obsp[spatial_knng_connectivities_key] = (
+        #    compute_graph_connectivities(
+        #        adata=adata,
+        #        feature_key=spatial_key,
+        #        n_neighbors=n_neighbors,
+        #        mode="knn",
+        #        seed=seed))
 
     if latent_knng_connectivities_key not in adata.obsp:
         # Compute latent connectivities
-        adata.obsp[latent_knng_connectivities_key] = (
-            compute_graph_connectivities(
-                adata=adata,
-                feature_key=latent_key,
-                n_neighbors=n_neighbors,
-                mode="knn",
-                seed=seed))
+        sc.pp.neighbors(adata=adata,
+                        use_rep=latent_key,
+                        n_neighbors=n_neighbors,
+                        random_state=seed,
+                        key_added=latent_knng_key)
+        #adata.obsp[latent_knng_connectivities_key] = (
+        #    compute_graph_connectivities(
+        #        adata=adata,
+        #        feature_key=latent_key,
+        #        n_neighbors=n_neighbors,
+        #        mode="knn",
+        #        seed=seed))
 
     # Compute Frobenius norm of the matrix of differences to quantify distance
     connectivities_diff = (adata.obsp[latent_knng_connectivities_key] -
@@ -151,4 +162,5 @@ def compute_gcd(
                            ).toarray()
     gcd = np.linalg.norm(connectivities_diff,
                          ord="fro")
+
     return gcd
