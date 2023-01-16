@@ -182,16 +182,12 @@ def _compute_per_cell_clisi_from_feature(
     per_cell_clisi:
         1-D NumPy array that contains the per cell CLISIs.
     """
-    knn_indices, knn_distances, _ = sc.neighbors.compute_neighbors_umap(
-        X=sp.csr_matrix(adata.X),
+    knn_indices, knn_distances = compute_graph_indices_and_distances(
+        adata=adata,
+        feature_key=feature_key,
         n_neighbors=n_neighbors,
-        random_state=seed)
-    #knn_indices, knn_distances = compute_graph_indices_and_distances(
-    #    adata=adata,
-    #    feature_key=feature_key,
-    #    n_neighbors=n_neighbors,
-    #    mode="knn",
-    #    seed=seed)
+        mode="knn",
+        seed=seed)
 
     if perplexity is None:
         if knn_indices.shape[1] < 3:
