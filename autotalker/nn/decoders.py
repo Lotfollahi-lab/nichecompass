@@ -2,7 +2,7 @@
 This module contains decoders used by the Autotalker model.
 """
 
-from typing import Literal, Tuple
+from typing import Literal, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -65,7 +65,10 @@ class MaskedGeneExprDecoder(nn.Module):
         dimensionality).
     n_addon_input:
         Number of non-maskable add-on input nodes to the decoder (non-maskable
-        latent space dimensionality)
+        latent space dimensionality).
+    n_cond_embed_input:
+        Number of conditional embedding input nodes to the decoder (conditional
+        embedding dimensionality).
     n_output:
         Number of output nodes from the decoder (number of genes).
     mask:
@@ -75,18 +78,19 @@ class MaskedGeneExprDecoder(nn.Module):
         The distribution used for gene expression reconstruction. If `nb`, uses
         a Negative Binomial distribution. If `zinb`, uses a Zero-inflated
         Negative Binomial distribution.
-        
     """
     def __init__(self,
                  n_input: int,
                  n_addon_input: int,
+                 n_cond_embed_input: int,
                  n_output: int,
                  mask: torch.Tensor,
                  recon_dist: Literal["nb", "zinb"]):
         super().__init__()
 
         print(f"MASKED GENE EXPRESSION DECODER -> n_input: {n_input}, "
-              f"n_addon_input: {n_addon_input}, n_output: {n_output}")
+              f"n_cond_embed_input: {n_cond_embed_input}, n_addon_input: "
+              f"{n_addon_input}, n_output: {n_output}")
 
         self.recon_dist = recon_dist
 
@@ -96,6 +100,7 @@ class MaskedGeneExprDecoder(nn.Module):
             bias=False,
             mask=mask,
             n_addon_input=n_addon_input,
+            n_cond_embed_input=n_cond_embed_input,
             activation=nn.Softmax(dim=-1))
 
         if recon_dist == "zinb":
@@ -105,11 +110,13 @@ class MaskedGeneExprDecoder(nn.Module):
                 bias=False,
                 mask=mask,
                 n_addon_input=n_addon_input,
+                n_cond_embed_input=n_cond_embed_input,
                 activation=nn.Identity())
 
     def forward(self,
                 z: torch.Tensor,
-                log_library_size: torch.Tensor
+                log_library_size: torch.Tensor,
+                cond_embed: Optional[torch.Tensor]=None,
                 ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass of the masked gene expression decoder.
@@ -126,7 +133,12 @@ class MaskedGeneExprDecoder(nn.Module):
         zinb_parameters:
             Parameters for the ZINB distribution to model gene expression.
         """
+        # Add conditional embedding to latent feature vector
+        if cond_embed is not None:
+            z = torch.cat((z, cond_embed), dim=-1)
+        
         nb_means_normalized = self.nb_means_normalized_decoder(z)
+        
         nb_means = torch.exp(log_library_size) * nb_means_normalized
         if self.recon_dist == "nb":
             gene_expr_decoder_params = nb_means

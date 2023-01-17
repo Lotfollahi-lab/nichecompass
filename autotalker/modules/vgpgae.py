@@ -43,10 +43,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         mask).
     n_addon_gps:
         Number of add-on nodes in the latent space (de-novo gene programs).
+    n_cond_embed:
+        Number of conditional embedding nodes.
     n_output:
         Number of nodes in the output layer.
     gene_expr_decoder_mask:
         Gene program mask for the gene expression decoder.
+    conditions:
+        Conditions used for the conditional embedding.
     conv_layer_encoder:
         Convolutional layer used in the graph encoder.
     encoder_n_attention_heads:
@@ -92,14 +96,19 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     log_variational:
         If ´True´, transforms x by log(x+1) prior to encoding for numerical 
         stability (not normalization).
+    cond_embed_injection:
+        Determines in which VGPGAE modules the conditional embedding is
+        injected.
     """
     def __init__(self,
                  n_input: int,
                  n_hidden_encoder: int,
                  n_nonaddon_gps: int,
                  n_addon_gps: int,
+                 n_cond_embed: int,
                  n_output: int,
                  gene_expr_decoder_mask: torch.Tensor,
+                 conditions: list=[],
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=4,
                  dropout_rate_encoder: float=0.,
@@ -113,13 +122,20 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     "one-hop-sum",
                     "one-hop-attention"]="one-hop-attention",
                  active_gp_thresh_ratio: float=1.,
-                 log_variational: bool=True):
+                 log_variational: bool=True,
+                 cond_embed_injection: Optional[list]=["encoder",
+                                                       "gene_expr_decoder"]):
         super().__init__()
         self.n_input_ = n_input
         self.n_hidden_encoder_ = n_hidden_encoder
         self.n_nonaddon_gps_ = n_nonaddon_gps
         self.n_addon_gps_ = n_addon_gps
+        self.n_cond_embed_ = n_cond_embed
         self.n_output_ = n_output
+        self.conditions_ = conditions
+        self.n_conditions_ = len(conditions)
+        self.condition_label_encoder_ = {
+            k: v for k, v in zip(conditions, range(len(conditions)))}
         self.conv_layer_encoder_ = conv_layer_encoder
         self.encoder_n_attention_heads_ = encoder_n_attention_heads
         self.dropout_rate_encoder_ = dropout_rate_encoder
@@ -130,6 +146,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.node_label_method_ = node_label_method
         self.active_gp_thresh_ratio_ = active_gp_thresh_ratio
         self.log_variational_ = log_variational
+        self.cond_embed_injection = cond_embed_injection
         self.freeze_ = False
 
         print("--- INITIALIZING NEW NETWORK MODULE: VARIATIONAL GENE PROGRAM "
@@ -139,9 +156,18 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
               f"gene_expr_recon_dist: {gene_expr_recon_dist}")
         print(f"NODE LABEL METHOD -> {node_label_method}")
         print(f"ACTIVE GP THRESHOLD RATIO -> {active_gp_thresh_ratio}")
+        print(f"LOG VARIATIONAL -> {log_variational}")
+        print(f"CONDITIONAL EMBEDDING INJECTION -> {cond_embed_injection}")
+
+        if (cond_embed_injection is not None) & (self.n_conditions_ > 0):
+            self.cond_embedder = nn.Embedding(
+                self.n_conditions,
+                self.n_cond_embed)
 
         self.encoder = GraphEncoder(
             n_input=n_input,
+            n_cond_embed_input=(n_cond_embed if "encoder" in 
+                                self.cond_embed_injection else 0),
             n_hidden=n_hidden_encoder,
             n_latent=n_nonaddon_gps,
             n_addon_latent=n_addon_gps,
@@ -156,6 +182,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.gene_expr_decoder = MaskedGeneExprDecoder(
             n_input=n_nonaddon_gps,
             n_addon_input=n_addon_gps,
+            n_cond_embed_input=(n_cond_embed if "gene_expr_decoder" in 
+                                self.cond_embed_injection else 0),
             n_output=n_output,
             mask=gene_expr_decoder_mask,
             recon_dist=self.gene_expr_recon_dist_)
@@ -179,7 +207,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     def forward(self,
                 data_batch: Data,
                 decoder: Literal["graph", "gene_expr"],
-                use_only_active_gps: bool=False) -> dict:
+                use_only_active_gps: bool=False,
+                condition: Optional[int]=None) -> dict:
         """
         Forward pass of the VGPGAE module.
 
@@ -194,6 +223,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         use_only_active_gps:
             Only relevant if ´decoder == graph´. If ´True´, use only active gene
             programs for edge reconstruction.
+        condition:
+            Label encoding of the condition.
 
         Returns
         ----------
@@ -203,6 +234,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             distribution if ´decoder == gene_expr´, as well as ´mu´ and ´logstd´ 
             from the latent space distribution.
         """
+        if self.cond_embed_injection is not None:
+            cond_embed = self.cond_embedder(condition)
+        else:
+            cond_embed = None
+
         x = data_batch.x # dim: n_obs x n_genes
         edge_index = data_batch.edge_index # dim 2 x n_edges
         output = {}
@@ -217,7 +253,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             x_enc = x
 
         # Use encoder to get latent distribution parameters and latent features
-        self.mu, self.logstd = self.encoder(x=x_enc, edge_index=edge_index)
+        self.mu, self.logstd = self.encoder(x=x_enc,
+                                            edge_index=edge_index,
+                                            cond_embed=cond_embed)
         output["mu"] = self.mu
         output["logstd"] = self.logstd
         z = self.reparameterize(output["mu"], output["logstd"])
@@ -241,7 +279,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
             output["gene_expr_dist_params"] = self.gene_expr_decoder(
                 z=z[:data_batch.batch_size],
-                log_library_size=self.log_library_size[:data_batch.batch_size])
+                log_library_size=self.log_library_size[:data_batch.batch_size],
+                cond_embed=cond_embed)
         return output
 
     def loss(self,
