@@ -234,7 +234,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             distribution if ´decoder == gene_expr´, as well as ´mu´ and ´logstd´ 
             from the latent space distribution.
         """
-        if self.cond_embed_injection is not None:
+        if (self.cond_embed_injection is not None) & (self.n_conditions_ > 0):
             cond_embed = self.cond_embedder(condition)
         else:
             cond_embed = None
