@@ -214,3 +214,12 @@ def plot_loss_curves(loss_dict: dict) -> plt.figure:
     fig = plt.gcf()
     plt.close()
     return fig
+
+
+def _cycle_iterable(iterable):
+    iterator = iter(iterable)
+    while True:
+        try:
+            yield next(iterator)
+        except StopIteration:
+            iterator = iter(iterable)

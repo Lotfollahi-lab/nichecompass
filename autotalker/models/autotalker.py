@@ -263,8 +263,8 @@ class Autotalker(BaseModelMixin):
               lambda_l1_addon: float=0.,
               edge_val_ratio: float=0.1,
               node_val_ratio: float=0.1,
-              edge_batch_size: int=64,
-              node_batch_size: int=64,
+              edge_batch_size: int=128,
+              node_batch_size: int=16,
               mlflow_experiment_id: Optional[str]=None,
               **trainer_kwargs):
         """
