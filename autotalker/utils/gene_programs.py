@@ -20,12 +20,16 @@ def add_gps_from_gp_dict_to_adata(
         gp_targets_mask_key: str="autotalker_gp_targets",
         gp_sources_mask_key: str="autotalker_gp_sources",
         gp_names_key: str="autotalker_gp_names",
+        source_genes_idx_key: str="autotalker_source_genes_idx",
+        target_genes_idx_key: str="autotalker_target_genes_idx",
+        genes_idx_key: str="autotalker_genes_idx",
         min_genes_per_gp: int=1,
         min_source_genes_per_gp: int=0,
         min_target_genes_per_gp: int=0,
         max_genes_per_gp: Optional[int]=None,
         max_source_genes_per_gp: Optional[int]=None,
-        max_target_genes_per_gp: Optional[int]=None):
+        max_target_genes_per_gp: Optional[int]=None,
+        filter_genes_not_in_masks: bool=False):
     """
     Add gene programs defined in a gene program dictionary to an AnnData object
     by converting the gene program lists of gene program target and source genes
@@ -63,6 +67,15 @@ def add_gps_from_gp_dict_to_adata(
         (transmitting nodes)).
     gp_names_key:
         Key in ´adata.uns´ where the gene program names will be stored.
+    source_genes_idx_key:
+        Key in ´adata.uns´ where the index of the source genes that are in the
+        gene program mask will be stored.
+    target_genes_idx_key:
+        Key in ´adata.uns´ where the index of the target genes that are in the
+        gene program mask will be stored.
+    genes_idx_key:
+        Key in ´adata.uns´ where the index of a concatenated vector of target
+        and source genes that are in the gene program masks will be stored.
     min_genes_per_gp:
         Minimum number of genes in a gene program inluding both target and 
         source genes that need to be available in the adata (gene expression has
@@ -87,6 +100,9 @@ def add_gps_from_gp_dict_to_adata(
         Maximum number of target genes in a gene program that can be available 
         in the adata (gene expression has been probed) for a gene program not to
         be discarded.
+    filter_genes_not_in_masks:
+        If ´True´, remove the genes that are not in the gp masks from the adata
+        object.
     """
     # Retrieve probed genes from adata
     adata_genes = (adata.var_names.str.upper() if genes_uppercase
@@ -124,6 +140,21 @@ def add_gps_from_gp_dict_to_adata(
     adata.varm[gp_sources_mask_key] = gp_sources_mask
     adata.varm[gp_targets_mask_key] = gp_targets_mask
 
+    if filter_genes_not_in_masks:
+        # Filter out genes not present in any of the masks
+        combined_gp_mask = np.maximum(adata.varm["autotalker_gp_sources"],
+                                      adata.varm["autotalker_gp_targets"])
+        adata._inplace_subset_var(combined_gp_mask.sum(axis=1) > 0)
+
+    # Get index of genes present in the sources and targets mask respectively
+    adata.uns[source_genes_idx_key] = np.nonzero(
+        adata.varm["autotalker_gp_sources"].sum(axis=1))[0]
+    adata.uns[target_genes_idx_key] = np.nonzero(
+        adata.varm["autotalker_gp_targets"].sum(axis=1))[0]
+    adata.uns[genes_idx_key] = np.concatenate(
+        (adata.uns[target_genes_idx_key],
+         adata.uns[source_genes_idx_key] + adata.n_vars), axis=0)
+         
     # Add gene program names of gene programs that passed filter to adata.uns
     removed_gp_idx = np.where(~gp_mask_filter)[0]
     adata.uns[gp_names_key] = np.array([gp_name for i, (gp_name, _) in 

@@ -270,9 +270,10 @@ class Trainer(BaseTrainerMixin):
                     use_only_active_gps=self.use_only_active_gps)
 
                 #with torch.no_grad():
-                    #print(node_train_model_output["node_labels"])
-                    #print(node_train_model_output["node_labels"][:,:347].sum())
-                    #print(node_train_model_output["node_labels"][:,347:].sum())
+                    #print("")
+                    #print(node_train_model_output["node_labels"].sum())
+                    #print(node_train_model_output["node_labels"][:,:338].sum()/338)
+                    #print(node_train_model_output["node_labels"][:,338:].sum()/81)
 
                 edge_train_data_batch = edge_train_data_batch.to(self.device)
 

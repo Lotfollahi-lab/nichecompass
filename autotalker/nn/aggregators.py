@@ -15,6 +15,7 @@ from torch_sparse import SparseTensor
 class OneHopAttentionNodeLabelAggregator(MessagePassing):
     def __init__(self,
                  n_input: int,
+                 genes_idx: torch.Tensor,
                  n_heads: int=4,
                  leaky_relu_negative_slope: float=0.2,
                  dropout_rate: float=0.):
@@ -36,6 +37,8 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         n_input:
             Number of input nodes to the Node Label Aggregator (corresponds to
             number of genes).
+        genes_idx:
+            Index of genes that are in the gp mask.
         n_heads:
             Number of attention heads for multi-head attention.
         leaky_relu_negative_slope:
@@ -47,6 +50,7 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         """
         super().__init__(node_dim=0)
         self.n_input = n_input
+        self.genes_idx = genes_idx
         self.n_heads = n_heads
         self.leaky_relu_negative_slope = leaky_relu_negative_slope
         self.linear_l_l = Linear(n_input,
@@ -107,7 +111,7 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         x_l = x_l.repeat(1, self.n_heads).view(-1, self.n_heads, self.n_input)
         output = self.propagate(edge_index, x=(x_l, x_r), g=(g_l, g_r))
         x_neighbors_att = output.mean(dim=1)
-        node_labels = torch.cat((x, x_neighbors_att), dim=-1)[:batch_size]
+        node_labels = torch.cat((x, x_neighbors_att), dim=-1)[:batch_size, self.genes_idx]
         self._alpha = None
         return node_labels
 

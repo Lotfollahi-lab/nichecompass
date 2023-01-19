@@ -56,7 +56,10 @@ class Autotalker(BaseModelMixin):
         to the model.
     latent_key:
         Key under which the latent / gene program representation of active gene
-        programs will be stored in ´adata.obsm´ after model training. 
+        programs will be stored in ´adata.obsm´ after model training.
+    genes_idx_key:
+        Key in ´adata.uns´ where the index of a concatenated vector of target
+        and source genes that are in the gene program masks are stored.
     include_edge_recon_loss:
         If `True`, includes the edge reconstruction loss in the loss 
         optimization.
@@ -126,6 +129,7 @@ class Autotalker(BaseModelMixin):
                  gp_targets_mask_key: str="autotalker_gp_targets",
                  gp_sources_mask_key: str="autotalker_gp_sources",
                  latent_key: str="autotalker_latent",
+                 genes_idx_key: str="autotalker_genes_idx",
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
                  gene_expr_recon_dist: Literal["nb", "zinb"]="nb",
@@ -201,6 +205,7 @@ class Autotalker(BaseModelMixin):
                 dtype=torch.float32)), dim=1)
         self.n_nonaddon_gps_ = len(self.gp_mask_)
         self.n_addon_gps_ = n_addon_gps
+        self.genes_idx_ = adata.uns[genes_idx_key]
         
         # Validate counts layer key and counts values
         if counts_key not in adata.layers:
@@ -236,6 +241,7 @@ class Autotalker(BaseModelMixin):
             n_addon_gps=self.n_addon_gps_,
             n_output=self.n_output_,
             gene_expr_decoder_mask=self.gp_mask_,
+            genes_idx=self.genes_idx_,
             conv_layer_encoder=self.conv_layer_encoder_,
             encoder_n_attention_heads=self.encoder_n_attention_heads_,
             dropout_rate_encoder=self.dropout_rate_encoder_,
