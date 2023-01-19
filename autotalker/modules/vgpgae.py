@@ -179,8 +179,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     def forward(self,
                 data_batch: Data,
                 decoder: Literal["graph", "gene_expr"],
-                use_only_active_gps: bool=False,
-                use_cached_encoding: bool=False) -> dict:
+                use_only_active_gps: bool=False) -> dict:
         """
         Forward pass of the VGPGAE module.
 
@@ -195,9 +194,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         use_only_active_gps:
             Only relevant if ´decoder == graph´. If ´True´, use only active gene
             programs for edge reconstruction.
-        use_cached_encoding:
-            If ´True´, skip encoder and use cached encoding from previous
-            forward pass.
 
         Returns
         ----------
@@ -220,23 +216,21 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         else:
             x_enc = x
 
-        if not use_cached_encoding:
-            # Use encoder to get latent distribution parameters and latent features
-            self.mu, self.logstd = self.encoder(x=x_enc, edge_index=edge_index)
-            self.z = self.reparameterize(self.mu, self.logstd)
-
-            # Only retain active gene programs
-            if use_only_active_gps:
-                active_gp_mask = self.get_active_gp_mask()
-                self.z[:, ~active_gp_mask] = 0
-
+        # Use encoder to get latent distribution parameters and latent features
+        self.mu, self.logstd = self.encoder(x=x_enc, edge_index=edge_index)
         output["mu"] = self.mu
         output["logstd"] = self.logstd
+        z = self.reparameterize(self.mu, self.logstd)
+
+        # Only retain active gene programs
+        if use_only_active_gps:
+            active_gp_mask = self.get_active_gp_mask()
+            z[:, ~active_gp_mask] = 0
 
         # Use decoder to get either the reconstructed adjacency matrix logits
         # or the gene expression parameters
         if decoder == "graph":
-            output["adj_recon_logits"] = self.graph_decoder(z=self.z)
+            output["adj_recon_logits"] = self.graph_decoder(z=z)
         elif decoder == "gene_expr":
             # Compute aggregated neighborhood gene expression for gene 
             # expression reconstruction        
@@ -246,7 +240,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 batch_size=data_batch.batch_size)
 
             output["gene_expr_dist_params"] = self.gene_expr_decoder(
-                z=self.z[:data_batch.batch_size],
+                z=z[:data_batch.batch_size],
                 log_library_size=self.log_library_size[:data_batch.batch_size])
         return output
 

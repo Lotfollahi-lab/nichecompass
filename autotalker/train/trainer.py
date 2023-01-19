@@ -256,9 +256,6 @@ class Trainer(BaseTrainerMixin):
             
             # Jointly loop through edge- and node-level batches, repeating node-
             # level batches until edge-level batches are complete
-            batch = 0
-            print(len(self.edge_train_loader))
-            print(len(self.node_train_loader))
             for edge_train_data_batch, node_train_data_batch in zip(
                     self.edge_train_loader,
                     _cycle_iterable(self.node_train_loader)): # itertools.cycle
@@ -272,8 +269,7 @@ class Trainer(BaseTrainerMixin):
                     decoder="gene_expr",
                     use_only_active_gps=self.use_only_active_gps)
 
-                with torch.no_grad():
-                    batch += 1
+                #with torch.no_grad():
                     #print(node_train_model_output["node_labels"])
                     #print(node_train_model_output["node_labels"][:,:347].sum())
                     #print(node_train_model_output["node_labels"][:,347:].sum())
@@ -284,8 +280,7 @@ class Trainer(BaseTrainerMixin):
                 edge_train_model_output = self.model(
                     data_batch=edge_train_data_batch,
                     decoder="graph",
-                    use_only_active_gps=self.use_only_active_gps,
-                    use_cached_encoding=True)
+                    use_only_active_gps=self.use_only_active_gps)
 
                 # Calculate training loss (edge reconstruction loss + gene
                 # expression reconstruction loss + regularization losses)
@@ -402,7 +397,7 @@ class Trainer(BaseTrainerMixin):
         # Jointly loop through edge- and node-level batches, repeating node-
         # level batches until edge-level batches are complete
         for edge_val_data_batch, node_val_data_batch in zip(
-                self.edge_val_loader, itertools.cycle(self.node_val_loader)):
+                self.edge_val_loader, _cycle_iterable(self.node_val_loader)):
             # Forward pass node level batch
             node_val_data_batch = node_val_data_batch.to(self.device)
             node_val_model_output = self.model(
@@ -410,17 +405,12 @@ class Trainer(BaseTrainerMixin):
                 decoder="gene_expr",
                 use_only_active_gps=True)
 
-            # Remove node val data batch to free space on GPU
-            del(node_val_data_batch)
-            torch.cuda.empty_cache()
-
             # Forward pass edge level batch
             edge_val_data_batch = edge_val_data_batch.to(self.device)
             edge_val_model_output = self.model(
                 data_batch=edge_val_data_batch,
                 decoder="graph",
-                use_only_active_gps=True,
-                use_cached_encoding=True)
+                use_only_active_gps=True)
 
             # Calculate validation loss (edge reconstruction loss + gene 
             # expression reconstruction loss + regularization losses)
