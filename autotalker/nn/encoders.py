@@ -2,7 +2,7 @@
 This module contains encoders used by the Autotalker model.
 """
 
-from typing import Literal
+from typing import Literal, Optional
 
 import torch
 import torch.nn as nn
@@ -22,6 +22,8 @@ class GraphEncoder(nn.Module):
     ----------
     n_input:
         Number of input nodes to the GCN encoder.
+    n_cond_embed_input:
+        Number of conditional embedding input nodes to the GCN encoder.
     n_hidden:
         Number of hidden nodes outputted by the first GCN layer.
     n_latent:
@@ -41,6 +43,7 @@ class GraphEncoder(nn.Module):
     """
     def __init__(self,
                  n_input: int,
+                 n_cond_embed_input: int,
                  n_hidden: int,
                  n_latent: int,
                  n_addon_latent: int=0,
@@ -51,11 +54,15 @@ class GraphEncoder(nn.Module):
         super().__init__()
         self.n_addon_latent = n_addon_latent
 
-        print(f"GRAPH ENCODER -> n_input: {n_input}, n_hidden: {n_hidden}, "
-              f"n_latent: {n_latent}, n_addon_latent: {n_addon_latent}, "
-              f"conv_layer: {conv_layer}, n_attention_heads: "
-              f"{n_attention_heads if conv_layer == 'gatv2conv' else '-'}, "
+        print(f"GRAPH ENCODER -> n_input: {n_input}, n_cond_embed_input: "
+              f"{n_cond_embed_input}, n_hidden: {n_hidden}, n_latent: "
+              f"{n_latent}, n_addon_latent: {n_addon_latent}, conv_layer: "
+              f"{conv_layer}, n_attention_heads: "
+              f"{n_attention_heads if conv_layer == 'gatv2conv' else '0'}, "
               f"dropout_rate: {dropout_rate}")
+
+        if n_cond_embed_input != 0:
+            n_input =+ n_cond_embed_input
 
         if conv_layer == "gcnconv":
             self.conv_l1 = GCNConv(n_input, n_hidden)
@@ -66,33 +73,34 @@ class GraphEncoder(nn.Module):
                 self.addon_conv_logstd = GCNConv(n_hidden, n_addon_latent)
         elif conv_layer == "gatv2conv":
             self.conv_l1 = GATv2Conv(n_input,
-                                    n_hidden,
-                                    heads=n_attention_heads,
-                                    concat=False)
+                                     n_hidden,
+                                     heads=n_attention_heads,
+                                     concat=False)
             self.conv_mu = GATv2Conv(n_hidden,
-                                    n_latent,
-                                    heads=n_attention_heads,
-                                    concat=False)
+                                     n_latent,
+                                     heads=n_attention_heads,
+                                     concat=False)
             self.conv_logstd = GATv2Conv(n_hidden,
-                                        n_latent,
-                                        heads=n_attention_heads,
-                                        concat=False)
+                                         n_latent,
+                                         heads=n_attention_heads,
+                                         concat=False)
             if n_addon_latent != 0:
                 self.addon_conv_mu = GATv2Conv(n_hidden,
-                                              n_addon_latent,
-                                              heads=n_attention_heads,
-                                              concat=False)
+                                               n_addon_latent,
+                                               heads=n_attention_heads,
+                                               concat=False)
                 self.addon_conv_logstd = GATv2Conv(n_hidden,
-                                                  n_addon_latent,
-                                                  heads=n_attention_heads,
-                                                  concat=False)
+                                                   n_addon_latent,
+                                                   heads=n_attention_heads,
+                                                   concat=False)
 
         self.activation = activation
         self.dropout = nn.Dropout(dropout_rate)
 
     def forward(self,
                 x: torch.Tensor,
-                edge_index: torch.Tensor) -> torch.Tensor:
+                edge_index: torch.Tensor,
+                cond_embed: Optional[torch.Tensor]=None) -> torch.Tensor:
         """
         Forward pass of the GCN encoder.
 
@@ -102,6 +110,8 @@ class GraphEncoder(nn.Module):
             Tensor containing the gene expression input features.
         edge_index:
             Tensor containing the edge indices for message passing.
+        cond_embed:
+            Tensor containing the conditional embedding.
         
         Returns
         ----------
@@ -112,6 +122,10 @@ class GraphEncoder(nn.Module):
             Tensor containing the log standard deviations of the latent space
             normal distribution.     
         """
+        # Add conditional embedding to node feature vector
+        if cond_embed is not None:
+            x = torch.cat((x, cond_embed), dim=-1)
+
         # Part of forward pass shared across all nodes
         hidden = self.dropout(self.activation(self.conv_l1(x, edge_index)))
 

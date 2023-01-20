@@ -57,6 +57,8 @@ class Autotalker(BaseModelMixin):
     latent_key:
         Key under which the latent / gene program representation of active gene
         programs will be stored in ´adata.obsm´ after model training.
+    condition_key:
+        Key under which the conditions are stored in ´adata.obs´.    
     genes_idx_key:
         Key in ´adata.uns´ where the index of a concatenated vector of target
         and source genes that are in the gene program masks are stored.
@@ -129,6 +131,9 @@ class Autotalker(BaseModelMixin):
                  gp_targets_mask_key: str="autotalker_gp_targets",
                  gp_sources_mask_key: str="autotalker_gp_sources",
                  latent_key: str="autotalker_latent",
+                 condition_key: Optional[str]="sample",
+                 cond_embed_injection: Optional[list]=["encoder",
+                                                       "gene_expr_decoder"],
                  genes_idx_key: str="autotalker_genes_idx",
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
@@ -156,6 +161,8 @@ class Autotalker(BaseModelMixin):
         self.gp_targets_mask_key_ = gp_targets_mask_key
         self.gp_sources_mask_key_ = gp_sources_mask_key
         self.latent_key_ = latent_key
+        self.condition_key_ = condition_key
+        self.cond_embed_injection_ = cond_embed_injection
         self.include_edge_recon_loss_ = include_edge_recon_loss
         self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
         self.gene_expr_recon_dist_ = gene_expr_recon_dist
@@ -205,7 +212,15 @@ class Autotalker(BaseModelMixin):
                 dtype=torch.float32)), dim=1)
         self.n_nonaddon_gps_ = len(self.gp_mask_)
         self.n_addon_gps_ = n_addon_gps
+        
+        # Retrieve index of genes in gp mask
         self.genes_idx_ = adata.uns[genes_idx_key]
+
+        # Retrieve conditions
+        if condition_key is not None:
+            self.conditions_ = adata.obs[condition_key].unique().tolist()
+        else:
+            self.conditions_ = []
         
         # Validate counts layer key and counts values
         if counts_key not in adata.layers:
@@ -231,6 +246,12 @@ class Autotalker(BaseModelMixin):
             raise ValueError("Please specify an adequate ´gp_names_key´. "
                              "By default the gene program names are assumed to "
                              "be stored in adata.uns['autotalker_gp_names'].")
+
+        # Validate condition key
+        if condition_key not in adata.obs:
+            raise ValueError("Please specify an adequate ´condition_key´. "
+                             "By default the conditions are assumed to "
+                             "be stored in adata.obs['sample'].")
         
         # Initialize model with Variational Gene Program Graph Autoencoder 
         # neural network module
@@ -242,6 +263,7 @@ class Autotalker(BaseModelMixin):
             n_output=self.n_output_,
             gene_expr_decoder_mask=self.gp_mask_,
             genes_idx=self.genes_idx_,
+            conditions=self.conditions_,
             conv_layer_encoder=self.conv_layer_encoder_,
             encoder_n_attention_heads=self.encoder_n_attention_heads_,
             dropout_rate_encoder=self.dropout_rate_encoder_,
@@ -250,8 +272,9 @@ class Autotalker(BaseModelMixin):
             include_gene_expr_recon_loss=self.include_gene_expr_recon_loss_,
             gene_expr_recon_dist=self.gene_expr_recon_dist_,
             node_label_method=self.node_label_method_,
+            active_gp_thresh_ratio=self.active_gp_thresh_ratio_,
             log_variational=self.log_variational_,
-            active_gp_thresh_ratio=self.active_gp_thresh_ratio_)
+            cond_embed_injection=self.cond_embed_injection_)
 
         self.is_trained_ = False
         # Store init params for saving and loading
@@ -327,6 +350,7 @@ class Autotalker(BaseModelMixin):
             model=self.model,
             counts_key=self.counts_key_,
             adj_key=self.adj_key_,
+            condition_key=self.condition_key_,
             edge_val_ratio=edge_val_ratio,
             node_val_ratio=node_val_ratio,
             edge_batch_size=edge_batch_size,
@@ -826,6 +850,20 @@ class Autotalker(BaseModelMixin):
         selected_gps_weights = (gp_weights[:, selected_gps_idx].cpu().detach()
                                 .numpy())
         return selected_gps_idx, selected_gps_weights
+
+    def get_conditional_embeddings(self) -> np.ndarray:
+        """
+        Get the conditional embeddings.
+
+        Returns:
+        ----------
+        cond_embed:
+            Conditional embeddings.
+        """
+        self._check_if_trained(warn=True)
+        
+        cond_embed = self.model.cond_embedder.weight.cpu().detach().numpy()
+        return cond_embed
 
     def get_active_gps(
             self,

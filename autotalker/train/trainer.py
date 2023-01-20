@@ -45,6 +45,8 @@ class Trainer(BaseTrainerMixin):
         Key under which the raw counts are stored in ´adata.layer´.
     adj_key:
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
+    condition_key:
+        Key under which the conditions are stored in ´adata.obs´.    
     edge_val_ratio:
         Fraction of the data that is used as validation set on edge-level. The
         rest of the data will be used as training set on edge-level.
@@ -74,6 +76,7 @@ class Trainer(BaseTrainerMixin):
                  model: nn.Module,
                  counts_key: str="counts",
                  adj_key: str="spatial_connectivities",
+                 condition_key: str="sample",
                  edge_val_ratio: float=0.1,
                  node_val_ratio: float=0.1,
                  edge_batch_size: int=128,
