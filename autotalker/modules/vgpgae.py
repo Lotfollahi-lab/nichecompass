@@ -292,9 +292,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             output["gene_expr_dist_params"] = self.gene_expr_decoder(
                 z=z[:data_batch.batch_size],
                 log_library_size=self.log_library_size[:data_batch.batch_size],
-                cond_embed=(cond_embed[:data_batch.batch_size] if 
-                            "gene_expr_decoder" in self.cond_embed_injection_ 
-                            else None))
+                cond_embed=(cond_embed[:data_batch.batch_size] if (cond_embed is
+                            not None) & ("gene_expr_decoder" in
+                            self.cond_embed_injection_) else None))
         return output
 
     def loss(self,
