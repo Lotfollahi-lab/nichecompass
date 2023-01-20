@@ -19,7 +19,10 @@ from autotalker.data import initialize_dataloaders, prepare_data
 from autotalker.modules.utils import edge_values_and_sorted_labels
 from .basetrainermixin import BaseTrainerMixin
 from .metrics import eval_metrics, plot_eval_metrics
-from .utils import plot_loss_curves, print_progress, EarlyStopping
+from .utils import (_cycle_iterable,
+                    plot_loss_curves,
+                    print_progress,
+                    EarlyStopping)
 
 
 class Trainer(BaseTrainerMixin):
@@ -76,8 +79,8 @@ class Trainer(BaseTrainerMixin):
                  condition_key: str="sample",
                  edge_val_ratio: float=0.1,
                  node_val_ratio: float=0.1,
-                 edge_batch_size: int=64,
-                 node_batch_size: int=64,
+                 edge_batch_size: int=128,
+                 node_batch_size: int=16,
                  use_early_stopping: bool=True,
                  reload_best_model: bool=True,
                  early_stopping_kwargs: Optional[dict]=None,
@@ -258,20 +261,32 @@ class Trainer(BaseTrainerMixin):
             # level batches until edge-level batches are complete
             for edge_train_data_batch, node_train_data_batch in zip(
                     self.edge_train_loader,
-                    itertools.cycle(self.node_train_loader)):
-                edge_train_data_batch = edge_train_data_batch.to(self.device)
+                    _cycle_iterable(self.node_train_loader)): # itertools.cycle
+                    # resulted in a painful memory leak
+                    
                 node_train_data_batch = node_train_data_batch.to(self.device)
-                # Forward pass edge-level batch
-                edge_train_model_output = self.model(
-                    data_batch=edge_train_data_batch,
-                    decoder="graph",
-                    use_only_active_gps=self.use_only_active_gps)
+
                 # Forward pass node-level batch
                 node_train_model_output = self.model(
                     data_batch=node_train_data_batch,
                     decoder="gene_expr",
                     use_only_active_gps=self.use_only_active_gps)
-                # Calculate training loss (edge reconstruction loss + gene 
+
+                #with torch.no_grad():
+                    #print("")
+                    #print(node_train_model_output["node_labels"].sum())
+                    #print(node_train_model_output["node_labels"][:,:338].sum()/338)
+                    #print(node_train_model_output["node_labels"][:,338:].sum()/81)
+
+                edge_train_data_batch = edge_train_data_batch.to(self.device)
+
+                # Forward pass edge-level batch
+                edge_train_model_output = self.model(
+                    data_batch=edge_train_data_batch,
+                    decoder="graph",
+                    use_only_active_gps=self.use_only_active_gps)
+
+                # Calculate training loss (edge reconstruction loss + gene
                 # expression reconstruction loss + regularization losses)
                 train_loss_dict = self.model.loss(
                     edge_data_batch=edge_train_data_batch,
@@ -284,7 +299,7 @@ class Trainer(BaseTrainerMixin):
                     edge_recon_active=self.edge_recon_active)
                 train_global_loss = train_loss_dict["global_loss"]
                 train_optim_loss = train_loss_dict["optim_loss"]
-                
+
                 if self.verbose_:
                     for key, value in train_loss_dict.items():
                         self.iter_logs[f"train_{key}"].append(value.item())
@@ -386,19 +401,21 @@ class Trainer(BaseTrainerMixin):
         # Jointly loop through edge- and node-level batches, repeating node-
         # level batches until edge-level batches are complete
         for edge_val_data_batch, node_val_data_batch in zip(
-                self.edge_val_loader, itertools.cycle(self.node_val_loader)):
-            edge_val_data_batch = edge_val_data_batch.to(self.device)
-            node_val_data_batch = node_val_data_batch.to(self.device)
-            # Forward pass edge level batch
-            edge_val_model_output = self.model(
-                data_batch=edge_val_data_batch,
-                decoder="graph",
-                use_only_active_gps=True)
+                self.edge_val_loader, _cycle_iterable(self.node_val_loader)):
             # Forward pass node level batch
+            node_val_data_batch = node_val_data_batch.to(self.device)
             node_val_model_output = self.model(
                 data_batch=node_val_data_batch,
                 decoder="gene_expr",
                 use_only_active_gps=True)
+
+            # Forward pass edge level batch
+            edge_val_data_batch = edge_val_data_batch.to(self.device)
+            edge_val_model_output = self.model(
+                data_batch=edge_val_data_batch,
+                decoder="graph",
+                use_only_active_gps=True)
+
             # Calculate validation loss (edge reconstruction loss + gene 
             # expression reconstruction loss + regularization losses)
             val_loss_dict = self.model.loss(

@@ -59,6 +59,9 @@ class Autotalker(BaseModelMixin):
         programs will be stored in ´adata.obsm´ after model training.
     condition_key:
         Key under which the conditions are stored in ´adata.obs´.    
+    genes_idx_key:
+        Key in ´adata.uns´ where the index of a concatenated vector of target
+        and source genes that are in the gene program masks are stored.
     include_edge_recon_loss:
         If `True`, includes the edge reconstruction loss in the loss 
         optimization.
@@ -131,6 +134,7 @@ class Autotalker(BaseModelMixin):
                  condition_key: Optional[str]="sample",
                  cond_embed_injection: Optional[list]=["encoder",
                                                        "gene_expr_decoder"],
+                 genes_idx_key: str="autotalker_genes_idx",
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
                  gene_expr_recon_dist: Literal["nb", "zinb"]="nb",
@@ -208,6 +212,9 @@ class Autotalker(BaseModelMixin):
                 dtype=torch.float32)), dim=1)
         self.n_nonaddon_gps_ = len(self.gp_mask_)
         self.n_addon_gps_ = n_addon_gps
+        
+        # Retrieve index of genes in gp mask
+        self.genes_idx_ = adata.uns[genes_idx_key]
 
         # Retrieve conditions
         if condition_key is not None:
@@ -255,6 +262,7 @@ class Autotalker(BaseModelMixin):
             n_addon_gps=self.n_addon_gps_,
             n_output=self.n_output_,
             gene_expr_decoder_mask=self.gp_mask_,
+            genes_idx=self.genes_idx_,
             conditions=self.conditions_,
             conv_layer_encoder=self.conv_layer_encoder_,
             encoder_n_attention_heads=self.encoder_n_attention_heads_,
@@ -284,8 +292,8 @@ class Autotalker(BaseModelMixin):
               lambda_l1_addon: float=0.,
               edge_val_ratio: float=0.1,
               node_val_ratio: float=0.1,
-              edge_batch_size: int=64,
-              node_batch_size: int=64,
+              edge_batch_size: int=128,
+              node_batch_size: int=16,
               mlflow_experiment_id: Optional[str]=None,
               **trainer_kwargs):
         """

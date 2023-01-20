@@ -47,8 +47,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         Number of conditional embedding nodes.
     n_output:
         Number of nodes in the output layer.
+    n_genes_in_mask:
+        Number of source and target genes that are included in the gp mask.
     gene_expr_decoder_mask:
         Gene program mask for the gene expression decoder.
+    genes_idx:
+        Index of genes in a concatenated vector of target and source genes that
+        are in gps of the gp mask.
     conditions:
         Conditions used for the conditional embedding.
     conv_layer_encoder:
@@ -108,6 +113,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  n_cond_embed: int,
                  n_output: int,
                  gene_expr_decoder_mask: torch.Tensor,
+                 genes_idx: torch.Tensor,
                  conditions: list=[],
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=4,
@@ -186,23 +192,25 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                 self.cond_embed_injection else 0),
             n_output=n_output,
             mask=gene_expr_decoder_mask,
+            genes_idx=genes_idx,
             recon_dist=self.gene_expr_recon_dist_)
 
         if node_label_method == "self":
             self.gene_expr_node_label_aggregator = (
-                SelfNodeLabelNoneAggregator())
+                SelfNodeLabelNoneAggregator(genes_idx=genes_idx))
         elif node_label_method == "one-hop-norm":
             self.gene_expr_node_label_aggregator = (
-                OneHopGCNNormNodeLabelAggregator())
+                OneHopGCNNormNodeLabelAggregator(genes_idx=genes_idx))
         elif node_label_method == "one-hop-sum":
             self.gene_expr_node_label_aggregator = (
-                OneHopSumNodeLabelAggregator()) 
+                OneHopSumNodeLabelAggregator(genes_idx=genes_idx)) 
         elif node_label_method == "one-hop-attention": 
             self.gene_expr_node_label_aggregator = (
-                OneHopAttentionNodeLabelAggregator(n_input=n_input))
+                OneHopAttentionNodeLabelAggregator(n_input=n_input,
+                                                   genes_idx=genes_idx))
         
         # Gene-specific dispersion parameters
-        self.theta = torch.nn.Parameter(torch.randn(n_output))
+        self.theta = torch.nn.Parameter(torch.randn(len(genes_idx)))
 
     def forward(self,
                 data_batch: Data,
@@ -258,7 +266,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                             cond_embed=cond_embed)
         output["mu"] = self.mu
         output["logstd"] = self.logstd
-        z = self.reparameterize(output["mu"], output["logstd"])
+        z = self.reparameterize(self.mu, self.logstd)
 
         # Only retain active gene programs
         if use_only_active_gps:
@@ -270,8 +278,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         if decoder == "graph":
             output["adj_recon_logits"] = self.graph_decoder(z=z)
         elif decoder == "gene_expr":
-            # Compute aggregated neighborhood gene expression for gene 
-            # expression reconstruction        
+            # Compute aggregated neighborhood gene expression for gene
+            # expression reconstruction
             output["node_labels"] = self.gene_expr_node_label_aggregator(
                 x=x, 
                 edge_index=edge_index,
