@@ -2,7 +2,7 @@
 This module contains data processors for the training of an Autotalker model.
 """
 
-from typing import Tuple
+from typing import Optional, Tuple
 
 from anndata import AnnData
 from torch_geometric.data import Data
@@ -94,6 +94,7 @@ def node_level_split_mask(data: Data,
 def prepare_data(adata: AnnData,
                  counts_key: str="counts",
                  adj_key: str="spatial_connectivities",
+                 condition_key: Optional[str]=None,
                  edge_val_ratio: float=0.1,
                  edge_test_ratio: float=0.,
                  node_val_ratio: float=0.1,
@@ -112,6 +113,9 @@ def prepare_data(adata: AnnData,
         Key under which the raw counts are stored in ´adata.layer´.
     adj_key:
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
+    condition_key:
+        Key under which the condition for the conditional embedding is stored in
+        ´adata.obs´.
     edge_val_ratio:
         Fraction of the data that is used as validation set on edge-level.
     edge_test_ratio:
@@ -134,11 +138,18 @@ def prepare_data(adata: AnnData,
     data_dict = {}
     dataset = SpatialAnnTorchDataset(adata=adata,
                                      counts_key=counts_key,
-                                     adj_key=adj_key)
+                                     adj_key=adj_key,
+                                     condition_key=condition_key)
+
     # PyG Data object (has 2 edge index pairs for one edge because of symmetry;
     # one edge index pair will be removed in the edge-level split).
-    data = Data(x=dataset.x,
-                edge_index=dataset.edge_index)
+    if condition_key is not None:
+        data = Data(x=dataset.x,
+                    edge_index=dataset.edge_index,
+                    conditions=dataset.conditions)
+    else:
+        data = Data(x=dataset.x,
+                    edge_index=dataset.edge_index)
 
     # Edge-level split for edge reconstruction
     edge_train_data, edge_val_data, edge_test_data = edge_level_split(

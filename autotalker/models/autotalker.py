@@ -121,6 +121,8 @@ class Autotalker(BaseModelMixin):
     n_addon_gps:
         Number of addon gene programs (i.e. gene programs that are not included
         in masks but can be learned de novo).
+    n_cond_embed:
+        Number of conditional embedding nodes.
     """
     def __init__(self,
                  adata: AnnData,
@@ -131,7 +133,7 @@ class Autotalker(BaseModelMixin):
                  gp_targets_mask_key: str="autotalker_gp_targets",
                  gp_sources_mask_key: str="autotalker_gp_sources",
                  latent_key: str="autotalker_latent",
-                 condition_key: Optional[str]="sample",
+                 condition_key: Optional[str]=None,
                  cond_embed_injection: Optional[list]=["encoder",
                                                        "gene_expr_decoder"],
                  genes_idx_key: str="autotalker_genes_idx",
@@ -152,7 +154,8 @@ class Autotalker(BaseModelMixin):
                  dropout_rate_graph_decoder: float=0.,
                  gp_targets_mask: Optional[Union[np.ndarray, list]]=None,
                  gp_sources_mask: Optional[Union[np.ndarray, list]]=None,
-                 n_addon_gps: int=0):
+                 n_addon_gps: int=0,
+                 n_cond_embed: int=10):
         self.adata = adata
         self.counts_key_ = counts_key
         self.adj_key_ = adj_key
@@ -212,6 +215,7 @@ class Autotalker(BaseModelMixin):
                 dtype=torch.float32)), dim=1)
         self.n_nonaddon_gps_ = len(self.gp_mask_)
         self.n_addon_gps_ = n_addon_gps
+        self.n_cond_embed_ = n_cond_embed
         
         # Retrieve index of genes in gp mask
         self.genes_idx_ = adata.uns[genes_idx_key]
@@ -248,7 +252,7 @@ class Autotalker(BaseModelMixin):
                              "be stored in adata.uns['autotalker_gp_names'].")
 
         # Validate condition key
-        if condition_key not in adata.obs:
+        if condition_key is not None and condition_key not in adata.obs:
             raise ValueError("Please specify an adequate ´condition_key´. "
                              "By default the conditions are assumed to "
                              "be stored in adata.obs['sample'].")
@@ -260,6 +264,7 @@ class Autotalker(BaseModelMixin):
             n_hidden_encoder=self.n_hidden_encoder_,
             n_nonaddon_gps=self.n_nonaddon_gps_,
             n_addon_gps=self.n_addon_gps_,
+            n_cond_embed=self.n_cond_embed_,
             n_output=self.n_output_,
             gene_expr_decoder_mask=self.gp_mask_,
             genes_idx=self.genes_idx_,
@@ -373,6 +378,7 @@ class Autotalker(BaseModelMixin):
            adata=self.adata,
            counts_key=self.counts_key_,
            adj_key=self.adj_key_,
+           condition_key=self.condition_key_,
            only_active_gps=True,
            return_mu_std=True)
         self.adata.uns[self.active_gp_names_key_] = self.get_active_gps(
@@ -490,6 +496,7 @@ class Autotalker(BaseModelMixin):
             adata=adata,
             counts_key=self.counts_key_,
             adj_key=self.adj_key_,
+            condition_key=self.condition_key_,
             only_active_gps=False,
             return_mu_std=True)
         mu = mu[:, selected_gps_idx]
@@ -903,6 +910,7 @@ class Autotalker(BaseModelMixin):
             adata: Optional[AnnData]=None,
             counts_key: str="counts",
             adj_key: str="spatial_connectivities",
+            condition_key: Optional[str]=None,
             only_active_gps: bool=True,
             return_mu_std: bool=False,
             node_batch_size: int=64,
@@ -920,7 +928,9 @@ class Autotalker(BaseModelMixin):
         adj_key:
             Key under which the sparse adjacency matrix is stored in 
             ´adata.obsp´.
-        only_active_gps:
+        condition_key:
+            Key under which the conditions are stored in ´adata.obs´.              
+            only_active_gps:
             If ´True´, return only the latent representation of active gps.            
         return_mu_std:
             If `True`, return ´mu´ and ´std´ instead of latent features ´z´.
@@ -947,6 +957,7 @@ class Autotalker(BaseModelMixin):
         data_dict = prepare_data(adata=adata,
                                  counts_key=counts_key,
                                  adj_key=adj_key,
+                                 condition_key=condition_key,
                                  edge_val_ratio=0.,
                                  edge_test_ratio=0.,
                                  node_val_ratio=0.,
@@ -982,6 +993,8 @@ class Autotalker(BaseModelMixin):
             node_batch = node_batch.to(device)
             x = node_batch.x
             edge_index = node_batch.edge_index
+            conditions = (node_batch.conditions if "conditions" in node_batch 
+                          else None)
             if self.model.log_variational_:
                 x = torch.log(1 + x)
 
@@ -989,6 +1002,7 @@ class Autotalker(BaseModelMixin):
                 mu_batch, std_batch = self.model.get_latent_representation(
                     x=x,
                     edge_index=edge_index,
+                    conditions=conditions,
                     only_active_gps=only_active_gps,
                     return_mu_std=True)
                 mu[n_obs_before_batch:n_obs_after_batch, :] = (
@@ -999,6 +1013,7 @@ class Autotalker(BaseModelMixin):
                 z_batch = self.model.get_latent_representation(
                     x=x,
                     edge_index=edge_index,
+                    conditions=conditions,
                     only_active_gps=only_active_gps,
                     return_mu_std=False)
                 z[n_obs_after_batch:n_obs_after_batch, :] = (

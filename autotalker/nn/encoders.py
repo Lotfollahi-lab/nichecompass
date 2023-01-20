@@ -62,7 +62,7 @@ class GraphEncoder(nn.Module):
               f"dropout_rate: {dropout_rate}")
 
         if n_cond_embed_input != 0:
-            n_input =+ n_cond_embed_input
+            n_input += n_cond_embed_input
 
         if conv_layer == "gcnconv":
             self.conv_l1 = GCNConv(n_input, n_hidden)

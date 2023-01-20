@@ -152,7 +152,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.node_label_method_ = node_label_method
         self.active_gp_thresh_ratio_ = active_gp_thresh_ratio
         self.log_variational_ = log_variational
-        self.cond_embed_injection = cond_embed_injection
+        self.cond_embed_injection_ = cond_embed_injection
         self.freeze_ = False
 
         print("--- INITIALIZING NEW NETWORK MODULE: VARIATIONAL GENE PROGRAM "
@@ -167,13 +167,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
         if (cond_embed_injection is not None) & (self.n_conditions_ > 0):
             self.cond_embedder = nn.Embedding(
-                self.n_conditions,
-                self.n_cond_embed)
+                self.n_conditions_,
+                n_cond_embed)
 
         self.encoder = GraphEncoder(
             n_input=n_input,
-            n_cond_embed_input=(n_cond_embed if "encoder" in 
-                                self.cond_embed_injection else 0),
+            n_cond_embed_input=(n_cond_embed if ("encoder" in 
+                                self.cond_embed_injection_) &
+                                (self.n_conditions_ != 0) else 0),
             n_hidden=n_hidden_encoder,
             n_latent=n_nonaddon_gps,
             n_addon_latent=n_addon_gps,
@@ -188,8 +189,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.gene_expr_decoder = MaskedGeneExprDecoder(
             n_input=n_nonaddon_gps,
             n_addon_input=n_addon_gps,
-            n_cond_embed_input=(n_cond_embed if "gene_expr_decoder" in 
-                                self.cond_embed_injection else 0),
+            n_cond_embed_input=(n_cond_embed if ("gene_expr_decoder" in 
+                                self.cond_embed_injection_) &
+                                (self.n_conditions_ != 0) else 0),
             n_output=n_output,
             mask=gene_expr_decoder_mask,
             genes_idx=genes_idx,
@@ -216,7 +218,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 data_batch: Data,
                 decoder: Literal["graph", "gene_expr"],
                 use_only_active_gps: bool=False,
-                condition: Optional[int]=None) -> dict:
+                conditions: Optional[int]=None) -> dict:
         """
         Forward pass of the VGPGAE module.
 
@@ -231,8 +233,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         use_only_active_gps:
             Only relevant if ´decoder == graph´. If ´True´, use only active gene
             programs for edge reconstruction.
-        condition:
-            Label encoding of the condition.
+        conditions:
+            Label encoding of the conditions.
 
         Returns
         ----------
@@ -242,8 +244,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             distribution if ´decoder == gene_expr´, as well as ´mu´ and ´logstd´ 
             from the latent space distribution.
         """
-        if (self.cond_embed_injection is not None) & (self.n_conditions_ > 0):
-            cond_embed = self.cond_embedder(condition)
+        if (self.cond_embed_injection_ is not None) & (self.n_conditions_ > 0):
+            cond_embed = self.cond_embedder(conditions)
         else:
             cond_embed = None
 
@@ -261,9 +263,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             x_enc = x
 
         # Use encoder to get latent distribution parameters and latent features
-        self.mu, self.logstd = self.encoder(x=x_enc,
-                                            edge_index=edge_index,
-                                            cond_embed=cond_embed)
+        self.mu, self.logstd = self.encoder(
+            x=x_enc,
+            edge_index=edge_index,
+            cond_embed=(cond_embed if "encoder" in self.cond_embed_injection_
+                        else None))
         output["mu"] = self.mu
         output["logstd"] = self.logstd
         z = self.reparameterize(self.mu, self.logstd)
@@ -288,7 +292,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             output["gene_expr_dist_params"] = self.gene_expr_decoder(
                 z=z[:data_batch.batch_size],
                 log_library_size=self.log_library_size[:data_batch.batch_size],
-                cond_embed=cond_embed)
+                cond_embed=(cond_embed[:data_batch.batch_size] if 
+                            "gene_expr_decoder" in self.cond_embed_injection_ 
+                            else None))
         return output
 
     def loss(self,
@@ -529,6 +535,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             self,
             x: torch.Tensor,
             edge_index: torch.Tensor,
+            conditions: Optional[torch.Tensor]=None,
             only_active_gps: bool=True,
             return_mu_std: bool=False
             ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
@@ -544,6 +551,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_genes).
         edge_index:
             Edge index of the graph (dim: 2, n_edges).
+        conditions:
+            Conditions for the conditional embedding.
         only_active_gps:
             If ´True´, return only the latent representation of active gps.
         return_mu_std:
@@ -559,8 +568,16 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Standard deviations of the latent posterior (dim: n_obs, 
             n_active_gps).
         """
+        # Get conditional embeddings
+        if (self.cond_embed_injection_ is not None) & (self.n_conditions_ > 0):
+            cond_embed = self.cond_embedder(conditions)
+        else:
+            cond_embed = None
+            
         # Get latent distribution parameters
-        mu, logstd = self.encoder(x=x, edge_index=edge_index)
+        mu, logstd = self.encoder(x=x,
+                                  edge_index=edge_index,
+                                  cond_embed=cond_embed)
 
         if only_active_gps:
             # Filter to active gene programs only

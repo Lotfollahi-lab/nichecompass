@@ -76,7 +76,7 @@ class Trainer(BaseTrainerMixin):
                  model: nn.Module,
                  counts_key: str="counts",
                  adj_key: str="spatial_connectivities",
-                 condition_key: str="sample",
+                 condition_key: Optional[str]=None,
                  edge_val_ratio: float=0.1,
                  node_val_ratio: float=0.1,
                  edge_batch_size: int=128,
@@ -92,6 +92,7 @@ class Trainer(BaseTrainerMixin):
         self.model = model
         self.counts_key = counts_key
         self.adj_key = adj_key
+        self.condition_key = condition_key
         self.edge_train_ratio_ = 1 - edge_val_ratio
         self.edge_val_ratio_ = edge_val_ratio
         self.node_train_ratio_ = 1 - node_val_ratio
@@ -138,6 +139,7 @@ class Trainer(BaseTrainerMixin):
         data_dict = prepare_data(adata=adata,
                                  counts_key=self.counts_key,
                                  adj_key=self.adj_key,
+                                 condition_key=self.condition_key,
                                  edge_val_ratio=self.edge_val_ratio_,
                                  edge_test_ratio=0.,
                                  node_val_ratio=self.node_val_ratio_,
@@ -270,7 +272,9 @@ class Trainer(BaseTrainerMixin):
                 node_train_model_output = self.model(
                     data_batch=node_train_data_batch,
                     decoder="gene_expr",
-                    use_only_active_gps=self.use_only_active_gps)
+                    use_only_active_gps=self.use_only_active_gps,
+                    conditions=(node_train_data_batch.conditions if "conditions"
+                                in node_train_data_batch else None))
 
                 #with torch.no_grad():
                     #print("")
@@ -284,7 +288,9 @@ class Trainer(BaseTrainerMixin):
                 edge_train_model_output = self.model(
                     data_batch=edge_train_data_batch,
                     decoder="graph",
-                    use_only_active_gps=self.use_only_active_gps)
+                    use_only_active_gps=self.use_only_active_gps,
+                    conditions=(edge_train_data_batch.conditions if "conditions"
+                                in edge_train_data_batch else None))
 
                 # Calculate training loss (edge reconstruction loss + gene
                 # expression reconstruction loss + regularization losses)
@@ -407,14 +413,18 @@ class Trainer(BaseTrainerMixin):
             node_val_model_output = self.model(
                 data_batch=node_val_data_batch,
                 decoder="gene_expr",
-                use_only_active_gps=True)
+                use_only_active_gps=True,
+                conditions=(node_val_data_batch.conditions if "conditions"
+                            in node_val_data_batch else None))
 
             # Forward pass edge level batch
             edge_val_data_batch = edge_val_data_batch.to(self.device)
             edge_val_model_output = self.model(
                 data_batch=edge_val_data_batch,
                 decoder="graph",
-                use_only_active_gps=True)
+                use_only_active_gps=True,
+                conditions=(edge_val_data_batch.conditions if "conditions"
+                            in edge_val_data_batch else None))
 
             # Calculate validation loss (edge reconstruction loss + gene 
             # expression reconstruction loss + regularization losses)
@@ -479,9 +489,12 @@ class Trainer(BaseTrainerMixin):
         for edge_val_data_batch in self.edge_val_loader:
             edge_val_data_batch = edge_val_data_batch.to(self.device)
 
-            edge_val_model_output = self.model(data_batch=edge_val_data_batch,
-                                               decoder="graph",
-                                               use_only_active_gps=True)
+            edge_val_model_output = self.model(
+                data_batch=edge_val_data_batch,
+                decoder="graph",
+                use_only_active_gps=True,
+                conditions=(edge_val_data_batch.conditions if "conditions"
+                            in edge_val_data_batch else None))
     
             # Calculate evaluation metrics
             adj_recon_probs_val = torch.sigmoid(
@@ -504,9 +517,12 @@ class Trainer(BaseTrainerMixin):
         for node_val_data_batch in self.node_val_loader:
             node_val_data_batch = node_val_data_batch.to(self.device)
 
-            node_val_model_output = self.model(data_batch=node_val_data_batch,
-                                                decoder="gene_expr",
-                                                use_only_active_gps=True)
+            node_val_model_output = self.model(
+                data_batch=node_val_data_batch,
+                decoder="gene_expr",
+                use_only_active_gps=True,
+                conditions=(node_val_data_batch.conditions if "conditions"
+                            in node_val_data_batch else None))
 
             gene_expr_val = node_val_model_output["node_labels"]
 
