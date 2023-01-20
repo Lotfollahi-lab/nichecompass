@@ -25,14 +25,19 @@ class DotProductGraphDecoder(nn.Module):
     dropout_rate:
         Probability of nodes to be dropped during training.
     """
-    def __init__(self, dropout_rate: float=0.):
+    def __init__(self,
+                 n_cond_embed_input: int=0,
+                 dropout_rate: float=0.):
         super().__init__()
 
-        print(f"DOT PRODUCT GRAPH DECODER -> dropout_rate: {dropout_rate}")
+        print(f"DOT PRODUCT GRAPH DECODER -> dropout_rate: {dropout_rate}, "
+              f"n_cond_embed_input: {n_cond_embed_input}")
 
         self.dropout = nn.Dropout(dropout_rate)
 
-    def forward(self, z: torch.Tensor) -> torch.Tensor:
+    def forward(self,
+                z: torch.Tensor,
+                cond_embed: Optional[torch.Tensor]) -> torch.Tensor:
         """
         Forward pass of the dot product graph decoder.
 
@@ -40,12 +45,18 @@ class DotProductGraphDecoder(nn.Module):
         ----------
         z:
             Tensor containing the latent space features.
+        cond_embed:
+            Tensor containing the conditional embedding.
 
         Returns
         ----------
         adj_rec_logits:
             Tensor containing the reconstructed adjacency matrix with logits.
         """
+        # Add conditional embedding to latent feature vector
+        if cond_embed is not None:
+            z = torch.cat((z, cond_embed), dim=-1)
+
         z = self.dropout(z)
         adj_rec_logits = torch.mm(z, z.t())
         return adj_rec_logits
@@ -131,6 +142,8 @@ class MaskedGeneExprDecoder(nn.Module):
             Tensor containing the latent space features.
         log_library_size:
             Tensor containing the log library size of the nodes.
+        cond_embed:
+            Tensor containing the conditional embedding.
 
         Returns
         ----------

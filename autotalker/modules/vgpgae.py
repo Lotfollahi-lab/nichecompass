@@ -184,6 +184,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             activation=torch.relu)
         
         self.graph_decoder = DotProductGraphDecoder(
+            n_cond_embed_input=(n_cond_embed if ("graph_decoder" in 
+                                self.cond_embed_injection_) &
+                                (self.n_conditions_ != 0) else 0),
             dropout_rate=dropout_rate_graph_decoder)
 
         self.gene_expr_decoder = MaskedGeneExprDecoder(
@@ -280,7 +283,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         # Use decoder to get either the reconstructed adjacency matrix logits
         # or the gene expression parameters
         if decoder == "graph":
-            output["adj_recon_logits"] = self.graph_decoder(z=z)
+            output["adj_recon_logits"] = self.graph_decoder(
+                z=z,
+                cond_embed=(cond_embed if "graph_decoder" in
+                            self.cond_embed_injection_ else None))
         elif decoder == "gene_expr":
             # Compute aggregated neighborhood gene expression for gene
             # expression reconstruction
@@ -569,7 +575,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_active_gps).
         """
         # Get conditional embeddings
-        if (self.cond_embed_injection_ is not None) & (self.n_conditions_ > 0):
+        if ("encoder" in self.cond_embed_injection_) & (self.n_conditions_ > 0):
             cond_embed = self.cond_embedder(conditions)
         else:
             cond_embed = None

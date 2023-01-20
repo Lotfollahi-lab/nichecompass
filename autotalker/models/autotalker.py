@@ -135,6 +135,7 @@ class Autotalker(BaseModelMixin):
                  latent_key: str="autotalker_latent",
                  condition_key: Optional[str]=None,
                  cond_embed_injection: Optional[list]=["encoder",
+                                                       "graph_decoder",
                                                        "gene_expr_decoder"],
                  genes_idx_key: str="autotalker_genes_idx",
                  include_edge_recon_loss: bool=True,
