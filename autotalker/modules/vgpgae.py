@@ -184,9 +184,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             activation=torch.relu)
         
         self.graph_decoder = DotProductGraphDecoder(
-            n_cond_embed_input=(n_cond_embed if ("graph_decoder" in 
+            n_input=n_nonaddon_gps,
+            n_addon_input=n_addon_gps,
+            n_cond_embed_input=(n_cond_embed if ("graph_decoder" in
                                 self.cond_embed_injection_) &
                                 (self.n_conditions_ != 0) else 0),
+            n_output=(n_nonaddon_gps + n_addon_gps),
             dropout_rate=dropout_rate_graph_decoder)
 
         self.gene_expr_decoder = MaskedGeneExprDecoder(
