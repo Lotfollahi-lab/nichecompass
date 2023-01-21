@@ -26,27 +26,20 @@ class DotProductGraphDecoder(nn.Module):
         Probability of nodes to be dropped during training.
     """
     def __init__(self,
-                 n_input: int,
-                 n_addon_input: int,
                  n_cond_embed_input: int,
                  n_output: int,
-                 include_linear_l: bool=True,
                  dropout_rate: float=0.):
         super().__init__()
 
-        self.include_linear_l = include_linear_l
+        print(f"DOT PRODUCT GRAPH DECODER -> n_cond_embed_input: "
+              f"{n_cond_embed_input}, n_output: {n_output}, dropout_rate: "
+              F"{dropout_rate}")
 
-        print(f"DOT PRODUCT GRAPH DECODER -> include_linear_l: "
-              f"{include_linear_l}, n_input: {n_input}, n_addon_input:"
-              f" {n_addon_input}, n_cond_embed_input: {n_cond_embed_input}, "
-              f"n_output: {n_output}, dropout_rate: {dropout_rate}")
-
-        if include_linear_l:
-            if n_addon_input != 0:
-                n_input += n_addon_input
-            if n_cond_embed_input != 0:
-                n_input += n_cond_embed_input
-            self.linear_l = nn.Linear(n_input, n_output, bias=False)
+        # Conditional embedding layer
+        if n_cond_embed_input != 0:
+            self.cond_embed_l = nn.Linear(n_cond_embed_input,
+                                          n_output,
+                                          bias=False)
 
         self.dropout = nn.Dropout(dropout_rate)
 
@@ -70,10 +63,8 @@ class DotProductGraphDecoder(nn.Module):
         """
         # Add conditional embedding to latent feature vector
         if cond_embed is not None:
-            z = torch.cat((z, cond_embed), dim=-1)
+            z += self.cond_embed_l(cond_embed)
         
-        if self.include_linear_l:
-            z = self.linear_l(z)
         z = self.dropout(z)
         adj_rec_logits = torch.mm(z, z.t())
         return adj_rec_logits
