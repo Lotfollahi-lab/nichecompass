@@ -807,12 +807,6 @@ class Autotalker(BaseModelMixin):
                         n_neighbors=n_neighbors,
                         random_state=seed,
                         key_added="latent")
-        #adata.obsp["latent_connectivities"] = compute_graph_connectivities(
-        #    adata=adata,
-        #    feature_key=self.latent_key_,
-        #    n_neighbors=n_neighbors,
-        #    mode=mode,
-        #    seed=seed)
 
     def get_gp_data(self,
                     selected_gps: Optional[Union[str, list]]=None,
@@ -1017,7 +1011,7 @@ class Autotalker(BaseModelMixin):
                     conditions=conditions,
                     only_active_gps=only_active_gps,
                     return_mu_std=False)
-                z[n_obs_after_batch:n_obs_after_batch, :] = (
+                z[n_obs_before_batch:n_obs_after_batch, :] = (
                     z_batch[:node_batch.batch_size].detach().cpu().numpy())
         if return_mu_std:
             return mu, std
