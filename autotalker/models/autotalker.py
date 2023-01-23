@@ -706,6 +706,7 @@ class Autotalker(BaseModelMixin):
                 for gp, gp_idx in zip(top_down_gps, top_down_gps_idx):
                     adata.obs[gp] = mu_selected_gps[:, gp_idx]
                 top_unique_gps.extend(top_down_gps)
+        top_unique_gps = list(set(top_unique_gps))
         return top_unique_gps
 
     def compute_gp_gene_importances(
@@ -713,8 +714,8 @@ class Autotalker(BaseModelMixin):
             selected_gp: str,
             adata: Optional[AnnData]=None) -> pd.DataFrame:
         """
-        Compute gene importances for the genes of a given gene program. Gene 
-        importances are determined by the normalized weights of the gene 
+        Compute gene importances for the genes of a given gene program. Gene
+        importances are determined by the normalized weights of the gene
         expression decoder, corrected for gene expression zero inflation in the
         case of ´self.edge_recon_dist == zinb´.
 
@@ -724,8 +725,8 @@ class Autotalker(BaseModelMixin):
             Name of the gene program for which the gene importances should be
             retrieved.
         adata:
-            AnnData object to be used. If ´None´, uses the adata object stored 
-            in the model instance. 
+            AnnData object to be used. If ´None´, uses the adata object stored
+            in the model instance.
      
         Returns
         ----------
