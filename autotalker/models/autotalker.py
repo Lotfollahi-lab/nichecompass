@@ -394,7 +394,7 @@ class Autotalker(BaseModelMixin):
             cat_key: str,
             selected_gps: Optional[Union[str,list]]=None,
             selected_cats: Optional[Union[str,list]]=None,
-            gp_scores_weight_normalization: bool=True,
+            gp_scores_weight_normalization: bool=False,
             comparison_cats: Union[str, list]="rest",
             n_sample: int=10000,
             key_added: str="autotalker_differential_gp_scores",
@@ -504,24 +504,29 @@ class Autotalker(BaseModelMixin):
         mu_selected_gps = mu[:, selected_gps_idx]
         std_selected_gps = std[:, selected_gps_idx]
 
-        # Normalize gp scores using the gene expression negative binomial means 
+        # Normalize gp scores using the gene expression negative binomial means
         # decoder weights (if ´gp_scores_weight_normaliztion == True´), and, in
         # addition, correct them for zero inflation probabilities if
-        # ´self.gene_expr_recon_dist == zinb´. Alternatively (if 
-        # ´gp_scores_weight_normaliztion == False´), just use the signs of the
-        # summed gene expression negative binomial means decoder weights for 
-        # normalization. The normalization is used to accurately reflect up- & 
-        # downregulation directionalities and strengths across gene programs 
-        # (naturally the gp scores do not necessarily correspond to up- & 
-        # downregulation directionalities and strengths as nb means gene 
-        # expression decoder weights are different for different genes and gene
-        # programs and gene expression zero inflation is different for different
-        # observations / cells and genes)
+        # ´self.gene_expr_recon_dist == zinb´. Alternatively (if
+        # ´gp_scores_weight_normalization == False´), just use the signs of the
+        # summed gene expression negative binomial means decoder weights for
+        # normalization. This normalization only causes a difference if a ´zinb´
+        # gene expression reconstruction distribution is used as zero inflation
+        # probabilities differ for different observations / cells and, as a
+        # result also between a category and the comparison categories. The
+        # effect of normalizing mu and std by the gene expression negative
+        # binomial means decoder weight is cancelled out in the calculation of
+        # the log bayes factors
         if gp_scores_weight_normalization:
             norm_factors = selected_gps_weights # dim: (2 x n_genes,
             # n_selected_gps)
-
-            if self.gene_expr_recon_dist_ == "zinb":
+            if self.gene_expr_recon_dist_ == "nb":
+                mu_norm_factors = norm_factors.mean(0) # sum over genes; dim:
+                # (n_selected_gps,)
+                std_norm_factors = np.abs(norm_factors.mean(0)) # sum over
+                # genes; dim: (n_selected_gps,); proportional increase of std
+                # but no negative std
+            elif self.gene_expr_recon_dist_ == "zinb":
                 # Get zero inflation probabilities
                 _, zi_probs = self.get_gene_expr_dist_params(
                     adata=adata,
@@ -534,7 +539,7 @@ class Autotalker(BaseModelMixin):
                                              # n_selected_gps)
                 norm_factors = np.repeat(norm_factors[np.newaxis, :],
                                          mu.shape[0],
-                                         axis=0) # dim: (n_obs, 2 x n_genes, 
+                                         axis=0) # dim: (n_obs, 2 x n_genes,
                                          # n_selected_gps)
                 norm_factors *= non_zi_probs_rep
         else:
@@ -542,7 +547,9 @@ class Autotalker(BaseModelMixin):
             gp_signs = np.zeros_like(gp_weights_sum)
             gp_signs[gp_weights_sum>0] = 1. # keep sign of gp score
             gp_signs[gp_weights_sum<0] = -1. # reverse sign of gp score
-            mu_norm_factors = gp_signs # dim: (n_selected_gps,)
+            norm_factors = gp_signs # dim: (n_selected_gps,)
+            mu_norm_factors = norm_factors
+            std_norm_factors = 1 # no negative std
 
         # Retrieve category values for each observation, as well as all existing
         # unique categories
@@ -576,43 +583,36 @@ class Autotalker(BaseModelMixin):
             else:
                 comparison_cat_mask = cat_values.isin(comparison_cats)
 
-            # REMOVE
-            #print(cat)
-            #print(torch.flatten(torch.tensor(cat_mask).nonzero()))
-            #print(torch.flatten(torch.tensor(comparison_cat_mask).nonzero()))
-
             # Aggregate normalization factors
-            if mu_norm_factors.ndim == 1:
+            if norm_factors.ndim == 1 or norm_factors.ndim == 2:
                 mu_norm_factors_cat = mu_norm_factors
                 mu_norm_factors_comparison_cat =  mu_norm_factors
-                # dim: (n_selected_gps,)
-            elif norm_factors.ndim == 2:
-                # Compute mean of normalization factors across genes
-                norm_factors_cat = norm_factors.mean(0) # dim: (n_selected_gps,)
-                norm_factors_comparison_cat = norm_factors.mean(0) # dim:
-                # (n_selected_gps,)
+                std_norm_factors_cat = std_norm_factors
+                std_norm_factors_comparison_cat = std_norm_factors
             elif norm_factors.ndim == 3:
                 # Compute mean of normalization factors across genes for the
                 # category under consideration and the comparison categories
-                # respectively     
-                norm_factors_cat = norm_factors[cat_mask].mean(1)
-                norm_factors_comparison_cat = (norm_factors[comparison_cat_mask]
-                                               .mean(1)) # dim: 
-                                               # (n_selected_gps,)
+                # respectively
+                mu_norm_factors_cat = norm_factors[cat_mask].mean(1)
+                std_norm_factors_cat = np.abs(norm_factors[cat_mask].mean(1))
+                mu_norm_factors_comparison_cat = (
+                    norm_factors[comparison_cat_mask].mean(1)) # dim:
+                    # (n_selected_gps,)
+                std_norm_factors_comparison_cat = np.abs(
+                    norm_factors[comparison_cat_mask].mean(1)) # dim:
+                    # (n_selected_gps,)             
 
             # Normalize gp scores
             mu_selected_gps_cat = (
                 mu_selected_gps[cat_mask] * mu_norm_factors_cat)
-            std_selected_gps_cat = std_selected_gps[cat_mask]
+            std_selected_gps_cat = (
+                std_selected_gps[cat_mask] * std_norm_factors_cat)
             mu_selected_gps_comparison_cat = (
                 mu_selected_gps[comparison_cat_mask] *
                 mu_norm_factors_comparison_cat)
             std_selected_gps_comparison_cat = (
-                std_selected_gps[comparison_cat_mask])
-
-            # REMOVE
-            #print(mu_selected_gps_cat)
-            #print(mu_selected_gps_comparison_cat)
+                std_selected_gps[comparison_cat_mask] *
+                std_norm_factors_comparison_cat)
 
             # Generate random samples of category and comparison categories
             # observations with equal size
@@ -669,14 +669,12 @@ class Autotalker(BaseModelMixin):
         # Retrieve top unique gps and (normalized) gp scores
         top_unique_gps = []
         if n_top_up_gps_retrieved > 0 or n_top_down_gps_retrieved > 0:
-            if mu_norm_factors.ndim == 1:
-                mu_norm_factors = mu_norm_factors # dim: (n_selected_gps,)
-            elif norm_factors.ndim == 2:
-                norm_factors = norm_factors.mean(0) # mean over genes, dim: 
-                # (n_selected_gps,)
+            if mu_norm_factors.ndim == 2:
+                mu_norm_factors = mu_norm_factors.mean(0) # mean over genes,
+                # dim: (n_selected_gps,)
             elif norm_factors.ndim == 3:
-                norm_factors = norm_factors.mean(1) # mean over genes, dim: 
-                # (n_obs, n_selected_gps)
+                mu_norm_factors = norm_factors.mean(1) # mean over genes,
+                # dim: (n_obs, n_selected_gps)
             mu_selected_gps *= mu_norm_factors # use broadcasting
 
             # Store ´n_top_up_gps_retrieved´ top upregulated gene program scores
