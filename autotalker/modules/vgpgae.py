@@ -163,7 +163,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         print(f"NODE LABEL METHOD -> {node_label_method}")
         print(f"ACTIVE GP THRESHOLD RATIO -> {active_gp_thresh_ratio}")
         print(f"LOG VARIATIONAL -> {log_variational}")
-        print(f"CONDITIONAL EMBEDDING INJECTION -> {cond_embed_injection}")
+        if len(conditions) != 0:
+            print(f"CONDITIONAL EMBEDDING INJECTION -> {cond_embed_injection}")
 
         if (cond_embed_injection is not None) & (self.n_conditions_ > 0):
             self.cond_embedder = nn.Embedding(
@@ -432,7 +433,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
     def get_gp_weights(self) -> torch.Tensor:
         """
-        Get the gene weights of the gene expression negative binomial means 
+        Get the gene weights of the gene expression negative binomial means
         decoder.
 
         Returns:
@@ -449,7 +450,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  (self.gene_expr_decoder.nb_means_normalized_decoder.addon_l
                   .weight.data).clone()], axis=1)
         return gp_weights
-
 
     def get_active_gp_mask(
             self,

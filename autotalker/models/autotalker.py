@@ -476,11 +476,12 @@ class Autotalker(BaseModelMixin):
         if adata is None:
             adata = self.adata
 
-        active_gps = adata.uns[self.active_gp_names_key_]
+        active_gps = list(adata.uns[self.active_gp_names_key_])
+        all_gps = list(adata.uns[self.gp_names_key_])
 
         # Get selected gps as well as their index and gp weights
         if selected_gps is None:
-            selected_gps = list(active_gps)
+            selected_gps = active_gps
         else: 
             if isinstance(selected_gps, str):
                 selected_gps = [selected_gps]
@@ -517,7 +518,7 @@ class Autotalker(BaseModelMixin):
         # programs and gene expression zero inflation is different for different
         # observations / cells and genes)
         if gp_scores_weight_normalization:
-            norm_factors = selected_gps_weights # dim: (2 x n_genes, 
+            norm_factors = selected_gps_weights # dim: (2 x n_genes,
             # n_selected_gps)
 
             if self.gene_expr_recon_dist_ == "zinb":
@@ -670,12 +671,15 @@ class Autotalker(BaseModelMixin):
                                                    return_index=True)
                 top_up_gps = top_up_gps[np.sort(top_up_gps_sort_idx)]
                 top_up_gps = top_up_gps[:n_top_up_gps_retrieved].to_list()
-                top_up_gps_idx = [selected_gps.index(gp) for gp in top_up_gps]
+                top_up_gps_idx = [all_gps.index(gp) for gp in top_up_gps]
                 for gp, gp_idx in zip(top_up_gps, top_up_gps_idx):
                     adata.obs[gp] = mu[:, gp_idx]
+                    print(gp)
+                    print(gp_idx)
+                    print("remove")
                 top_unique_gps.extend(top_up_gps)
             
-            # Store ´n_top_down_gps_retrieved´ top downregulated gene program 
+            # Store ´n_top_down_gps_retrieved´ top downregulated gene program
             # scores in ´adata.obs´
             if n_top_down_gps_retrieved > 0:
                 # Get unique top down gene programs while maintaining order
@@ -685,7 +689,7 @@ class Autotalker(BaseModelMixin):
                                                      return_index=True)
                 top_down_gps = top_down_gps[np.sort(top_down_gps_sort_idx)]
                 top_down_gps = top_down_gps[:n_top_down_gps_retrieved].to_list()
-                top_down_gps_idx = [selected_gps.index(gp) for 
+                top_down_gps_idx = [all_gps.index(gp) for
                                     gp in top_down_gps]
                 for gp, gp_idx in zip(top_down_gps, top_down_gps_idx):
                     adata.obs[gp] = mu[:, gp_idx]
