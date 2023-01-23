@@ -674,9 +674,6 @@ class Autotalker(BaseModelMixin):
                 top_up_gps_idx = [all_gps.index(gp) for gp in top_up_gps]
                 for gp, gp_idx in zip(top_up_gps, top_up_gps_idx):
                     adata.obs[gp] = mu[:, gp_idx]
-                    print(gp)
-                    print(gp_idx)
-                    print("remove")
                 top_unique_gps.extend(top_up_gps)
             
             # Store ´n_top_down_gps_retrieved´ top downregulated gene program
