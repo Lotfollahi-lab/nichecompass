@@ -470,6 +470,8 @@ class Autotalker(BaseModelMixin):
             programs across all categories (duplicate gene programs that appear
             for multiple catgories are only considered once).
         """
+        self._check_if_trained(warn=True)
+
         np.random.seed(seed)
 
         if adata is None:
@@ -732,7 +734,7 @@ class Autotalker(BaseModelMixin):
         ----------
         gp_gene_importances_df:
             Pandas DataFrame containing genes, sign-corrected gene weights, gene
-            importances and an indicator whether the gene belongs to the 
+            importances and an indicator whether the gene belongs to the
             communication source or target, stored in ´gene_entity´.
         """
         self._check_if_trained(warn=True)
@@ -769,10 +771,10 @@ class Autotalker(BaseModelMixin):
 
         # Create result dataframe
         gp_gene_importances_df = pd.DataFrame()
-        gp_gene_importances_df["gene"] = [gene for gene in 
+        gp_gene_importances_df["gene"] = [gene for gene in
                                           adata.var_names.tolist()] * 2
-        gp_gene_importances_df["gene_entity"] = (["target"] * 
-                                                 len(adata.var_names) + 
+        gp_gene_importances_df["gene_entity"] = (["target"] *
+                                                 len(adata.var_names) +
                                                  ["source"] *
                                                  len(adata.var_names))
         gp_gene_importances_df["gene_weight_sign_corrected"] = gp_weights
