@@ -20,9 +20,10 @@ from autotalker.modules import VGPGAE
 from autotalker.train import Trainer
 from autotalker.utils import compute_graph_connectivities
 from .basemodelmixin import BaseModelMixin
+from .surgerymixin import SurgeryMixin
 
 
-class Autotalker(BaseModelMixin):
+class Autotalker(BaseModelMixin, SurgeryMixin):
     """
     Autotalker model class.
 
@@ -118,6 +119,8 @@ class Autotalker(BaseModelMixin):
         Gene program sources mask that is directly passed to the model (if not 
         ´None´, this mask will have prevalence over a gene program sources mask
         stored in ´adata.varm[gp_sources_mask_key]´).
+    conditions:
+        Condition names to get the right encoding when used after reloading.
     n_addon_gps:
         Number of addon gene programs (i.e. gene programs that are not included
         in masks but can be learned de novo).
@@ -155,6 +158,7 @@ class Autotalker(BaseModelMixin):
                  dropout_rate_graph_decoder: float=0.,
                  gp_targets_mask: Optional[Union[np.ndarray, list]]=None,
                  gp_sources_mask: Optional[Union[np.ndarray, list]]=None,
+                 conditions: Optional[list]=None, 
                  n_addon_gps: int=0,
                  n_cond_embed: int=10):
         self.adata = adata
@@ -222,10 +226,13 @@ class Autotalker(BaseModelMixin):
         self.genes_idx_ = adata.uns[genes_idx_key]
 
         # Retrieve conditions
-        if condition_key is not None:
-            self.conditions_ = adata.obs[condition_key].unique().tolist()
+        if conditions is None:
+            if condition_key is not None:
+                self.conditions_ = adata.obs[condition_key].unique().tolist()
+            else:
+                self.conditions_ = []
         else:
-            self.conditions_ = []
+            self.conditions_ = conditions
         
         # Validate counts layer key and counts values
         if counts_key not in adata.layers:
@@ -292,8 +299,8 @@ class Autotalker(BaseModelMixin):
               n_epochs_no_edge_recon: int=0,
               lr: float=0.001,
               weight_decay: float=0.,
-              lambda_edge_recon: Optional[float]=1.,
-              lambda_gene_expr_recon: float=0.33,
+              lambda_edge_recon: Optional[float]=0.01,
+              lambda_gene_expr_recon: float=0.0033,
               lambda_group_lasso: float=0.,
               lambda_l1_addon: float=0.,
               edge_val_ratio: float=0.1,

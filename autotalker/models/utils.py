@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 def load_saved_files(dir_path: str,
                      load_adata: bool,
-                     adata_file_name: Optional[str]="adata.h5ad",
+                     adata_file_name: str="adata.h5ad",
                      map_location: Optional[Literal["cpu", "cuda"]]=None
                      ) -> Tuple[OrderedDict, dict, np.ndarray, ad.AnnData]:
     """
