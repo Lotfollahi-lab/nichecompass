@@ -188,12 +188,13 @@ class BaseModelMixin():
         conditions = attr_dict["conditions_"]
         condition_key = attr_dict["init_params_"]["condition_key"]
         new_conditions = []
-        adata_conditions = adata.obs[condition_key].unique().tolist()
-        for condition in adata_conditions:
-            if condition not in conditions:
-                new_conditions.append(condition)
-        for condition in new_conditions:
-            conditions.append(condition)
+        if condition_key is not None:
+            adata_conditions = adata.obs[condition_key].unique().tolist()
+            for condition in adata_conditions:
+                if condition not in conditions:
+                    new_conditions.append(condition)
+            for condition in new_conditions:
+                conditions.append(condition)
         attr_dict["init_params_"]["conditions"] = conditions
 
         if n_addon_gps != 0:

@@ -20,10 +20,9 @@ from autotalker.modules import VGPGAE
 from autotalker.train import Trainer
 from autotalker.utils import compute_graph_connectivities
 from .basemodelmixin import BaseModelMixin
-from .surgerymixin import SurgeryMixin
 
 
-class Autotalker(BaseModelMixin, SurgeryMixin):
+class Autotalker(BaseModelMixin):
     """
     Autotalker model class.
 
@@ -1014,7 +1013,7 @@ class Autotalker(BaseModelMixin, SurgeryMixin):
             node_batch = node_batch.to(device)
             x = node_batch.x
             edge_index = node_batch.edge_index
-            conditions = (node_batch.conditions if "conditions" in node_batch 
+            conditions = (node_batch.conditions if "conditions" in node_batch
                           else None)
             if self.model.log_variational_:
                 x = torch.log(1 + x)
