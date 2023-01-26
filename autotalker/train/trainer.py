@@ -136,14 +136,16 @@ class Trainer(BaseTrainerMixin):
 
         # Prepare data and get node-level and edge-level training and validation
         # splits
-        data_dict = prepare_data(adata=adata,
-                                 counts_key=self.counts_key,
-                                 adj_key=self.adj_key,
-                                 condition_key=self.condition_key,
-                                 edge_val_ratio=self.edge_val_ratio_,
-                                 edge_test_ratio=0.,
-                                 node_val_ratio=self.node_val_ratio_,
-                                 node_test_ratio=0.)
+        data_dict = prepare_data(
+            adata=adata,
+            condition_label_encoder=self.model.condition_label_encoder_,
+            counts_key=self.counts_key,
+            adj_key=self.adj_key,
+            condition_key=self.condition_key,
+            edge_val_ratio=self.edge_val_ratio_,
+            edge_test_ratio=0.,
+            node_val_ratio=self.node_val_ratio_,
+            node_test_ratio=0.)
         self.node_masked_data = data_dict["node_masked_data"]
         self.edge_train_data = data_dict["edge_train_data"]
         self.edge_val_data = data_dict["edge_val_data"]

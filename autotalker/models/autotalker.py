@@ -974,14 +974,16 @@ class Autotalker(BaseModelMixin):
             adata = self.adata
 
         # Create single dataloader containing entire dataset
-        data_dict = prepare_data(adata=adata,
-                                 counts_key=counts_key,
-                                 adj_key=adj_key,
-                                 condition_key=condition_key,
-                                 edge_val_ratio=0.,
-                                 edge_test_ratio=0.,
-                                 node_val_ratio=0.,
-                                 node_test_ratio=0.)
+        data_dict = prepare_data(
+            adata=adata,
+            condition_label_encoder=self.model.condition_label_encoder_,
+            counts_key=counts_key,
+            adj_key=adj_key,
+            condition_key=condition_key,
+            edge_val_ratio=0.,
+            edge_test_ratio=0.,
+            node_val_ratio=0.,
+            node_test_ratio=0.)
         node_masked_data = data_dict["node_masked_data"]
         loader_dict = initialize_dataloaders(
             node_masked_data=node_masked_data,

@@ -92,6 +92,7 @@ def node_level_split_mask(data: Data,
 
 
 def prepare_data(adata: AnnData,
+                 condition_label_encoder: dict,
                  counts_key: str="counts",
                  adj_key: str="spatial_connectivities",
                  condition_key: Optional[str]=None,
@@ -109,6 +110,10 @@ def prepare_data(adata: AnnData,
     adata:
         AnnData object with raw counts stored in ´adata.layers[counts_key]´, and
         sparse adjacency matrix stored in ´adata.obsp[adj_key]´.
+    condition_label_encoder:
+        Condition label encoder from the model (label encoding indeces need to
+        be aligned with the ones from the model to get the correct conditional
+        embedding).
     counts_key:
         Key under which the raw counts are stored in ´adata.layer´.
     adj_key:
@@ -136,10 +141,12 @@ def prepare_data(adata: AnnData,
         ´edge_label´ attribute.
     """
     data_dict = {}
-    dataset = SpatialAnnTorchDataset(adata=adata,
-                                     counts_key=counts_key,
-                                     adj_key=adj_key,
-                                     condition_key=condition_key)
+    dataset = SpatialAnnTorchDataset(
+        adata=adata,
+        counts_key=counts_key,
+        adj_key=adj_key,
+        condition_key=condition_key,
+        condition_label_encoder=condition_label_encoder)
 
     # PyG Data object (has 2 edge index pairs for one edge because of symmetry;
     # one edge index pair will be removed in the edge-level split).

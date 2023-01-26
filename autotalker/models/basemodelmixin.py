@@ -141,7 +141,7 @@ class BaseModelMixin():
              n_addon_gps: int=0,
              gp_names_key: Optional[str]=None,
              unfreeze_all_weights: bool=True,
-             unfreeze_addon_gp_weights: bool=True,
+             unfreeze_addon_gp_weights: bool=False,
              unfreeze_cond_embed_weights: bool=True) -> torch.nn.Module:
         """
         Instantiate a model from saved output. Can be used for transfer learning
@@ -248,8 +248,11 @@ class BaseModelMixin():
         if unfreeze_cond_embed_weights:
              # allow updates of cond embedder and linear cond layers
             for param_name, param in model.model.named_parameters():
-                if "cond" in param_name:
+                if "cond_embedder" in param_name:
                     param.requires_grad = True
+
+        for param_name, param in model.model.named_parameters():
+            print(param_name, param.requires_grad)
         
         if model.freeze_ and not model.is_trained_:
             raise ValueError("The model has not been pre-trained and therefore "
