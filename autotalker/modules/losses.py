@@ -62,7 +62,7 @@ def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
     edge_recon_logits, edge_labels_sorted = edge_values_and_sorted_labels(
         adj=adj_recon_logits,
         edge_label_index=edge_label_index,
-        edge_labels=edge_labels)
+        edge_labels=edge_labels) # edge_recon_logits dim: (edge_batch_size)
 
     # Compute weighted cross entropy loss
     edge_recon_loss = F.binary_cross_entropy_with_logits(edge_recon_logits,

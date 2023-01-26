@@ -54,13 +54,13 @@ class BaseModelMixin():
             Public attributes defined in a model instance.
         """
         public_attributes = self._get_user_attributes()
-        public_attributes = {a[0]: a[1] for a in public_attributes if 
+        public_attributes = {a[0]: a[1] for a in public_attributes if
                              a[0][-1] == "_"}
         return public_attributes
 
     def _get_init_params(self, locals: dict) -> dict:
         """
-        Get the model init signature with associated passed in values from 
+        Get the model init signature with associated passed in values from
         locals (except the AnnData object passed in).
 
         Parameters
@@ -77,7 +77,7 @@ class BaseModelMixin():
         sig = inspect.signature(init)
         init_params = [p for p in sig.parameters]
         user_params = {p: locals[p] for p in locals if p in init_params}
-        user_params = {k: v for (k, v) in user_params.items() if not 
+        user_params = {k: v for (k, v) in user_params.items() if not
                        isinstance(v, AnnData)}
         return user_params
 
@@ -115,7 +115,7 @@ class BaseModelMixin():
         var_names_save_path = os.path.join(dir_path, "var_names.csv")
 
         if save_adata:
-            # Convert storage format of adjacency matrix to be writable by 
+            # Convert storage format of adjacency matrix to be writable by
             # adata.write()
             if self.adata.obsp["spatial_connectivities"] is not None:
                 self.adata.obsp["spatial_connectivities"] = sp.csr_matrix(
@@ -140,7 +140,9 @@ class BaseModelMixin():
              use_cuda: bool=False,
              n_addon_gps: int=0,
              gp_names_key: Optional[str]=None,
-             freeze_non_addon_weights: bool=False) -> torch.nn.Module:
+             unfreeze_all_weights: bool=True,
+             unfreeze_addon_gp_weights: bool=False,
+             unfreeze_cond_embed_weights: bool=True) -> torch.nn.Module:
         """
         Instantiate a model from saved output. Can be used for transfer learning
         scenarios and to learn de-novo gene programs by adding add-on gene 
@@ -182,6 +184,19 @@ class BaseModelMixin():
 
         validate_var_names(adata, var_names)
 
+        # Add new conditions from query data
+        conditions = attr_dict["conditions_"]
+        condition_key = attr_dict["init_params_"]["condition_key"]
+        new_conditions = []
+        if condition_key is not None:
+            adata_conditions = adata.obs[condition_key].unique().tolist()
+            for condition in adata_conditions:
+                if condition not in conditions:
+                    new_conditions.append(condition)
+            for condition in new_conditions:
+                conditions.append(condition)
+        attr_dict["init_params_"]["conditions"] = conditions
+
         if n_addon_gps != 0:
             attr_dict["n_addon_gps_"] += n_addon_gps
             attr_dict["init_params_"]["n_addon_gps"] += n_addon_gps
@@ -207,7 +222,7 @@ class BaseModelMixin():
         for attr, val in attr_dict.items():
             setattr(model, attr, val)
 
-        if n_addon_gps != 0:
+        if n_addon_gps != 0 or len(new_conditions) > 0:
             model.model.load_and_expand_state_dict(model_state_dict)
         else:
             model.model.load_state_dict(model_state_dict)
@@ -216,16 +231,33 @@ class BaseModelMixin():
             model.model.cuda()
         model.model.eval()
 
-        # Freeze pre-trained weights to only allow updates of addon gene program
-        # weights
-        if freeze_non_addon_weights:
-            if not model.is_trained_:
-                raise ValueError("The model has not been pre-trained and "
-                                 "therefore weights should not be frozen.")
+        # First freeze all parameters and then subsequently unfreeze based on
+        # load settings
+        for param_name, param in model.model.named_parameters():
+            param.requires_grad = False
+            model.freeze_ = True
+        if unfreeze_all_weights:
             for param_name, param in model.model.named_parameters():
-                param.requires_grad = False
+                param.requires_grad = True
+            model.freeze_ = False
+        if unfreeze_addon_gp_weights:
+             # allow updates of addon gp weights
+            for param_name, param in model.model.named_parameters():
                 if "addon" in param_name or "theta" in param_name:
-                    param.requires_grad = True    
+                    param.requires_grad = True
+        if unfreeze_cond_embed_weights:
+             # allow updates of cond embedder and linear cond layers
+            for param_name, param in model.model.named_parameters():
+                if "cond_embedder" in param_name:
+                    param.requires_grad = True
+
+        for param_name, param in model.model.named_parameters():
+            print(param_name, param.requires_grad)
+        
+        if model.freeze_ and not model.is_trained_:
+            raise ValueError("The model has not been pre-trained and therefore "
+                             "weights should not be frozen.")
+            
         return model
 
     def _check_if_trained(self,

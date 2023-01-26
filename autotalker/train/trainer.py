@@ -136,14 +136,16 @@ class Trainer(BaseTrainerMixin):
 
         # Prepare data and get node-level and edge-level training and validation
         # splits
-        data_dict = prepare_data(adata=adata,
-                                 counts_key=self.counts_key,
-                                 adj_key=self.adj_key,
-                                 condition_key=self.condition_key,
-                                 edge_val_ratio=self.edge_val_ratio_,
-                                 edge_test_ratio=0.,
-                                 node_val_ratio=self.node_val_ratio_,
-                                 node_test_ratio=0.)
+        data_dict = prepare_data(
+            adata=adata,
+            condition_label_encoder=self.model.condition_label_encoder_,
+            counts_key=self.counts_key,
+            adj_key=self.adj_key,
+            condition_key=self.condition_key,
+            edge_val_ratio=self.edge_val_ratio_,
+            edge_test_ratio=0.,
+            node_val_ratio=self.node_val_ratio_,
+            node_test_ratio=0.)
         self.node_masked_data = data_dict["node_masked_data"]
         self.edge_train_data = data_dict["edge_train_data"]
         self.edge_val_data = data_dict["edge_val_data"]
@@ -272,15 +274,7 @@ class Trainer(BaseTrainerMixin):
                 node_train_model_output = self.model(
                     data_batch=node_train_data_batch,
                     decoder="gene_expr",
-                    use_only_active_gps=self.use_only_active_gps,
-                    conditions=(node_train_data_batch.conditions if "conditions"
-                                in node_train_data_batch else None))
-
-                #with torch.no_grad():
-                    #print("")
-                    #print(node_train_model_output["node_labels"].sum())
-                    #print(node_train_model_output["node_labels"][:,:338].sum()/338)
-                    #print(node_train_model_output["node_labels"][:,338:].sum()/81)
+                    use_only_active_gps=self.use_only_active_gps)
 
                 edge_train_data_batch = edge_train_data_batch.to(self.device)
 
@@ -288,9 +282,7 @@ class Trainer(BaseTrainerMixin):
                 edge_train_model_output = self.model(
                     data_batch=edge_train_data_batch,
                     decoder="graph",
-                    use_only_active_gps=self.use_only_active_gps,
-                    conditions=(edge_train_data_batch.conditions if "conditions"
-                                in edge_train_data_batch else None))
+                    use_only_active_gps=self.use_only_active_gps)
 
                 # Calculate training loss (edge reconstruction loss + gene
                 # expression reconstruction loss + regularization losses)
@@ -413,18 +405,14 @@ class Trainer(BaseTrainerMixin):
             node_val_model_output = self.model(
                 data_batch=node_val_data_batch,
                 decoder="gene_expr",
-                use_only_active_gps=True,
-                conditions=(node_val_data_batch.conditions if "conditions"
-                            in node_val_data_batch else None))
+                use_only_active_gps=True)
 
             # Forward pass edge level batch
             edge_val_data_batch = edge_val_data_batch.to(self.device)
             edge_val_model_output = self.model(
                 data_batch=edge_val_data_batch,
                 decoder="graph",
-                use_only_active_gps=True,
-                conditions=(edge_val_data_batch.conditions if "conditions"
-                            in edge_val_data_batch else None))
+                use_only_active_gps=True)
 
             # Calculate validation loss (edge reconstruction loss + gene 
             # expression reconstruction loss + regularization losses)
@@ -492,9 +480,7 @@ class Trainer(BaseTrainerMixin):
             edge_val_model_output = self.model(
                 data_batch=edge_val_data_batch,
                 decoder="graph",
-                use_only_active_gps=True,
-                conditions=(edge_val_data_batch.conditions if "conditions"
-                            in edge_val_data_batch else None))
+                use_only_active_gps=True)
     
             # Calculate evaluation metrics
             adj_recon_probs_val = torch.sigmoid(
@@ -520,9 +506,7 @@ class Trainer(BaseTrainerMixin):
             node_val_model_output = self.model(
                 data_batch=node_val_data_batch,
                 decoder="gene_expr",
-                use_only_active_gps=True,
-                conditions=(node_val_data_batch.conditions if "conditions"
-                            in node_val_data_batch else None))
+                use_only_active_gps=True)
 
             gene_expr_val = node_val_model_output["node_labels"]
 

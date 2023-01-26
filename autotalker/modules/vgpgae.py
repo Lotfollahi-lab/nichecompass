@@ -222,8 +222,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     def forward(self,
                 data_batch: Data,
                 decoder: Literal["graph", "gene_expr"],
-                use_only_active_gps: bool=False,
-                conditions: Optional[int]=None) -> dict:
+                use_only_active_gps: bool=False) -> dict:
         """
         Forward pass of the VGPGAE module.
 
@@ -238,8 +237,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         use_only_active_gps:
             Only relevant if ´decoder == graph´. If ´True´, use only active gene
             programs for edge reconstruction.
-        conditions:
-            Label encoding of the conditions.
 
         Returns
         ----------
@@ -250,7 +247,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             from the latent space distribution.
         """
         if (self.cond_embed_injection_ is not None) & (self.n_conditions_ > 0):
-            cond_embed = self.cond_embedder(conditions)
+            cond_embed = self.cond_embedder(data_batch.conditions)
         else:
             cond_embed = None
 

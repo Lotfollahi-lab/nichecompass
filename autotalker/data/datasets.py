@@ -23,6 +23,10 @@ class SpatialAnnTorchDataset():
     adata:
         AnnData object with raw counts stored in ´adata.layers[counts_key]´, and
         sparse adjacency matrix stored in ´adata.obsp[adj_key]´.
+    condition_label_encoder:
+        Condition label encoder from the model (label encoding indeces need to
+        be aligned with the ones from the model to get the correct conditional
+        embedding).
     counts_key:
         Key under which the raw counts are stored in ´adata.layer´.
     adj_key:
@@ -33,6 +37,7 @@ class SpatialAnnTorchDataset():
     """
     def __init__(self,
                  adata: AnnData,
+                 condition_label_encoder: dict,
                  counts_key: str="counts",
                  adj_key: str="spatial_connectivities",
                  condition_key: Optional[str]=None):
@@ -56,10 +61,6 @@ class SpatialAnnTorchDataset():
         self.edge_index = self.adj.to_torch_sparse_coo_tensor()._indices()
 
         if condition_key is not None:
-            unique_conditions = adata.obs[condition_key].unique().tolist()
-            condition_label_encoder = {k: v for k, v in zip(
-                unique_conditions,
-                range(len(unique_conditions)))}
             self.conditions = torch.tensor(
                 encode_labels(adata,
                               condition_label_encoder,
