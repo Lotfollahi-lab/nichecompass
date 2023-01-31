@@ -12,9 +12,21 @@ import pandas as pd
 import scanpy as sc
 import scipy.sparse as sp
 from anndata import AnnData
+from scib.metrics.lisi import lisi_graph_py
 
 from autotalker.utils import compute_graph_indices_and_distances
 from .utils import convert_to_one_hot
+
+
+def compute_mrclisi(
+        adata: AnnData,
+        cell_type_key: str="cell-type",
+        spatial_knng_key: str="autotalker_spatial_8nng",
+        latent_knng_key: str="autotalker_latent_8nng",
+        spatial_key: str="spatial",
+        latent_key: str="autotalker_latent",
+        n_neighbors: int=8,
+        seed: int=0) -> float:
 
 
 def compute_arclisi(

@@ -120,7 +120,7 @@ class GraphEncoder(nn.Module):
             distribution.
         logstd:
             Tensor containing the log standard deviations of the latent space
-            normal distribution.     
+            normal distribution.
         """
         # Add conditional embedding to node feature vector
         if cond_embed is not None:

@@ -5,6 +5,7 @@ from .cca import compute_cca
 from .germse import compute_germse
 from .metrics import compute_benchmarking_metrics
 from .mlnmi import compute_mlnmi
+from .rclisi import compute_rclisi
 
 __all__ = ["compute_arclisi",
            "compute_avg_cad",
@@ -15,4 +16,5 @@ __all__ = ["compute_arclisi",
            "compute_gcd",
            "compute_germse",
            "compute_mlnmi",
-           "compute_per_cell_log_rclisi"]
+           "compute_per_cell_log_rclisi",
+           "compute_rclisi"]

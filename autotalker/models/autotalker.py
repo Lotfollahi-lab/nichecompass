@@ -897,9 +897,9 @@ class Autotalker(BaseModelMixin):
             adata: Optional[AnnData]=None,
             ) -> np.ndarray:
         """
-        Get active gene programs based on the gene expression decoder gene 
+        Get active gene programs based on the gene expression decoder gene
         weights of gene programs. Active gene programs are gene programs
-        whose absolute gene weights aggregated over all genes are greater than 
+        whose absolute gene weights aggregated over all genes are greater than
         ´self.active_gp_thresh_ratio_´ times the absolute gene weights
         aggregation of the gene program with the maximum value across all gene 
         programs.

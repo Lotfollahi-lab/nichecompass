@@ -84,11 +84,11 @@ def compute_avg_cad(
 def compute_cad(
         adata: AnnData,
         cell_type_key: str="cell-type",
-        spatial_knng_key: str="autotalker_spatial_8nng",
-        latent_knng_key: str="autotalker_latent_8nng",
+        spatial_knng_key: str="autotalker_spatial_nng",
+        latent_knng_key: str="autotalker_latent_nng",
         spatial_key: Optional[str]="spatial",
         latent_key: Optional[str]="autotalker_latent",
-        n_neighbors: Optional[int]=8,
+        n_neighbors: Optional[int]=15,
         seed: Optional[int]=0,
         visualize_ccc_maps: bool=False) -> float:
     """
@@ -155,33 +155,25 @@ def compute_cad(
 
     if spatial_knng_connectivities_key not in adata.obsp:
         # Compute spatial (ground truth) connectivities
+        print("Computing spatial nearest neighbor graph...")
         sc.pp.neighbors(adata=adata,
                         use_rep=spatial_key,
                         n_neighbors=n_neighbors,
                         random_state=seed,
                         key_added=spatial_knng_key)
-        #adata.obsp[spatial_knng_connectivities_key] = (
-        #    compute_graph_connectivities(
-        #        adata=adata,
-        #        feature_key=spatial_key,
-        #        n_neighbors=n_neighbors,
-        #        mode="knn",
-        #        seed=seed))
+    else:
+        print("Using precomputed spatial nearest neighbor graph...")
 
     if latent_knng_connectivities_key not in adata.obsp:
+        print("Computing latent nearest neighbor graph...")
         # Compute latent connectivities
         sc.pp.neighbors(adata=adata,
                         use_rep=latent_key,
                         n_neighbors=n_neighbors,
                         random_state=seed,
                         key_added=latent_knng_key)
-        #adata.obsp[latent_knng_connectivities_key] = (
-        #    compute_graph_connectivities(
-        #        adata=adata,
-        #        feature_key=latent_key,
-        #        n_neighbors=n_neighbors,
-        #        mode="knn",
-        #        seed=seed))
+    else:
+        print("Using precomputed latent nearest neighbor graph...")
 
     # Compute cell-type affinity matrix for spatial nearest neighbor graph
     sq.gr.nhood_enrichment(adata,
