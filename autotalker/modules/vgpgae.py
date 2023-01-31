@@ -173,7 +173,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
         self.encoder = GraphEncoder(
             n_input=n_input,
-            n_cond_embed_input=(n_cond_embed if ("encoder" in 
+            n_cond_embed_input=(n_cond_embed if ("encoder" in
                                 self.cond_embed_injection_) &
                                 (self.n_conditions_ != 0) else 0),
             n_hidden=n_hidden_encoder,
@@ -194,7 +194,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.gene_expr_decoder = MaskedGeneExprDecoder(
             n_input=n_nonaddon_gps,
             n_addon_input=n_addon_gps,
-            n_cond_embed_input=(n_cond_embed if ("gene_expr_decoder" in 
+            n_cond_embed_input=(n_cond_embed if ("gene_expr_decoder" in
                                 self.cond_embed_injection_) &
                                 (self.n_conditions_ != 0) else 0),
             n_output=n_output,
@@ -458,12 +458,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         """
         Get a mask of active gene programs based on the gene expression decoder
         gene weights of gene programs. Active gene programs are gene programs
-        whose absolute gene weights aggregated over all genes are greater than 
+        whose absolute gene weights aggregated over all genes are greater than
         ´self.active_gp_thresh_ratio_´ times the absolute gene weights
-        aggregation of the gene program with the maximum value across all gene 
-        programs. Depending on ´abs_gp_weights_agg_mode´, the aggregation will 
+        aggregation of the gene program with the maximum value across all gene
+        programs. Depending on ´abs_gp_weights_agg_mode´, the aggregation will
         be either a sum of absolute gene weights (prioritizes gene programs that
-        reconstruct many genes) or a mean of non-zero absolute gene weights 
+        reconstruct many genes) or a mean of non-zero absolute gene weights
         (normalizes for the number of genes that a gene program reconstructs) or
         a combination of the two.
 
@@ -471,12 +471,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         ----------
         abs_gp_weights_agg_mode:
             If ´sum´, uses sums of absolute gp weights for aggregation and
-            active gp determination. If ´nzmeans´, uses means of non-zero 
+            active gp determination. If ´nzmeans´, uses means of non-zero
             absolute gp weights for aggregation and active gp determination. If
             ´sum+nzmeans´, uses a combination of sums and means of non-zero
             absolute gp weights for aggregation and active gp determination.
         return_gp_weights:
-            If ´True´, in addition return the gene expression decoder gene 
+            If ´True´, in addition return the gene expression decoder gene
             weights of the active gene programs.
 
         Returns
@@ -490,18 +490,18 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         """
         gp_weights = self.get_gp_weights()
 
-        # Correct gp weights for zero inflation using zero inflation 
-        # probabilities over all observations if zinb distribution is used to 
+        # Correct gp weights for zero inflation using zero inflation
+        # probabilities over all observations if zinb distribution is used to
         # model gene expression
         if self.gene_expr_recon_dist_ == "zinb":
             _, zi_probs = self.get_gene_expr_dist_params(
                 z=self.mu,
                 log_library_size=self.log_library_size)
             non_zi_probs = 1 - zi_probs
-            non_zi_probs_sum = non_zi_probs.sum(0).unsqueeze(1) # sum over obs 
+            non_zi_probs_sum = non_zi_probs.sum(0).unsqueeze(1) # sum over obs
             gp_weights *= non_zi_probs_sum 
 
-        # Aggregate absolute gp weights based on ´abs_gp_weights_agg_mode´ and 
+        # Aggregate absolute gp weights based on ´abs_gp_weights_agg_mode´ and
         # calculate thresholds of aggregated absolute gp weights and get active
         # gp mask and (optionally) active gp weights
         abs_gp_weights_sums = gp_weights.norm(p=1, dim=0)

@@ -41,6 +41,8 @@ class DotProductGraphDecoder(nn.Module):
                                           n_output,
                                           bias=False)
 
+        print(n_cond_embed_input)
+
         self.dropout = nn.Dropout(dropout_rate)
 
     def forward(self,

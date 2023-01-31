@@ -250,9 +250,6 @@ class BaseModelMixin():
             for param_name, param in model.model.named_parameters():
                 if "cond_embedder" in param_name:
                     param.requires_grad = True
-
-        for param_name, param in model.model.named_parameters():
-            print(param_name, param.requires_grad)
         
         if model.freeze_ and not model.is_trained_:
             raise ValueError("The model has not been pre-trained and therefore "
