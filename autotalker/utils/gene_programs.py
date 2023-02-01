@@ -596,3 +596,34 @@ def filter_and_combine_gp_dict_gps(
             new_gp_dict[new_gp_name]["targets"] = sorted(
                 list(set(new_gp_targets)))
     return new_gp_dict
+
+
+def get_unique_genes_from_gp_dict(
+        gp_dict: dict,
+        retrieved_gene_entities: list=["sources", "targets"]) -> list:
+    """
+    Return all unique genes of a gene program dictionary.
+
+    Parameters
+    ----------
+    gp_dict:
+        The gene program dictionary from which to retrieve the unique genes.
+    retrieved_gene_entities:
+        A list that contains all gene entities ("sources", "targets")
+        for which unique genes of the gene program dictionary should be
+        retrieved.
+
+    Returns
+    ----------
+    unique_genes:
+        A list of unique genes used in the gene program dictionary.
+    """
+    gene_list = []
+
+    for _, gp in gp_dict.items():
+        for gene_entity, genes in gp.items():
+            if gene_entity in retrieved_gene_entities:
+                gene_list.extend(genes)
+    unique_genes = list(set(gene_list))
+    unique_genes.sort()
+    return unique_genes
