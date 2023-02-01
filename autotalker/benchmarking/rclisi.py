@@ -14,8 +14,8 @@ from scib.metrics.lisi import lisi_graph_py
 def compute_rclisi(
         adata: AnnData,
         cell_type_key: str="cell-type",
-        spatial_knng_key: str="autotalker_spatial_nng",
-        latent_knng_key: str="autotalker_latent_nng",
+        spatial_knng_key: str="autotalker_spatial_knng",
+        latent_knng_key: str="autotalker_latent_knng",
         spatial_key: str="spatial",
         latent_key: str="autotalker_latent",
         n_neighbors: int=15,

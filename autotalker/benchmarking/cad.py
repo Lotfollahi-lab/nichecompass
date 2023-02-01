@@ -84,8 +84,8 @@ def compute_avg_cad(
 def compute_cad(
         adata: AnnData,
         cell_type_key: str="cell-type",
-        spatial_knng_key: str="autotalker_spatial_nng",
-        latent_knng_key: str="autotalker_latent_nng",
+        spatial_knng_key: str="autotalker_spatial_knng",
+        latent_knng_key: str="autotalker_latent_knng",
         spatial_key: Optional[str]="spatial",
         latent_key: Optional[str]="autotalker_latent",
         n_neighbors: Optional[int]=15,
