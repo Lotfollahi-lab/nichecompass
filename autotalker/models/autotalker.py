@@ -1113,3 +1113,83 @@ class Autotalker(BaseModelMixin):
             nb_means = nb_means.detach().cpu().numpy()
             zi_probs = zi_probs.detach().cpu().numpy()
             return nb_means, zi_probs
+
+    def get_gp_summary(self) -> pd.DataFrame:
+        """
+        Returns
+        ----------
+        gp_summary_df:
+            DataFrame with gene program summary information.
+
+        TO DO: extend to addon gps.
+        """
+        # Get source and target gene weights
+        _, gp_weights = self.get_gp_data()
+        gp_weights = np.transpose(gp_weights)
+        gp_source_genes_weights_all_arr = gp_weights[:, int(gp_weights.shape[1]/2):]
+        gp_target_genes_weights_all_arr = gp_weights[:, :int(gp_weights.shape[1]/2)]
+
+        # Get source and target genes
+        gp_source_genes_mask = np.transpose(
+            self.adata.varm["autotalker_gp_sources"] != 0)
+        gp_target_genes_mask = np.transpose(
+            self.adata.varm["autotalker_gp_targets"] != 0)
+
+        # Get active gp mask
+        gp_active_status = np.array(self.model.get_active_gp_mask()).tolist()
+
+        # Collect info for each gp in lists of lists
+        gp_names = []
+        gp_source_genes = []
+        gp_target_genes = []
+        gp_source_genes_weights = []
+        gp_target_genes_weights = []
+        for (gp_name,
+             gp_source_genes_idx,
+             gp_target_genes_idx,
+             gp_source_genes_weights_arr,
+             gp_target_genes_weights_arr) in zip(
+                self.adata.uns["autotalker_gp_names"],
+                gp_source_genes_mask,
+                gp_target_genes_mask,
+                gp_source_genes_weights_all_arr,
+                gp_target_genes_weights_all_arr):
+            gp_names.append(gp_name)
+            
+            # Sort source genes according to absolute weights
+            sorted_source_genes_weights = []
+            sorted_source_genes = []
+            for _, weights, genes in sorted(zip(
+                np.abs(np.around(gp_source_genes_weights_arr[gp_source_genes_idx],
+                                 decimals=4)),
+                np.around(gp_source_genes_weights_arr[gp_source_genes_idx],
+                          decimals=4),
+                self.adata.var_names[gp_source_genes_idx].tolist()),reverse=True):
+                    sorted_source_genes.append(genes)
+                    sorted_source_genes_weights.append(weights)
+            
+            # Sort target genes according to absolute weights
+            sorted_target_genes_weights = []
+            sorted_target_genes = []
+            for _, weights, genes in sorted(zip(
+                np.abs(np.around(gp_target_genes_weights_arr[gp_target_genes_idx],
+                                 decimals=4)),
+                np.around(gp_target_genes_weights_arr[gp_target_genes_idx], decimals=4),
+                self.adata.var_names[gp_target_genes_idx].tolist()), reverse=True):
+                    sorted_target_genes.append(genes)
+                    sorted_target_genes_weights.append(weights)
+                
+            gp_source_genes.append(sorted_source_genes)
+            gp_target_genes.append(sorted_target_genes)
+            gp_source_genes_weights.append(sorted_source_genes_weights)
+            gp_target_genes_weights.append(sorted_target_genes_weights)
+   
+        gp_summary_df = pd.DataFrame(
+            {"gp_name": gp_names,
+             "gp_active": gp_active_status,
+             "gp_source_genes": gp_source_genes,
+             "gp_target_genes": gp_target_genes,
+             "gp_source_genes_weights": gp_source_genes_weights,
+             "gp_target_genes_weights": gp_target_genes_weights})
+        
+        return gp_summary_df

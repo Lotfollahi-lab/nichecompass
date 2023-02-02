@@ -111,7 +111,8 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         x_l = x_l.repeat(1, self.n_heads).view(-1, self.n_heads, self.n_input)
         output = self.propagate(edge_index, x=(x_l, x_r), g=(g_l, g_r))
         x_neighbors_att = output.mean(dim=1)
-        node_labels = torch.cat((x, x_neighbors_att), dim=-1)[:batch_size, self.genes_idx]
+        node_labels = torch.cat(
+            (x, x_neighbors_att), dim=-1)[:batch_size, self.genes_idx]
         self._alpha = None
         return node_labels
 
