@@ -5,4 +5,11 @@
 import setuptools
 
 if __name__ == "__main__":
-    setuptools.setup(name="scvi-tools-skeleton")
+    setuptools.setup(
+        name="autotalker",
+        version='0.1.0',
+        description="",
+        author="Sebastian Birk",
+        author_email="sebastian.birk@outlook.com",
+        url="https://github.com/sebastianbirk/autotalker",
+        packages=["autotalker"])
