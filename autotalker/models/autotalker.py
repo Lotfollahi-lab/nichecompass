@@ -770,10 +770,10 @@ class Autotalker(BaseModelMixin):
             non_zi_probs = 1 - zi_probs
             gp_weights_zi = gp_weights * non_zi_probs.sum(0) # sum over all obs
             # Normalize gp weights to get gene importances
-            gp_gene_importances = np.abs(gp_weights_zi / gp_weights_zi.sum(0))
+            gp_gene_importances = np.abs(gp_weights_zi / np.abs(gp_weights_zi).sum(0))
         elif self.gene_expr_recon_dist_ == "nb":
             # Normalize gp weights to get gene importances
-            gp_gene_importances = np.abs(gp_weights / gp_weights.sum(0))
+            gp_gene_importances = np.abs(gp_weights / np.abs(gp_weights).sum(0))
 
         # Create result dataframe
         gp_gene_importances_df = pd.DataFrame()
@@ -1123,73 +1123,131 @@ class Autotalker(BaseModelMixin):
 
         TO DO: extend to addon gps.
         """
-        # Get source and target gene weights
+        # Get source and target (sign corrected) gene weights
         _, gp_weights = self.get_gp_data()
+        gp_weights_sum = gp_weights.sum(0) # sum over genes
+        gp_weights_signs = np.zeros_like(gp_weights_sum)
+        gp_weights_signs[gp_weights_sum>0] = 1. # keep sign of gp score
+        gp_weights_signs[gp_weights_sum<0] = -1. # reverse sign of gp score
+        gp_weights *= gp_weights_signs
+
+        if self.gene_expr_recon_dist_ == "zinb":
+            # Correct for zero inflation probabilities
+            _, zi_probs = self.get_gene_expr_dist_params(
+                adata=self.adata,
+                counts_key=self.counts_key_,
+                adj_key=self.adj_key_)
+            non_zi_probs = 1 - zi_probs
+            gp_weights_zi = gp_weights * non_zi_probs.sum(0) # sum over all obs
+            # Normalize gp weights to get gene importances
+            gp_gene_importances = np.abs(gp_weights_zi / np.abs(gp_weights_zi).sum(0))
+        elif self.gene_expr_recon_dist_ == "nb":
+            # Normalize gp weights to get gene importances
+            gp_gene_importances = np.abs(gp_weights / np.abs(gp_weights).sum(0))
+
         gp_weights = np.transpose(gp_weights)
+        gp_gene_importances = np.transpose(gp_gene_importances)
         gp_source_genes_weights_all_arr = gp_weights[:, int(gp_weights.shape[1]/2):]
         gp_target_genes_weights_all_arr = gp_weights[:, :int(gp_weights.shape[1]/2)]
+        gp_source_gene_importances_all_arr = gp_gene_importances[:, int(gp_weights.shape[1]/2):]
+        gp_target_gene_importances_all_arr = gp_gene_importances[:, :int(gp_weights.shape[1]/2)]
 
         # Get source and target genes
         gp_source_genes_mask = np.transpose(
-            self.adata.varm["autotalker_gp_sources"] != 0)
+            self.adata.varm[self.gp_sources_mask_key_] != 0)
         gp_target_genes_mask = np.transpose(
-            self.adata.varm["autotalker_gp_targets"] != 0)
+            self.adata.varm[self.gp_targets_mask_key_] != 0)
 
         # Get active gp mask
         gp_active_status = np.array(self.model.get_active_gp_mask()).tolist()
 
+        active_gps = list(self.get_active_gps(adata=self.adata))
+        all_gps = list(self.adata.uns[self.gp_names_key_])
+
         # Collect info for each gp in lists of lists
         gp_names = []
+        active_gp_idx = [] # Index among active gene programs
+        all_gp_idx = [] # Index among all gene programs
         gp_source_genes = []
         gp_target_genes = []
         gp_source_genes_weights = []
         gp_target_genes_weights = []
+        gp_source_genes_importances = []
+        gp_target_genes_importances = []
         for (gp_name,
              gp_source_genes_idx,
              gp_target_genes_idx,
              gp_source_genes_weights_arr,
-             gp_target_genes_weights_arr) in zip(
-                self.adata.uns["autotalker_gp_names"],
+             gp_target_genes_weights_arr,
+             gp_source_genes_importances_arr,
+             gp_target_genes_importances_arr) in zip(
+                self.adata.uns[self.gp_names_key_],
                 gp_source_genes_mask,
                 gp_target_genes_mask,
                 gp_source_genes_weights_all_arr,
-                gp_target_genes_weights_all_arr):
+                gp_target_genes_weights_all_arr,
+                gp_source_gene_importances_all_arr,
+                gp_target_gene_importances_all_arr):
             gp_names.append(gp_name)
+            active_gp_idx.append(active_gps.index(gp_name)
+                                 if gp_name in active_gps else np.nan)
+            all_gp_idx.append(all_gps.index(gp_name))
+
+            if gp_name == "IL15_ligand_targetgenes_GP":
+                print((gp_target_genes_weights_arr != 0).sum())
             
             # Sort source genes according to absolute weights
             sorted_source_genes_weights = []
+            sorted_source_genes_importances = []
             sorted_source_genes = []
-            for _, weights, genes in sorted(zip(
+            for _, weights, importances, genes in sorted(zip(
                 np.abs(np.around(gp_source_genes_weights_arr[gp_source_genes_idx],
                                  decimals=4)),
                 np.around(gp_source_genes_weights_arr[gp_source_genes_idx],
                           decimals=4),
+                np.around(gp_source_genes_importances_arr[gp_source_genes_idx],
+                          decimals=4),        
                 self.adata.var_names[gp_source_genes_idx].tolist()),reverse=True):
                     sorted_source_genes.append(genes)
                     sorted_source_genes_weights.append(weights)
+                    sorted_source_genes_importances.append(importances)
             
             # Sort target genes according to absolute weights
             sorted_target_genes_weights = []
+            sorted_target_genes_importances = []
             sorted_target_genes = []
-            for _, weights, genes in sorted(zip(
+            for _, weights, importances, genes in sorted(zip(
                 np.abs(np.around(gp_target_genes_weights_arr[gp_target_genes_idx],
                                  decimals=4)),
-                np.around(gp_target_genes_weights_arr[gp_target_genes_idx], decimals=4),
+                np.around(gp_target_genes_weights_arr[gp_target_genes_idx],
+                          decimals=4),                 
+                np.around(gp_target_genes_importances_arr[gp_target_genes_idx],
+                          decimals=4),
                 self.adata.var_names[gp_target_genes_idx].tolist()), reverse=True):
                     sorted_target_genes.append(genes)
                     sorted_target_genes_weights.append(weights)
+                    sorted_target_genes_importances.append(importances)                    
                 
             gp_source_genes.append(sorted_source_genes)
             gp_target_genes.append(sorted_target_genes)
             gp_source_genes_weights.append(sorted_source_genes_weights)
             gp_target_genes_weights.append(sorted_target_genes_weights)
+            gp_source_genes_importances.append(sorted_source_genes_importances)
+            gp_target_genes_importances.append(sorted_target_genes_importances)
    
         gp_summary_df = pd.DataFrame(
             {"gp_name": gp_names,
+             "all_gp_idx": all_gp_idx,
              "gp_active": gp_active_status,
+             "active_gp_idx": active_gp_idx,
              "gp_source_genes": gp_source_genes,
              "gp_target_genes": gp_target_genes,
-             "gp_source_genes_weights": gp_source_genes_weights,
-             "gp_target_genes_weights": gp_target_genes_weights})
+             "gp_source_genes_weights_sign_corrected": gp_source_genes_weights,
+             "gp_target_genes_weights_sign_corrected": gp_target_genes_weights,
+             "gp_source_genes_importances": gp_source_genes_importances,
+             "gp_target_genes_importances": gp_target_genes_importances})
+
+        gp_summary_df["active_gp_idx"] = (
+            gp_summary_df["active_gp_idx"].astype("Int64"))
         
         return gp_summary_df
