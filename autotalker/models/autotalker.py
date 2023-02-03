@@ -1168,6 +1168,8 @@ class Autotalker(BaseModelMixin):
         gp_names = []
         active_gp_idx = [] # Index among active gene programs
         all_gp_idx = [] # Index among all gene programs
+        n_source_genes = []
+        n_target_genes = []
         gp_source_genes = []
         gp_target_genes = []
         gp_source_genes_weights = []
@@ -1228,6 +1230,8 @@ class Autotalker(BaseModelMixin):
                     sorted_target_genes_weights.append(weights)
                     sorted_target_genes_importances.append(importances)                    
                 
+            n_source_genes.append(len(sorted_source_genes))
+            n_target_genes.append(len(sorted_target_genes))
             gp_source_genes.append(sorted_source_genes)
             gp_target_genes.append(sorted_target_genes)
             gp_source_genes_weights.append(sorted_source_genes_weights)
@@ -1240,6 +1244,8 @@ class Autotalker(BaseModelMixin):
              "all_gp_idx": all_gp_idx,
              "gp_active": gp_active_status,
              "active_gp_idx": active_gp_idx,
+             "n_source_genes": n_source_genes,
+             "n_target_genes": n_target_genes,
              "gp_source_genes": gp_source_genes,
              "gp_target_genes": gp_target_genes,
              "gp_source_genes_weights_sign_corrected": gp_source_genes_weights,
