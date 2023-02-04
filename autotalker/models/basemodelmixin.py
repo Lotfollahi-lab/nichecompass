@@ -140,6 +140,7 @@ class BaseModelMixin():
              use_cuda: bool=False,
              n_addon_gps: int=0,
              gp_names_key: Optional[str]=None,
+             genes_idx_key: Optional[str]=None,
              unfreeze_all_weights: bool=False,
              unfreeze_addon_gp_weights: bool=False,
              unfreeze_cond_embed_weights: bool=False) -> torch.nn.Module:
@@ -163,7 +164,7 @@ class BaseModelMixin():
             Number of (new) add-on gene programs to be added to the model's
             architecture.
         gp_names_key:
-            Key under which the gene program names are stored in ´adata.uns´.            
+            Key under which the gene program names are stored in ´adata.uns´.         
         freeze_non_addon_weights:
             If `True`, freeze non-addon weights to constrain training to add-on
             gene programs.
@@ -183,6 +184,15 @@ class BaseModelMixin():
         adata = new_adata if new_adata is not None else adata
 
         validate_var_names(adata, var_names)
+
+        # Include all genes in gene expression reconstruction if addon nodes
+        # are present
+        if n_addon_gps != 0:
+            if genes_idx_key not in adata.uns:
+                raise ValueError("Please specifiy a valid 'genes_idx_key' if "
+                                 "'n_addon_gps' > 0, so that all genes can be "
+                                 "included in the genes idx.")
+            adata.uns[genes_idx_key] = np.arange(adata.n_vars * 2)
 
         # Add new conditions from query data
         conditions = attr_dict["conditions_"]
@@ -243,7 +253,9 @@ class BaseModelMixin():
         if unfreeze_addon_gp_weights:
              # allow updates of addon gp weights
             for param_name, param in model.model.named_parameters():
-                if "addon" in param_name or "theta" in param_name:
+                if "addon" in param_name or \
+                "theta" in param_name or \
+                "aggregator" in param_name:
                     param.requires_grad = True
         if unfreeze_cond_embed_weights:
              # allow updates of cond embedder and linear cond layers

@@ -388,8 +388,7 @@ class Autotalker(BaseModelMixin):
            condition_key=self.condition_key_,
            only_active_gps=True,
            return_mu_std=True)
-        self.adata.uns[self.active_gp_names_key_] = self.get_active_gps(
-            adata=self.adata)
+        self.adata.uns[self.active_gp_names_key_] = self.get_active_gps()
 
         if mlflow_experiment_id is not None:
             mlflow.log_metric("n_active_gps",
@@ -892,10 +891,7 @@ class Autotalker(BaseModelMixin):
         cond_embed = self.model.cond_embedder.weight.cpu().detach().numpy()
         return cond_embed
 
-    def get_active_gps(
-            self,
-            adata: Optional[AnnData]=None,
-            ) -> np.ndarray:
+    def get_active_gps(self) -> np.ndarray:
         """
         Get active gene programs based on the gene expression decoder gene
         weights of gene programs. Active gene programs are gene programs
@@ -917,12 +913,9 @@ class Autotalker(BaseModelMixin):
         """
         self._check_if_trained(warn=True)
 
-        if adata is None:
-            adata = self.adata
-
         active_gp_mask = self.model.get_active_gp_mask()
         active_gp_mask = active_gp_mask.detach().cpu().numpy()
-        active_gps = adata.uns[self.gp_names_key_][active_gp_mask]
+        active_gps = self.adata.uns[self.gp_names_key_][active_gp_mask]
         return active_gps
 
     def get_latent_representation(
@@ -996,7 +989,7 @@ class Autotalker(BaseModelMixin):
 
         # Get number of gene programs
         if only_active_gps:
-            n_gps = self.get_active_gps(adata=adata).shape[0]
+            n_gps = self.get_active_gps().shape[0]
         else:
             n_gps = (self.n_nonaddon_gps_ + self.n_addon_gps_ )
 
