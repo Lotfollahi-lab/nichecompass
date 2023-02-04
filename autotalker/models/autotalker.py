@@ -1194,9 +1194,6 @@ class Autotalker(BaseModelMixin):
             active_gp_idx.append(active_gps.index(gp_name)
                                  if gp_name in active_gps else np.nan)
             all_gp_idx.append(all_gps.index(gp_name))
-
-            if gp_name == "IL15_ligand_targetgenes_GP":
-                print((gp_target_genes_weights_arr != 0).sum())
             
             # Sort source genes according to absolute weights
             sorted_source_genes_weights = []

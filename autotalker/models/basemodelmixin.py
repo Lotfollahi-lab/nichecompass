@@ -140,9 +140,9 @@ class BaseModelMixin():
              use_cuda: bool=False,
              n_addon_gps: int=0,
              gp_names_key: Optional[str]=None,
-             unfreeze_all_weights: bool=True,
+             unfreeze_all_weights: bool=False,
              unfreeze_addon_gp_weights: bool=False,
-             unfreeze_cond_embed_weights: bool=True) -> torch.nn.Module:
+             unfreeze_cond_embed_weights: bool=False) -> torch.nn.Module:
         """
         Instantiate a model from saved output. Can be used for transfer learning
         scenarios and to learn de-novo gene programs by adding add-on gene 
