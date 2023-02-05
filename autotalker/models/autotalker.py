@@ -1150,11 +1150,22 @@ class Autotalker(BaseModelMixin):
             self.adata.varm[self.gp_sources_mask_key_] != 0)
         gp_target_genes_mask = np.transpose(
             self.adata.varm[self.gp_targets_mask_key_] != 0)
+        
+        # Add entries to gp mask for addon gps
+        if self.n_addon_gps_ > 0:
+            addon_gp_source_genes_mask = np.ones((self.n_addon_gps_,
+                                                  self.adata.n_vars), dtype=bool)
+            addon_gp_target_genes_mask = np.ones((self.n_addon_gps_,
+                                                  self.adata.n_vars), dtype=bool)
+            gp_source_genes_mask = np.concatenate(
+                (gp_source_genes_mask, addon_gp_source_genes_mask), axis=0)
+            gp_target_genes_mask = np.concatenate(
+                (gp_target_genes_mask, addon_gp_target_genes_mask), axis=0)
 
         # Get active gp mask
         gp_active_status = np.array(self.model.get_active_gp_mask()).tolist()
 
-        active_gps = list(self.get_active_gps(adata=self.adata))
+        active_gps = list(self.get_active_gps())
         all_gps = list(self.adata.uns[self.gp_names_key_])
 
         # Collect info for each gp in lists of lists
@@ -1187,7 +1198,7 @@ class Autotalker(BaseModelMixin):
             active_gp_idx.append(active_gps.index(gp_name)
                                  if gp_name in active_gps else np.nan)
             all_gp_idx.append(all_gps.index(gp_name))
-            
+
             # Sort source genes according to absolute weights
             sorted_source_genes_weights = []
             sorted_source_genes_importances = []
