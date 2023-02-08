@@ -18,7 +18,8 @@ def compute_rclisi(
         latent_knng_key: str="autotalker_latent_knng",
         spatial_key: str="spatial",
         latent_key: str="autotalker_latent",
-        n_neighbors: int=15,
+        knn_graph_n_neighbors: int=15,
+        lisi_graph_n_neighbors: int=90,
         seed: int=0) -> float:
     """
     Compute the Median Absolute Log RCLISI (RCLISI) across all cells. A lower
@@ -47,10 +48,12 @@ def compute_rclisi(
     latent_key:
         Key under which the latent representation from the model is stored in
         ´adata.obsm´.
-    n_neighbors:
+    knn_graph_n_neighbors:
         Number of neighbors used for the construction of the nearest neighbor
         graphs from the spatial coordinates and the latent representation from
         the model.
+    lisi_graph_n_neighbors:
+        Number of neighbors used for the LISI computation.
     seed:
         Random seed for reproducibility.
 
@@ -68,7 +71,7 @@ def compute_rclisi(
         print("Computing spatial nearest neighbor graph...")
         sc.pp.neighbors(adata=adata,
                         use_rep=spatial_key,
-                        n_neighbors=n_neighbors,
+                        n_neighbors=knn_graph_n_neighbors,
                         random_state=seed,
                         key_added=spatial_knng_key)
     else:
@@ -79,7 +82,7 @@ def compute_rclisi(
         # Compute latent connectivities
         sc.pp.neighbors(adata=adata,
                         use_rep=latent_key,
-                        n_neighbors=n_neighbors,
+                        n_neighbors=knn_graph_n_neighbors,
                         random_state=seed,
                         key_added=latent_knng_key)
     else:
@@ -94,7 +97,7 @@ def compute_rclisi(
     spatial_cell_clisi_scores = lisi_graph_py(
         adata=adata_tmp,
         obs_key=cell_type_key,
-        n_neighbors=n_neighbors,
+        n_neighbors=lisi_graph_n_neighbors,
         perplexity=None,
         subsample=None,
         n_cores=1,
@@ -108,13 +111,14 @@ def compute_rclisi(
     latent_cell_clisi_scores = lisi_graph_py(
         adata=adata_tmp,
         obs_key=cell_type_key,
-        n_neighbors=n_neighbors,
+        n_neighbors=lisi_graph_n_neighbors,
         perplexity=None,
         subsample=None,
         n_cores=1,
         verbose=False)
 
     cell_rclisi_scores = latent_cell_clisi_scores / spatial_cell_clisi_scores
+
     cell_log_rclisi_scores = np.log2(cell_rclisi_scores)
 
     rclisi = np.median(abs(cell_log_rclisi_scores))
