@@ -515,14 +515,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             abs_gp_weights_nzmeans = (abs_gp_weights_sums / 
                                       torch.count_nonzero(gp_weights, dim=0))
             max_abs_gp_weights_nzmean = max(abs_gp_weights_nzmeans)
-            min_abs_gp_weights_nzmean_thresh = (self.active_gp_thresh_ratio_ * 
+            min_abs_gp_weights_nzmean_thresh = (self.active_gp_thresh_ratio_ *
                                                 max_abs_gp_weights_nzmean)
             if abs_gp_weights_agg_mode == "nzmeans":
                 active_gp_mask = (abs_gp_weights_nzmeans >= 
                                   min_abs_gp_weights_nzmean_thresh)
             elif abs_gp_weights_agg_mode == "sum+nzmeans":
                 # Combine active gp mask
-                active_gp_mask = active_gp_mask | (abs_gp_weights_nzmeans >= 
+                active_gp_mask = active_gp_mask | (abs_gp_weights_nzmeans >=
                                  min_abs_gp_weights_nzmean_thresh)
         if return_gp_weights:
             active_gp_weights = gp_weights[:, active_gp_mask]

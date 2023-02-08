@@ -88,6 +88,8 @@ def compute_rclisi(
     adata_tmp = adata.copy()
     adata_tmp.obsp["connectivities"] = (
         adata.obsp[spatial_knng_connectivities_key])
+    adata_tmp.uns["neighbors"] = (
+        adata.uns[spatial_knng_key])
 
     spatial_cell_clisi_scores = lisi_graph_py(
         adata=adata_tmp,
@@ -100,6 +102,8 @@ def compute_rclisi(
 
     adata_tmp.obsp["connectivities"] = (
         adata.obsp[latent_knng_connectivities_key])
+    adata_tmp.uns["neighbors"] = (
+        adata.uns[latent_knng_key])
 
     latent_cell_clisi_scores = lisi_graph_py(
         adata=adata_tmp,

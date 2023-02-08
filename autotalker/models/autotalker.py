@@ -388,8 +388,7 @@ class Autotalker(BaseModelMixin):
            condition_key=self.condition_key_,
            only_active_gps=True,
            return_mu_std=True)
-        self.adata.uns[self.active_gp_names_key_] = self.get_active_gps(
-            adata=self.adata)
+        self.adata.uns[self.active_gp_names_key_] = self.get_active_gps()
 
         if mlflow_experiment_id is not None:
             mlflow.log_metric("n_active_gps",
@@ -892,10 +891,7 @@ class Autotalker(BaseModelMixin):
         cond_embed = self.model.cond_embedder.weight.cpu().detach().numpy()
         return cond_embed
 
-    def get_active_gps(
-            self,
-            adata: Optional[AnnData]=None,
-            ) -> np.ndarray:
+    def get_active_gps(self) -> np.ndarray:
         """
         Get active gene programs based on the gene expression decoder gene
         weights of gene programs. Active gene programs are gene programs
@@ -917,12 +913,9 @@ class Autotalker(BaseModelMixin):
         """
         self._check_if_trained(warn=True)
 
-        if adata is None:
-            adata = self.adata
-
         active_gp_mask = self.model.get_active_gp_mask()
         active_gp_mask = active_gp_mask.detach().cpu().numpy()
-        active_gps = adata.uns[self.gp_names_key_][active_gp_mask]
+        active_gps = self.adata.uns[self.gp_names_key_][active_gp_mask]
         return active_gps
 
     def get_latent_representation(
@@ -996,7 +989,7 @@ class Autotalker(BaseModelMixin):
 
         # Get number of gene programs
         if only_active_gps:
-            n_gps = self.get_active_gps(adata=adata).shape[0]
+            n_gps = self.get_active_gps().shape[0]
         else:
             n_gps = (self.n_nonaddon_gps_ + self.n_addon_gps_ )
 
@@ -1157,11 +1150,22 @@ class Autotalker(BaseModelMixin):
             self.adata.varm[self.gp_sources_mask_key_] != 0)
         gp_target_genes_mask = np.transpose(
             self.adata.varm[self.gp_targets_mask_key_] != 0)
+        
+        # Add entries to gp mask for addon gps
+        if self.n_addon_gps_ > 0:
+            addon_gp_source_genes_mask = np.ones((self.n_addon_gps_,
+                                                  self.adata.n_vars), dtype=bool)
+            addon_gp_target_genes_mask = np.ones((self.n_addon_gps_,
+                                                  self.adata.n_vars), dtype=bool)
+            gp_source_genes_mask = np.concatenate(
+                (gp_source_genes_mask, addon_gp_source_genes_mask), axis=0)
+            gp_target_genes_mask = np.concatenate(
+                (gp_target_genes_mask, addon_gp_target_genes_mask), axis=0)
 
         # Get active gp mask
         gp_active_status = np.array(self.model.get_active_gp_mask()).tolist()
 
-        active_gps = list(self.get_active_gps(adata=self.adata))
+        active_gps = list(self.get_active_gps())
         all_gps = list(self.adata.uns[self.gp_names_key_])
 
         # Collect info for each gp in lists of lists
@@ -1194,7 +1198,7 @@ class Autotalker(BaseModelMixin):
             active_gp_idx.append(active_gps.index(gp_name)
                                  if gp_name in active_gps else np.nan)
             all_gp_idx.append(all_gps.index(gp_name))
-            
+
             # Sort source genes according to absolute weights
             sorted_source_genes_weights = []
             sorted_source_genes_importances = []
