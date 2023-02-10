@@ -560,7 +560,7 @@ class Autotalker(BaseModelMixin):
 
         # Retrieve category values for each observation, as well as all existing
         # unique categories
-        cat_values = adata.obs[cat_key]
+        cat_values = adata.obs[cat_key].replace(np.nan, "NaN")
         cats = cat_values.unique()
         if selected_cats is None:
             selected_cats = cats
