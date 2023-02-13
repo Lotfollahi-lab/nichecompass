@@ -138,6 +138,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.n_addon_gps_ = n_addon_gps
         self.n_cond_embed_ = n_cond_embed
         self.n_output_ = n_output
+        self.genes_idx_ = genes_idx
         self.conditions_ = conditions
         self.n_conditions_ = len(conditions)
         self.condition_label_encoder_ = {
@@ -247,9 +248,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             from the latent space distribution.
         """
         if (self.cond_embed_injection_ is not None) & (self.n_conditions_ > 0):
-            cond_embed = self.cond_embedder(data_batch.conditions)
+            self.cond_embed = self.cond_embedder(data_batch.conditions)
         else:
-            cond_embed = None
+            self.cond_embed = None
 
         x = data_batch.x # dim: n_obs x n_genes
         edge_index = data_batch.edge_index # dim 2 x n_edges
@@ -268,8 +269,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.mu, self.logstd = self.encoder(
             x=x_enc,
             edge_index=edge_index,
-            cond_embed=(cond_embed if "encoder" in self.cond_embed_injection_
-                        else None))
+            cond_embed=(self.cond_embed if "encoder" in
+                        self.cond_embed_injection_ else None))
         output["mu"] = self.mu
         output["logstd"] = self.logstd
         z = self.reparameterize(self.mu, self.logstd)
@@ -284,22 +285,22 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         if decoder == "graph":
             output["adj_recon_logits"] = self.graph_decoder(
                 z=z,
-                cond_embed=(cond_embed if "graph_decoder" in
+                cond_embed=(self.cond_embed if "graph_decoder" in
                             self.cond_embed_injection_ else None))
         elif decoder == "gene_expr":
             # Compute aggregated neighborhood gene expression for gene
             # expression reconstruction
             output["node_labels"] = self.gene_expr_node_label_aggregator(
-                x=x, 
+                x=x,
                 edge_index=edge_index,
                 batch_size=data_batch.batch_size)
 
             output["gene_expr_dist_params"] = self.gene_expr_decoder(
                 z=z[:data_batch.batch_size],
                 log_library_size=self.log_library_size[:data_batch.batch_size],
-                cond_embed=(cond_embed[:data_batch.batch_size] if (cond_embed is
-                            not None) & ("gene_expr_decoder" in
-                            self.cond_embed_injection_) else None))
+                cond_embed=(self.cond_embed[:data_batch.batch_size] if
+                            (self.cond_embed is not None) & ("gene_expr_decoder"
+                            in self.cond_embed_injection_) else None))
         return output
 
     def loss(self,
@@ -436,7 +437,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         Returns:
         ----------
         gp_weights:
-            Tensor containing the gene expression decoder gene weights.
+            Tensor containing the gene expression decoder gene weights (dim:
+            n_gps x n_genes_in_gp_mask)
         """
         # Get gp gene expression decoder gene weights
         gp_weights = (self.gene_expr_decoder.nb_means_normalized_decoder
@@ -446,6 +448,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 [gp_weights, 
                  (self.gene_expr_decoder.nb_means_normalized_decoder.addon_l
                   .weight.data).clone()], axis=1)
+        gp_weights = gp_weights[self.genes_idx_, :] # only keep genes in mask
         return gp_weights
 
     def get_active_gp_mask(
@@ -496,10 +499,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         if self.gene_expr_recon_dist_ == "zinb":
             _, zi_probs = self.get_gene_expr_dist_params(
                 z=self.mu,
-                log_library_size=self.log_library_size)
+                log_library_size=self.log_library_size,
+                cond_embed=self.cond_embed)
             non_zi_probs = 1 - zi_probs
             non_zi_probs_sum = non_zi_probs.sum(0).unsqueeze(1) # sum over obs
-            gp_weights *= non_zi_probs_sum 
+            gp_weights *= non_zi_probs_sum
 
         # Aggregate absolute gp weights based on ´abs_gp_weights_agg_mode´ and
         # calculate thresholds of aggregated absolute gp weights and get active
@@ -600,7 +604,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     def get_gene_expr_dist_params(
             self,
             z: torch.Tensor,
-            log_library_size: torch.Tensor
+            log_library_size: torch.Tensor,
+            cond_embed: torch.Tensor,
             ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Decode latent features ´z´ to return the parameters of the distribution
@@ -616,6 +621,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         log_library_size:
             Tensor containing the log library size of the observations / cells 
             (dim: n_obs x 1).
+        cond_embed:
+            Tensor containing the conditional embedding (dim: n_obs x n_cond).
 
         Returns
         ----------
@@ -627,13 +634,15 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             distribution (dim: n_obs x n_genes).
         """
         if self.gene_expr_recon_dist_ == "nb":
-            nb_means = self.gene_expr_decoder(z=z,
-                                              log_library_size=log_library_size)
-            nb_means
+            nb_means = self.gene_expr_decoder(
+                z=z,
+                log_library_size=log_library_size,
+                cond_embed=cond_embed)
             return nb_means
         if self.gene_expr_recon_dist_ == "zinb":
             nb_means, zi_prob_logits = self.gene_expr_decoder(
                 z=z,
-                log_library_size=log_library_size)
+                log_library_size=log_library_size,
+                cond_embed=cond_embed)
             zi_probs = torch.sigmoid(zi_prob_logits)
             return nb_means, zi_probs
