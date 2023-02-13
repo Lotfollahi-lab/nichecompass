@@ -429,7 +429,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 loss_dict["optim_loss"] += loss_dict["addon_gp_l1_reg_loss"]
         return loss_dict
 
-    def get_gp_weights(self) -> torch.Tensor:
+    def get_gp_weights(self,
+                       use_genes_idx: bool=False) -> torch.Tensor:
         """
         Get the gene weights of the gene expression negative binomial means
         decoder.
@@ -448,7 +449,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 [gp_weights, 
                  (self.gene_expr_decoder.nb_means_normalized_decoder.addon_l
                   .weight.data).clone()], axis=1)
-        gp_weights = gp_weights[self.genes_idx_, :] # only keep genes in mask
+        if use_genes_idx: # only keep genes in mask
+            gp_weights = gp_weights[self.genes_idx_, :]
         return gp_weights
 
     def get_active_gp_mask(
@@ -491,7 +493,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Tensor containing the gene expression decoder gene weights of active
             gene programs.
         """
-        gp_weights = self.get_gp_weights()
+        gp_weights = self.get_gp_weights(use_genes_idx=True)
 
         # Correct gp weights for zero inflation using zero inflation
         # probabilities over all observations if zinb distribution is used to
