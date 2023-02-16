@@ -59,6 +59,7 @@ class SpatialAnnTorchDataset():
             raise ImportError("The input adjacency matrix has to be symmetric.")
         
         self.edge_index = self.adj.to_torch_sparse_coo_tensor()._indices()
+        self.obs_index = torch.arange(len(adata))
 
         if condition_key is not None:
             self.conditions = torch.tensor(

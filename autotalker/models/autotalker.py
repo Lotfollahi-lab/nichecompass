@@ -10,6 +10,7 @@ import mlflow
 import numpy as np
 import pandas as pd
 import scanpy as sc
+import scipy.sparse as sp
 import torch
 from anndata import AnnData
 from scipy.special import erfc
@@ -62,6 +63,9 @@ class Autotalker(BaseModelMixin):
     genes_idx_key:
         Key in ´adata.uns´ where the index of a concatenated vector of target
         and source genes that are in the gene program masks are stored.
+    agg_alpha_key:
+        Key in ´adata.obsp´ where the attention weights of the gene expression
+        node label aggregator will be stored.
     include_edge_recon_loss:
         If `True`, includes the edge reconstruction loss in the loss 
         optimization.
@@ -140,6 +144,7 @@ class Autotalker(BaseModelMixin):
                                                        "graph_decoder",
                                                        "gene_expr_decoder"],
                  genes_idx_key: str="autotalker_genes_idx",
+                 agg_alpha_key: str="autotalker_agg_alpha",
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
                  gene_expr_recon_dist: Literal["nb", "zinb"]="nb",
@@ -170,6 +175,8 @@ class Autotalker(BaseModelMixin):
         self.latent_key_ = latent_key
         self.condition_key_ = condition_key
         self.cond_embed_injection_ = cond_embed_injection
+        self.genes_idx_key_ = genes_idx_key
+        self.agg_alpha_key_ = agg_alpha_key
         self.include_edge_recon_loss_ = include_edge_recon_loss
         self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
         self.gene_expr_recon_dist_ = gene_expr_recon_dist
@@ -232,6 +239,10 @@ class Autotalker(BaseModelMixin):
                 self.conditions_ = []
         else:
             self.conditions_ = conditions
+
+        if node_label_method == "one-hop-attention":
+            self.adata.obsp[agg_alpha_key] = (
+                sp.csr_matrix((len(adata), len(adata))))
         
         # Validate counts layer key and counts values
         if counts_key not in adata.layers:

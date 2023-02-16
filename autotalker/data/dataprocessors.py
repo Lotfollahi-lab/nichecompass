@@ -153,10 +153,19 @@ def prepare_data(adata: AnnData,
     if condition_key is not None:
         data = Data(x=dataset.x,
                     edge_index=dataset.edge_index,
-                    conditions=dataset.conditions)
+                    edge_attr=dataset.edge_index[0], # store index of neighbor
+                                                     # node as edge attribute
+                                                     # for attention weight
+                                                     # retrieval
+                    conditions=dataset.conditions,
+                    obs_index=dataset.obs_index) # store index of central node
+                                                 # for attention weight
+                                                 # retrieval
     else:
         data = Data(x=dataset.x,
-                    edge_index=dataset.edge_index)
+                    edge_index=dataset.edge_index,
+                    edge_attr=dataset.edge_index[0],
+                    obs_index=dataset.obs_index)
 
     # Edge-level split for edge reconstruction
     edge_train_data, edge_val_data, edge_test_data = edge_level_split(

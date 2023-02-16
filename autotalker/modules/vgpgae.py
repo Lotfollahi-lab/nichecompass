@@ -211,8 +211,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 OneHopGCNNormNodeLabelAggregator(genes_idx=genes_idx))
         elif node_label_method == "one-hop-sum":
             self.gene_expr_node_label_aggregator = (
-                OneHopSumNodeLabelAggregator(genes_idx=genes_idx)) 
-        elif node_label_method == "one-hop-attention": 
+                OneHopSumNodeLabelAggregator(genes_idx=genes_idx))
+        elif node_label_method == "one-hop-attention":
             self.gene_expr_node_label_aggregator = (
                 OneHopAttentionNodeLabelAggregator(n_input=n_input,
                                                    genes_idx=genes_idx))
@@ -223,7 +223,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     def forward(self,
                 data_batch: Data,
                 decoder: Literal["graph", "gene_expr"],
-                use_only_active_gps: bool=False) -> dict:
+                use_only_active_gps: bool=False,
+                return_agg_attention_weights: bool=True) -> dict:
         """
         Forward pass of the VGPGAE module.
 
@@ -238,6 +239,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         use_only_active_gps:
             Only relevant if ´decoder == graph´. If ´True´, use only active gene
             programs for edge reconstruction.
+        return_agg_attention_weights:
+            If ´True´, also return the attention weights of the gene expression
+            node label aggregator with the corresponding edge index.
 
         Returns
         ----------
@@ -251,6 +255,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             self.cond_embed = self.cond_embedder(data_batch.conditions)
         else:
             self.cond_embed = None
+
+        print(data_batch.edge_index.shape)
+        print(data_batch.edge_attr.shape)
 
         x = data_batch.x # dim: n_obs x n_genes
         edge_index = data_batch.edge_index # dim 2 x n_edges
@@ -290,10 +297,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         elif decoder == "gene_expr":
             # Compute aggregated neighborhood gene expression for gene
             # expression reconstruction
-            output["node_labels"] = self.gene_expr_node_label_aggregator(
+            output["node_labels"], output["agg_edge_index_alpha_tuple"] = (
+                self.gene_expr_node_label_aggregator(
                 x=x,
                 edge_index=edge_index,
-                batch_size=data_batch.batch_size)
+                batch_size=data_batch.batch_size,
+                return_attention_weights=return_agg_attention_weights))
 
             output["gene_expr_dist_params"] = self.gene_expr_decoder(
                 z=z[:data_batch.batch_size],
