@@ -24,7 +24,8 @@ from .losses import (compute_addon_l1_reg_loss,
                      compute_gene_expr_recon_nb_loss,
                      compute_gene_expr_recon_zinb_loss,
                      compute_group_lasso_reg_loss,
-                     compute_kl_reg_loss)
+                     compute_kl_reg_loss,
+                     compute_masked_l1_reg_loss)
 from .vgaemodulemixin import VGAEModuleMixin
 
 
@@ -314,6 +315,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
              edge_data_batch: Data,
              edge_model_output: dict,
              node_model_output: dict,
+             lambda_l1_masked: float,
              lambda_l1_addon: float,
              lambda_group_lasso: float,
              lambda_gene_expr_recon: float=1.0,
@@ -345,6 +347,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         lambda_group_lasso:
             Lambda (weighting factor) for the group lasso regularization loss of
             gene programs. If ´>0´, this will enforce sparsity of gene programs.
+        lambda_l1_masked:
+            Lambda (weighting factor) for the L1 regularization loss of genes in
+            masked gene programs. If ´>0´, this will enforce sparsity of genes
+            in masked gene programs.
         lambda_l1_addon:
             Lambda (weighting factor) for the L1 regularization loss of genes in
             addon gene programs. If ´>0´, this will enforce sparsity of genes in
@@ -406,6 +412,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     mu=nb_means,
                     theta=theta,
                     zi_prob_logits=zi_prob_logits))
+            
+        loss_dict["masked_gp_l1_reg_loss"] = (lambda_l1_masked * 
+            compute_masked_l1_reg_loss(self.named_parameters()))
 
         # Compute group lasso regularization loss of gene programs
         loss_dict["group_lasso_reg_loss"] = (lambda_group_lasso * 
@@ -431,6 +440,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             loss_dict["optim_loss"] += loss_dict["gene_expr_recon_loss"]
             loss_dict["global_loss"] += loss_dict["group_lasso_reg_loss"]
             loss_dict["optim_loss"] += loss_dict["group_lasso_reg_loss"]
+                loss_dict["global_loss"] += loss_dict["masked_gp_l1_reg_loss"]
+                loss_dict["optim_loss"] += loss_dict["masked_gp_l1_reg_loss"]
             if self.n_addon_gps_ != 0:
                 loss_dict["global_loss"] += loss_dict["addon_gp_l1_reg_loss"]
                 loss_dict["optim_loss"] += loss_dict["addon_gp_l1_reg_loss"]

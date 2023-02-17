@@ -4,7 +4,8 @@ from .losses import (compute_addon_l1_reg_loss,
                      compute_gene_expr_recon_nb_loss,
                      compute_gene_expr_recon_zinb_loss,
                      compute_group_lasso_reg_loss,
-                     compute_kl_reg_loss)
+                     compute_kl_reg_loss,
+                     compute_masked_l1_reg_loss)
 from .vgaemodulemixin import VGAEModuleMixin
 from .vgpgae import VGPGAE
 
@@ -16,4 +17,5 @@ __all__ = ["BaseModuleMixin",
            "compute_gene_expr_recon_nb_loss",
            "compute_gene_expr_recon_zinb_loss",
            "compute_group_lasso_reg_loss",
-           "compute_kl_reg_loss"]
+           "compute_kl_reg_loss",
+           "compute_masked_l1_reg_loss"]
