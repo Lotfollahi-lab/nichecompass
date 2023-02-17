@@ -183,6 +183,7 @@ class Trainer(BaseTrainerMixin):
               lambda_edge_recon: Optional[float]=None,
               lambda_gene_expr_recon: float=1.,
               lambda_group_lasso: float=0.,
+              lambda_l1_masked: float=0.,
               lambda_l1_addon: float=0.,
               mlflow_experiment_id: Optional[str]=None):
         """
@@ -214,6 +215,10 @@ class Trainer(BaseTrainerMixin):
         lambda_group_lasso:
             Lambda (weighting factor) for the group lasso regularization loss of
             gene programs. If ´>0´, this will enforce sparsity of gene programs.
+        lambda_l1_masked:
+            Lambda (weighting factor) for the L1 regularization loss of genes in
+            masked gene programs. If ´>0´, this will enforce sparsity of genes
+            in masked gene programs.        
         lambda_l1_addon:
             Lambda (weighting factor) for the L1 regularization loss of genes in
             addon gene programs. If ´>0´, this will enforce sparsity of genes in
@@ -229,6 +234,7 @@ class Trainer(BaseTrainerMixin):
         self.lambda_edge_recon_ = lambda_edge_recon
         self.lambda_gene_expr_recon_ = lambda_gene_expr_recon
         self.lambda_group_lasso_ = lambda_group_lasso
+        self.lambda_l1_masked_ = lambda_l1_masked
         self.lambda_l1_addon_ = lambda_l1_addon
         self.mlflow_experiment_id = mlflow_experiment_id
 
@@ -293,6 +299,7 @@ class Trainer(BaseTrainerMixin):
                     lambda_edge_recon=self.lambda_edge_recon_,
                     lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
                     lambda_group_lasso=self.lambda_group_lasso_,
+                    lambda_l1_masked=self.lambda_l1_masked_,
                     lambda_l1_addon=self.lambda_l1_addon_,
                     edge_recon_active=self.edge_recon_active)
                 train_global_loss = train_loss_dict["global_loss"]
@@ -423,6 +430,7 @@ class Trainer(BaseTrainerMixin):
                     lambda_edge_recon=self.lambda_edge_recon_,
                     lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
                     lambda_group_lasso=self.lambda_group_lasso_,
+                    lambda_l1_masked=self.lambda_l1_masked_,
                     lambda_l1_addon=self.lambda_l1_addon_,
                     edge_recon_active=True)
             val_global_loss = val_loss_dict["global_loss"]

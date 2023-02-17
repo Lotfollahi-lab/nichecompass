@@ -318,6 +318,7 @@ class Autotalker(BaseModelMixin):
               lambda_edge_recon: Optional[float]=0.01,
               lambda_gene_expr_recon: float=0.0033,
               lambda_group_lasso: float=0.,
+              lambda_l1_masked: float=0.,
               lambda_l1_addon: float=0.,
               edge_val_ratio: float=0.1,
               node_val_ratio: float=0.1,
@@ -354,6 +355,10 @@ class Autotalker(BaseModelMixin):
         lambda_group_lasso:
             Lambda (weighting factor) for the group lasso regularization loss of
             gene programs. If ´>0´, this will enforce sparsity of gene programs.
+        lambda_l1_masked:
+            Lambda (weighting factor) for the L1 regularization loss of genes in
+            masked gene programs. If ´>0´, this will enforce sparsity of genes
+            in masked gene programs.        
         lambda_l1_addon:
             Lambda (weighting factor) for the L1 regularization loss of genes in
             addon gene programs. If ´>0´, this will enforce sparsity of genes in
@@ -394,6 +399,7 @@ class Autotalker(BaseModelMixin):
                            lambda_edge_recon=lambda_edge_recon,
                            lambda_gene_expr_recon=lambda_gene_expr_recon,
                            lambda_group_lasso=lambda_group_lasso,
+                           lambda_l1_masked=lambda_l1_masked,
                            lambda_l1_addon=lambda_l1_addon,
                            mlflow_experiment_id=mlflow_experiment_id)
         
