@@ -440,8 +440,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             loss_dict["optim_loss"] += loss_dict["gene_expr_recon_loss"]
             loss_dict["global_loss"] += loss_dict["group_lasso_reg_loss"]
             loss_dict["optim_loss"] += loss_dict["group_lasso_reg_loss"]
-                loss_dict["global_loss"] += loss_dict["masked_gp_l1_reg_loss"]
-                loss_dict["optim_loss"] += loss_dict["masked_gp_l1_reg_loss"]
+            loss_dict["global_loss"] += loss_dict["masked_gp_l1_reg_loss"]
+            loss_dict["optim_loss"] += loss_dict["masked_gp_l1_reg_loss"]
             if self.n_addon_gps_ != 0:
                 loss_dict["global_loss"] += loss_dict["addon_gp_l1_reg_loss"]
                 loss_dict["optim_loss"] += loss_dict["addon_gp_l1_reg_loss"]
