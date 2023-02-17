@@ -539,6 +539,9 @@ class Trainer(BaseTrainerMixin):
         print(f"Val best accuracy score: {val_eval_dict['best_acc_score']:.4f}")
         print(f"Val best F1 score: {val_eval_dict['best_f1_score']:.4f}")
         print(f"Val MSE score: {val_eval_dict['mse_score']:.4f}")
+
+        self.adata.uns["autotalker_recon_adj_best_acc_threshold"] = (
+            val_eval_dict["best_acc_threshold"])
         
         # Log evaluation metrics
         if self.mlflow_experiment_id is not None:
