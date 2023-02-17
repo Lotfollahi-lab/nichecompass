@@ -256,9 +256,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         else:
             self.cond_embed = None
 
-        print(data_batch.edge_index.shape)
-        print(data_batch.edge_attr.shape)
-
         x = data_batch.x # dim: n_obs x n_genes
         edge_index = data_batch.edge_index # dim 2 x n_edges
         output = {}
@@ -297,12 +294,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         elif decoder == "gene_expr":
             # Compute aggregated neighborhood gene expression for gene
             # expression reconstruction
-            output["node_labels"], output["agg_edge_index_alpha_tuple"] = (
+            output["node_labels"], output["alpha"] = (
                 self.gene_expr_node_label_aggregator(
                 x=x,
                 edge_index=edge_index,
                 batch_size=data_batch.batch_size,
                 return_attention_weights=return_agg_attention_weights))
+            output["alpha_edge_index"] = data_batch.edge_attr.t()
 
             output["gene_expr_dist_params"] = self.gene_expr_decoder(
                 z=z[:data_batch.batch_size],

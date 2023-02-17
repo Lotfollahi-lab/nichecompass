@@ -59,7 +59,10 @@ class Autotalker(BaseModelMixin):
         Key under which the latent / gene program representation of active gene
         programs will be stored in ´adata.obsm´ after model training.
     condition_key:
-        Key under which the conditions are stored in ´adata.obs´.    
+        Key under which the conditions are stored in ´adata.obs´.
+    cond_embed_key:
+        Key under which the conditional embeddings will be stored in
+        ´adata.uns´.
     genes_idx_key:
         Key in ´adata.uns´ where the index of a concatenated vector of target
         and source genes that are in the gene program masks are stored.
@@ -140,6 +143,7 @@ class Autotalker(BaseModelMixin):
                  gp_sources_mask_key: str="autotalker_gp_sources",
                  latent_key: str="autotalker_latent",
                  condition_key: Optional[str]=None,
+                 cond_embed_key: Optional[str]="autotalker_cond_embed",
                  cond_embed_injection: Optional[list]=["encoder",
                                                        "graph_decoder",
                                                        "gene_expr_decoder"],
@@ -174,6 +178,7 @@ class Autotalker(BaseModelMixin):
         self.gp_sources_mask_key_ = gp_sources_mask_key
         self.latent_key_ = latent_key
         self.condition_key_ = condition_key
+        self.cond_embed_key_ = cond_embed_key
         self.cond_embed_injection_ = cond_embed_injection
         self.genes_idx_key_ = genes_idx_key
         self.agg_alpha_key_ = agg_alpha_key
@@ -400,6 +405,9 @@ class Autotalker(BaseModelMixin):
            only_active_gps=True,
            return_mu_std=True)
         self.adata.uns[self.active_gp_names_key_] = self.get_active_gps()
+
+        if len(self.conditions_) > 0:
+            self.adata.uns[self.cond_embed_key_] = self.get_cond_embeddings()
 
         if mlflow_experiment_id is not None:
             mlflow.log_metric("n_active_gps",
@@ -888,7 +896,7 @@ class Autotalker(BaseModelMixin):
                                 .numpy())
         return selected_gps_idx, selected_gps_weights
 
-    def get_conditional_embeddings(self) -> np.ndarray:
+    def get_cond_embeddings(self) -> np.ndarray:
         """
         Get the conditional embeddings.
 
@@ -1048,6 +1056,61 @@ class Autotalker(BaseModelMixin):
             return mu, std
         else:
             return z
+    
+    @torch.no_grad()
+    def get_recon_adj(self):
+        """
+        Get the reconstructed adjacency matrix from a trained model.
+
+        Returns
+        ----------
+        adj_recon_probs:
+            Tensor containing edge probabilities (dim: n_nodes x n_nodes).
+        """
+        self._check_if_trained(warn=False)
+
+        # Get conditional embeddings for each observation
+        if self.cond_embed_key_ not in self.adata.uns:
+            raise ValueError("Please first store the conditional embeddings in "
+                             f" 'adata.uns[{self.cond_embed_key_}]'. They can "
+                             "be retrieved via 'model.get_cond_embeddings()'.")
+        cond_labels = self.adata.obs[self.condition_key_]
+        cond_label_encodings = cond_labels.map(
+            self.model.condition_label_encoder_).values
+        cond_embed = torch.tensor(
+            self.adata.uns[self.cond_embed_key_][cond_label_encodings])
+        
+        # Get the latent representation for each observation
+        if self.latent_key_ not in self.adata.obsm:
+            raise ValueError("Please first store the latent representations in "
+                             f" 'adata.obsm[{self.latent_key_}]'. They can "
+                             "be retrieved via "
+                             "'model.get_latent_representation()'.")
+        z = torch.tensor(self.adata.obsm[self.latent_key_])
+
+        # Add 0s for inactive gps back to stored latent representation which
+        # only contains active gps (model expects all gps with inactive ones
+        # having 0 values)
+        active_gp_mask = self.model.get_active_gp_mask()
+        z_with_inactive = torch.zeros((z.shape[0], active_gp_mask.shape[0]),
+                                      dtype=torch.float64)
+        active_gp_idx = (active_gp_mask == 1).nonzero().t()
+        active_gp_idx = active_gp_idx.repeat(z_with_inactive.shape[0], 1)
+        z_with_inactive = z_with_inactive.scatter(1, active_gp_idx, z)
+
+        # Get edge probabilities
+        adj_recon_logits = self.model.graph_decoder(
+            z=z_with_inactive,
+            cond_embed=cond_embed)
+        adj_recon_probs = torch.sigmoid(adj_recon_logits)
+        return adj_recon_probs
+
+    def get_gene_expr_node_label_agg_att_weights(self):
+        """
+        TO DO
+        """
+        self._check_if_trained(warn=False)
+        self.adata.obsm[self.latent_key_]
 
     def get_gene_expr_dist_params(
             self, 

@@ -107,8 +107,6 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
             batch excluding sampled neighbors. These labels are used for the 
             gene expression reconstruction task.
             (Size: n_nodes_batch x (2 x n_node_features))
-        edge_index:
-            Edge index for returned attention weights.
         alpha:
             Attention weights for edges in ´edge_index´.
         """
@@ -123,7 +121,7 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         alpha = self._alpha
         self._alpha = None
         if return_attention_weights:
-            return node_labels, (edge_index, alpha)
+            return node_labels, alpha
         return node_labels, None
 
     def message(self,
