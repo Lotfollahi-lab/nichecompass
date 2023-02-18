@@ -1149,7 +1149,7 @@ class Autotalker(BaseModelMixin):
         self._check_if_trained(warn=False)
         device = next(self.model.parameters()).device
 
-        # Initialize attention weights matrix
+        # Initialize global attention weights matrix
         agg_alpha = torch.zeros((len(self.adata), len(self.adata)),
                                 dtype=torch.float32,
                                 device=device)
@@ -1177,8 +1177,10 @@ class Autotalker(BaseModelMixin):
 
         # Get latent representation for each batch of the dataloader and put it
         # into latent vectors
-        for node_batch in node_loader:
+        for i, node_batch in enumerate(node_loader):
             node_batch = node_batch.to(device)
+            n_obs_before_batch = i * node_batch_size
+            n_obs_after_batch = n_obs_before_batch + node_batch.batch_size
 
             _, alpha = (self.model.gene_expr_node_label_aggregator(
                 x=node_batch.x,
@@ -1187,12 +1189,18 @@ class Autotalker(BaseModelMixin):
                 return_attention_weights=True))
             alpha_edge_index = node_batch.edge_attr
 
+            # Only keep current batch
+            alpha_edge_index = alpha_edge_index[
+                (alpha_edge_index[:, 1] >= n_obs_before_batch) &
+                (alpha_edge_index[:, 1] < n_obs_after_batch)]
+            alpha = alpha[:alpha_edge_index.shape[0]]
+
             # Compute mean over attention heads
             mean_alpha = alpha.mean(dim=-1)
 
-            # Insert attention weights from current batch in attention weights
-            # matrix
-            agg_alpha[alpha_edge_index[:, 0], alpha_edge_index[:, 1]] = mean_alpha
+            # Insert attention weights from current batch in global attention
+            # weights matrix         
+            agg_alpha[alpha_edge_index[:, 1], alpha_edge_index[:, 0]] = mean_alpha
         # Convert tensor to sparse csr matrix
         agg_alpha = agg_alpha.to_sparse()
         agg_alpha = sp.csr_matrix((agg_alpha.values().cpu().numpy(),
