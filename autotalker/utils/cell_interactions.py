@@ -57,6 +57,7 @@ def aggregate_node_label_agg_att_weights_per_cell_type(
 def create_cell_type_chord_plot_from_df(
         adata: AnnData,
         df: pd.DataFrame,
+        link_threshold: float=0.1,
         cell_type_key: str="cell_type"):
     """
     Create a cell type chord diagram based on an input DataFrame.
@@ -68,6 +69,10 @@ def create_cell_type_chord_plot_from_df(
     df:
         A Pandas DataFrame that contains the connection values for the chord
         plot (dim: n_cell_types x n_cell_types).
+    link_threshold:
+        Ratio of attention that a cell type needs to exceed compared to the cell
+        type with the maximum attention to be considered a link for the chord
+        plot.
     cell_type_key:
         Key in ´adata.obs´ where the cell type labels are stored.
 
@@ -79,13 +84,15 @@ def create_cell_type_chord_plot_from_df(
 
     sorted_cell_types = sorted(adata.obs[cell_type_key].unique().tolist())
 
+    max_attention_values = df.max(axis=1).values
+
     links_list = []
     for i in range(len(sorted_cell_types)):
         for j in range(len(sorted_cell_types)):
-            if df.iloc[i, j] != 0:
+            if df.iloc[i, j] > max_attention_values[i] * link_threshold:
                 link_dict = {}
-                link_dict["source"] = i
-                link_dict["target"] = j
+                link_dict["source"] = j
+                link_dict["target"] = i
                 link_dict["value"] = df.iloc[i, j]
                 links_list.append(link_dict)
     links = pd.DataFrame(links_list)
