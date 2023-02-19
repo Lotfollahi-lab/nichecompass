@@ -416,11 +416,12 @@ class Autotalker(BaseModelMixin):
         if len(self.conditions_) > 0:
             self.adata.uns[self.cond_embed_key_] = self.get_cond_embeddings()
 
-        self.adata.obsp[self.recon_adj_key_] = self.get_recon_adj()
+        # self.adata.obsp[self.recon_adj_key_] = self.get_recon_adj()
 
         if self.node_label_method_ == "one-hop-attention":
             self.adata.obsp[self.agg_alpha_key_] = (
-                self.get_gene_expr_node_label_agg_att_weights())
+                self.get_gene_expr_agg_att_weights(
+                    node_batch_size=node_batch_size))
 
         if mlflow_experiment_id is not None:
             mlflow.log_metric("n_active_gps",
@@ -1125,11 +1126,11 @@ class Autotalker(BaseModelMixin):
         return adj_recon_probs
 
     @torch.no_grad()
-    def get_gene_expr_node_label_agg_att_weights(
+    def get_gene_expr_agg_att_weights(
             self,      
             node_batch_size: int=64) -> sp.csr_matrix:
         """
-        Get the mean attention weights over all heads of the gene expression
+        Get the mean attention weights (over all heads) of the gene expression
         node label aggregator. The attention weights indicate how much
         importance each node / observation has attributed to its neighboring
         nodes / observations for the gene expression reconstruction task.
@@ -1144,15 +1145,19 @@ class Autotalker(BaseModelMixin):
         agg_alpha:
             A sparse scipy matrix containing the mean attention weights over all
             heads of the gene expression node label aggregator (dim: n_obs x
-            n_obs).
+            n_obs). Row-wise sums will be 1 for each observation. The matrix is
+            not symmetric.
         """
         self._check_if_trained(warn=False)
         device = next(self.model.parameters()).device
 
+        if self.node_label_method_ != "one-hop-attention":
+            raise ValueError("The node label aggregator attention weights can "
+                             " only be retrieved if 'one-hop-attention' has "
+                             "been used as node label method.")
+
         # Initialize global attention weights matrix
-        agg_alpha = torch.zeros((len(self.adata), len(self.adata)),
-                                dtype=torch.float32,
-                                device=device)
+        agg_alpha = sp.csr_matrix((len(self.adata), len(self.adata)))
 
         # Create single dataloader containing entire dataset
         data_dict = prepare_data(
@@ -1175,8 +1180,8 @@ class Autotalker(BaseModelMixin):
             shuffle=False)
         node_loader = loader_dict["node_train_loader"]
 
-        # Get latent representation for each batch of the dataloader and put it
-        # into latent vectors
+        # Get attention weights for each node batch of the dataloader and put
+        # them into the global attention weights matrix
         for i, node_batch in enumerate(node_loader):
             node_batch = node_batch.to(device)
             n_obs_before_batch = i * node_batch_size
@@ -1187,26 +1192,23 @@ class Autotalker(BaseModelMixin):
                 edge_index=node_batch.edge_index,
                 batch_size=node_batch.batch_size,
                 return_attention_weights=True))
-            alpha_edge_index = node_batch.edge_attr
 
-            # Only keep current batch
-            alpha_edge_index = alpha_edge_index[
-                (alpha_edge_index[:, 1] >= n_obs_before_batch) &
-                (alpha_edge_index[:, 1] < n_obs_after_batch)]
+            # Get edge index and attention weights of current node batch only
+            # (exclude sampled neighbors)
+            alpha_edge_index = node_batch.edge_attr[
+                (node_batch.edge_attr[:, 1] >= n_obs_before_batch) &
+                (node_batch.edge_attr[:, 1] < n_obs_after_batch)]
             alpha = alpha[:alpha_edge_index.shape[0]]
 
             # Compute mean over attention heads
             mean_alpha = alpha.mean(dim=-1)
 
-            # Insert attention weights from current batch in global attention
-            # weights matrix         
-            agg_alpha[alpha_edge_index[:, 1], alpha_edge_index[:, 0]] = mean_alpha
-        # Convert tensor to sparse csr matrix
-        agg_alpha = agg_alpha.to_sparse()
-        agg_alpha = sp.csr_matrix((agg_alpha.values().cpu().numpy(),
-                                   (agg_alpha.indices().cpu().numpy()[0],
-                                    agg_alpha.indices().cpu().numpy()[1])),
-                                  agg_alpha.size())
+            # Insert attention weights from current node batch in global
+            # attention weights matrix
+            alpha_edge_index = alpha_edge_index.cpu().numpy()
+            mean_alpha = mean_alpha.cpu().numpy()
+            agg_alpha[alpha_edge_index[:, 1],
+                      alpha_edge_index[:, 0]] = mean_alpha
         return agg_alpha
     
 
