@@ -3,9 +3,12 @@ This module contains utiilities to analyze cell interactions inferred by the
 Autotalker model.
 """
 
+from typing import Optional
+
 import holoviews as hv
 import numpy as np
 import pandas as pd
+import scipy.sparse as sp
 from anndata import AnnData
 
 
@@ -112,3 +115,40 @@ def create_cell_type_chord_plot_from_df(
                              labels="name",
                              node_color=hv.dim("index").str()))
     hv.output(chord)
+
+
+def get_recon_adj_from_edge_probs(
+        adata: AnnData,
+        recon_adj_key: str="autotalker_recon_adj",
+        edge_threshold: Optional[float]=None) -> sp.csr_matrix:
+    """
+    Get the reconstructed adjacency matrix from the edge probability matrix
+    (stored in ´adata.obsp[recon_adj_key]´) based on a given edge threshold.
+     
+    Parameters
+    ----------
+    adata:
+        AnnData object which contains outputs of Autotalker model training.
+    recon_adj_key:
+        Key in ´adata.obsp´ where the reconstructed adjacency matrix edge
+        probabilities are stored.
+    edge_threshold:
+        Probability threshold above which edge probabilities lead to a
+        reconstructed edge. If ´None´, uses the best balanced accuracy
+        threshold determined by the model with the validation dataset (stored in
+        ´adata.uns['autotalker_recon_adj_best_acc_threshold']´).
+
+    Returns
+    ----------
+    adj_recon:
+        A sparse scipy matrix containing the reconstructed edges. 
+    """
+    if edge_threshold is None:
+        edge_threshold = adata.uns["autotalker_recon_adj_best_acc_threshold"]
+    adj_recon = (adata.obsp[recon_adj_key] > edge_threshold).long()
+    adj_recon = adj_recon.to_sparse()
+    adj_recon = sp.csr_matrix((adj_recon.values().cpu().numpy(),
+                               (adj_recon.indices().cpu().numpy()[0],
+                                adj_recon.indices().cpu().numpy()[1])),
+                               adj_recon.size())
+    return adj_recon

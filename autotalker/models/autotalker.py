@@ -419,7 +419,7 @@ class Autotalker(BaseModelMixin):
         if len(self.conditions_) > 0:
             self.adata.uns[self.cond_embed_key_] = self.get_cond_embeddings()
 
-        # self.adata.obsp[self.recon_adj_key_] = self.get_recon_adj()
+        # self.adata.obsp[self.recon_adj_key_] = self.get_recon_edge_probs()
 
         if self.node_label_method_ == "one-hop-attention":
             self.adata.obsp[self.agg_alpha_key_] = (
@@ -1075,10 +1075,10 @@ class Autotalker(BaseModelMixin):
             return z
     
     @torch.no_grad()
-    def get_recon_adj(self,
-                      device: Optional[str]=None) -> torch.tensor:
+    def get_recon_edge_probs(self,
+                             device: Optional[str]=None) -> torch.tensor:
         """
-        Get the reconstructed adjacency matrix from a trained model.
+        Get the reconstructed edge probability matrix from a trained model.
 
         Parameters
         ----------
