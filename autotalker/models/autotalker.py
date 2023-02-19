@@ -1121,7 +1121,7 @@ class Autotalker(BaseModelMixin):
         # Get edge probabilities
         adj_recon_logits = self.model.graph_decoder(
             z=z_with_inactive,
-            cond_embed=cond_embed)
+            cond_embed=None)
         adj_recon_probs = torch.sigmoid(adj_recon_logits)
         return adj_recon_probs
 
