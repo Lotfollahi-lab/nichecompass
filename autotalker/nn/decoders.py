@@ -8,17 +8,17 @@ import torch
 import torch.nn as nn
 
 from .layers import AddOnMaskedLayer
+from .utils import compute_cosine_similarity
 
 
-class DotProductGraphDecoder(nn.Module):
+class CosineSimGraphDecoder(nn.Module):
     """
-    Dot product graph decoder class as per Kipf, T. N. & Welling, M. Variational 
-    Graph Auto-Encoders. arXiv [stat.ML] (2016).
+    Cosine similarity graph decoder class.
 
-    Takes the latent space features z as input, calculates their dot product
-    to return the reconstructed adjacency matrix with logits `adj_rec_logits`.
-    Sigmoid activation function is skipped as it is integrated into the binary 
-    cross entropy loss for computational efficiency.
+    Takes the latent space features z as input, calculates their cosine
+    similarity to return the reconstructed adjacency matrix with logits
+    `adj_rec_logits`. Sigmoid activation function is skipped as it is integrated
+    into the binary cross entropy loss for computational efficiency.
 
     Parameters
     ----------
@@ -31,7 +31,7 @@ class DotProductGraphDecoder(nn.Module):
                  dropout_rate: float=0.):
         super().__init__()
 
-        print(f"DOT PRODUCT GRAPH DECODER -> n_cond_embed_input: "
+        print(f"COSINE SIM GRAPH DECODER -> n_cond_embed_input: "
               f"{n_cond_embed_input}, n_output: {n_output}, dropout_rate: "
               F"{dropout_rate}")
 
@@ -47,7 +47,7 @@ class DotProductGraphDecoder(nn.Module):
                 z: torch.Tensor,
                 cond_embed: Optional[torch.Tensor]) -> torch.Tensor:
         """
-        Forward pass of the dot product graph decoder.
+        Forward pass of the cosine similarity graph decoder.
 
         Parameters
         ----------
@@ -66,7 +66,7 @@ class DotProductGraphDecoder(nn.Module):
             z += self.cond_embed_l(cond_embed)
         
         z = self.dropout(z)
-        adj_rec_logits = torch.mm(z, z.t())
+        adj_rec_logits = compute_cosine_similarity(z, z)
         return adj_rec_logits
 
 

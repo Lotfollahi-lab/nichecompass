@@ -11,7 +11,7 @@ import torch
 import torch.nn as nn
 from torch_geometric.data import Data
 
-from autotalker.nn import (DotProductGraphDecoder,
+from autotalker.nn import (CosineSimGraphDecoder,
                            GraphEncoder,
                            MaskedGeneExprDecoder,
                            OneHopAttentionNodeLabelAggregator,
@@ -37,6 +37,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     ----------
     n_input:
         Number of nodes in the input layer.
+    n_layers_encoder:
+        Number of layers in the encoder.
     n_hidden_encoder:
         Number of nodes in the encoder hidden layer.
     n_nonaddon_gps:
@@ -108,6 +110,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     """
     def __init__(self,
                  n_input: int,
+                 n_layers_encoder: int,
                  n_hidden_encoder: int,
                  n_nonaddon_gps: int,
                  n_addon_gps: int,
@@ -134,6 +137,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                                        "gene_expr_decoder"]):
         super().__init__()
         self.n_input_ = n_input
+        self.n_layers_encoder_ = n_layers_encoder
         self.n_hidden_encoder_ = n_hidden_encoder
         self.n_nonaddon_gps_ = n_nonaddon_gps
         self.n_addon_gps_ = n_addon_gps
@@ -178,6 +182,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_cond_embed_input=(n_cond_embed if ("encoder" in
                                 self.cond_embed_injection_) &
                                 (self.n_conditions_ != 0) else 0),
+            n_layers=n_layers_encoder,
             n_hidden=n_hidden_encoder,
             n_latent=n_nonaddon_gps,
             n_addon_latent=n_addon_gps,
@@ -186,7 +191,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             dropout_rate=dropout_rate_encoder,
             activation=torch.relu)
         
-        self.graph_decoder = DotProductGraphDecoder(
+        self.graph_decoder = CosineSimGraphDecoder(
             n_cond_embed_input=(n_cond_embed if ("graph_decoder" in
                                 self.cond_embed_injection_) &
                                 (self.n_conditions_ != 0) else 0),

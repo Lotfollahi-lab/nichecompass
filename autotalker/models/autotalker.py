@@ -163,6 +163,7 @@ class Autotalker(BaseModelMixin):
                     "one-hop-norm",
                     "one-hop-attention"]="one-hop-attention",
                  active_gp_thresh_ratio: float=0.03,
+                 n_layers_encoder: int=2,
                  n_hidden_encoder: int=256,
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=8,
@@ -197,6 +198,7 @@ class Autotalker(BaseModelMixin):
         self.n_output_ = adata.n_vars
         if node_label_method != "self":
             self.n_output_ *= 2
+        self.n_layers_encoder_ = n_layers_encoder
         self.n_hidden_encoder_ = n_hidden_encoder
         self.conv_layer_encoder_ = conv_layer_encoder
         if conv_layer_encoder == "gatv2conv":
@@ -285,6 +287,7 @@ class Autotalker(BaseModelMixin):
         # neural network module
         self.model = VGPGAE(
             n_input=self.n_input_,
+            n_layers_encoder=self.n_layers_encoder_,
             n_hidden_encoder=self.n_hidden_encoder_,
             n_nonaddon_gps=self.n_nonaddon_gps_,
             n_addon_gps=self.n_addon_gps_,
@@ -1072,9 +1075,15 @@ class Autotalker(BaseModelMixin):
             return z
     
     @torch.no_grad()
-    def get_recon_adj(self) -> torch.tensor:
+    def get_recon_adj(self,
+                      device: Optional[str]=None) -> torch.tensor:
         """
         Get the reconstructed adjacency matrix from a trained model.
+
+        Parameters
+        ----------
+        device:
+            Device where the computation will be executed.
 
         Returns
         ----------
@@ -1082,10 +1091,16 @@ class Autotalker(BaseModelMixin):
             Tensor containing edge probabilities (dim: n_nodes x n_nodes).
         """
         self._check_if_trained(warn=False)
-        device = next(self.model.parameters()).device
+        model_device = next(self.model.parameters()).device
+        if device is None:
+            # Get device from model
+            device = model_device
+        else:
+            self.model.to(device)
 
         # Get conditional embeddings for each observation
-        if len(self.conditions_) > 0:
+        if (len(self.conditions_) > 0) & \
+        ("graph_decoder" in self.cond_embed_injection_):
             if self.cond_embed_key_ not in self.adata.uns:
                 raise ValueError("Please first store the conditional embeddings"
                                 f" in adata.uns['{self.cond_embed_key_}']. They"
@@ -1121,8 +1136,13 @@ class Autotalker(BaseModelMixin):
         # Get edge probabilities
         adj_recon_logits = self.model.graph_decoder(
             z=z_with_inactive,
-            cond_embed=None)
+            cond_embed=cond_embed)
         adj_recon_probs = torch.sigmoid(adj_recon_logits)
+
+        if device is not None:
+            # Move model back to original device
+            self.model.to(model_device)
+
         return adj_recon_probs
 
     @torch.no_grad()
