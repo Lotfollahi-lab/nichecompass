@@ -7,6 +7,8 @@ dependencies:
   - python=3.9
   - pytorch=1.12.1
   - pip:
+    - bokeh==3.0.3
+    - holoviews==1.15.4
     - ipykernel==6.15.3
     - ipywidgets==8.0.2
     - jupyterlab==3.4.7

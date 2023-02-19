@@ -65,12 +65,15 @@ def eval_metrics(
     # is classified as positive so that the threshold optimizes the accuracy 
     # over the sampled (balanced) set of positive and negative edges.
     best_acc_score = 0
+    best_threshold = 0
     for threshold in np.arange(0.01, 1, 0.005):
         pred_labels = (edge_recon_probs > threshold).astype("int")
         acc_score = skm.accuracy_score(edge_labels, pred_labels)
         if acc_score > best_acc_score:
+            best_threshold = threshold
             best_acc_score = acc_score
     eval_dict["best_acc_score"] = best_acc_score
+    eval_dict["best_acc_threshold"] = best_threshold
 
     # Get the optimal classification probability threshold above which an edge 
     # is classified as positive so that the threshold optimizes the F1 score 

@@ -24,7 +24,8 @@ from .losses import (compute_addon_l1_reg_loss,
                      compute_gene_expr_recon_nb_loss,
                      compute_gene_expr_recon_zinb_loss,
                      compute_group_lasso_reg_loss,
-                     compute_kl_reg_loss)
+                     compute_kl_reg_loss,
+                     compute_masked_l1_reg_loss)
 from .vgaemodulemixin import VGAEModuleMixin
 
 
@@ -211,8 +212,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 OneHopGCNNormNodeLabelAggregator(genes_idx=genes_idx))
         elif node_label_method == "one-hop-sum":
             self.gene_expr_node_label_aggregator = (
-                OneHopSumNodeLabelAggregator(genes_idx=genes_idx)) 
-        elif node_label_method == "one-hop-attention": 
+                OneHopSumNodeLabelAggregator(genes_idx=genes_idx))
+        elif node_label_method == "one-hop-attention":
             self.gene_expr_node_label_aggregator = (
                 OneHopAttentionNodeLabelAggregator(n_input=n_input,
                                                    genes_idx=genes_idx))
@@ -223,7 +224,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     def forward(self,
                 data_batch: Data,
                 decoder: Literal["graph", "gene_expr"],
-                use_only_active_gps: bool=False) -> dict:
+                use_only_active_gps: bool=False,
+                return_agg_attention_weights: bool=True) -> dict:
         """
         Forward pass of the VGPGAE module.
 
@@ -238,6 +240,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         use_only_active_gps:
             Only relevant if ´decoder == graph´. If ´True´, use only active gene
             programs for edge reconstruction.
+        return_agg_attention_weights:
+            If ´True´, also return the attention weights of the gene expression
+            node label aggregator with the corresponding edge index.
 
         Returns
         ----------
@@ -290,10 +295,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         elif decoder == "gene_expr":
             # Compute aggregated neighborhood gene expression for gene
             # expression reconstruction
-            output["node_labels"] = self.gene_expr_node_label_aggregator(
+            output["node_labels"], output["alpha"] = (
+                self.gene_expr_node_label_aggregator(
                 x=x,
                 edge_index=edge_index,
-                batch_size=data_batch.batch_size)
+                batch_size=data_batch.batch_size,
+                return_attention_weights=return_agg_attention_weights))
+            output["alpha_edge_index"] = data_batch.edge_attr.t()
 
             output["gene_expr_dist_params"] = self.gene_expr_decoder(
                 z=z[:data_batch.batch_size],
@@ -307,6 +315,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
              edge_data_batch: Data,
              edge_model_output: dict,
              node_model_output: dict,
+             lambda_l1_masked: float,
              lambda_l1_addon: float,
              lambda_group_lasso: float,
              lambda_gene_expr_recon: float=1.0,
@@ -338,6 +347,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         lambda_group_lasso:
             Lambda (weighting factor) for the group lasso regularization loss of
             gene programs. If ´>0´, this will enforce sparsity of gene programs.
+        lambda_l1_masked:
+            Lambda (weighting factor) for the L1 regularization loss of genes in
+            masked gene programs. If ´>0´, this will enforce sparsity of genes
+            in masked gene programs.
         lambda_l1_addon:
             Lambda (weighting factor) for the L1 regularization loss of genes in
             addon gene programs. If ´>0´, this will enforce sparsity of genes in
@@ -399,6 +412,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     mu=nb_means,
                     theta=theta,
                     zi_prob_logits=zi_prob_logits))
+            
+        loss_dict["masked_gp_l1_reg_loss"] = (lambda_l1_masked * 
+            compute_masked_l1_reg_loss(self.named_parameters()))
 
         # Compute group lasso regularization loss of gene programs
         loss_dict["group_lasso_reg_loss"] = (lambda_group_lasso * 
@@ -424,6 +440,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             loss_dict["optim_loss"] += loss_dict["gene_expr_recon_loss"]
             loss_dict["global_loss"] += loss_dict["group_lasso_reg_loss"]
             loss_dict["optim_loss"] += loss_dict["group_lasso_reg_loss"]
+            loss_dict["global_loss"] += loss_dict["masked_gp_l1_reg_loss"]
+            loss_dict["optim_loss"] += loss_dict["masked_gp_l1_reg_loss"]
             if self.n_addon_gps_ != 0:
                 loss_dict["global_loss"] += loss_dict["addon_gp_l1_reg_loss"]
                 loss_dict["optim_loss"] += loss_dict["addon_gp_l1_reg_loss"]

@@ -23,8 +23,8 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         One-hop Attention Node Label Aggregator class that uses a weighted sum
         of the gene expression of a node's 1-hop neighbors to build an
         aggregated neighbor gene expression vector for a node. The weights are
-        determined by an attention mechanism with learnable weights. It returns 
-        a concatenation of the node's own gene expression and the 
+        determined by an additivite attention mechanism with learnable weights.
+        It returns a concatenation of the node's own gene expression and the 
         attention-aggregated neighbor gene expression vector as node labels for
         the gene expression reconstruction task. 
         
@@ -96,6 +96,9 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         batch_size:
             Node batch size. Is used to return only node labels for the nodes
             in the current node batch.
+        return_attention_weights:
+            If ´True´, also return the attention weights with the corresponding
+            edge index.
 
         Returns
         ----------
@@ -104,6 +107,8 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
             batch excluding sampled neighbors. These labels are used for the 
             gene expression reconstruction task.
             (Size: n_nodes_batch x (2 x n_node_features))
+        alpha:
+            Attention weights for edges in ´edge_index´.
         """
         x_l = x_r = x
         g_l = self.linear_l_l(x_l).view(-1, self.n_heads, self.n_input)
@@ -113,8 +118,11 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         x_neighbors_att = output.mean(dim=1)
         node_labels = torch.cat(
             (x, x_neighbors_att), dim=-1)[:batch_size, self.genes_idx]
+        alpha = self._alpha
         self._alpha = None
-        return node_labels
+        if return_attention_weights:
+            return node_labels, alpha
+        return node_labels, None
 
     def message(self,
                 x_j: torch.Tensor,
@@ -126,11 +134,25 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         Message method of the MessagePassing parent class. Variables with "_i" 
         suffix refer to the central nodes that aggregate information. Variables
         with "_j" suffix refer to the neigboring nodes.
+
+        Parameters
+        ----------
+        x_j:
+            Gene expression of neighboring nodes (dim: n_index x n_heads x
+            n_node_features).
+        g_i:
+            Key vector of central nodes (dim: n_index x n_heads x
+            n_node_features).
+        g_j:
+            Query vector of neighboring nodes (dim: n_index x n_heads x
+            n_node_features).     
         """
         g = g_i + g_j
         g = self.activation(g)
         alpha = (g * self.attn).sum(dim=-1)
-        alpha = softmax(alpha, index)
+        alpha = softmax(alpha, index) # index is 2nd dim of edge_index (index of
+                                      # central node over which softmax should
+                                      # be applied)
         self._alpha = alpha
         alpha = self.dropout(alpha)
         return x_j * alpha.unsqueeze(-1)

@@ -10,6 +10,7 @@ import mlflow
 import numpy as np
 import pandas as pd
 import scanpy as sc
+import scipy.sparse as sp
 import torch
 from anndata import AnnData
 from scipy.special import erfc
@@ -58,10 +59,19 @@ class Autotalker(BaseModelMixin):
         Key under which the latent / gene program representation of active gene
         programs will be stored in ´adata.obsm´ after model training.
     condition_key:
-        Key under which the conditions are stored in ´adata.obs´.    
+        Key under which the conditions are stored in ´adata.obs´.
+    cond_embed_key:
+        Key under which the conditional embeddings will be stored in
+        ´adata.uns´.
     genes_idx_key:
         Key in ´adata.uns´ where the index of a concatenated vector of target
         and source genes that are in the gene program masks are stored.
+    recon_adj_key:
+        Key in ´adata.obsp´ where the reconstructed adjacency matrix edge
+        probabilities will be stored.
+    agg_alpha_key:
+        Key in ´adata.obsp´ where the attention weights of the gene expression
+        node label aggregator will be stored.
     include_edge_recon_loss:
         If `True`, includes the edge reconstruction loss in the loss 
         optimization.
@@ -136,10 +146,13 @@ class Autotalker(BaseModelMixin):
                  gp_sources_mask_key: str="autotalker_gp_sources",
                  latent_key: str="autotalker_latent",
                  condition_key: Optional[str]=None,
+                 cond_embed_key: Optional[str]="autotalker_cond_embed",
                  cond_embed_injection: Optional[list]=["encoder",
                                                        "graph_decoder",
                                                        "gene_expr_decoder"],
                  genes_idx_key: str="autotalker_genes_idx",
+                 recon_adj_key: str="autotalker_recon_adj",
+                 agg_alpha_key: str="autotalker_agg_alpha",
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
                  gene_expr_recon_dist: Literal["nb", "zinb"]="nb",
@@ -169,7 +182,11 @@ class Autotalker(BaseModelMixin):
         self.gp_sources_mask_key_ = gp_sources_mask_key
         self.latent_key_ = latent_key
         self.condition_key_ = condition_key
+        self.cond_embed_key_ = cond_embed_key
         self.cond_embed_injection_ = cond_embed_injection
+        self.genes_idx_key_ = genes_idx_key
+        self.recon_adj_key_ = recon_adj_key
+        self.agg_alpha_key_ = agg_alpha_key
         self.include_edge_recon_loss_ = include_edge_recon_loss
         self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
         self.gene_expr_recon_dist_ = gene_expr_recon_dist
@@ -301,6 +318,7 @@ class Autotalker(BaseModelMixin):
               lambda_edge_recon: Optional[float]=0.01,
               lambda_gene_expr_recon: float=0.0033,
               lambda_group_lasso: float=0.,
+              lambda_l1_masked: float=0.,
               lambda_l1_addon: float=0.,
               edge_val_ratio: float=0.1,
               node_val_ratio: float=0.1,
@@ -337,6 +355,10 @@ class Autotalker(BaseModelMixin):
         lambda_group_lasso:
             Lambda (weighting factor) for the group lasso regularization loss of
             gene programs. If ´>0´, this will enforce sparsity of gene programs.
+        lambda_l1_masked:
+            Lambda (weighting factor) for the L1 regularization loss of genes in
+            masked gene programs. If ´>0´, this will enforce sparsity of genes
+            in masked gene programs.        
         lambda_l1_addon:
             Lambda (weighting factor) for the L1 regularization loss of genes in
             addon gene programs. If ´>0´, this will enforce sparsity of genes in
@@ -377,6 +399,7 @@ class Autotalker(BaseModelMixin):
                            lambda_edge_recon=lambda_edge_recon,
                            lambda_gene_expr_recon=lambda_gene_expr_recon,
                            lambda_group_lasso=lambda_group_lasso,
+                           lambda_l1_masked=lambda_l1_masked,
                            lambda_l1_addon=lambda_l1_addon,
                            mlflow_experiment_id=mlflow_experiment_id)
         
@@ -389,6 +412,16 @@ class Autotalker(BaseModelMixin):
            only_active_gps=True,
            return_mu_std=True)
         self.adata.uns[self.active_gp_names_key_] = self.get_active_gps()
+
+        if len(self.conditions_) > 0:
+            self.adata.uns[self.cond_embed_key_] = self.get_cond_embeddings()
+
+        # self.adata.obsp[self.recon_adj_key_] = self.get_recon_adj()
+
+        if self.node_label_method_ == "one-hop-attention":
+            self.adata.obsp[self.agg_alpha_key_] = (
+                self.get_gene_expr_agg_att_weights(
+                    node_batch_size=node_batch_size))
 
         if mlflow_experiment_id is not None:
             mlflow.log_metric("n_active_gps",
@@ -877,7 +910,7 @@ class Autotalker(BaseModelMixin):
                                 .numpy())
         return selected_gps_idx, selected_gps_weights
 
-    def get_conditional_embeddings(self) -> np.ndarray:
+    def get_cond_embeddings(self) -> np.ndarray:
         """
         Get the conditional embeddings.
 
@@ -1037,6 +1070,147 @@ class Autotalker(BaseModelMixin):
             return mu, std
         else:
             return z
+    
+    @torch.no_grad()
+    def get_recon_adj(self) -> torch.tensor:
+        """
+        Get the reconstructed adjacency matrix from a trained model.
+
+        Returns
+        ----------
+        adj_recon_probs:
+            Tensor containing edge probabilities (dim: n_nodes x n_nodes).
+        """
+        self._check_if_trained(warn=False)
+        device = next(self.model.parameters()).device
+
+        # Get conditional embeddings for each observation
+        if len(self.conditions_) > 0:
+            if self.cond_embed_key_ not in self.adata.uns:
+                raise ValueError("Please first store the conditional embeddings"
+                                f" in adata.uns['{self.cond_embed_key_}']. They"
+                                " can be retrieved via "
+                                "'model.get_cond_embeddings()'.")
+            cond_labels = self.adata.obs[self.condition_key_]
+            cond_label_encodings = cond_labels.map(
+                self.model.condition_label_encoder_).values
+            cond_embed = torch.tensor(
+                self.adata.uns[self.cond_embed_key_][cond_label_encodings],
+                device=device)
+        else:
+            cond_embed = None
+        
+        # Get the latent representation for each observation
+        if self.latent_key_ not in self.adata.obsm:
+            raise ValueError("Please first store the latent representations in "
+                             f"adata.obsm['{self.latent_key_}']. They can be "
+                             "retrieved via "
+                             "'model.get_latent_representation()'.")
+        z = torch.tensor(self.adata.obsm[self.latent_key_], device=device)
+
+        # Add 0s for inactive gps back to stored latent representation which
+        # only contains active gps (model expects all gps with inactive ones
+        # having 0 values)
+        active_gp_mask = self.model.get_active_gp_mask()
+        z_with_inactive = torch.zeros((z.shape[0], active_gp_mask.shape[0]),
+                                      dtype=torch.float64, device=device)
+        active_gp_idx = (active_gp_mask == 1).nonzero().t()
+        active_gp_idx = active_gp_idx.repeat(z_with_inactive.shape[0], 1)
+        z_with_inactive = z_with_inactive.scatter(1, active_gp_idx, z)
+
+        # Get edge probabilities
+        adj_recon_logits = self.model.graph_decoder(
+            z=z_with_inactive,
+            cond_embed=None)
+        adj_recon_probs = torch.sigmoid(adj_recon_logits)
+        return adj_recon_probs
+
+    @torch.no_grad()
+    def get_gene_expr_agg_att_weights(
+            self,      
+            node_batch_size: int=64) -> sp.csr_matrix:
+        """
+        Get the mean attention weights (over all heads) of the gene expression
+        node label aggregator. The attention weights indicate how much
+        importance each node / observation has attributed to its neighboring
+        nodes / observations for the gene expression reconstruction task.
+
+        Parameters
+        ----------
+        node_batch_size:
+            Batch size that is used by the dataloader.
+
+        Returns
+        ----------
+        agg_alpha:
+            A sparse scipy matrix containing the mean attention weights over all
+            heads of the gene expression node label aggregator (dim: n_obs x
+            n_obs). Row-wise sums will be 1 for each observation. The matrix is
+            not symmetric.
+        """
+        self._check_if_trained(warn=False)
+        device = next(self.model.parameters()).device
+
+        if self.node_label_method_ != "one-hop-attention":
+            raise ValueError("The node label aggregator attention weights can "
+                             " only be retrieved if 'one-hop-attention' has "
+                             "been used as node label method.")
+
+        # Initialize global attention weights matrix
+        agg_alpha = sp.csr_matrix((len(self.adata), len(self.adata)))
+
+        # Create single dataloader containing entire dataset
+        data_dict = prepare_data(
+            adata=self.adata,
+            condition_label_encoder=self.model.condition_label_encoder_,
+            counts_key=self.counts_key_,
+            adj_key=self.adj_key_,
+            condition_key=self.condition_key_,
+            edge_val_ratio=0.,
+            edge_test_ratio=0.,
+            node_val_ratio=0.,
+            node_test_ratio=0.)
+        node_masked_data = data_dict["node_masked_data"]
+        loader_dict = initialize_dataloaders(
+            node_masked_data=node_masked_data,
+            edge_train_data=None,
+            edge_val_data=None,
+            edge_batch_size=None,
+            node_batch_size=node_batch_size,
+            shuffle=False)
+        node_loader = loader_dict["node_train_loader"]
+
+        # Get attention weights for each node batch of the dataloader and put
+        # them into the global attention weights matrix
+        for i, node_batch in enumerate(node_loader):
+            node_batch = node_batch.to(device)
+            n_obs_before_batch = i * node_batch_size
+            n_obs_after_batch = n_obs_before_batch + node_batch.batch_size
+
+            _, alpha = (self.model.gene_expr_node_label_aggregator(
+                x=node_batch.x,
+                edge_index=node_batch.edge_index,
+                batch_size=node_batch.batch_size,
+                return_attention_weights=True))
+
+            # Get edge index and attention weights of current node batch only
+            # (exclude sampled neighbors)
+            alpha_edge_index = node_batch.edge_attr[
+                (node_batch.edge_attr[:, 1] >= n_obs_before_batch) &
+                (node_batch.edge_attr[:, 1] < n_obs_after_batch)]
+            alpha = alpha[:alpha_edge_index.shape[0]]
+
+            # Compute mean over attention heads
+            mean_alpha = alpha.mean(dim=-1)
+
+            # Insert attention weights from current node batch in global
+            # attention weights matrix
+            alpha_edge_index = alpha_edge_index.cpu().numpy()
+            mean_alpha = mean_alpha.cpu().numpy()
+            agg_alpha[alpha_edge_index[:, 1],
+                      alpha_edge_index[:, 0]] = mean_alpha
+        return agg_alpha
+    
 
     def get_gene_expr_dist_params(
             self, 

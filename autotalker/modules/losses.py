@@ -29,7 +29,7 @@ def compute_addon_l1_reg_loss(
         L1 regularization loss for the add-on decoder layer weights.
     """
     addon_decoder_layerwise_param_sum = torch.stack(
-        [torch.abs(param).sum() for param_name, param in named_model_params 
+        [torch.abs(param).sum() for param_name, param in named_model_params
          if "nb_means_normalized_decoder.addon_l" in param_name], dim=0)
     addon_l1_reg_loss = torch.sum(addon_decoder_layerwise_param_sum)
     return addon_l1_reg_loss
@@ -230,3 +230,27 @@ def compute_kl_reg_loss(mu: torch.Tensor,
     kl_reg_loss = (-0.5 / n_nodes) * torch.mean(
     torch.sum(1 + 2 * logstd - mu ** 2 - torch.exp(logstd) ** 2, 1))
     return kl_reg_loss
+
+
+def compute_masked_l1_reg_loss(
+        named_model_params: Iterable[Tuple[str, torch.nn.Parameter]]
+        ) -> torch.Tensor:
+    """
+    Compute L1 regularization loss for the masked decoder layer weights to 
+    enforce gene sparsity of masked gene programs.
+
+    Parameters
+    ----------
+    named_model_params:
+        Named model parameters of the model.
+
+    Returns
+    ----------
+    masked_l1_reg_loss:
+        L1 regularization loss for the masked decoder layer weights.
+    """
+    masked_decoder_layerwise_param_sum = torch.stack(
+        [torch.abs(param).sum() for param_name, param in named_model_params
+         if "nb_means_normalized_decoder.masked_l" in param_name], dim=0)
+    masked_l1_reg_loss = torch.sum(masked_decoder_layerwise_param_sum)
+    return masked_l1_reg_loss
