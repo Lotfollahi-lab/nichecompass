@@ -1,6 +1,5 @@
-from .cell_interactions import (aggregate_node_label_agg_att_weights_per_cell_type,
-                                create_cell_type_chord_plot_from_df,
-                                get_recon_adj_from_edge_probs)
+from .cell_interactions import (aggregate_obsp_matrix_per_cell_type,
+                                create_cell_type_chord_plot_from_df)
 from .gene_programs import (add_gps_from_gp_dict_to_adata,
                             extract_gp_dict_from_nichenet_ligand_target_mx,
                             extract_gp_dict_from_mebocost_es_interactions,
@@ -11,13 +10,12 @@ from .graphs import (compute_graph_connectivities,
                      compute_graph_indices_and_distances)
 
 __all__ = ["add_gps_from_gp_dict_to_adata",
-           "aggregate_node_label_agg_att_weights_per_cell_type",
+           "aggregate_obsp_matrix_per_cell_type",
            "create_cell_type_chord_plot_from_df",
            "extract_gp_dict_from_nichenet_ligand_target_mx",
            "extract_gp_dict_from_mebocost_es_interactions",
            "extract_gp_dict_from_omnipath_lr_interactions",
            "filter_and_combine_gp_dict_gps",
-           "get_recon_adj_from_edge_probs",
            "get_unique_genes_from_gp_dict",
            "compute_graph_connectivities",
            "compute_graph_indices_and_distances"]

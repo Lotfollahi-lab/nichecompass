@@ -12,26 +12,34 @@ import scipy.sparse as sp
 from anndata import AnnData
 
 
-def aggregate_node_label_agg_att_weights_per_cell_type(
+def aggregate_obsp_matrix_per_cell_type(
         adata: AnnData,
-        agg_alpha_key: str="autotalker_agg_alpha",
-        cell_type_key: str="cell_type"):
+        obsp_key: str,
+        cell_type_key: str="cell_type",
+        agg_rows: bool=False):
     """
-    Aggregate the node label aggregator attention weights alpha of a trained
-    Autotalker model by neighbor cell type.
+    Generic function to aggregate adjacency matrices stored in
+    ´adata.obsp[obsp_key]´ on cell type level. It can be used to aggregate the
+    node label aggregator attention weights alpha or the reconstructed adjacency
+    matrix of a trained Autotalker model by neighbor cell type for downstream
+    analysis.
 
     Parameters
     ----------
     adata:
         AnnData object which contains outputs of Autotalker model training.
-    agg_alpha_key:
-        Key in ´adata.obsp´ where the attention weights of the gene expression
-        node label aggregator are stored.
+    obsp_key:
+        Key in ´adata.obsp´ where the matrix to be aggregated is stored.
     cell_type_key:
         Key in ´adata.obs´ where the cell type labels are stored.
+    agg_rows:
+        If ´True´, also aggregate over the observations on cell type level.
 
     Returns
-    ---------- 
+    ----------
+    cell_type_agg_df:
+        Pandas DataFrame with the aggregated obsp values (dim: n_obs x
+        n_cell_types if ´agg_rows == False´, else n_cell_types x n_cell_types).
     """
     n_obs = len(adata)
     n_cell_types = adata.obs[cell_type_key].nunique()
@@ -41,27 +49,34 @@ def aggregate_node_label_agg_att_weights_per_cell_type(
         sorted_cell_types,
         range(n_cell_types))}
 
-    nz_alpha_idx = adata.obsp[agg_alpha_key].nonzero()
-    neighbor_cell_type_index = adata.obs[cell_type_key][nz_alpha_idx[1]].map(
+    nz_obsp_idx = adata.obsp[obsp_key].nonzero()
+    neighbor_cell_type_index = adata.obs[cell_type_key][nz_obsp_idx[1]].map(
         cell_type_label_encoder).values
-    nz_alpha = adata.obsp[agg_alpha_key].data
+    adata.obsp[obsp_key].eliminate_zeros() # In some sparse reps 0s can appear
+    nz_obsp = adata.obsp[obsp_key].data
 
-    cell_type_agg_alpha = np.zeros((n_obs, n_cell_types))
-    np.add.at(cell_type_agg_alpha,
-              (nz_alpha_idx[0], neighbor_cell_type_index),
-              nz_alpha)
-    cell_type_agg_alpha_df = pd.DataFrame(
-        cell_type_agg_alpha,
+    cell_type_agg = np.zeros((n_obs, n_cell_types))
+    np.add.at(cell_type_agg,
+              (nz_obsp_idx[0], neighbor_cell_type_index),
+              nz_obsp)
+    cell_type_agg_df = pd.DataFrame(
+        cell_type_agg,
         columns=sorted_cell_types)
-    cell_type_agg_alpha_df[cell_type_key] = adata.obs[cell_type_key].values
-    return cell_type_agg_alpha_df
+    cell_type_agg_df[cell_type_key] = adata.obs[cell_type_key].values
+
+    if agg_rows:
+        cell_type_agg_df = cell_type_agg_df.groupby(cell_type_key).sum()
+    return cell_type_agg_df
 
 
 def create_cell_type_chord_plot_from_df(
         adata: AnnData,
         df: pd.DataFrame,
+        title: str="Cell Interactions",
         link_threshold: float=0.1,
-        cell_type_key: str="cell_type"):
+        cell_type_key: str="cell_type",
+        save_fig: bool=False,
+        save_path: Optional[str]=None):
     """
     Create a cell type chord diagram based on an input DataFrame.
 
@@ -113,42 +128,11 @@ def create_cell_type_chord_plot_from_df(
                              edge_cmap="Category20",
                              edge_color=hv.dim("source").str(),
                              labels="name",
-                             node_color=hv.dim("index").str()))
+                             node_color=hv.dim("index").str(),
+                             title=title))
     hv.output(chord)
 
-
-def get_recon_adj_from_edge_probs(
-        adata: AnnData,
-        recon_adj_key: str="autotalker_recon_adj",
-        edge_threshold: Optional[float]=None) -> sp.csr_matrix:
-    """
-    Get the reconstructed adjacency matrix from the edge probability matrix
-    (stored in ´adata.obsp[recon_adj_key]´) based on a given edge threshold.
-     
-    Parameters
-    ----------
-    adata:
-        AnnData object which contains outputs of Autotalker model training.
-    recon_adj_key:
-        Key in ´adata.obsp´ where the reconstructed adjacency matrix edge
-        probabilities are stored.
-    edge_threshold:
-        Probability threshold above which edge probabilities lead to a
-        reconstructed edge. If ´None´, uses the best balanced accuracy
-        threshold determined by the model with the validation dataset (stored in
-        ´adata.uns['autotalker_recon_adj_best_acc_threshold']´).
-
-    Returns
-    ----------
-    adj_recon:
-        A sparse scipy matrix containing the reconstructed edges. 
-    """
-    if edge_threshold is None:
-        edge_threshold = adata.uns["autotalker_recon_adj_best_acc_threshold"]
-    adj_recon = (adata.obsp[recon_adj_key] > edge_threshold).long()
-    adj_recon = adj_recon.to_sparse()
-    adj_recon = sp.csr_matrix((adj_recon.values().cpu().numpy(),
-                               (adj_recon.indices().cpu().numpy()[0],
-                                adj_recon.indices().cpu().numpy()[1])),
-                               adj_recon.size())
-    return adj_recon
+    if save_fig:
+        hv.save(chord,
+                save_path,
+                fmt="png")
