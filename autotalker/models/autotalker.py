@@ -1118,10 +1118,6 @@ class Autotalker(BaseModelMixin):
         else:
             self.model.to(device)
 
-        if edge_thresh is None:
-            edge_thresh = (
-                self.adata.uns["autotalker_recon_adj_best_acc_threshold"])
-
         # Get conditional embeddings for each observation
         if (len(self.conditions_) > 0) & \
         ("graph_decoder" in self.cond_embed_injection_):
@@ -1170,10 +1166,30 @@ class Autotalker(BaseModelMixin):
                     reduced_obs_end_idx=i+node_batch_size)
                 adj_recon_probs_batch = torch.sigmoid(adj_recon_logits)
 
+                print("ok")
+                if edge_thresh is None:
+                    print(adj_recon_probs_batch.sort(descending=True)[0].shape)
+                    # Get neighbors from spatial (input) adjacency matrix
+                    n_neighs_adj = np.array(
+                        self.adata.obsp[self.adj_key_][i: i+node_batch_size]
+                        .sum(axis=1).astype(int)).flatten()
+                    print(n_neighs_adj)
+                    print(n_neighs_adj.shape)
+                    adj_recon_probs_batch_sorted = adj_recon_probs_batch.sort(
+                        descending=True)[0]
+                    edge_thresh = adj_recon_probs_batch_sorted[
+                        np.arange(adj_recon_probs_batch_sorted.shape[0]),
+                        n_neighs_adj]
+                    edge_thresh = edge_thresh.view(-1, 1).expand_as(
+                        adj_recon_probs_batch)
+
                 # Convert edge probabilities to edges
                 adj_recon_batch = (adj_recon_probs_batch > edge_thresh).long()
                 adj_recon_batch = adj_recon_batch.cpu().numpy()
                 adj_recon[i:i+node_batch_size, :] = adj_recon_batch
+                print(adj_recon[i:i+node_batch_size, :].sum())
+                print(self.adata.obsp[self.adj_key_][i: i+node_batch_size]
+                        .sum())
         else:
             adj_recon_logits = self.model.graph_decoder(
                 z=z_with_inactive,
@@ -1222,7 +1238,7 @@ class Autotalker(BaseModelMixin):
                              "been used as node label method.")
 
         # Initialize global attention weights matrix
-        agg_alpha = sp.csr_matrix((len(self.adata), len(self.adata)))
+        agg_alpha = sp.lil_matrix((len(self.adata), len(self.adata)))
 
         # Create single dataloader containing entire dataset
         data_dict = prepare_data(
@@ -1274,6 +1290,7 @@ class Autotalker(BaseModelMixin):
             mean_alpha = mean_alpha.cpu().numpy()
             agg_alpha[alpha_edge_index[:, 1],
                       alpha_edge_index[:, 0]] = mean_alpha
+        agg_alpha = agg_alpha.tocsr(copy=False)
         return agg_alpha
     
 

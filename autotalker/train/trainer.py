@@ -548,6 +548,8 @@ class Trainer(BaseTrainerMixin):
         print(f"Val best F1 score: {val_eval_dict['best_f1_score']:.4f}")
         print(f"Val MSE score: {val_eval_dict['mse_score']:.4f}")
 
+        print(edge_recon_probs_val_accumulated)
+        print(edge_labels_val_accumulated)
         self.adata.uns["autotalker_recon_adj_best_acc_threshold"] = (
             val_eval_dict["best_acc_threshold"])
         
