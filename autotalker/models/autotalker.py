@@ -151,7 +151,7 @@ class Autotalker(BaseModelMixin):
                                                        "graph_decoder",
                                                        "gene_expr_decoder"],
                  genes_idx_key: str="autotalker_genes_idx",
-                 recon_adj_key: str="autotalker_recon_adj",
+                 recon_adj_key: str="autotalker_recon_connectivities",
                  agg_alpha_key: str="autotalker_agg_alpha",
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
@@ -1078,7 +1078,8 @@ class Autotalker(BaseModelMixin):
     def get_recon_adj(self,      
                       node_batch_size: int=2048,
                       device: Optional[str]=None,
-                      edge_thresh: float=None,
+                      edge_thresh: Optional[float]=None,
+                      n_neighbors: Optional[int]=None,
                       return_edge_probs: bool=False
                       ) -> Union[sp.csr_matrix, torch.Tensor]:
         """
@@ -1093,14 +1094,23 @@ class Autotalker(BaseModelMixin):
         device:
             Device where the computation will be executed.
         edge_thresh:
-            Probability threshold above which edge probabilities lead to a
-            reconstructed edge. If ´None´, uses the best balanced accuracy
-            threshold determined by the model with the validation dataset
-            (stored in ´adata.uns['autotalker_recon_adj_best_acc_threshold']´).
+            Probability threshold above or equal to which edge probabilities
+            lead to a reconstructed edge. If ´None´, ´n_neighbors´ will be used
+            to compute an independent edge threshold for each observation.
+        n_neighbors:
+            Number of neighbors used to compute an independent edge threshold
+            for each observation (before the adjacency matrix is made
+            symmetric).Only applies if ´edge_thresh is None´. In some occassions
+            when multiple edges have the same probability, the number of
+            reconstructed edges can slightly deviate from ´n_neighbors´. If
+            ´None´, the number of neighbors in the original (symmetric) spatial
+            graph stored in ´adata.obsp[self.adj_key_]´ are used to compute an
+            independent edge threshold for each observation (in this case the
+            adjacency matrix is not made symmetric). 
         return_edge_probs:
             If ´True´, return a matrix of edge probabilities instead of the
             reconstructed adjacency matrix. This will require a lot of memory
-            as a dense matrix will be returned instead of a sparse matrix.
+            as a dense tensor will be returned instead of a sparse matrix.
 
         Returns
         ----------
@@ -1117,6 +1127,9 @@ class Autotalker(BaseModelMixin):
             device = model_device
         else:
             self.model.to(device)
+
+        if edge_thresh is None:
+            compute_edge_thresh = True
 
         # Get conditional embeddings for each observation
         if (len(self.conditions_) > 0) & \
@@ -1166,30 +1179,28 @@ class Autotalker(BaseModelMixin):
                     reduced_obs_end_idx=i+node_batch_size)
                 adj_recon_probs_batch = torch.sigmoid(adj_recon_logits)
 
-                print("ok")
-                if edge_thresh is None:
-                    print(adj_recon_probs_batch.sort(descending=True)[0].shape)
-                    # Get neighbors from spatial (input) adjacency matrix
-                    n_neighs_adj = np.array(
-                        self.adata.obsp[self.adj_key_][i: i+node_batch_size]
-                        .sum(axis=1).astype(int)).flatten()
-                    print(n_neighs_adj)
-                    print(n_neighs_adj.shape)
+                if compute_edge_thresh:
+                    if n_neighbors is None:
+                        # Get neighbors from spatial (input) adjacency matrix
+                        n_neighs_adj = np.array(
+                            self.adata.obsp[self.adj_key_][i: i+node_batch_size]
+                            .sum(axis=1).astype(int)).flatten()
+                    else:
+                        n_neighs_adj = np.ones(
+                            [adj_recon_probs_batch.shape[0]],
+                            dtype=int) * n_neighbors
                     adj_recon_probs_batch_sorted = adj_recon_probs_batch.sort(
                         descending=True)[0]
                     edge_thresh = adj_recon_probs_batch_sorted[
                         np.arange(adj_recon_probs_batch_sorted.shape[0]),
-                        n_neighs_adj]
+                        n_neighs_adj-1]
                     edge_thresh = edge_thresh.view(-1, 1).expand_as(
                         adj_recon_probs_batch)
 
                 # Convert edge probabilities to edges
-                adj_recon_batch = (adj_recon_probs_batch > edge_thresh).long()
+                adj_recon_batch = (adj_recon_probs_batch >= edge_thresh).long()
                 adj_recon_batch = adj_recon_batch.cpu().numpy()
                 adj_recon[i:i+node_batch_size, :] = adj_recon_batch
-                print(adj_recon[i:i+node_batch_size, :].sum())
-                print(self.adata.obsp[self.adj_key_][i: i+node_batch_size]
-                        .sum())
         else:
             adj_recon_logits = self.model.graph_decoder(
                 z=z_with_inactive,
@@ -1202,6 +1213,9 @@ class Autotalker(BaseModelMixin):
 
         if not return_edge_probs:
             adj_recon = adj_recon.tocsr(copy=False)
+            if n_neighbors is not None:
+                # Make adjacency matrix symmetric
+                adj_recon = adj_recon.maximum(adj_recon.T)
             return adj_recon
         else:
             return adj_recon_probs
