@@ -14,7 +14,8 @@ def compute_cosine_similarity(tensor1: torch.Tensor,
     Parameters
     ----------
     tensor1:
-        First tensor for cosine similarity computation (dim: n_obs x n_features).
+        First tensor for cosine similarity computation (dim: n_obs x
+        n_features).
     tensor2:
         Second tensor for cosine similarity computation (dim: n_obs x
         n_features).

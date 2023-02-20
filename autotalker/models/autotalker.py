@@ -1075,18 +1075,38 @@ class Autotalker(BaseModelMixin):
             return z
     
     @torch.no_grad()
-    def get_recon_edge_probs(self,
-                             device: Optional[str]=None) -> torch.tensor:
+    def get_recon_adj(self,      
+                      node_batch_size: int=2048,
+                      device: Optional[str]=None,
+                      edge_thresh: float=None,
+                      return_edge_probs: bool=False
+                      ) -> Union[sp.csr_matrix, torch.Tensor]:
         """
-        Get the reconstructed edge probability matrix from a trained model.
+        Get the reconstructed adjacency matrix (or edge probability matrix if 
+        ´return_edge_probs == True´ from a trained Autotalker model.
 
         Parameters
         ----------
+        node_batch_size:
+            Batch size for batched decoder forward pass to alleviate memory
+            consumption. Only relevant if ´return_edge_probs == False´.
         device:
             Device where the computation will be executed.
+        edge_thresh:
+            Probability threshold above which edge probabilities lead to a
+            reconstructed edge. If ´None´, uses the best balanced accuracy
+            threshold determined by the model with the validation dataset
+            (stored in ´adata.uns['autotalker_recon_adj_best_acc_threshold']´).
+        return_edge_probs:
+            If ´True´, return a matrix of edge probabilities instead of the
+            reconstructed adjacency matrix. This will require a lot of memory
+            as a dense matrix will be returned instead of a sparse matrix.
 
         Returns
         ----------
+        adj_recon:
+            Sparse scipy matrix containing reconstructed edges (dim: n_nodes x
+            n_nodes).
         adj_recon_probs:
             Tensor containing edge probabilities (dim: n_nodes x n_nodes).
         """
@@ -1097,6 +1117,10 @@ class Autotalker(BaseModelMixin):
             device = model_device
         else:
             self.model.to(device)
+
+        if edge_thresh is None:
+            edge_thresh = (
+                self.adata.uns["autotalker_recon_adj_best_acc_threshold"])
 
         # Get conditional embeddings for each observation
         if (len(self.conditions_) > 0) & \
@@ -1133,17 +1157,38 @@ class Autotalker(BaseModelMixin):
         active_gp_idx = active_gp_idx.repeat(z_with_inactive.shape[0], 1)
         z_with_inactive = z_with_inactive.scatter(1, active_gp_idx, z)
 
-        # Get edge probabilities
-        adj_recon_logits = self.model.graph_decoder(
-            z=z_with_inactive,
-            cond_embed=cond_embed)
-        adj_recon_probs = torch.sigmoid(adj_recon_logits)
+        if not return_edge_probs:
+            # Initialize global reconstructed adjacency matrix
+            adj_recon = sp.lil_matrix((len(self.adata), len(self.adata)))
+
+            for i in range(0, len(self.adata), node_batch_size):
+                # Get edge probabilities for current batch
+                adj_recon_logits = self.model.graph_decoder(
+                    z=z_with_inactive,
+                    cond_embed=cond_embed,
+                    reduced_obs_start_idx=i,
+                    reduced_obs_end_idx=i+node_batch_size)
+                adj_recon_probs_batch = torch.sigmoid(adj_recon_logits)
+
+                # Convert edge probabilities to edges
+                adj_recon_batch = (adj_recon_probs_batch > edge_thresh).long()
+                adj_recon_batch = adj_recon_batch.cpu().numpy()
+                adj_recon[i:i+node_batch_size, :] = adj_recon_batch
+        else:
+            adj_recon_logits = self.model.graph_decoder(
+                z=z_with_inactive,
+                cond_embed=cond_embed)
+            adj_recon_probs = torch.sigmoid(adj_recon_logits)
 
         if device is not None:
             # Move model back to original device
             self.model.to(model_device)
 
-        return adj_recon_probs
+        if not return_edge_probs:
+            adj_recon = adj_recon.tocsr(copy=False)
+            return adj_recon
+        else:
+            return adj_recon_probs
 
     @torch.no_grad()
     def get_gene_expr_agg_att_weights(
