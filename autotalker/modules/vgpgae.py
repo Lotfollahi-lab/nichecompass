@@ -123,7 +123,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=4,
                  dropout_rate_encoder: float=0.,
-                 decoder_type: Literal["dot_prod", "cosine_sim"]="dot_prod",
+                 decoder_type: Literal["dot_prod", "cosine_sim"]="cosine_sim",
                  dropout_rate_graph_decoder: float=0.,
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
