@@ -388,7 +388,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         """
         loss_dict = {}
 
-        # If not specified explicitly, compute edge reconstruction loss 
+        # If not specified explicitly, compute edge reconstruction loss
         # weighting factor based on number of possible edges and negative edges
         if lambda_edge_recon is None:
             n_possible_edges = edge_data_batch.x.shape[0] ** 2
@@ -428,16 +428,16 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     theta=theta,
                     zi_prob_logits=zi_prob_logits))
             
-        loss_dict["masked_gp_l1_reg_loss"] = (lambda_l1_masked * 
+        loss_dict["masked_gp_l1_reg_loss"] = (lambda_l1_masked *
             compute_masked_l1_reg_loss(self.named_parameters()))
 
         # Compute group lasso regularization loss of gene programs
-        loss_dict["group_lasso_reg_loss"] = (lambda_group_lasso * 
+        loss_dict["group_lasso_reg_loss"] = (lambda_group_lasso *
         compute_group_lasso_reg_loss(self.named_parameters()))
 
         # Compute l1 regularization loss of genes in addon gene programs
         if self.n_addon_gps_ != 0:
-            loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon * 
+            loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon *
             compute_addon_l1_reg_loss(self.named_parameters()))
 
         # Compute optimization loss used for backpropagation as well as global
