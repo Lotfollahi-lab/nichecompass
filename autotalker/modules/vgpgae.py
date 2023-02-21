@@ -12,6 +12,7 @@ import torch.nn as nn
 from torch_geometric.data import Data
 
 from autotalker.nn import (CosineSimGraphDecoder,
+                           DotProductGraphDecoder,
                            GraphEncoder,
                            MaskedGeneExprDecoder,
                            OneHopAttentionNodeLabelAggregator,
@@ -122,6 +123,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=4,
                  dropout_rate_encoder: float=0.,
+                 decoder_type: Literal["dot_prod", "cosine_sim"]="dot_prod",
                  dropout_rate_graph_decoder: float=0.,
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
@@ -191,12 +193,20 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             dropout_rate=dropout_rate_encoder,
             activation=torch.relu)
         
-        self.graph_decoder = CosineSimGraphDecoder(
-            n_cond_embed_input=(n_cond_embed if ("graph_decoder" in
-                                self.cond_embed_injection_) &
-                                (self.n_conditions_ != 0) else 0),
-            n_output=(n_nonaddon_gps + n_addon_gps),
-            dropout_rate=dropout_rate_graph_decoder)
+        if decoder_type == "cosine_sim":
+            self.graph_decoder = CosineSimGraphDecoder(
+                n_cond_embed_input=(n_cond_embed if ("graph_decoder" in
+                                    self.cond_embed_injection_) &
+                                    (self.n_conditions_ != 0) else 0),
+                n_output=(n_nonaddon_gps + n_addon_gps),
+                dropout_rate=dropout_rate_graph_decoder)
+        elif decoder_type == "dot_prod":
+            self.graph_decoder = DotProductGraphDecoder(
+                n_cond_embed_input=(n_cond_embed if ("graph_decoder" in
+                                    self.cond_embed_injection_) &
+                                    (self.n_conditions_ != 0) else 0),
+                n_output=(n_nonaddon_gps + n_addon_gps),
+                dropout_rate=dropout_rate_graph_decoder)
 
         self.gene_expr_decoder = MaskedGeneExprDecoder(
             n_input=n_nonaddon_gps,
