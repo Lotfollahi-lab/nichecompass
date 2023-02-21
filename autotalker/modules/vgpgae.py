@@ -11,7 +11,8 @@ import torch
 import torch.nn as nn
 from torch_geometric.data import Data
 
-from autotalker.nn import (DotProductGraphDecoder,
+from autotalker.nn import (CosineSimGraphDecoder,
+                           DotProductGraphDecoder,
                            GraphEncoder,
                            MaskedGeneExprDecoder,
                            OneHopAttentionNodeLabelAggregator,
@@ -37,6 +38,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     ----------
     n_input:
         Number of nodes in the input layer.
+    n_layers_encoder:
+        Number of layers in the encoder.
     n_hidden_encoder:
         Number of nodes in the encoder hidden layer.
     n_nonaddon_gps:
@@ -108,6 +111,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     """
     def __init__(self,
                  n_input: int,
+                 n_layers_encoder: int,
                  n_hidden_encoder: int,
                  n_nonaddon_gps: int,
                  n_addon_gps: int,
@@ -119,6 +123,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=4,
                  dropout_rate_encoder: float=0.,
+                 decoder_type: Literal["dot_prod", "cosine_sim"]="cosine_sim",
                  dropout_rate_graph_decoder: float=0.,
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
@@ -134,6 +139,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                                        "gene_expr_decoder"]):
         super().__init__()
         self.n_input_ = n_input
+        self.n_layers_encoder_ = n_layers_encoder
         self.n_hidden_encoder_ = n_hidden_encoder
         self.n_nonaddon_gps_ = n_nonaddon_gps
         self.n_addon_gps_ = n_addon_gps
@@ -178,6 +184,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_cond_embed_input=(n_cond_embed if ("encoder" in
                                 self.cond_embed_injection_) &
                                 (self.n_conditions_ != 0) else 0),
+            n_layers=n_layers_encoder,
             n_hidden=n_hidden_encoder,
             n_latent=n_nonaddon_gps,
             n_addon_latent=n_addon_gps,
@@ -186,12 +193,20 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             dropout_rate=dropout_rate_encoder,
             activation=torch.relu)
         
-        self.graph_decoder = DotProductGraphDecoder(
-            n_cond_embed_input=(n_cond_embed if ("graph_decoder" in
-                                self.cond_embed_injection_) &
-                                (self.n_conditions_ != 0) else 0),
-            n_output=(n_nonaddon_gps + n_addon_gps),
-            dropout_rate=dropout_rate_graph_decoder)
+        if decoder_type == "cosine_sim":
+            self.graph_decoder = CosineSimGraphDecoder(
+                n_cond_embed_input=(n_cond_embed if ("graph_decoder" in
+                                    self.cond_embed_injection_) &
+                                    (self.n_conditions_ != 0) else 0),
+                n_output=(n_nonaddon_gps + n_addon_gps),
+                dropout_rate=dropout_rate_graph_decoder)
+        elif decoder_type == "dot_prod":
+            self.graph_decoder = DotProductGraphDecoder(
+                n_cond_embed_input=(n_cond_embed if ("graph_decoder" in
+                                    self.cond_embed_injection_) &
+                                    (self.n_conditions_ != 0) else 0),
+                n_output=(n_nonaddon_gps + n_addon_gps),
+                dropout_rate=dropout_rate_graph_decoder)
 
         self.gene_expr_decoder = MaskedGeneExprDecoder(
             n_input=n_nonaddon_gps,
@@ -373,7 +388,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         """
         loss_dict = {}
 
-        # If not specified explicitly, compute edge reconstruction loss 
+        # If not specified explicitly, compute edge reconstruction loss
         # weighting factor based on number of possible edges and negative edges
         if lambda_edge_recon is None:
             n_possible_edges = edge_data_batch.x.shape[0] ** 2
@@ -413,16 +428,16 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     theta=theta,
                     zi_prob_logits=zi_prob_logits))
             
-        loss_dict["masked_gp_l1_reg_loss"] = (lambda_l1_masked * 
+        loss_dict["masked_gp_l1_reg_loss"] = (lambda_l1_masked *
             compute_masked_l1_reg_loss(self.named_parameters()))
 
         # Compute group lasso regularization loss of gene programs
-        loss_dict["group_lasso_reg_loss"] = (lambda_group_lasso * 
+        loss_dict["group_lasso_reg_loss"] = (lambda_group_lasso *
         compute_group_lasso_reg_loss(self.named_parameters()))
 
         # Compute l1 regularization loss of genes in addon gene programs
         if self.n_addon_gps_ != 0:
-            loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon * 
+            loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon *
             compute_addon_l1_reg_loss(self.named_parameters()))
 
         # Compute optimization loss used for backpropagation as well as global

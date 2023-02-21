@@ -8,18 +8,17 @@ import torch
 import torch.nn as nn
 
 from .layers import AddOnMaskedLayer
+from .utils import compute_cosine_similarity
 
 
 class DotProductGraphDecoder(nn.Module):
     """
     Dot product graph decoder class as per Kipf, T. N. & Welling, M. Variational 
     Graph Auto-Encoders. arXiv [stat.ML] (2016).
-
     Takes the latent space features z as input, calculates their dot product
     to return the reconstructed adjacency matrix with logits `adj_rec_logits`.
     Sigmoid activation function is skipped as it is integrated into the binary 
     cross entropy loss for computational efficiency.
-
     Parameters
     ----------
     dropout_rate:
@@ -45,16 +44,27 @@ class DotProductGraphDecoder(nn.Module):
 
     def forward(self,
                 z: torch.Tensor,
-                cond_embed: Optional[torch.Tensor]) -> torch.Tensor:
+                cond_embed: Optional[torch.Tensor],
+                reduced_obs_start_idx: Optional[int]=None,
+                reduced_obs_end_idx: Optional[int]=None) -> torch.Tensor:
         """
         Forward pass of the dot product graph decoder.
-
         Parameters
         ----------
         z:
             Tensor containing the latent space features.
         cond_embed:
             Tensor containing the conditional embedding.
+        reduced_obs_start_idx:
+            If not `None`, specifies the start observation index from which the
+            dot product with all observations will be computed. This can be used
+            for batched dot product computation to alleviate the memory
+            consumption for big datasets.
+        reduced_obs_end_idx:
+            If not `None`, specifies the end observation index up to which the
+            dot product with all observations will be computed. This can be used
+            for batched dot product computation to alleviate the memory
+            consumption for big datasets.
 
         Returns
         ----------
@@ -66,8 +76,82 @@ class DotProductGraphDecoder(nn.Module):
             z += self.cond_embed_l(cond_embed)
         
         z = self.dropout(z)
-        adj_rec_logits = torch.mm(z, z.t())
+        adj_rec_logits = torch.mm(
+            z[reduced_obs_start_idx:reduced_obs_end_idx, :],
+            z.t())
         return adj_rec_logits
+    
+
+class CosineSimGraphDecoder(nn.Module):
+    """
+    Cosine similarity graph decoder class.
+
+    Takes the latent space features z as input, calculates their cosine
+    similarity to return the reconstructed adjacency matrix with logits
+    `adj_rec_logits`. Sigmoid activation function is skipped as it is integrated
+    into the binary cross entropy loss for computational efficiency.
+
+    Parameters
+    ----------
+    dropout_rate:
+        Probability of nodes to be dropped during training.
+    """
+    def __init__(self,
+                 n_cond_embed_input: int,
+                 n_output: int,
+                 dropout_rate: float=0.):
+        super().__init__()
+
+        print(f"COSINE SIM GRAPH DECODER -> n_cond_embed_input: "
+              f"{n_cond_embed_input}, n_output: {n_output}, dropout_rate: "
+              F"{dropout_rate}")
+
+        # Conditional embedding layer
+        if n_cond_embed_input != 0:
+            self.cond_embed_l = nn.Linear(n_cond_embed_input,
+                                          n_output,
+                                          bias=False)
+
+        self.dropout = nn.Dropout(dropout_rate)
+
+    def forward(self,
+                z: torch.Tensor,
+                cond_embed: Optional[torch.Tensor],
+                reduced_obs_start_idx: Optional[int]=None,
+                reduced_obs_end_idx: Optional[int]=None) -> torch.Tensor:
+        """
+        Forward pass of the cosine similarity graph decoder.
+
+        Parameters
+        ----------
+        z:
+            Tensor containing the latent space features.
+        cond_embed:
+            Tensor containing the conditional embedding.
+        reduced_obs_start_idx:
+            If not `None`, specifies the start observation index from which the
+            cosine similarity with all observations will be computed. This can
+            be used for batched cosine similarity computation to alleviate the
+            memory consumption for big datasets.
+        reduced_obs_end_idx:
+            If not `None`, specifies the end observation index up to which the
+            cosine similarity with all observations will be computed. This can
+            be used for batched cosine similarity computation to alleviate the
+            memory consumption for big datasets.
+
+        Returns
+        ----------
+        adj_recon_logits:
+            Tensor containing the reconstructed adjacency matrix with logits.
+        """
+        # Add conditional embedding to latent feature vector
+        if cond_embed is not None:
+            z += self.cond_embed_l(cond_embed)
+        
+        z = self.dropout(z)
+        adj_recon_logits = compute_cosine_similarity(
+            z[reduced_obs_start_idx:reduced_obs_end_idx, :], z)
+        return adj_recon_logits
 
 
 class MaskedGeneExprDecoder(nn.Module):

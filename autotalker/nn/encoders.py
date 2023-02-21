@@ -24,6 +24,8 @@ class GraphEncoder(nn.Module):
         Number of input nodes to the GCN encoder.
     n_cond_embed_input:
         Number of conditional embedding input nodes to the GCN encoder.
+    n_layers:
+        Number of layers.
     n_hidden:
         Number of hidden nodes outputted by the first GCN layer.
     n_latent:
@@ -44,6 +46,7 @@ class GraphEncoder(nn.Module):
     def __init__(self,
                  n_input: int,
                  n_cond_embed_input: int,
+                 n_layers: int,
                  n_hidden: int,
                  n_latent: int,
                  n_addon_latent: int=0,
@@ -53,11 +56,12 @@ class GraphEncoder(nn.Module):
                  activation: nn.Module=nn.ReLU):
         super().__init__()
         self.n_addon_latent = n_addon_latent
+        self.n_layers = n_layers
 
         print(f"GRAPH ENCODER -> n_input: {n_input}, n_cond_embed_input: "
-              f"{n_cond_embed_input}, n_hidden: {n_hidden}, n_latent: "
-              f"{n_latent}, n_addon_latent: {n_addon_latent}, conv_layer: "
-              f"{conv_layer}, n_attention_heads: "
+              f"{n_cond_embed_input}, n_layers: {n_layers}, n_hidden: "
+              f"{n_hidden}, n_latent: {n_latent}, n_addon_latent: "
+              f"{n_addon_latent}, conv_layer: {conv_layer}, n_attention_heads: "
               f"{n_attention_heads if conv_layer == 'gatv2conv' else '0'}, "
               f"dropout_rate: {dropout_rate}")
 
@@ -65,17 +69,23 @@ class GraphEncoder(nn.Module):
             n_input += n_cond_embed_input
 
         if conv_layer == "gcnconv":
-            self.conv_l1 = GCNConv(n_input, n_hidden)
+            if n_layers == 2:
+                self.conv_l1 = GCNConv(n_input, n_hidden)
+            elif n_layers == 1:
+                n_hidden = n_input
             self.conv_mu = GCNConv(n_hidden, n_latent)
             self.conv_logstd = GCNConv(n_hidden, n_latent)
             if n_addon_latent != 0:
                 self.addon_conv_mu = GCNConv(n_hidden, n_addon_latent)
-                self.addon_conv_logstd = GCNConv(n_hidden, n_addon_latent)
+                self.addon_conv_logstd = GCNConv(n_hidden, n_addon_latent)           
         elif conv_layer == "gatv2conv":
-            self.conv_l1 = GATv2Conv(n_input,
-                                     n_hidden,
-                                     heads=n_attention_heads,
-                                     concat=False)
+            if n_layers == 2:
+                self.conv_l1 = GATv2Conv(n_input,
+                                         n_hidden,
+                                         heads=n_attention_heads,
+                                         concat=False)
+            elif n_layers == 1:
+                n_hidden = n_input
             self.conv_mu = GATv2Conv(n_hidden,
                                      n_latent,
                                      heads=n_attention_heads,
@@ -126,8 +136,11 @@ class GraphEncoder(nn.Module):
         if cond_embed is not None:
             x = torch.cat((x, cond_embed), dim=-1)
 
-        # Part of forward pass shared across all nodes
-        hidden = self.dropout(self.activation(self.conv_l1(x, edge_index)))
+        if self.n_layers == 2:
+            # Part of forward pass shared across all nodes
+            hidden = self.dropout(self.activation(self.conv_l1(x, edge_index)))
+        elif self.n_layers == 1:
+            hidden = x
 
         # Part of forward pass only for maskable latent nodes
         mu = self.conv_mu(hidden, edge_index)
