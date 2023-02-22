@@ -11,25 +11,24 @@ import mlflow
 import scanpy as sc
 from anndata import AnnData
 
-from autotalker.utils import compute_graph_connectivities
 from .arclisi import compute_arclisi
 from .cad import compute_cad
 from .cca import compute_cca
 from .gcd import compute_gcd
 from .germse import compute_germse
 from .mlnmi import compute_mlnmi
+from .rclisi import compute_rclisi
     
 
 def compute_benchmarking_metrics(
-        adata: Optional[AnnData]=None,
-        spatial_model: bool=True,
+        adata: AnnData,
         latent_key: str="autotalker_latent",
         active_gp_names_key: str="autotalker_active_gp_names",
-        cell_type_key: str="cell-type",
+        cell_type_key: str="cell_type",
         spatial_key: str="spatial",
-        spatial_knng_key: str="autotalker_spatial_8nng",
-        latent_knng_key: str="autotalker_latent_8nng",
-        n_neighbors: int=8,
+        spatial_knng_key: str="autotalker_spatial_knng",
+        latent_knng_key: str="autotalker_latent_knng",
+        n_neighbors: int=15, # sc.pp.neighbors default
         seed: int=0,
         mlflow_experiment_id: Optional[str]=None) -> dict:
     """
@@ -63,26 +62,19 @@ def compute_benchmarking_metrics(
     ----------
     benchmark_dict:
         Dictionary containing the calculated benchmarking metrics under keys
-        ´gcd´, ´mlnmi´, ´cad´, ´arclisi´, ´germse´, ´cca´.
+        ´gcd´, ´mlnmi´, ´cad´, ´arclisi´, ´rclisi´, ´germse´ and ´cca´.
     """
     # Adding '_connectivities' as required by squidpy
     # spatial_knng_connectivities_key = spatial_knng_key + "_connectivities"
     # latent_knng_connectivities_key = latent_knng_key + "_connectivities"
 
-    if spatial_model:
-        # Compute spatial (ground truth) connectivities
+    if spatial_knng_key not in adata.uns:
+        # Compute physical (ground truth) connectivities
         sc.pp.neighbors(adata=adata,
                         use_rep=spatial_key,
                         n_neighbors=n_neighbors,
                         random_state=seed,
                         key_added=spatial_knng_key)
-        #adata.obsp[spatial_knng_connectivities_key] = (
-        #    compute_graph_connectivities(
-        #        adata=adata,
-        #        feature_key=spatial_key,
-        #        n_neighbors=n_neighbors,
-        #        mode="knn",
-        #        seed=seed))
 
     # Compute latent connectivities
     sc.pp.neighbors(adata=adata,
@@ -90,37 +82,36 @@ def compute_benchmarking_metrics(
                     n_neighbors=n_neighbors,
                     random_state=seed,
                     key_added=latent_knng_key)
-    #adata.obsp[latent_knng_connectivities_key] = (
-    #    compute_graph_connectivities(
-    #        adata=adata,
-    #        feature_key=latent_key,
-    #        n_neighbors=n_neighbors,
-    #        mode="knn",
-    #        seed=seed))
 
     # Compute benchmarking metrics
     benchmark_dict = {}
-    if spatial_model:
-        benchmark_dict["gcd"] = compute_gcd(
-            adata=adata,
-            spatial_knng_key=spatial_knng_key,
-            latent_knng_key=latent_knng_key)
-        benchmark_dict["mlnmi"] = compute_mlnmi(
-            adata=adata,
-            spatial_knng_key=spatial_knng_key,
-            latent_knng_key=latent_knng_key)
-        benchmark_dict["cad"] = compute_cad(
-            adata=adata,
-            cell_type_key=cell_type_key,
-            spatial_knng_key=spatial_knng_key,
-            latent_knng_key=latent_knng_key)
-        benchmark_dict["arclisi"] = compute_arclisi(
-            adata=adata,
-            cell_type_key=cell_type_key,
-            spatial_key=spatial_key,
-            latent_key=latent_key,
-            n_neighbors=n_neighbors,
-            seed=seed)
+    benchmark_dict["gcd"] = compute_gcd(
+        adata=adata,
+        spatial_knng_key=spatial_knng_key,
+        latent_knng_key=latent_knng_key)
+    benchmark_dict["mlnmi"] = compute_mlnmi(
+        adata=adata,
+        spatial_knng_key=spatial_knng_key,
+        latent_knng_key=latent_knng_key)
+    benchmark_dict["cad"] = compute_cad(
+        adata=adata,
+        cell_type_key=cell_type_key,
+        spatial_knng_key=spatial_knng_key,
+        latent_knng_key=latent_knng_key)
+    benchmark_dict["arclisi"] = compute_arclisi(
+        adata=adata,
+        cell_type_key=cell_type_key,
+        spatial_key=spatial_key,
+        latent_key=latent_key,
+        n_neighbors=n_neighbors,
+        seed=seed)
+    benchmark_dict["rclisi"] = compute_rclisi(
+        adata=adata,
+        cell_type_key=cell_type_key,
+        spatial_knng_key=spatial_knng_key,
+        latent_knng_key=latent_knng_key,
+        n_neighbors=n_neighbors,
+        seed=seed)
     benchmark_dict["germse"] = compute_germse(
         adata=adata,
         active_gp_names_key=active_gp_names_key,
