@@ -27,12 +27,12 @@ def compute_mlami(
     Compute the Maximum Leiden Adjusted Mutual Info (MLAMI) between the latent
     nearest neighbor graph and the spatial nearest neighbor graph. A higher
     value indicates that the latent feature space more accurately preserves 
-    spatial organization from the original spatial feature space. If existent,
-    uses precomputed nearest neighbor graphs stored in
+    spatial organization from the spatial (ground truth) feature space. If
+    existent, uses precomputed nearest neighbor graphs stored in
     ´adata.obsp[spatial_knng_key + '_connectivities']´ and
     ´adata.obsp[latent_knng_key + '_connectivities']´.
     Alternatively, computes them on the fly using ´spatial_key´, ´latent_key´
-    and ´n_neighbors´ and stores them in 
+    and ´n_neighbors´, and stores them in 
     ´adata.obsp[spatial_knng_key + '_connectivities']´ and
     ´adata.obsp[latent_knng_key + '_connectivities']´ respectively. Leiden
     clusterings with different resolutions are computed for both nearest
@@ -59,7 +59,7 @@ def compute_mlami(
     spatial_key:
         Key under which the spatial coordinates are stored in ´adata.obsm´.
     latent_key:
-        Key under which the latent representation from the model is stored in
+        Key under which the latent representation from a model is stored in
         ´adata.obsm´.
     n_neighbors:
         Number of neighbors used for the construction of the nearest neighbor

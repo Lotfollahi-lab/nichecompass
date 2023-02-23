@@ -1,7 +1,8 @@
 """
-This module contains the Cell-Type Affinity Distance (CAD) benchmark for testing
-how accurately the latent nearest neighbor graph preserves cell-type-pair edges
-from the original spatial nearest neighbor graph.
+This module contains the Cell Type Affinity Distance (CTAD) benchmark for
+testing how accurately the latent nearest neighbor graph preserves
+cell-type-pair edges from the physical (spatial) nearest neighbor graph, a
+measure for global cell type neighborhood preservation.
 """
 
 from typing import Optional
@@ -11,10 +12,8 @@ import scanpy as sc
 import squidpy as sq
 from anndata import AnnData
 
-from autotalker.utils import compute_graph_connectivities
 
-
-def compute_avg_cad(
+def compute_avg_ctad(
         adata: AnnData,
         cell_type_key: str="cell-type",
         spatial_key: str="spatial",
@@ -24,9 +23,9 @@ def compute_avg_cad(
         seed: int=0,
         visualize_ccc_maps: bool=False) -> float:
     """
-    Compute multiple Cell-Type Affinity Distances (CADs) by varying the number
+    Compute multiple Cell-Type Affinity Distances (CTADs) by varying the number
     of neighbors used for nearest neighbor graph construction (between
-    ´min_n_neighbors´ and ´max_n_neighbors´) and return the average CAD. Can use
+    ´min_n_neighbors´ and ´max_n_neighbors´) and return the average CTAD. Can use
     precomputed spatial and latent nearest neighbor graphs stored in
     ´adata.obsp[f'autotalker_spatial_{n_neighbors}nng_connectivities']´ and
     ´adata.obsp[f'autotalker_latent_{n_neighbors}nng_connectivities']´
@@ -50,9 +49,9 @@ def compute_avg_cad(
         Key under which the latent representation from the model is stored in
         ´adata.obsm´.
     min_n_neighbors:
-        Minimum number of neighbors used for computing the average CAD.
+        Minimum number of neighbors used for computing the average CTAD.
     max_n_neighbors:
-        Maximum number of neighbors used for computing the average CAD.
+        Maximum number of neighbors used for computing the average CTAD.
     seed:
         Random seed for reproducibility.
     visualize_ccc_maps:
@@ -61,13 +60,13 @@ def compute_avg_cad(
 
     Returns
     ----------
-    avg_cad:
-        Average CAD computed over different nearest neighbor graphs with varying
+    avg_ctad:
+        Average CTAD computed over different nearest neighbor graphs with varying
         number of neighbors.
     """
-    cad_list = []
+    ctad_list = []
     for n_neighbors in range(min_n_neighbors, max_n_neighbors):
-        cad_list.append(compute_cad(
+        ctad_list.append(compute_ctad(
             adata=adata,
             cell_type_key=cell_type_key,
             spatial_knng_key=f"autotalker_spatial_{n_neighbors}nng",
@@ -77,11 +76,11 @@ def compute_avg_cad(
             n_neighbors=n_neighbors,
             seed=seed,
             visualize_ccc_maps=visualize_ccc_maps))
-    avg_cad = np.mean(cad_list)
-    return avg_cad
+    avg_ctad = np.mean(ctad_list)
+    return avg_ctad
 
 
-def compute_cad(
+def compute_ctad(
         adata: AnnData,
         cell_type_key: str="cell-type",
         spatial_knng_key: str="autotalker_spatial_knng",
@@ -92,11 +91,11 @@ def compute_cad(
         seed: Optional[int]=0,
         visualize_ccc_maps: bool=False) -> float:
     """
-    Compute the Cell-type Affinity Distance (CAD) between the latent nearest
+    Compute the Cell Type Affinity Distance (CTAD) between the latent nearest
     neighbor graph and the spatial nearest neighbor graph. A lower value
     indicates a latent nearest neighbor graph that more accurately preserves
     cell-type-pair edges from the spatial (ground truth) nearest neighbor
-    graph. The CAD was first introduced by Lohoff, T. et al. Integration of
+    graph. The CTAD was first introduced by Lohoff, T. et al. Integration of
     spatial and single-cell transcriptomic data elucidates mouse organogenesis.
     Nat. Biotechnol. 40, 74–85 (2022).
     If existent, use precomputed nearest neighbor graphs stored in
@@ -144,7 +143,7 @@ def compute_cad(
 
     Returns
     ----------
-    cad:
+    ctad:
         Matrix distance between the latent cell-type affinity matrix and the
         spatial (ground truth) cell-type affinity matrix as measured by the
         Frobenius norm of the element-wise matrix differences.
@@ -228,5 +227,5 @@ def compute_cad(
     nhood_enrichment_zscores_diff = (
         nhood_enrichment_zscores_diff[~np.isnan(nhood_enrichment_zscores_diff)])
 
-    cad = np.linalg.norm(nhood_enrichment_zscores_diff)
-    return cad
+    ctad = np.linalg.norm(nhood_enrichment_zscores_diff)
+    return ctad
