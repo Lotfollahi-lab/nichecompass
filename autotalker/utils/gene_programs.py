@@ -148,9 +148,9 @@ def add_gps_from_gp_dict_to_adata(
 
     # Get index of genes present in the sources and targets mask respectively
     adata.uns[source_genes_idx_key] = np.nonzero(
-        adata.varm["autotalker_gp_sources"].sum(axis=1))[0]
+        adata.varm[gp_sources_mask_key].sum(axis=1))[0]
     adata.uns[target_genes_idx_key] = np.nonzero(
-        adata.varm["autotalker_gp_targets"].sum(axis=1))[0]
+        adata.varm[gp_targets_mask_key].sum(axis=1))[0]
     adata.uns[genes_idx_key] = np.concatenate(
         (adata.uns[target_genes_idx_key],
          adata.uns[source_genes_idx_key] + adata.n_vars), axis=0)
