@@ -102,7 +102,8 @@ def compute_germse(
         # Train regressor and use it for scoring
         if regressor == "mlp":
             regr = MLPRegressor(
-                hidden_layer_sizes=int(gene_expr.shape[1] / 2),
+                hidden_layer_sizes=(int(gp_scores.shape[1] / 2),
+                                    int(gp_scores.shape[1] / 2)),
                 random_state=seed,
                 max_iter=500)
         elif regressor == "tree":

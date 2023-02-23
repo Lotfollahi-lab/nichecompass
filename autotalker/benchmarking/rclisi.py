@@ -11,7 +11,7 @@ from anndata import AnnData
 
 from scib.metrics.lisi import lisi_graph_py
 
-def compute_rclisi(
+def compute_malrctlisi(
         adata: AnnData,
         cell_type_key: str="cell-type",
         spatial_knng_key: str="autotalker_spatial_knng",
@@ -62,31 +62,25 @@ def compute_rclisi(
     rclisi:
         The Median Absolute Log RCLISI computed over all cells.
     """
-    # Adding '_connectivities' as required by squidpy
+    # Adding '_connectivities' as automatically added by sc.pp.neighbors
     spatial_knng_connectivities_key = spatial_knng_key + "_connectivities"
     latent_knng_connectivities_key = latent_knng_key + "_connectivities"
 
     if spatial_knng_connectivities_key not in adata.obsp:
         # Compute spatial (ground truth) connectivities
-        print("Computing spatial nearest neighbor graph...")
         sc.pp.neighbors(adata=adata,
                         use_rep=spatial_key,
                         n_neighbors=knn_graph_n_neighbors,
                         random_state=seed,
                         key_added=spatial_knng_key)
-    else:
-        print("Using precomputed spatial nearest neighbor graph...")
 
     if latent_knng_connectivities_key not in adata.obsp:
-        print("Computing latent nearest neighbor graph...")
         # Compute latent connectivities
         sc.pp.neighbors(adata=adata,
                         use_rep=latent_key,
                         n_neighbors=knn_graph_n_neighbors,
                         random_state=seed,
                         key_added=latent_knng_key)
-    else:
-        print("Using precomputed latent nearest neighbor graph...")
 
     adata_tmp = adata.copy()
     adata_tmp.obsp["connectivities"] = (
@@ -121,5 +115,9 @@ def compute_rclisi(
 
     cell_log_rclisi_scores = np.log2(cell_rclisi_scores)
 
+    n_cell_types = adata.obs[cell_type_key].nunique()
+    max_cell_log_rclisi = np.log2(n_cell_types / 1)
+
     rclisi = np.median(abs(cell_log_rclisi_scores))
+    rclisi = 1 - rclisi
     return rclisi

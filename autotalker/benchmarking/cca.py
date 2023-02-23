@@ -10,6 +10,7 @@ import numpy as np
 from anndata import AnnData
 from sklearn.metrics import accuracy_score
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neural_network import MLPClassifier
 from sklearn.svm import LinearSVC
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
@@ -17,10 +18,10 @@ from sklearn.preprocessing import StandardScaler
 
 def compute_cca(
         adata: AnnData,
-        cell_cat_key: str="cell-type",
+        cell_cat_key: str="cell_type",
         active_gp_names_key: str="autotalker_active_gp_names",
         latent_key: str="autotalker_latent",
-        classifier: Literal["baseline", "knn", "svm"]="knn",
+        classifier: Literal["baseline", "knn", "svm"]="mlp",
         selected_gps: Optional[Union[str,list]]=None,
         selected_cats: Optional[Union[str,list]]=None,
         n_neighbors: int=3,
@@ -126,6 +127,12 @@ def compute_cca(
         gp_scores = adata.obsm[latent_key][:, selected_gps_idx]
 
         # Predict cell categories using classifier
+        if classifier == "mlp":
+            clf = MLPClassifier(
+                hidden_layer_sizes=(int(gp_scores.shape[1] / 2),
+                                    int(gp_scores.shape[1] / 2)),
+                random_state=seed,
+                max_iter=500)
         if classifier == "knn":
             clf = KNeighborsClassifier(n_neighbors=n_neighbors)
         elif classifier == "svm":
