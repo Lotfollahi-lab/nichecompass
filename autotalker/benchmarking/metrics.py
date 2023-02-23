@@ -12,7 +12,7 @@ import scanpy as sc
 from anndata import AnnData
 
 from .arclisi import compute_arclisi
-from .ctad import compute_ctad
+from .ctas import compute_ctas
 from .cca import compute_cca
 from .gcs import compute_gcs
 from .germse import compute_germse
@@ -62,7 +62,7 @@ def compute_benchmarking_metrics(
     ----------
     benchmark_dict:
         Dictionary containing the calculated benchmarking metrics under keys
-        ´gcs´, ´mlami´, ´ctad´, ´arclisi´, ´rclisi´, ´germse´ and ´cca´.
+        ´gcs´, ´mlami´, ´ctas´, ´arclisi´, ´rclisi´, ´germse´ and ´cca´.
     """
     # Adding '_connectivities' as required by squidpy
     # spatial_knng_connectivities_key = spatial_knng_key + "_connectivities"
@@ -94,7 +94,7 @@ def compute_benchmarking_metrics(
         adata=adata,
         spatial_knng_key=spatial_knng_key,
         latent_knng_key=latent_knng_key)
-    benchmark_dict["ctad"] = compute_ctad(
+    benchmark_dict["ctas"] = compute_ctas(
         adata=adata,
         cell_type_key=cell_type_key,
         spatial_knng_key=spatial_knng_key,

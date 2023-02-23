@@ -1,5 +1,5 @@
 """
-This module contains the Cell Type Affinity Distance (CTAD) benchmark for
+This module contains the Cell Type Affinity Similiarity (CTAS) benchmark for
 testing how accurately the latent nearest neighbor graph preserves
 cell-type-pair edges from the physical (spatial) nearest neighbor graph, a
 measure for global cell type neighborhood preservation.
@@ -13,20 +13,20 @@ import squidpy as sq
 from anndata import AnnData
 
 
-def compute_avg_ctad(
+def compute_avg_ctas(
         adata: AnnData,
         cell_type_key: str="cell-type",
         spatial_key: str="spatial",
         latent_key: str="autotalker_latent",
         min_n_neighbors: int=1,
-        max_n_neighbors: int=16,
+        max_n_neighbors: int=15,
         seed: int=0,
         visualize_ccc_maps: bool=False) -> float:
     """
-    Compute multiple Cell-Type Affinity Distances (CTADs) by varying the number
-    of neighbors used for nearest neighbor graph construction (between
-    ´min_n_neighbors´ and ´max_n_neighbors´) and return the average CTAD. Can use
-    precomputed spatial and latent nearest neighbor graphs stored in
+    Compute multiple Cell Type Affinity Similarities (CTAS) by varying the
+    number of neighbors used for nearest neighbor graph construction (between
+    ´min_n_neighbors´ and ´max_n_neighbors´) and return the average CTAS. Can
+    use precomputed spatial and latent nearest neighbor graphs stored in
     ´adata.obsp[f'autotalker_spatial_{n_neighbors}nng_connectivities']´ and
     ´adata.obsp[f'autotalker_latent_{n_neighbors}nng_connectivities']´
     respectively.
@@ -36,7 +36,7 @@ def compute_avg_ctad(
     adata:
         AnnData object with cell type annotations stored in
         ´adata.obs[cell_type_key]´, spatial coordinates stored in
-        ´adata.obsm[spatial_key]´ and the latent representation from the model
+        ´adata.obsm[spatial_key]´ and the latent representation from a model
         stored in ´adata.obsm[latent_key]´. Precomputed nearest neighbor graphs
         can optionally be stored in
         ´adata.obsp[f'autotalker_spatial_{n_neighbors}nng_connectivities']´ and
@@ -46,27 +46,27 @@ def compute_avg_ctad(
     spatial_key:
         Key under which the spatial coordinates are stored in ´adata.obsm´.
     latent_key:
-        Key under which the latent representation from the model is stored in
+        Key under which the latent representation from a model is stored in
         ´adata.obsm´.
     min_n_neighbors:
-        Minimum number of neighbors used for computing the average CTAD.
+        Minimum number of neighbors used for computing the average CTAS.
     max_n_neighbors:
-        Maximum number of neighbors used for computing the average CTAD.
+        Maximum number of neighbors used for computing the average CTAS.
     seed:
         Random seed for reproducibility.
     visualize_ccc_maps:
-        If ´True´, also visualize the spatial and latent cell-type affinity
+        If ´True´, also visualize the spatial and latent cell type affinity
         matrices (ccc maps).
 
     Returns
     ----------
-    avg_ctad:
-        Average CTAD computed over different nearest neighbor graphs with varying
-        number of neighbors.
+    avg_ctas:
+        Average CTAS computed over different nearest neighbor graphs with
+        varying number of neighbors.
     """
-    ctad_list = []
+    ctas_list = []
     for n_neighbors in range(min_n_neighbors, max_n_neighbors):
-        ctad_list.append(compute_ctad(
+        ctas_list.append(compute_ctas(
             adata=adata,
             cell_type_key=cell_type_key,
             spatial_knng_key=f"autotalker_spatial_{n_neighbors}nng",
@@ -76,13 +76,13 @@ def compute_avg_ctad(
             n_neighbors=n_neighbors,
             seed=seed,
             visualize_ccc_maps=visualize_ccc_maps))
-    avg_ctad = np.mean(ctad_list)
-    return avg_ctad
+    avg_ctas = np.mean(ctas_list)
+    return avg_ctas
 
 
-def compute_ctad(
+def compute_ctas(
         adata: AnnData,
-        cell_type_key: str="cell-type",
+        cell_type_key: str="cell_type",
         spatial_knng_key: str="autotalker_spatial_knng",
         latent_knng_key: str="autotalker_latent_knng",
         spatial_key: Optional[str]="spatial",
@@ -91,23 +91,28 @@ def compute_ctad(
         seed: Optional[int]=0,
         visualize_ccc_maps: bool=False) -> float:
     """
-    Compute the Cell Type Affinity Distance (CTAD) between the latent nearest
-    neighbor graph and the spatial nearest neighbor graph. A lower value
-    indicates a latent nearest neighbor graph that more accurately preserves
-    cell-type-pair edges from the spatial (ground truth) nearest neighbor
-    graph. The CTAD was first introduced by Lohoff, T. et al. Integration of
-    spatial and single-cell transcriptomic data elucidates mouse organogenesis.
-    Nat. Biotechnol. 40, 74–85 (2022).
-    If existent, use precomputed nearest neighbor graphs stored in
+    Compute the Cell Type Affinity Similarity (CTAS) between the latent nearest
+    neighbor graph and the spatial nearest neighbor graph. The CTAS measures how
+    accurately the latent nearest neighbor graph preserves cell-type-pair edges
+    from the spatial (ground truth) nearest neighbor graph. A value of '1'
+    indicates perfect cell-type-pair similarity and a value of '0' indicates no
+    cell-type-pair similarity at all. The CTAS is a variation of the Cell Type
+    Affinity Distance which was first introduced by Lohoff, T. et al. Integration
+    of spatial and single-cell transcriptomic data elucidates mouse
+    organogenesis. Nat. Biotechnol. 40, 74–85 (2022).
+    If existent, uses precomputed nearest neighbor graphs stored in
     ´adata.obsp[spatial_knng_key + '_connectivities']´ and
     ´adata.obsp[latent_knng_key + '_connectivities']´.
-    Alternatively, compute them on the fly using ´spatial_key´, ´latent_key´ and
-    ´n_neighbors´. Note that the used neighborhood enrichment implementation
-    from squidpy slightly deviates from the original method and we construct
-    nearest neighbor graphs using the original spatial coordinates and the
-    latent representation from the model respectively. The cell-type affinity
-    matrices, also called cell-cell contact (ccc) maps are stored in the AnnData
-    object and can optionally be visualized.
+    Alternatively, computes them on the fly using ´spatial_key´, ´latent_key´
+    and ´n_neighbors´, , and stores them in
+    ´adata.obsp[spatial_knng_key + '_connectivities']´ and
+    ´adata.obsp[latent_knng_key + '_connectivities']´ respectively.
+    Note that the used neighborhood enrichment implementation from squidpy
+    slightly deviates from the original method and we construct nearest neighbor
+    graphs using the original spatial coordinates and the latent representation
+    from a model respectively. The cell type affinity matrices, also called
+    cell-cell contact (ccc) maps are stored in the AnnData object and can
+    optionally be visualized.
 
     Parameters
     ----------
@@ -143,10 +148,11 @@ def compute_ctad(
 
     Returns
     ----------
-    ctad:
-        Matrix distance between the latent cell-type affinity matrix and the
-        spatial (ground truth) cell-type affinity matrix as measured by the
-        Frobenius norm of the element-wise matrix differences.
+    ctas:
+        Matrix similarity between the latent cell type affinity matrix and the
+        spatial (ground truth) cell type affinity matrix as measured by one
+        minus the size-normalied Frobenius norm of the element-wise matrix
+        differences.
     """
     # Adding '_connectivities' as required by squidpy
     spatial_knng_connectivities_key = spatial_knng_key + "_connectivities"
@@ -228,4 +234,8 @@ def compute_ctad(
         nhood_enrichment_zscores_diff[~np.isnan(nhood_enrichment_zscores_diff)])
 
     ctad = np.linalg.norm(nhood_enrichment_zscores_diff)
-    return ctad
+
+    # Normalize ctad to be between 0 and 1 and convert to ctas by subtracting
+    # from 1
+    ctas = 1 - (ctad / nhood_enrichment_zscores_diff.shape[0])
+    return ctas
