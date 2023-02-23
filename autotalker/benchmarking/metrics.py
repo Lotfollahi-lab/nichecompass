@@ -16,7 +16,7 @@ from .cad import compute_cad
 from .cca import compute_cca
 from .gcd import compute_gcd
 from .germse import compute_germse
-from .mlnmi import compute_mlnmi
+from .mlami import compute_mlami
 from .rclisi import compute_rclisi
     
 
@@ -62,7 +62,7 @@ def compute_benchmarking_metrics(
     ----------
     benchmark_dict:
         Dictionary containing the calculated benchmarking metrics under keys
-        ´gcd´, ´mlnmi´, ´cad´, ´arclisi´, ´rclisi´, ´germse´ and ´cca´.
+        ´gcd´, ´mlami´, ´cad´, ´arclisi´, ´rclisi´, ´germse´ and ´cca´.
     """
     # Adding '_connectivities' as required by squidpy
     # spatial_knng_connectivities_key = spatial_knng_key + "_connectivities"
@@ -76,12 +76,13 @@ def compute_benchmarking_metrics(
                         random_state=seed,
                         key_added=spatial_knng_key)
 
-    # Compute latent connectivities
-    sc.pp.neighbors(adata=adata,
-                    use_rep=latent_key,
-                    n_neighbors=n_neighbors,
-                    random_state=seed,
-                    key_added=latent_knng_key)
+    if latent_knng_key not in adata.uns:
+        # Compute latent connectivities
+        sc.pp.neighbors(adata=adata,
+                        use_rep=latent_key,
+                        n_neighbors=n_neighbors,
+                        random_state=seed,
+                        key_added=latent_knng_key)
 
     # Compute benchmarking metrics
     benchmark_dict = {}
@@ -89,7 +90,7 @@ def compute_benchmarking_metrics(
         adata=adata,
         spatial_knng_key=spatial_knng_key,
         latent_knng_key=latent_knng_key)
-    benchmark_dict["mlnmi"] = compute_mlnmi(
+    benchmark_dict["mlami"] = compute_mlami(
         adata=adata,
         spatial_knng_key=spatial_knng_key,
         latent_knng_key=latent_knng_key)
@@ -110,7 +111,7 @@ def compute_benchmarking_metrics(
         cell_type_key=cell_type_key,
         spatial_knng_key=spatial_knng_key,
         latent_knng_key=latent_knng_key,
-        n_neighbors=n_neighbors,
+        knn_graph_n_neighbors=n_neighbors,
         seed=seed)
     benchmark_dict["germse"] = compute_germse(
         adata=adata,
