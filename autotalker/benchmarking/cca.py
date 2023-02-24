@@ -129,8 +129,7 @@ def compute_cca(
         # Predict cell categories using classifier
         if classifier == "mlp":
             clf = MLPClassifier(
-                hidden_layer_sizes=(int(gp_scores.shape[1] / 2),
-                                    int(gp_scores.shape[1] / 2)),
+                hidden_layer_sizes=(int(gp_scores.shape[1] / 2)),
                 random_state=seed,
                 max_iter=500)
         if classifier == "knn":
