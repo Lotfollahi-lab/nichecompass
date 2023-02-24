@@ -1,5 +1,5 @@
 """
-This module contains the Cell Type Affinity Similiarity (CTAS) benchmark for
+This module contains the Cell Type Affinity Similiarity (CAS) benchmark for
 testing how accurately the latent nearest neighbor graph preserves
 cell-type-pair edges from the physical (spatial) nearest neighbor graph, a
 measure for global cell type neighborhood preservation.
@@ -13,7 +13,7 @@ import squidpy as sq
 from anndata import AnnData
 
 
-def compute_avg_ctas(
+def compute_avg_cas(
         adata: AnnData,
         cell_type_key: str="cell-type",
         spatial_key: str="spatial",
@@ -23,9 +23,9 @@ def compute_avg_ctas(
         seed: int=0,
         visualize_ccc_maps: bool=False) -> float:
     """
-    Compute multiple Cell Type Affinity Similarities (CTAS) by varying the
+    Compute multiple Cell Type Affinity Similarities (CAS) by varying the
     number of neighbors used for nearest neighbor graph construction (between
-    ´min_n_neighbors´ and ´max_n_neighbors´) and return the average CTAS. Can
+    ´min_n_neighbors´ and ´max_n_neighbors´) and return the average CAS. Can
     use precomputed spatial and latent nearest neighbor graphs stored in
     ´adata.obsp[f'autotalker_spatial_{n_neighbors}nng_connectivities']´ and
     ´adata.obsp[f'autotalker_latent_{n_neighbors}nng_connectivities']´
@@ -49,9 +49,9 @@ def compute_avg_ctas(
         Key under which the latent representation from a model is stored in
         ´adata.obsm´.
     min_n_neighbors:
-        Minimum number of neighbors used for computing the average CTAS.
+        Minimum number of neighbors used for computing the average CAS.
     max_n_neighbors:
-        Maximum number of neighbors used for computing the average CTAS.
+        Maximum number of neighbors used for computing the average CAS.
     seed:
         Random seed for reproducibility.
     visualize_ccc_maps:
@@ -60,13 +60,13 @@ def compute_avg_ctas(
 
     Returns
     ----------
-    avg_ctas:
-        Average CTAS computed over different nearest neighbor graphs with
+    avg_cas:
+        Average CAS computed over different nearest neighbor graphs with
         varying number of neighbors.
     """
-    ctas_list = []
+    cas_list = []
     for n_neighbors in range(min_n_neighbors, max_n_neighbors):
-        ctas_list.append(compute_ctas(
+        cas_list.append(compute_cas(
             adata=adata,
             cell_type_key=cell_type_key,
             spatial_knng_key=f"autotalker_spatial_{n_neighbors}nng",
@@ -76,11 +76,11 @@ def compute_avg_ctas(
             n_neighbors=n_neighbors,
             seed=seed,
             visualize_ccc_maps=visualize_ccc_maps))
-    avg_ctas = np.mean(ctas_list)
-    return avg_ctas
+    avg_cas = np.mean(cas_list)
+    return avg_cas
 
 
-def compute_ctas(
+def compute_cas(
         adata: AnnData,
         cell_type_key: str="cell_type",
         spatial_knng_key: str="autotalker_spatial_knng",
@@ -91,12 +91,12 @@ def compute_ctas(
         seed: Optional[int]=0,
         visualize_ccc_maps: bool=False) -> float:
     """
-    Compute the Cell Type Affinity Similarity (CTAS) between the latent nearest
-    neighbor graph and the spatial nearest neighbor graph. The CTAS measures how
+    Compute the Cell Type Affinity Similarity (CAS) between the latent nearest
+    neighbor graph and the spatial nearest neighbor graph. The CAS measures how
     accurately the latent nearest neighbor graph preserves cell-type-pair edges
     from the spatial (ground truth) nearest neighbor graph. A value of '1'
     indicates perfect cell-type-pair similarity and a value of '0' indicates no
-    cell-type-pair similarity at all. The CTAS is a variation of the Cell Type
+    cell-type-pair similarity at all. The CAS is a variation of the Cell Type
     Affinity Distance which was first introduced by Lohoff, T. et al. Integration
     of spatial and single-cell transcriptomic data elucidates mouse
     organogenesis. Nat. Biotechnol. 40, 74–85 (2022).
@@ -148,7 +148,7 @@ def compute_ctas(
 
     Returns
     ----------
-    ctas:
+    cas:
         Matrix similarity between the latent cell type affinity matrix and the
         spatial (ground truth) cell type affinity matrix as measured by one
         minus the size-normalied Frobenius norm of the element-wise matrix
@@ -228,14 +228,14 @@ def compute_ctas(
         adata.uns[f"{cell_type_key}_latent_nhood_enrichment"]["zscore"] -
         adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"])
 
-    # Remove np.nan ´z_scores´ which can happen as a result of 
+    # Remove np.nan ´z_scores´ which can happen as a result of
     # ´sq.pl.nhood_enrichment´ permutation
     nhood_enrichment_zscores_diff = (
         nhood_enrichment_zscores_diff[~np.isnan(nhood_enrichment_zscores_diff)])
 
-    ctad = np.linalg.norm(nhood_enrichment_zscores_diff)
+    cad = np.linalg.norm(nhood_enrichment_zscores_diff)
 
-    # Normalize ctad to be between 0 and 1 and convert to ctas by subtracting
+    # Normalize CAD to be between 0 and 1 and convert to CAS by subtracting
     # from 1
-    ctas = 1 - (ctad / nhood_enrichment_zscores_diff.shape[0])
-    return ctas
+    cas = 1 - (cad / nhood_enrichment_zscores_diff.shape[0])
+    return cas
