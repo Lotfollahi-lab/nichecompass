@@ -5,7 +5,7 @@ different deep generative models. The benchmark consists of metrics for spatial
 conservation as well as linear recoverability of gene expression.
 """
 
-from typing import Optional
+from typing import Optional, Union
 
 import mlflow
 import scanpy as sc
@@ -21,13 +21,13 @@ from .mlami import compute_mlami
 
 def compute_benchmarking_metrics(
         adata: AnnData,
-        active_gp_names_key: str="autotalker_active_gp_names",
         cell_type_key: str="cell_type",
         spatial_knng_key: str="autotalker_spatial_knng",
         latent_knng_key: str="autotalker_latent_knng",
         spatial_key: Optional[str]="spatial",
         latent_key: Optional[str]="autotalker_latent",
         n_neighbors: Optional[int]=15, # sc.pp.neighbors default
+        ger_genes: Optional[Union[str, list]]=None,
         seed: int=0,
         mlflow_experiment_id: Optional[str]=None) -> dict:
     """
@@ -52,6 +52,8 @@ def compute_benchmarking_metrics(
         Number of neighbors used for the construction of the nearest neighbor
         graphs from the spatial coordinates and the latent representation from a
         model.
+    ger_genes:
+        Genes used for the gene expression reconstruction benchmark.
     seed:
         Random seed for reproducibility.
     mlflow_experiment_id:
@@ -115,19 +117,15 @@ def compute_benchmarking_metrics(
     print("Computing GERMSE...")
     benchmark_dict["germse"] = compute_germse(
         adata=adata,
-        active_gp_names_key=active_gp_names_key,
         latent_key=latent_key,
         regressor="mlp",
-        selected_gps=None,
-        selected_genes=None)
+        selected_genes=ger_genes)
     print("Computing CCA...")
     benchmark_dict["cca"] = compute_cca(
         adata=adata,
         cell_cat_key=cell_type_key,
-        active_gp_names_key=active_gp_names_key,
         latent_key=latent_key,
         classifier="mlp",
-        selected_gps=None,
         selected_cats=None)
 
     # Track metrics with mlflow
