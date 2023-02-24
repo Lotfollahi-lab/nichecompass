@@ -2,7 +2,7 @@
 This module contains the functionality to compute all benchmarking metrics based
 on the physical (spatial) feature space and the learned latent feature spaces of
 different deep generative models. The benchmark consists of metrics for spatial
-conservation as well as gene expression conservation.
+conservation as well as linear recoverability of gene expression.
 """
 
 from typing import Optional

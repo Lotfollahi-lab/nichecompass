@@ -1,7 +1,7 @@
 """
 This module contains the Cell Classification Accuracy (CCA) benchmark for
-testing how accurately the latent feature space can predict cell categories
-(e.g. cell-type).
+testing how accurately the latent feature space can linearly recover a cell
+category, e.g. cell type.
 """
 
 from typing import Literal, Optional, Union
@@ -9,23 +9,15 @@ from typing import Literal, Optional, Union
 import numpy as np
 from anndata import AnnData
 from sklearn.metrics import accuracy_score
-from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
-from sklearn.svm import LinearSVC
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler
 
 
 def compute_cca(
         adata: AnnData,
         cell_cat_key: str="cell_type",
-        active_gp_names_key: str="autotalker_active_gp_names",
         latent_key: str="autotalker_latent",
-        classifier: Literal["baseline", "knn", "svm"]="mlp",
-        selected_gps: Optional[Union[str,list]]=None,
+        classifier: Literal["baseline", "mlp"]="mlp",
         selected_cats: Optional[Union[str,list]]=None,
-        n_neighbors: int=3,
-        n_features_gt_n_samples: bool=False,
         seed: int=0,
         verbose: bool=False) -> float:
     """
@@ -40,34 +32,21 @@ def compute_cca(
     ----------
     adata:
         AnnData object with cell categories for classification stored in
-        ´adata.obs[cell_cat_key]´, active gene program names stored in
-        ´adata.uns[active_gp_names_key]´ and the latent representation stored in
-        adata.obsm[latent_key].
+        ´adata.obs[cell_cat_key]´ and the latent representation from a model
+        stored in adata.obsm[latent_key].
     cell_cat_key:
         Key under which the cell categories that serve as classification labels
         are stored in ´adata.obs´.
-    active_gp_names_key:
-        Key under which the active gene program names are stored in ´adata.uns´.
     latent_key:
-        Key under which the latent representation from the model is stored in
+        Key under which the latent representation from a model is stored in
         ´adata.obsm´.
     classifier:
         Model algorithm used for cell category classification. If ´baseline´,
         predict the majority class for all cells.
-    selected_gps:
-        List of active gene program names which will be used for the
-        classification task. If ´None´, uses all active gene programs.
     selected_cats:
         List of cell categories which will be included as separate labels in the
         classification task. If ´None´, uses all cell categories as separate
         labels.
-    n_neighbors:
-        Only relevant if ´classifier == knn´. Number of neighbors used for knn
-        classification.
-    n_features_gt_n_samples:
-        Only relevant if ´classifier == svm´. If ´True´, select svm to solve
-        dual optimization problem. Only set this to ´True´ if the number of
-        features is greater than the number of samples.
     seed:
         Random seed for reproducibility.
     verbose:
@@ -108,37 +87,16 @@ def compute_cca(
                                         np.bincount(cell_labels).argmax())
         cca = accuracy_score(cell_labels, cell_labels_pred)
     else:
-        # Get selected gps and their index in all active gps
-        active_gps = list(adata.uns[active_gp_names_key])
-        if selected_gps is None:
-            selected_gps = active_gps
-        else:
-            if isinstance(selected_gps, str):
-                selected_gps = [selected_gps]
-        for gp in selected_gps:
-            if gp not in active_gps:
-                raise ValueError(f"GP {gp} is not an active gene program. "
-                                 "Please only select active gene programs. ")
-        selected_gps_idx = np.array([active_gps.index(gp) for gp in
-                                     selected_gps])
-        
-        # Get latent representation / active gene program scores for selected
-        # gene programs
-        gp_scores = adata.obsm[latent_key][:, selected_gps_idx]
+        # Get latent representation from a model
+        latent = adata.obsm[latent_key]
 
         # Predict cell categories using classifier
+        # Train classifier and use it for scoring
         if classifier == "mlp":
             clf = MLPClassifier(
-                hidden_layer_sizes=(int(gp_scores.shape[1] / 2)),
+                hidden_layer_sizes=(),
                 random_state=seed,
                 max_iter=500)
-        if classifier == "knn":
-            clf = KNeighborsClassifier(n_neighbors=n_neighbors)
-        elif classifier == "svm":
-            clf = make_pipeline(StandardScaler(),
-                                LinearSVC(random_state=seed,
-                                          tol=1e-5,
-                                          dual=n_features_gt_n_samples))
-        clf.fit(X=gp_scores, y=cell_labels)
-        cca = clf.score(X=gp_scores, y=cell_labels)
+        clf.fit(X=latent, y=cell_labels)
+        cca = clf.score(X=latent, y=cell_labels)
     return cca
