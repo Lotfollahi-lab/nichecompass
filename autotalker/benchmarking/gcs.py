@@ -154,5 +154,5 @@ def compute_gcs(
     
     # Normalize gcd to be between 0 and 1 and convert to gcs by subtracting from
     # 1
-    gcs = 1 - (gcd / connectivities_diff.shape[0])
+    gcs = 1 - (gcd / n_neighbors*2)
     return gcs

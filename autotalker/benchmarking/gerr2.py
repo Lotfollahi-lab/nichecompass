@@ -1,18 +1,18 @@
 """
-This module contains the Gene Expression Regression Mean Squared Error (GERMSE)
-benchmark for testing how accurately the latent feature space can linearly
-reconstruct the gene expression of a cell.
+This module contains the Gene Expression Regression R-squared (gerr2) benchmark
+for testing how accurately the latent feature space can linearly reconstruct the
+gene expression of a cell.
 """
 
 from typing import Literal, Optional, Union
 
 import numpy as np
 from anndata import AnnData
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import r2_score
 from sklearn.neural_network import MLPRegressor
 
 
-def compute_germse(
+def compute_gerr2(
         adata: AnnData,
         latent_key: str="autotalker_latent",
         regressor: Literal["baseline", "mlp"]="mlp",
@@ -21,10 +21,10 @@ def compute_germse(
     """
     Use the latent representation of a trained deep generative model for linear
     gene expression regression using a single layer perceptron regressor and
-    compute the mean squared error between the predicted gene expression and the
-    ground truth gene expression for the entire dataset. A lower value indicates
-    that the latent space can more accurately reconstruct gene expression in a
-    linear way.
+    compute the R-squared between the predicted gene expression and the
+    ground truth gene expression for all genes across the entire dataset. A 
+    higher value indicates that the latent space can more accurately reconstruct
+    gene expression in a linear way.
 
     Parameters
     ----------
@@ -46,8 +46,8 @@ def compute_germse(
 
     Returns
     ----------
-    germse:
-        Gene expression regression mean squared error.
+    gerr2:
+        Gene expression regression R-squared.
     """
     # Get selected genes
     if selected_genes is None:
@@ -80,6 +80,8 @@ def compute_germse(
         regr.fit(X=latent, y=gene_expr)
         gene_expr_preds = regr.predict(X=latent)
 
-    # Compute mse between ground truth and predicted gene expression
-    germse = mean_squared_error(gene_expr, gene_expr_preds)
-    return germse
+    # Compute r2 between ground truth and predicted gene expression
+    gerr2 = r2_score(gene_expr,
+                     gene_expr_preds,
+                     multioutput="uniform_average")
+    return gerr2

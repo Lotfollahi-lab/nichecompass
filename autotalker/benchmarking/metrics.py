@@ -15,7 +15,7 @@ from .cas import compute_cas
 from .cca import compute_cca
 from .clisis import compute_clisis
 from .gcs import compute_gcs
-from .germse import compute_germse
+from .gerr2 import compute_gerr2
 from .mlami import compute_mlami
     
 
@@ -64,7 +64,7 @@ def compute_benchmarking_metrics(
     ----------
     benchmark_dict:
         Dictionary containing the calculated benchmarking metrics under keys
-        ´gcs´, ´mlami´, ´cas´, ´clisis´, ´germse´ and ´cca´.
+        ´gcs´, ´mlami´, ´cas´, ´clisis´, ´gerr2´ and ´cca´.
     """
     # Adding '_connectivities' as automatically added by sc.pp.neighbors
     spatial_knng_connectivities_key = spatial_knng_key + "_connectivities"
@@ -114,8 +114,8 @@ def compute_benchmarking_metrics(
         spatial_knng_key=spatial_knng_key,
         latent_knng_key=latent_knng_key,
         seed=seed)
-    print("Computing GERMSE...")
-    benchmark_dict["germse"] = compute_germse(
+    print("Computing GERR2...")
+    benchmark_dict["gerr2"] = compute_gerr2(
         adata=adata,
         latent_key=latent_key,
         regressor="mlp",
