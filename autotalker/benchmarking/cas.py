@@ -5,6 +5,7 @@ cell-type-pair edges from the physical (spatial) nearest neighbor graph, a
 measure for global cell type neighborhood preservation.
 """
 
+import math
 from typing import Optional
 
 import numpy as np
@@ -226,10 +227,12 @@ def compute_cas(
     # ´sq.pl.nhood_enrichment´ permutation
     nhood_enrichment_zscores_diff = (
         nhood_enrichment_zscores_diff[~np.isnan(nhood_enrichment_zscores_diff)])
-
+    
     cad = np.linalg.norm(nhood_enrichment_zscores_diff)
 
     # Normalize CAD to be between 0 and 1 and convert to CAS by subtracting
     # from 1
-    cas = 1 - (cad / nhood_enrichment_zscores_diff.shape[0])
+    cad_norm = (math.atan(cad / nhood_enrichment_zscores_diff.shape[0]) /
+                (math.pi / 2))
+    cas = 1 - cad_norm
     return cas
