@@ -21,26 +21,25 @@ def compute_mlami(
         spatial_key: Optional[str]="spatial",
         latent_key: Optional[str]="autotalker_latent",
         n_neighbors: Optional[int]=15,
-        seed: Optional[int]=0,
+        seed: int=0,
         visualize_leiden_clustering: bool=False) -> float:
     """
     Compute the Maximum Leiden Adjusted Mutual Info (MLAMI) between the latent
-    nearest neighbor graph and the spatial nearest neighbor graph. A higher
-    value indicates that the latent feature space more accurately preserves 
-    spatial organization from the spatial (ground truth) feature space. If
-    existent, uses precomputed nearest neighbor graphs stored in
+    nearest neighbor graph and the spatial nearest neighbor graph. The MLAMI
+    ranges between '0' and '1' with higher values indicating that the latent
+    feature space more accurately preserves spatial organization from the
+    spatial (ground truth) feature space. To compute the MLAMI, Leiden
+    clusterings with different resolutions are computed for both nearest
+    neighbor graphs. The Adjusted Mutual Info (AMI) between all clustering
+    resolution pairs is computed to quantify cluster overlap and the maximum
+    value is returned as metric for spatial organization preservation.
+    If existent, uses precomputed nearest neighbor graphs stored in
     ´adata.obsp[spatial_knng_key + '_connectivities']´ and
     ´adata.obsp[latent_knng_key + '_connectivities']´.
     Alternatively, computes them on the fly using ´spatial_key´, ´latent_key´
     and ´n_neighbors´, and stores them in 
     ´adata.obsp[spatial_knng_key + '_connectivities']´ and
-    ´adata.obsp[latent_knng_key + '_connectivities']´ respectively. Leiden
-    clusterings with different resolutions are computed for both nearest
-    neighbor graphs. The Adjusted Mutual Info (AMI) between all clustering
-    resolution pairs is computed to quantify cluster overlap and the maximum
-    value is returned as metric for spatial organization preservation.
-    A value of '1' indicates perfect overlap while a value of '0' indicates no
-    mutual information.
+    ´adata.obsp[latent_knng_key + '_connectivities']´ respectively.
 
     Parameters
     ----------
@@ -154,7 +153,9 @@ def _compute_ami(adata: AnnData,
                  cluster_group2_key: str):
     """
     Compute the Adjusted Mutual Information (AMI) between two different
-    cluster assignments. AMI compares the overlap of two clusterings.
+    cluster assignments. AMI compares the overlap of two clusterings. For
+    more info, check
+    https://scikit-learn.org/stable/modules/generated/sklearn.metrics.adjusted_mutual_info_score.html#sklearn.metrics.adjusted_mutual_info_score.
 
     Parameters
     ----------

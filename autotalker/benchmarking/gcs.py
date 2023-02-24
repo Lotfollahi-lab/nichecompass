@@ -1,7 +1,7 @@
 """
 This module contains the Graph Connectivity Similarity (GCS) benchmark for
-testing how accurately the latent nearest neighbor graph preserves edges from
-the physical (spatial) nearest neighbor graph.
+testing how accurately the latent nearest neighbor graph preserves edges and
+non-edges from the physical (spatial) nearest neighbor graph.
 """
 
 from typing import Optional

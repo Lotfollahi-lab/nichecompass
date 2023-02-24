@@ -15,7 +15,7 @@ from anndata import AnnData
 
 def compute_avg_cas(
         adata: AnnData,
-        cell_type_key: str="cell-type",
+        cell_type_key: str="cell_type",
         spatial_key: str="spatial",
         latent_key: str="autotalker_latent",
         min_n_neighbors: int=1,
@@ -56,7 +56,7 @@ def compute_avg_cas(
         Random seed for reproducibility.
     visualize_ccc_maps:
         If ´True´, also visualize the spatial and latent cell type affinity
-        matrices (ccc maps).
+        matrices (cell-cell-contact maps).
 
     Returns
     ----------
@@ -88,7 +88,7 @@ def compute_cas(
         spatial_key: Optional[str]="spatial",
         latent_key: Optional[str]="autotalker_latent",
         n_neighbors: Optional[int]=15,
-        seed: Optional[int]=0,
+        seed: int=0,
         visualize_ccc_maps: bool=False) -> float:
     """
     Compute the Cell Type Affinity Similarity (CAS) between the latent nearest
@@ -97,8 +97,8 @@ def compute_cas(
     from the spatial (ground truth) nearest neighbor graph. A value of '1'
     indicates perfect cell-type-pair similarity and a value of '0' indicates no
     cell-type-pair similarity at all. The CAS is a variation of the Cell Type
-    Affinity Distance which was first introduced by Lohoff, T. et al. Integration
-    of spatial and single-cell transcriptomic data elucidates mouse
+    Affinity Distance which was first introduced by Lohoff, T. et al.
+    Integration of spatial and single-cell transcriptomic data elucidates mouse
     organogenesis. Nat. Biotechnol. 40, 74–85 (2022).
     If existent, uses precomputed nearest neighbor graphs stored in
     ´adata.obsp[spatial_knng_key + '_connectivities']´ and
@@ -110,9 +110,9 @@ def compute_cas(
     Note that the used neighborhood enrichment implementation from squidpy
     slightly deviates from the original method and we construct nearest neighbor
     graphs using the original spatial coordinates and the latent representation
-    from a model respectively. The cell type affinity matrices, also called
-    cell-cell contact (ccc) maps are stored in the AnnData object and can
-    optionally be visualized.
+    from a model respectively to compute the similarity. The cell type affinity
+    matrices, also called cell-cell contact (ccc) maps are stored in the
+    AnnData object and can optionally be visualized.
 
     Parameters
     ----------
@@ -120,9 +120,9 @@ def compute_cas(
         AnnData object with cell type annotations stored in
         ´adata.obs[cell_type_key]´, precomputed nearest neighbor graphs stored
         in ´adata.obsp[spatial_knng_key + '_connectivities']´ and
-        ´adata.obsp[latent_knng_key + '_connectivities']´ or, alternatively,
-        spatial coordinates stored in ´adata.obsm[spatial_key]´ and the latent
-        representation from the model stored in ´adata.obsm[latent_key]´.
+        ´adata.obsp[latent_knng_key + '_connectivities']´ or spatial coordinates
+        stored in ´adata.obsm[spatial_key]´ and the latent representation from a
+        model stored in ´adata.obsm[latent_key]´.
     cell_type_key:
         Key under which the cell type annotations are stored in ´adata.obs´.
     spatial_knng_key:
@@ -134,17 +134,17 @@ def compute_cas(
     spatial_key:
         Key under which the spatial coordinates are stored in ´adata.obsm´.
     latent_key:
-        Key under which the latent representation from the model is stored in
+        Key under which the latent representation from a model is stored in
         ´adata.obsm´.
     n_neighbors:
         Number of neighbors used for the construction of the nearest neighbor
         graphs from the spatial coordinates and the latent representation from
-        the model.
+        a model.
     seed:
         Random seed for reproducibility.
     visualize_ccc_maps:
-        If ´True´, also visualize the spatial and latent cell-type affinity
-        matrices (ccc maps).
+        If ´True´, also visualize the spatial and latent cell type affinity
+        matrices (cell-cell-contact maps).
 
     Returns
     ----------
@@ -154,33 +154,27 @@ def compute_cas(
         minus the size-normalied Frobenius norm of the element-wise matrix
         differences.
     """
-    # Adding '_connectivities' as required by squidpy
+    # Adding '_connectivities' as automatically added by sc.pp.neighbors
     spatial_knng_connectivities_key = spatial_knng_key + "_connectivities"
     latent_knng_connectivities_key = latent_knng_key + "_connectivities"
 
     if spatial_knng_connectivities_key not in adata.obsp:
         # Compute spatial (ground truth) connectivities
-        print("Computing spatial nearest neighbor graph...")
         sc.pp.neighbors(adata=adata,
                         use_rep=spatial_key,
                         n_neighbors=n_neighbors,
                         random_state=seed,
                         key_added=spatial_knng_key)
-    else:
-        print("Using precomputed spatial nearest neighbor graph...")
 
     if latent_knng_connectivities_key not in adata.obsp:
-        print("Computing latent nearest neighbor graph...")
         # Compute latent connectivities
         sc.pp.neighbors(adata=adata,
                         use_rep=latent_key,
                         n_neighbors=n_neighbors,
                         random_state=seed,
                         key_added=latent_knng_key)
-    else:
-        print("Using precomputed latent nearest neighbor graph...")
 
-    # Compute cell-type affinity matrix for spatial nearest neighbor graph
+    # Compute cell type affinity matrix for spatial nearest neighbor graph
     sq.gr.nhood_enrichment(adata,
                            cluster_key=cell_type_key,
                            connectivity_key=spatial_knng_key,
@@ -200,7 +194,7 @@ def compute_cas(
                                title="Spatial Cell-type Affinity Matrix",
                                figsize=(5, 5))
 
-    # Compute cell-type affinity matrix for latent nearest neighbor graph
+    # Compute cell type affinity matrix for latent nearest neighbor graph
     sq.gr.nhood_enrichment(adata,
                            cluster_key=cell_type_key,
                            connectivity_key=latent_knng_key,

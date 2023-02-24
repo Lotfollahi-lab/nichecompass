@@ -45,6 +45,13 @@ def compute_clisis(
     Finally, we compute the median of the absolute normalized scores and
     subtract it from 1 so that values closer to '1' indicate better local
     neighborhood cell type heterogeneity preservation.
+    If existent, uses precomputed nearest neighbor graphs stored in
+    ´adata.obsp[spatial_knng_key + '_connectivities']´ and
+    ´adata.obsp[latent_knng_key + '_connectivities']´.
+    Alternatively, computes them on the fly using ´spatial_key´, ´latent_key´
+    and ´n_neighbors´, and stores them in
+    ´adata.obsp[spatial_knng_key + '_connectivities']´ and
+    ´adata.obsp[latent_knng_key + '_connectivities']´ respectively.    
 
     * The Inverse Simpson's Index measures the expected number of
     samples needed to be sampled before two are drawn from the same category.
@@ -63,9 +70,9 @@ def compute_clisis(
     Parameters
     ----------
     adata:
-        AnnData object with cell types stored in ´adata.obs[cell_type_key]´, 
-        precomputed nearest neighbor graphs stored in
-        ´adata.obsp[spatial_knng_key + '_connectivities']´ and
+        AnnData object with cell type annotations stored in
+        ´adata.obs[cell_type_key]´, precomputed nearest neighbor graphs stored
+        in ´adata.obsp[spatial_knng_key + '_connectivities']´ and
         ´adata.obsp[latent_knng_key + '_connectivities']´ or spatial coordinates
         stored in ´adata.obsm[spatial_key]´ and the latent representation from a
         model stored in ´adata.obsm[latent_key]´.
