@@ -10,7 +10,7 @@ import omnipath as op
 import pandas as pd
 from anndata import AnnData
 
-from .utils import load_R_file_as_df
+from .utils import load_R_file_as_df, create_gp_gene_count_distribution_plots
 
 
 def add_gps_from_gp_dict_to_adata(
@@ -163,10 +163,12 @@ def add_gps_from_gp_dict_to_adata(
 
 
 def extract_gp_dict_from_nichenet_ligand_target_mx(
-        keep_target_ratio: float=0.01,
+        keep_target_genes_ratio: float=0.,
+        max_n_target_genes_per_gp: int=50,
         load_from_disk: bool=False,
         save_to_disk: bool=False,
-        file_path: Optional[str]="nichenet_ligand_target_matrix.csv") -> dict:
+        file_path: Optional[str]="nichenet_ligand_target_matrix.csv",
+        plot_gp_gene_count_distributions: bool=True) -> dict:
     """
     Retrieve NicheNet ligand target potential matrix as described in Browaeys, 
     R., Saelens, W. & Saeys, Y. NicheNet: modeling intercellular communication 
@@ -176,11 +178,16 @@ def extract_gp_dict_from_nichenet_ligand_target_mx(
 
     Parameters
     ----------
-    keep_target_ratio:
+    keep_target_genes_ratio:
         Ratio of target genes that are kept compared to total target genes. This
         ratio is applied over the entire matrix (not on gene program level) and
         determines the ´score_keep_threshold´, which will be used to filter 
         target genes according to their scores.
+    max_n_target_genes_per_gp:
+        Maximum number of target genes per gene program. If a gene program has
+        more target genes than ´max_n_target_genes_per_gp´, only the
+        ´max_n_target_genes_per_gp´ gene programs with the highest scores will
+        be kept.
     load_from_disk:
         If ´True´, the NicheNet ligand target matrix will be loaded from disk
         instead of from the web.
@@ -191,6 +198,9 @@ def extract_gp_dict_from_nichenet_ligand_target_mx(
         Path of the file where the NicheNet ligand target matrix will be stored
         (if ´save_to_disk´ is ´True´) or loaded from (if ´load_from_disk´ is
         ´True´).
+    plot_gp_gene_count_distributions:
+        If ´True´, display the distribution of gene programs per number of
+        target and source genes.
 
     Returns
     ----------
@@ -214,23 +224,39 @@ def extract_gp_dict_from_nichenet_ligand_target_mx(
         ligand_target_df = pd.read_csv(file_path, index_col=0)
 
     # Filter NicheNet ligand target matrix based on scores and
-    # ´keep_target_ratio´
-    all_target_gene_scores = np.squeeze(ligand_target_df.values).flatten()
+    # ´keep_target_genes_ratio´ and ´max_n_target_genes_per_gp´
+    per_gp_target_gene_scores = ligand_target_df.values.copy()
+    all_target_gene_scores = np.squeeze(per_gp_target_gene_scores).flatten()
+    per_gp_target_gene_scores_sorted = np.flip(
+        np.sort(per_gp_target_gene_scores, axis=0), axis=0)
+    per_gp_score_keep_threshold = pd.Series(
+        per_gp_target_gene_scores_sorted[max_n_target_genes_per_gp, :],
+        index=ligand_target_df.columns)
     all_target_gene_scores.sort()
     all_target_gene_scores_sorted = np.flip(all_target_gene_scores)
-    score_keep_threshold = all_target_gene_scores_sorted[int(
-        (len(all_target_gene_scores_sorted) - 1) * keep_target_ratio)]
-    ligand_target_df = ligand_target_df.applymap(
-        lambda x: x > score_keep_threshold)
+    all_gps_score_keep_threshold = all_target_gene_scores_sorted[int(
+        (len(all_target_gene_scores_sorted) - 1) * keep_target_genes_ratio)]
+    ligand_target_all_gps_score_keep_threshold_mask_df = (
+        ligand_target_df.applymap(lambda x: x > all_gps_score_keep_threshold))
+    ligand_target_per_gp_score_keep_threshold_mask_df = ligand_target_df.apply(
+        lambda col: col > per_gp_score_keep_threshold[col.name], axis=0)
+    ligand_target_combined_keep_threshold_mask_df = (
+        ligand_target_all_gps_score_keep_threshold_mask_df &
+        ligand_target_per_gp_score_keep_threshold_mask_df)
 
     # Extract gene programs and store in nested dict
-    ligand_target_dict = ligand_target_df.to_dict()
+    ligand_target_mask_dict = (
+        ligand_target_combined_keep_threshold_mask_df.to_dict())
     gp_dict = {}
-    for ligand in ligand_target_dict.keys():
+    for ligand in ligand_target_mask_dict.keys():
         gp_dict[ligand + "_ligand_targetgenes_GP"] = {
             "sources": [ligand],
             "targets": [target for target, include in
-                        ligand_target_dict[ligand].items() if include]}
+                        ligand_target_mask_dict[ligand].items() if include]}
+        
+    if plot_gp_gene_count_distributions:
+        create_gp_gene_count_distribution_plots(gp_dict)
+
     return gp_dict
 
 
@@ -238,7 +264,8 @@ def extract_gp_dict_from_omnipath_lr_interactions(
         min_curation_effort: int=0,
         load_from_disk: bool=False,
         save_to_disk: bool=False,
-        file_path: Optional[str]="omnipath_lr_interactions.csv") -> dict:
+        file_path: Optional[str]="omnipath_lr_interactions.csv",
+        plot_gp_gene_count_distributions: bool=True) -> dict:
     """
     Retrieve ligand-receptor interactions from OmniPath and extract them into a 
     gene program dictionary. OmniPath is a database of molecular biology prior 
@@ -263,7 +290,10 @@ def extract_gp_dict_from_omnipath_lr_interactions(
     file_path:
         Path of the file where the OmniPath ligand-receptor interactions will be
         stored (if ´save_to_disk´ is ´True´) or loaded from (if ´load_from_disk´
-        is ´True´).    
+        is ´True´).
+    plot_gp_gene_count_distributions:
+        If ´True´, display the distribution of gene programs per number of
+        target and source genes.
 
     Returns
     ----------
@@ -307,13 +337,18 @@ def extract_gp_dict_from_omnipath_lr_interactions(
         gp_dict[ligand + "_ligand_receptor_GP"] = {
             "sources": [ligand],
             "targets": receptor}
+        
+    if plot_gp_gene_count_distributions:
+        create_gp_gene_count_distribution_plots(gp_dict)
+
     return gp_dict
 
 
 def extract_gp_dict_from_mebocost_es_interactions(
         dir_path: str="../datasets/gp_data/metabolite_enzyme_sensor_gps/",
         species: Literal["mouse", "human"]="mouse",
-        genes_uppercase: bool=False) -> dict:
+        genes_uppercase: bool=False,
+        plot_gp_gene_count_distributions: bool=True) -> dict:
     """
     Retrieve metabolite enzyme-sensor interactions from the Human Metabolome
     Database (HMDB) data curated in Chen, K. et al. MEBOCOST: 
@@ -328,7 +363,10 @@ def extract_gp_dict_from_mebocost_es_interactions(
         Species for which to retrieve metabolite enzyme-sensor interactions.
     genes_uppercase:
         If `True`, convert the gene names to uppercase (e.g. to align with other
-        gene programs that contain uppercase genes)
+        gene programs that contain uppercase genes).
+    plot_gp_gene_count_distributions:
+        If ´True´, display the distribution of gene programs per number of
+        target and source genes.
 
     Returns
     ----------
@@ -401,6 +439,10 @@ def extract_gp_dict_from_mebocost_es_interactions(
     for metabolite, sensor_genes in met_interaction_dict["sensor_genes"].items():
         gp_dict[metabolite + "_metabolite_enzyme_sensor_GP"][
             "targets"] = sensor_genes
+
+    if plot_gp_gene_count_distributions:
+        create_gp_gene_count_distribution_plots(gp_dict)
+
     return gp_dict
 
 

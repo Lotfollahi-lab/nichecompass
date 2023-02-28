@@ -5,8 +5,10 @@ This module contains helper functions for the ´utils´ subpackage.
 import os
 from typing import Optional
 
+import matplotlib.pyplot as plt
 import pandas as pd
 import pyreadr
+import seaborn as sns
 
 
 def load_R_file_as_df(R_file_path: str,
@@ -49,3 +51,34 @@ def load_R_file_as_df(R_file_path: str,
                              "´save_to_disk.´ to False.")
         df.to_csv(df_save_path)
     return df
+
+
+def create_gp_gene_count_distribution_plots(gp_dict: dict):
+    """
+    
+    """
+    n_source_genes_list = []
+    n_target_genes_list = []
+
+    for _, gp_sources_targets_dict in gp_dict.items():
+        n_source_genes_list.append(len(gp_sources_targets_dict["sources"]))
+        n_target_genes_list.append(len(gp_sources_targets_dict["targets"]))
+
+    # Convert the array to a pandas DataFrame
+    target_genes_df = pd.DataFrame({"values": n_target_genes_list})
+    source_genes_df = pd.DataFrame({"values": n_source_genes_list})
+
+    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(10, 5))
+
+    sns.countplot(x="values", data=target_genes_df, ax=ax1)
+    ax1.set(title="Gene Program Target Genes Distribution",
+        xlabel="Number of Target Genes",
+        ylabel="Gene Program Count")
+    ax1.set_xticks([0, 10, 20, 30, 40, 50])
+    sns.countplot(x="values", data=source_genes_df, ax=ax2)
+    ax2.set(title="Gene Program Source Genes Distribution",
+        xlabel="Number of Source Genes",
+        ylabel="Gene Program Count")
+    ax2.set_xticks([0, 10, 20, 30, 40, 50])
+    plt.subplots_adjust(wspace=0.35)
+    plt.show()
