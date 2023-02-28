@@ -429,16 +429,16 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     zi_prob_logits=zi_prob_logits))
             
         loss_dict["masked_gp_l1_reg_loss"] = (lambda_l1_masked *
-            compute_masked_l1_reg_loss(self.named_parameters()))
+            compute_masked_l1_reg_loss(self))
 
         # Compute group lasso regularization loss of gene programs
         loss_dict["group_lasso_reg_loss"] = (lambda_group_lasso *
-        compute_group_lasso_reg_loss(self.named_parameters()))
+        compute_group_lasso_reg_loss(self))
 
         # Compute l1 regularization loss of genes in addon gene programs
         if self.n_addon_gps_ != 0:
             loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon *
-            compute_addon_l1_reg_loss(self.named_parameters()))
+            compute_addon_l1_reg_loss(self))
 
         # Compute optimization loss used for backpropagation as well as global
         # loss used for early stopping of model training and best model saving

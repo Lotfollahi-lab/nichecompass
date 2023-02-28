@@ -6,22 +6,21 @@ Graph Autoencoder module.
 from typing import Iterable, Tuple
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 from .utils import edge_values_and_sorted_labels
 
 
-def compute_addon_l1_reg_loss(
-        named_model_params: Iterable[Tuple[str, torch.nn.Parameter]]
-        ) -> torch.Tensor:
+def compute_addon_l1_reg_loss(model: nn.Module) -> torch.Tensor:
     """
     Compute L1 regularization loss for the add-on decoder layer weights to 
     enforce gene sparsity of add-on gene programs.
 
     Parameters
     ----------
-    named_model_params:
-        Named model parameters of the model.
+    model:
+        The VGPGAE module.
 
     Returns
     ----------
@@ -29,8 +28,10 @@ def compute_addon_l1_reg_loss(
         L1 regularization loss for the add-on decoder layer weights.
     """
     addon_decoder_layerwise_param_sum = torch.stack(
-        [torch.abs(param).sum() for param_name, param in named_model_params
-         if "nb_means_normalized_decoder.addon_l" in param_name], dim=0)
+        [torch.linalg.vector_norm(param, ord=1) for param_name, param in
+         model.named_parameters() if "nb_means_normalized_decoder.addon_l" in
+         param_name],
+         dim=0)
     addon_l1_reg_loss = torch.sum(addon_decoder_layerwise_param_sum)
     return addon_l1_reg_loss
 
@@ -177,19 +178,17 @@ def compute_gene_expr_recon_zinb_loss(x: torch.Tensor,
     return zinb_loss
 
 
-def compute_group_lasso_reg_loss(
-        named_model_params: Iterable[Tuple[str, torch.nn.Parameter]]
-        ) -> torch.Tensor:
+def compute_group_lasso_reg_loss(model: nn.Module) -> torch.Tensor:
     """
-    Compute group lasso regularization loss for the decoder layer weights to 
-    enforce gene program sparsity (each gene program is a group; the number of 
-    weights per group normalization is omitted as each group / gene program has 
-    the same number of weights).
+    Compute group lasso regularization loss for the masked decoder layer weights
+    to enforce gene program sparsity (each gene program is a group; the number
+    of weights per group normalization is omitted as each group / gene program
+    has the same number of weights).
 
     Parameters
     ----------
-    named_model_params:
-        Named model parameters of the model.
+    model:
+        The VGPGAE module.
 
     Returns
     ----------
@@ -198,9 +197,10 @@ def compute_group_lasso_reg_loss(
     """
     # Compute L2 norm per group / gene program and sum across all gene programs
     decoder_layerwise_param_gpgroupnorm_sum = torch.stack(
-        [param.norm(p=2, dim=0).sum() for param_name, param in 
-         named_model_params if "gene_expr_decoder.nb_means_normalized_decoder" 
-         in param_name], dim=0)
+        [torch.linalg.vector_norm(param, ord=2, dim=0).sum() for param_name,
+         param in model.named_parameters() if
+         "gene_expr_decoder.nb_means_normalized_decoder.masked_l" in param_name],
+         dim=0)
     # Sum over ´masked_l´ layer and ´addon_l´ layer if addon gene programs exist
     group_lasso_reg_loss = torch.sum(decoder_layerwise_param_gpgroupnorm_sum)
     return group_lasso_reg_loss
@@ -232,25 +232,33 @@ def compute_kl_reg_loss(mu: torch.Tensor,
     return kl_reg_loss
 
 
-def compute_masked_l1_reg_loss(
-        named_model_params: Iterable[Tuple[str, torch.nn.Parameter]]
-        ) -> torch.Tensor:
+def compute_masked_l1_reg_loss(model: nn.Module,
+                               only_target_genes: bool=True) -> torch.Tensor:
     """
     Compute L1 regularization loss for the masked decoder layer weights to 
     enforce gene sparsity of masked gene programs.
 
     Parameters
     ----------
-    named_model_params:
-        Named model parameters of the model.
+    model:
+        The VGPGAE module.
+    only_target_genes:
+        If ´True´, compute regularization loss only for target genes.
 
     Returns
     ----------
     masked_l1_reg_loss:
         L1 regularization loss for the masked decoder layer weights.
     """
+    if only_target_genes:
+        param_end_gene_idx = model.n_input_
+    else:
+        param_end_gene_idx = None
+
     masked_decoder_layerwise_param_sum = torch.stack(
-        [torch.abs(param).sum() for param_name, param in named_model_params
-         if "nb_means_normalized_decoder.masked_l" in param_name], dim=0)
+        [torch.linalg.vector_norm(param[:param_end_gene_idx, :], ord=1) for
+         param_name, param in model.named_parameters() if
+         "nb_means_normalized_decoder.masked_l" in param_name],
+         dim=0)
     masked_l1_reg_loss = torch.sum(masked_decoder_layerwise_param_sum)
     return masked_l1_reg_loss
