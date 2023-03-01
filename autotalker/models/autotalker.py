@@ -166,7 +166,7 @@ class Autotalker(BaseModelMixin):
                  n_layers_encoder: int=2,
                  n_hidden_encoder: int=256,
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
-                 encoder_n_attention_heads: int=8,
+                 encoder_n_attention_heads: int=4,
                  dropout_rate_encoder: float=0.,
                  dropout_rate_graph_decoder: float=0.,
                  gp_targets_mask: Optional[Union[np.ndarray, list]]=None,

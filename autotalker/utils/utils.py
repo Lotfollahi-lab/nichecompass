@@ -6,6 +6,7 @@ import os
 from typing import Optional
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import pyreadr
 import seaborn as sns
@@ -53,9 +54,11 @@ def load_R_file_as_df(R_file_path: str,
     return df
 
 
-def create_gp_gene_count_distribution_plots(gp_dict: dict):
+def create_gp_gene_count_distribution_plots(gp_dict: dict,
+                                            max_n_genes=100):
     """
-    
+    Create distribution plots of the gene counts for source and target genes
+    of a gene program.
     """
     n_source_genes_list = []
     n_target_genes_list = []
@@ -72,13 +75,13 @@ def create_gp_gene_count_distribution_plots(gp_dict: dict):
 
     sns.countplot(x="values", data=target_genes_df, ax=ax1)
     ax1.set(title="Gene Program Target Genes Distribution",
-        xlabel="Number of Target Genes",
-        ylabel="Gene Program Count")
-    ax1.set_xticks([0, 10, 20, 30, 40, 50])
+            xlabel="Number of Target Genes",
+            ylabel="Gene Program Count")
+    ax1.set_xticks(np.arange(0, max_n_genes+1, 10))
     sns.countplot(x="values", data=source_genes_df, ax=ax2)
     ax2.set(title="Gene Program Source Genes Distribution",
         xlabel="Number of Source Genes",
         ylabel="Gene Program Count")
-    ax2.set_xticks([0, 10, 20, 30, 40, 50])
+    ax2.set_xticks(np.arange(0, max_n_genes+1, 10))
     plt.subplots_adjust(wspace=0.35)
     plt.show()

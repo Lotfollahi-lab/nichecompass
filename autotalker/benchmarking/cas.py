@@ -84,6 +84,7 @@ def compute_avg_cas(
 def compute_cas(
         adata: AnnData,
         cell_type_key: str="cell_type",
+        condition_key: Optional[str]=None,
         spatial_knng_key: str="autotalker_spatial_knng",
         latent_knng_key: str="autotalker_latent_knng",
         spatial_key: Optional[str]="spatial",
@@ -160,6 +161,17 @@ def compute_cas(
     latent_knng_connectivities_key = latent_knng_key + "_connectivities"
 
     if spatial_knng_connectivities_key not in adata.obsp:
+        if condition_key is not None:
+            unique_conditions = adata.obs[condition_key].unique().tolist()
+            for condition in unique_conditions:
+                adata_condition = adata[adata.obs[condition_key] == condition]
+                # TO DO: Make it work for integrated data #
+        else:
+            sc.pp.neighbors(adata=adata,
+                            use_rep=spatial_key,
+                            n_neighbors=n_neighbors,
+                            random_state=seed,
+                            key_added=spatial_knng_key)
         # Compute spatial (ground truth) connectivities
         sc.pp.neighbors(adata=adata,
                         use_rep=spatial_key,

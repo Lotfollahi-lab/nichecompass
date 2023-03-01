@@ -164,7 +164,7 @@ def add_gps_from_gp_dict_to_adata(
 
 def extract_gp_dict_from_nichenet_ligand_target_mx(
         keep_target_genes_ratio: float=0.,
-        max_n_target_genes_per_gp: int=50,
+        max_n_target_genes_per_gp: int=100,
         load_from_disk: bool=False,
         save_to_disk: bool=False,
         file_path: Optional[str]="nichenet_ligand_target_matrix.csv",
