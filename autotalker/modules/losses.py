@@ -3,7 +3,7 @@ This module contains all loss functions used by the Variational Gene Program
 Graph Autoencoder module.
 """
 
-from typing import Iterable, Tuple
+from typing import Iterable, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -36,9 +36,11 @@ def compute_addon_l1_reg_loss(model: nn.Module) -> torch.Tensor:
     return addon_l1_reg_loss
 
 
-def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
-                            edge_labels: torch.Tensor,
-                            edge_label_index: torch.Tensor) -> torch.Tensor:
+def compute_edge_recon_loss(
+        adj_recon_logits: torch.Tensor,
+        edge_labels: torch.Tensor,
+        edge_label_index: torch.Tensor,
+        edge_label_conditions: Optional[torch.Tensor]=None) -> torch.Tensor:
     """
     Compute edge reconstruction weighted binary cross entropy loss with logits 
     using ground truth edge labels and predicted edge logits (retrieved from the
@@ -60,6 +62,15 @@ def compute_edge_recon_loss(adj_recon_logits: torch.Tensor,
         probabilities (calculated from logits for numerical stability in
         backpropagation).
     """
+    if edge_label_conditions is not None:
+        # Remove negative samples that are not within a condition
+        # (This implementation is not super efficient and could be improved
+        # in the future by avoiding to sample these edges in the first place)
+        same_condition_edge = (edge_label_conditions[edge_label_index[0]] ==
+                               edge_label_conditions[edge_label_index[1]])
+        edge_labels = edge_labels[same_condition_edge]
+        edge_label_index = edge_label_index[:, same_condition_edge]
+
     edge_recon_logits, edge_labels_sorted = edge_values_and_sorted_labels(
         adj=adj_recon_logits,
         edge_label_index=edge_label_index,
