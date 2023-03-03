@@ -71,6 +71,11 @@ def compute_edge_recon_loss(
         edge_labels = edge_labels[same_condition_edge]
         edge_label_index = edge_label_index[:, same_condition_edge]
 
+    # Determine weighting of positive examples
+    pos_labels = (edge_labels == 1.).sum(dim=0)
+    neg_labels = (edge_labels == 0.).sum(dim=0)
+    pos_weight = neg_labels / pos_labels
+
     edge_recon_logits, edge_labels_sorted = edge_values_and_sorted_labels(
         adj=adj_recon_logits,
         edge_label_index=edge_label_index,
@@ -78,7 +83,8 @@ def compute_edge_recon_loss(
 
     # Compute weighted cross entropy loss
     edge_recon_loss = F.binary_cross_entropy_with_logits(edge_recon_logits,
-                                                         edge_labels_sorted)
+                                                         edge_labels_sorted,
+                                                         pos_weight=pos_weight)
     return edge_recon_loss
 
 
