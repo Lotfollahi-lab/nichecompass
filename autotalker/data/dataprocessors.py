@@ -162,8 +162,7 @@ def prepare_data(adata: AnnData,
     else:
         data = Data(x=dataset.x,
                     edge_index=dataset.edge_index,
-                    edge_attr=dataset.edge_index.t(),
-                    obs_index=dataset.obs_index)
+                    edge_attr=dataset.edge_index.t())
 
     # Edge-level split for edge reconstruction
     edge_train_data, edge_val_data, edge_test_data = edge_level_split(

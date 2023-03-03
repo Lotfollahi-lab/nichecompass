@@ -168,7 +168,10 @@ class Trainer(BaseTrainerMixin):
             n_direct_neighbors=self.loaders_n_direct_neighbors_,
             n_hops=self.loaders_n_hops_,
             edges_directed=False,
-            neg_edge_sampling_ratio=1.)
+            neg_edge_sampling_ratio=len(self.model.conditions_) if
+                                    (len(self.model.conditions_) != 0) &
+                                    (self.model.cond_edge_neg_sampling_) else
+                                    1.)
         self.edge_train_loader = loader_dict["edge_train_loader"]
         self.edge_val_loader = loader_dict.pop("edge_val_loader", None)
         self.node_train_loader = loader_dict["node_train_loader"]

@@ -108,6 +108,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     cond_embed_injection:
         Determines in which VGPGAE modules the conditional embedding is
         injected.
+    cond_edge_neg_sampling:
+        If ´True´, to compute the edge reconstruction loss, only sample
+        negative edges within a condition and discard all other negative edges.
     """
     def __init__(self,
                  n_input: int,
@@ -136,7 +139,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  active_gp_thresh_ratio: float=1.,
                  log_variational: bool=True,
                  cond_embed_injection: Optional[list]=["encoder",
-                                                       "gene_expr_decoder"]):
+                                                       "gene_expr_decoder"],
+                 cond_edge_neg_sampling: bool=True):
         super().__init__()
         self.n_input_ = n_input
         self.n_layers_encoder_ = n_layers_encoder
@@ -161,6 +165,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.active_gp_thresh_ratio_ = active_gp_thresh_ratio
         self.log_variational_ = log_variational
         self.cond_embed_injection_ = cond_embed_injection
+        self.cond_edge_neg_sampling_ = cond_edge_neg_sampling
         self.freeze_ = False
 
         print("--- INITIALIZING NEW NETWORK MODULE: VARIATIONAL GENE PROGRAM "
@@ -402,11 +407,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_nodes=edge_data_batch.x.size(0))
 
         # Compute edge reconstruction binary cross entropy loss
-        loss_dict["edge_recon_loss"] = (lambda_edge_recon * 
+        loss_dict["edge_recon_loss"] = (lambda_edge_recon *
         compute_edge_recon_loss(
             adj_recon_logits=edge_model_output["adj_recon_logits"],
             edge_labels=edge_data_batch.edge_label,
-            edge_label_index=edge_data_batch.edge_label_index))
+            edge_label_index=edge_data_batch.edge_label_index,
+            edge_label_conditions=edge_data_batch.conditions if
+                                  (len(self.conditions_) != 0) &
+                                  self.cond_edge_neg_sampling_ else None))
 
         # Compute gene expression reconstruction negative binomial or
         # zero-inflated negative binomial loss
