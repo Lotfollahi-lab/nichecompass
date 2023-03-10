@@ -577,10 +577,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         else:
             return active_gp_mask
 
-    def log_module_hyperparams_to_mlflow(self):
+    def log_module_hyperparams_to_mlflow(self, excluded_attr: list=["genes_idx_"]):
         """Log module hyperparameters to Mlflow."""
         for attr, attr_value in self._get_public_attributes().items():
-            mlflow.log_param(attr, attr_value)
+            if attr not in excluded_attr:
+                mlflow.log_param(attr, attr_value)
 
     def get_latent_representation(
             self,

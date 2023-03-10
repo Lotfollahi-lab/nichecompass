@@ -124,7 +124,7 @@ class Trainer(BaseTrainerMixin):
         self.best_epoch = None
         self.best_model_state_dict = None
 
-        print("--- INITIALIZING TRAINER ---")
+        print("\n--- INITIALIZING TRAINER ---")
         
         # Set seed and use GPU if available
         torch.manual_seed(self.seed_)
