@@ -256,7 +256,7 @@ class Autotalker(BaseModelMixin):
             raise ValueError("Please specify an adequate ´counts_key´. "
                              "By default the raw counts are assumed to be "
                              f"stored in adata.layers['counts'].")
-        if include_gene_expr_recon_loss or log_variational:
+        if include_gene_expr_recon_loss and log_variational:
             if (adata.layers[counts_key] < 0).sum() > 0:
                 raise ValueError("Please make sure that "
                                  "´adata.layers[counts_key]´ contains the"
