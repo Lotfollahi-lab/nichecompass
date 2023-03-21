@@ -93,7 +93,7 @@ def node_level_split_mask(data: Data,
 
 def prepare_data(adata: AnnData,
                  condition_label_encoder: dict,
-                 counts_key: str="counts",
+                 counts_key: Optional[str]="counts",
                  adj_key: str="spatial_connectivities",
                  condition_key: Optional[str]=None,
                  edge_val_ratio: float=0.1,
@@ -108,14 +108,16 @@ def prepare_data(adata: AnnData,
     Parameters
     ----------
     adata:
-        AnnData object with raw counts stored in ´adata.layers[counts_key]´, and
-        sparse adjacency matrix stored in ´adata.obsp[adj_key]´.
+        AnnData object with counts stored in ´adata.layers[counts_key]´ or
+        ´adata.X´ depending on ´counts_key´, and sparse adjacency matrix stored
+        in ´adata.obsp[adj_key]´.
     condition_label_encoder:
         Condition label encoder from the model (label encoding indeces need to
         be aligned with the ones from the model to get the correct conditional
         embedding).
     counts_key:
-        Key under which the raw counts are stored in ´adata.layer´.
+        Key under which the counts are stored in ´adata.layer´. If ´None´, uses
+        ´adata.X´ as counts.
     adj_key:
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
     condition_key:

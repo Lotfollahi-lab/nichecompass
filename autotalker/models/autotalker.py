@@ -30,16 +30,18 @@ class Autotalker(BaseModelMixin):
     Parameters
     ----------
     adata:
-        AnnData object with raw counts stored in ´adata.layers[counts_key]´, 
-        sparse adjacency matrix stored in ´adata.obsp[adj_key]´, gene program
-        names stored in ´adata.uns[gp_names_key]´, and binary gene program 
-        targets and sources masks stored in ´adata.varm[gp_targets_mask_key]´ 
-        and ´adata.varm[gp_sources_mask_key]´ respectively (unless gene program 
+        AnnData object with counts stored in ´adata.layers[counts_key]´ or
+        ´adata.X´ depending on ´counts_key´, sparse adjacency matrix stored in
+        ´adata.obsp[adj_key]´, gene program names stored in
+        ´adata.uns[gp_names_key]´, and binary gene program targets and sources
+        masks stored in ´adata.varm[gp_targets_mask_key]´ and
+        ´adata.varm[gp_sources_mask_key]´ respectively (unless gene program
         masks are passed explicitly to the model via parameters 
         ´gp_targets_mask´ and ´gp_sources_mask´, in which case this will have
         prevalence).
     counts_key:
-        Key under which the raw counts are stored in ´adata.layer´.
+        Key under which the counts are stored in ´adata.layer´. If ´None´, uses
+        ´adata.X´ as counts. 
     adj_key:
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
     gp_names_key:
@@ -138,7 +140,7 @@ class Autotalker(BaseModelMixin):
     """
     def __init__(self,
                  adata: AnnData,
-                 counts_key: str="counts",
+                 counts_key: Optional[str]="counts",
                  adj_key: str="spatial_connectivities",
                  gp_names_key: str="autotalker_gp_names",
                  active_gp_names_key: str="autotalker_active_gp_names",
@@ -252,17 +254,21 @@ class Autotalker(BaseModelMixin):
             self.conditions_ = conditions
         
         # Validate counts layer key and counts values
-        if counts_key not in adata.layers:
-            raise ValueError("Please specify an adequate ´counts_key´. "
-                             "By default the raw counts are assumed to be "
-                             f"stored in adata.layers['counts'].")
+        if counts_key is not None and counts_key not in adata.layers:
+            raise ValueError("Please specify an adequate ´counts_key´. The "
+                             "counts have to be stored in "
+                             f"adata.layers[counts_key].")
         if include_gene_expr_recon_loss and log_variational:
-            if (adata.layers[counts_key] < 0).sum() > 0:
+            if counts_key is None:
+                x = adata.X
+            else:
+                x = adata.layers[counts_key]
+            if (x < 0).sum() > 0:
                 raise ValueError("Please make sure that "
                                  "´adata.layers[counts_key]´ contains the"
                                  " raw counts (not log library size "
                                  "normalized) if ´include_gene_expr_recon_loss´"
-                                 " is ´True´ or ´log_variational´ is ´True´.")
+                                 " is ´True´ and ´log_variational´ is ´True´.")
 
         # Validate adjacency key
         if adj_key not in adata.obsp:
@@ -956,7 +962,7 @@ class Autotalker(BaseModelMixin):
     def get_latent_representation(
             self, 
             adata: Optional[AnnData]=None,
-            counts_key: str="counts",
+            counts_key: Optional[str]="counts",
             adj_key: str="spatial_connectivities",
             condition_key: Optional[str]=None,
             only_active_gps: bool=True,
@@ -972,7 +978,8 @@ class Autotalker(BaseModelMixin):
             AnnData object to get the latent representation for. If ´None´, uses
             the adata object stored in the model instance.
         counts_key:
-            Key under which the raw counts are stored in ´adata.layer´.
+            Key under which the counts are stored in ´adata.layer´. If ´None´,
+            uses ´adata.X´ as counts. 
         adj_key:
             Key under which the sparse adjacency matrix is stored in 
             ´adata.obsp´.
@@ -1325,7 +1332,8 @@ class Autotalker(BaseModelMixin):
             AnnData object to get the gene expression distribution parameters
             for. If ´None´, uses the adata object stored in the model instance.
         counts_key:
-            Key under which the raw counts are stored in ´adata.layer´.    
+            Key under which the counts are stored in ´adata.layer´. If ´None´,
+            uses ´adata.X´ as counts.  
         adj_key:
             Key under which the sparse adjacency matrix is stored in 
             ´adata.obsp´.       
