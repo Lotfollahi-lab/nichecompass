@@ -127,6 +127,9 @@ def compute_cas(
         model stored in ´adata.obsm[latent_key]´.
     cell_type_key:
         Key under which the cell type annotations are stored in ´adata.obs´.
+    condition_key:
+        Key under which the conditions are stored in ´adata.obs´. If ´None´,
+        the adata is assumed to only consist of one condition.
     spatial_knng_key:
         Key under which the spatial nearest neighbor graph is / will be stored
         in ´adata.obsp´ with the suffix '_connectivities'.
@@ -162,9 +165,36 @@ def compute_cas(
 
     if spatial_knng_connectivities_key not in adata.obsp:
         if condition_key is not None:
+            # Create dict for storage of condition-specific nhood enrichments
+            condition_nhood_enrichment_dict = {}
             unique_conditions = adata.obs[condition_key].unique().tolist()
             for condition in unique_conditions:
                 adata_condition = adata[adata.obs[condition_key] == condition]
+
+                # Compute condition-specific spatial (ground truth) nearest
+                # neighbor graph
+                sc.pp.neighbors(
+                    adata=adata_condition,
+                    use_rep=spatial_key,
+                    n_neighbors=n_neighbors,
+                    random_state=seed,
+                    key_added=spatial_knng_key)
+
+                # Compute cell type affinity matrix for condition-specific
+                # spatial nearest neighbor graph
+                sq.gr.nhood_enrichment(
+                    adata_condition,
+                    cluster_key=cell_type_key,
+                    connectivity_key=spatial_knng_key,
+                    n_perms=1000,
+                    seed=seed,
+                    show_progress_bar=False)
+
+                # Save results
+                condition_nhood_enrichment_dict[condition] = (
+                    adata.uns[f"{cell_type_key}_nhood_enrichment"]["zscore"])
+
+                
                 # TO DO: Make it work for integrated data #
         else:
             sc.pp.neighbors(adata=adata,
