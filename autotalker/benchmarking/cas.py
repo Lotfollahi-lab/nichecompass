@@ -90,8 +90,7 @@ def compute_cas(
         spatial_key: Optional[str]="spatial",
         latent_key: Optional[str]="autotalker_latent",
         n_neighbors: Optional[int]=15,
-        seed: int=0,
-        visualize_ccc_maps: bool=False) -> float:
+        seed: int=0) -> float:
     """
     Compute the Cell Type Affinity Similarity (CAS) between the latent nearest
     neighbor graph and the spatial nearest neighbor graph. The CAS measures how
@@ -112,9 +111,11 @@ def compute_cas(
     Note that the used neighborhood enrichment implementation from squidpy
     slightly deviates from the original method and we construct nearest neighbor
     graphs using the original spatial coordinates and the latent representation
-    from a model respectively to compute the similarity. The cell type affinity
-    matrices, also called cell-cell contact (ccc) maps are stored in the
-    AnnData object and can optionally be visualized.
+    from a model respectively to compute the similarity. If a ´condition_key´ is
+    provided and no precomputed nearest neighbor graph is given, spatial
+    neighborhood enrichments are computed separately for each condition and
+    zscores are averaged. The cell type affinity matrices, also called cell-cell
+    contact (ccc) maps are stored in the AnnData object.
 
     Parameters
     ----------
@@ -147,9 +148,6 @@ def compute_cas(
         a model.
     seed:
         Random seed for reproducibility.
-    visualize_ccc_maps:
-        If ´True´, also visualize the spatial and latent cell type affinity
-        matrices (cell-cell-contact maps).
 
     Returns
     ----------
@@ -159,63 +157,110 @@ def compute_cas(
         minus the size-normalied Frobenius norm of the element-wise matrix
         differences.
     """
-    # Adding '_connectivities' as automatically added by sc.pp.neighbors
+    # Adding '_connectivities' as automatically added by sc.pp.neighbors()
     spatial_knng_connectivities_key = spatial_knng_key + "_connectivities"
     latent_knng_connectivities_key = latent_knng_key + "_connectivities"
 
-    if spatial_knng_connectivities_key not in adata.obsp:
-        if condition_key is not None:
-            unique_cell_types = adata.obs[cell_type_key].unique().tolist()
-            unique_conditions = adata.obs[condition_key].unique().tolist()
-            condition_spatial_nhood_enrichments = np.zero(
-                len(unique_conditions),
-                len(unique_cell_types),
-                len(unique_cell_types))
-            print(condition_spatial_nhood_enrichments.shape)
-            for i, condition in enumerate(unique_conditions):
-                adata_condition = adata[adata.obs[condition_key] == condition]
+    if spatial_knng_connectivities_key in adata.obsp:
+        print("Using precomputed spatial nearest neighbor graph...")
+        print("Computing spatial neighborhood enrichment scores for entire "
+              "dataset...")
+        # Compute cell type affinity matrix for spatial nearest neighbor graph
+        sq.gr.nhood_enrichment(adata,
+                               cluster_key=cell_type_key,
+                               connectivity_key=spatial_knng_key,
+                               n_perms=1000,
+                               seed=seed,
+                               show_progress_bar=False)
+        
+        # Save results in adata (no ´key_added´ functionality in squidpy)
+        adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"] = {}
+        adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"] = (
+            adata.uns[f"{cell_type_key}_nhood_enrichment"]["zscore"])
 
-                # Compute condition-specific spatial (ground truth) nearest
-                # neighbor graph
-                sc.pp.neighbors(
-                    adata=adata_condition,
-                    use_rep=spatial_key,
-                    n_neighbors=n_neighbors,
-                    random_state=seed,
-                    key_added=spatial_knng_key)
-
-                # Compute cell type affinity matrix for condition-specific
-                # spatial nearest neighbor graph
-                sq.gr.nhood_enrichment(
-                    adata_condition,
-                    cluster_key=cell_type_key,
-                    connectivity_key=spatial_knng_key,
-                    n_perms=1000,
-                    seed=seed,
-                    show_progress_bar=False)
-
-                # Save results
-                condition_spatial_nhood_enrichments[i, :, :] = (
-                    adata_condition.uns[f"{cell_type_key}_nhood_enrichment"]
-                    ["zscore"])
-                
-            # Compute mean zscores across conditions
-            adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"] = (
-                np.mean(condition_spatial_nhood_enrichments, axis=0))
-        else:
-            sc.pp.neighbors(adata=adata,
-                            use_rep=spatial_key,
-                            n_neighbors=n_neighbors,
-                            random_state=seed,
-                            key_added=spatial_knng_key)
+    elif condition_key is None:
+        print("Computing spatial nearest neighbor graph for entire dataset...")
         # Compute spatial (ground truth) connectivities
         sc.pp.neighbors(adata=adata,
                         use_rep=spatial_key,
                         n_neighbors=n_neighbors,
                         random_state=seed,
                         key_added=spatial_knng_key)
+        
+        print("Computing spatial neighborhood enrichment scores for entire "
+              "dataset...")
+        # Compute cell type affinity matrix for spatial nearest neighbor graph
+        sq.gr.nhood_enrichment(adata,
+                               cluster_key=cell_type_key,
+                               connectivity_key=spatial_knng_key,
+                               n_perms=1000,
+                               seed=seed,
+                               show_progress_bar=False)
+        
+        # Save results in adata (no ´key_added´ functionality in squidpy)
+        adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"] = {}
+        adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"] = (
+            adata.uns[f"{cell_type_key}_nhood_enrichment"]["zscore"])
 
-    if latent_knng_connectivities_key not in adata.obsp:
+    elif condition_key is not None:
+        # Compute cell type affinity matrix for spatial nearest neighbor graph
+        # of each condition separately and store in one array
+        unique_cell_types = sorted(adata.obs[cell_type_key].unique().tolist())
+        unique_conditions = adata.obs[condition_key].unique().tolist()
+        condition_spatial_nhood_enrichments = np.zeros((
+            len(unique_conditions),
+            len(unique_cell_types),
+            len(unique_cell_types)))
+        for i, condition in enumerate(unique_conditions):
+            adata_condition = adata[adata.obs[condition_key] == condition]
+            condition_unique_cell_types = sorted(
+                adata_condition.obs[cell_type_key].unique().tolist())
+            condition_cell_type_idx = [unique_cell_types.index(cell_type) for 
+                                       cell_type in condition_unique_cell_types]
+            
+            
+            print("Computing spatial nearest neighbor graph for "
+                  f"{condition_key} {condition}...")
+            # Compute condition-specific spatial (ground truth) nearest
+            # neighbor graph
+            sc.pp.neighbors(
+                adata=adata_condition,
+                use_rep=spatial_key,
+                n_neighbors=n_neighbors,
+                random_state=seed,
+                key_added=spatial_knng_key)
+
+            print("Computing spatial neighborhood enrichment scores for "
+                    f"{condition_key} {condition}...")
+            # Compute cell type affinity matrix for condition-specific
+            # spatial nearest neighbor graph
+            sq.gr.nhood_enrichment(
+                adata_condition,
+                cluster_key=cell_type_key,
+                connectivity_key=spatial_knng_key,
+                n_perms=1000,
+                seed=seed,
+                show_progress_bar=False)
+
+            # Save results: 'condition_cell_type_idx' to take into account
+            # that not all conditions include all cell types
+            for j, k in enumerate(condition_cell_type_idx):
+                condition_spatial_nhood_enrichments[
+                    i, k, condition_cell_type_idx] = (
+                adata_condition.uns[f"{cell_type_key}_nhood_enrichment"]
+                ["zscore"][j, :])
+            print(condition_spatial_nhood_enrichments)
+            
+        print("Combining spatial neighborhood enrichment scores across "
+                "conditions...")
+        # Compute mean zscores across conditions
+        adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"] = (
+            np.mean(condition_spatial_nhood_enrichments, axis=0))      
+
+    if latent_knng_connectivities_key in adata.obsp:
+        print("Using precomputed latent nearest neighbor graph...")
+    else:
+        print("Computing latent nearest neighbor graph...")
         # Compute latent connectivities
         sc.pp.neighbors(adata=adata,
                         use_rep=latent_key,
@@ -223,26 +268,8 @@ def compute_cas(
                         random_state=seed,
                         key_added=latent_knng_key)
 
-    # Compute cell type affinity matrix for spatial nearest neighbor graph
-    sq.gr.nhood_enrichment(adata,
-                           cluster_key=cell_type_key,
-                           connectivity_key=spatial_knng_key,
-                           n_perms=1000,
-                           seed=seed,
-                           show_progress_bar=False)
-
-    # Save results in adata (no ´key_added´ functionality in squidpy)
-    adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"] = {}
-    adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"] = (
-        adata.uns[f"{cell_type_key}_nhood_enrichment"]["zscore"])
-
-    if visualize_ccc_maps:
-        sq.pl.nhood_enrichment(adata=adata,
-                               cluster_key=cell_type_key,
-                               mode="zscore",
-                               title="Spatial Cell-type Affinity Matrix",
-                               figsize=(5, 5))
-
+    print("Computing latent neighborhood enrichment scores for entire "
+          "dataset...")
     # Compute cell type affinity matrix for latent nearest neighbor graph
     sq.gr.nhood_enrichment(adata,
                            cluster_key=cell_type_key,
@@ -256,15 +283,9 @@ def compute_cas(
     adata.uns[f"{cell_type_key}_latent_nhood_enrichment"]["zscore"] = (
         adata.uns[f"{cell_type_key}_nhood_enrichment"]["zscore"])
 
-    if visualize_ccc_maps:
-        sq.pl.nhood_enrichment(adata=adata,
-                               cluster_key=cell_type_key,
-                               mode="zscore",
-                               title="Latent Cell-type Affinity Matrix",
-                               figsize=(5, 5))
-
     del adata.uns[f"{cell_type_key}_nhood_enrichment"]["zscore"]
 
+    print("Computing CAS...")
     # Calculate Frobenius norm of the element-wise matrix differences to
     # quantify distance
     nhood_enrichment_zscores_diff = (
