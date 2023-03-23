@@ -165,10 +165,14 @@ def compute_cas(
 
     if spatial_knng_connectivities_key not in adata.obsp:
         if condition_key is not None:
-            # Create dict for storage of condition-specific nhood enrichments
-            condition_nhood_enrichment_dict = {}
+            unique_cell_types = adata.obs[cell_type_key].unique().tolist()
             unique_conditions = adata.obs[condition_key].unique().tolist()
-            for condition in unique_conditions:
+            condition_spatial_nhood_enrichments = np.zero(
+                len(unique_conditions),
+                len(unique_cell_types),
+                len(unique_cell_types))
+            print(condition_spatial_nhood_enrichments.shape)
+            for i, condition in enumerate(unique_conditions):
                 adata_condition = adata[adata.obs[condition_key] == condition]
 
                 # Compute condition-specific spatial (ground truth) nearest
@@ -191,11 +195,13 @@ def compute_cas(
                     show_progress_bar=False)
 
                 # Save results
-                condition_nhood_enrichment_dict[condition] = (
-                    adata.uns[f"{cell_type_key}_nhood_enrichment"]["zscore"])
-
+                condition_spatial_nhood_enrichments[i, :, :] = (
+                    adata_condition.uns[f"{cell_type_key}_nhood_enrichment"]
+                    ["zscore"])
                 
-                # TO DO: Make it work for integrated data #
+            # Compute mean zscores across conditions
+            adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"] = (
+                np.mean(condition_spatial_nhood_enrichments, axis=0))
         else:
             sc.pp.neighbors(adata=adata,
                             use_rep=spatial_key,
