@@ -249,7 +249,6 @@ def compute_cas(
                     i, k, condition_cell_type_idx] = (
                 adata_condition.uns[f"{cell_type_key}_nhood_enrichment"]
                 ["zscore"][j, :])
-            print(condition_spatial_nhood_enrichments)
             
         print("Combining spatial neighborhood enrichment scores across "
                 "conditions...")
