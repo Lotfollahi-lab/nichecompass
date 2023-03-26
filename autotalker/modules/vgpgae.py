@@ -343,9 +343,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
              lambda_l1_masked: float,
              lambda_l1_addon: float,
              lambda_group_lasso: float,
-             lambda_gene_expr_recon: float=1.0,
-             lambda_edge_recon: Optional[float]=None,
-             lambda_cond_contrastive: Optional[float]=1.0,
+             lambda_gene_expr_recon: float=0.1,
+             lambda_edge_recon: Optional[float]=1.,
+             lambda_cond_contrastive: Optional[float]=100.,
              edge_recon_active: bool=True) -> dict:
         """
         Calculate the optimization loss for backpropagation as well as the 
@@ -383,9 +383,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             addon gene programs.
         lambda_cond_contrastive:
             Lambda (weighting factor) for the conditional contrastive loss. If
-            ´>0´, this will enforce the most similar observations (with respect
-            to their latent representation) from different conditions to become
-            more similar.       
+            ´>0´, this will enforce observations from different conditions with
+            very similar latent representations to become more similar and 
+            observations with different latent representations to become more
+            different.
         edge_recon_active:
             If ´True´, includes the edge reconstruction loss in the optimization
             / backpropagation. Setting this to ´False´ at the beginning of model

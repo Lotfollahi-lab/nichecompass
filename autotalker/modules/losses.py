@@ -39,9 +39,15 @@ def compute_cond_contrastive_loss(
         adj_recon_logits: torch.Tensor,
         edge_labels: torch.Tensor,
         edge_label_index: torch.Tensor,
-        edge_label_conditions: Optional[torch.Tensor]=None) -> torch.Tensor:
+        edge_label_conditions: Optional[torch.Tensor]=None,
+        edge_recon_logits_thresh: float=0.7) -> torch.Tensor:
     """
-    Compute conditional contrastive loss.
+    Compute conditional contrastive loss. Negative edges with nodes from
+    different conditions whose edge reconstruction logits are above
+    ´edge_recon_logits_thresh´ are considered positive examples. Negative edges
+    with nodes from the same condition and negative edges with nodes from
+    different conditions whose edge reconstruction logits are below
+    ´edge_recon_logits_thresh´ are considered negative examples.
 
     Parameters
     ----------
@@ -53,6 +59,9 @@ def compute_cond_contrastive_loss(
         Index with edge labels for both positive and negatively sampled edges.
     edge_label_conditions:
         Conditions to which edges belong.
+    edge_recon_logits_thresh:
+        Edge reconstruction logits threshold above which edges with nodes from
+        different conditions are considered positive examples.
 
     Returns
     ----------
@@ -76,20 +85,18 @@ def compute_cond_contrastive_loss(
         edge_label_index=edge_label_index,
         edge_labels=cond_labels)
     
-    edge_recon_logits_thresh = 0.8
-    low_prob_diff_condition_edge = (
+    # Set labels of different condition with logits below
+    # ´logits_below_thresh_diff_condition_edge 1´ to 0
+    logits_below_thresh_diff_condition_edge = (
         (cond_labels_sorted == 1) & 
         (edge_recon_logits < edge_recon_logits_thresh))
-    cond_labels_sorted[low_prob_diff_condition_edge] = 0
+    cond_labels_sorted[logits_below_thresh_diff_condition_edge] = 0
 
     # Determine weighting of positive examples
     if (cond_labels_sorted == 1.).sum(dim=0) != 0:
         pos_labels = (cond_labels_sorted == 1.).sum(dim=0)
         neg_labels = (cond_labels_sorted == 0.).sum(dim=0)
         pos_weight = neg_labels / pos_labels
-
-        print(edge_recon_logits)
-        print(cond_labels_sorted)
 
         # Compute weighted cross entropy loss
         cond_contrastive_loss = F.binary_cross_entropy_with_logits(

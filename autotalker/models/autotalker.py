@@ -325,7 +325,7 @@ class Autotalker(BaseModelMixin):
               weight_decay: float=0.,
               lambda_edge_recon: Optional[float]=1.,
               lambda_gene_expr_recon: float=0.1,
-              lambda_cond_contrastive: float=1.,
+              lambda_cond_contrastive: float=100.,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,
               lambda_l1_addon: float=0.,
@@ -358,6 +358,11 @@ class Autotalker(BaseModelMixin):
             reconstruction and, hence, to preserve spatial colocalization
             information.
         lambda_cond_contrastive:
+            Lambda (weighting factor) for the conditional contrastive loss. If
+            ´>0´, this will enforce observations from different conditions with
+            very similar latent representations to become more similar and 
+            observations with different latent representations to become more
+            different.
         lambda_gene_expr_recon:
             Lambda (weighting factor) for the gene expression reconstruction
             loss. If ´>0´, this will enforce interpretable gene programs that

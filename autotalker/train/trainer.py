@@ -182,9 +182,9 @@ class Trainer(BaseTrainerMixin):
               n_epochs_no_edge_recon: int=0,
               lr: float=0.01,
               weight_decay: float=0.,
-              lambda_edge_recon: Optional[float]=None,
-              lambda_cond_contrastive: Optional[float]=None,
-              lambda_gene_expr_recon: float=1.,
+              lambda_edge_recon: Optional[float]=1.,
+              lambda_cond_contrastive: Optional[float]=100.,
+              lambda_gene_expr_recon: float=0.1,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,
               lambda_l1_addon: float=0.,
@@ -236,6 +236,7 @@ class Trainer(BaseTrainerMixin):
         self.weight_decay_ = weight_decay
         self.lambda_edge_recon_ = lambda_edge_recon
         self.lambda_gene_expr_recon_ = lambda_gene_expr_recon
+        self.lambda_cond_contrastive_ = lambda_cond_contrastive
         self.lambda_group_lasso_ = lambda_group_lasso
         self.lambda_l1_masked_ = lambda_l1_masked
         self.lambda_l1_addon_ = lambda_l1_addon
@@ -432,6 +433,7 @@ class Trainer(BaseTrainerMixin):
                     node_model_output=node_val_model_output,
                     lambda_edge_recon=self.lambda_edge_recon_,
                     lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
+                    lambda_cond_contrastive=self.lambda_cond_contrastive_,
                     lambda_group_lasso=self.lambda_group_lasso_,
                     lambda_l1_masked=self.lambda_l1_masked_,
                     lambda_l1_addon=self.lambda_l1_addon_,
