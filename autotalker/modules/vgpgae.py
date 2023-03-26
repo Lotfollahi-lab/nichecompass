@@ -21,6 +21,7 @@ from autotalker.nn import (CosineSimGraphDecoder,
                            SelfNodeLabelNoneAggregator)
 from .basemodulemixin import BaseModuleMixin
 from .losses import (compute_addon_l1_reg_loss,
+                     compute_cond_contrastive_loss,
                      compute_edge_recon_loss,
                      compute_gene_expr_recon_nb_loss,
                      compute_gene_expr_recon_zinb_loss,
@@ -76,6 +77,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     include_gene_expr_recon_loss:
         If `True`, includes the gene expression reconstruction loss in the 
         loss optimization.
+    include_cond_contrastive_loss:
+        If `True`, includes the conditional contrastive loss in the loss
+        optimization.       
     gene_expr_recon_dist:
         The distribution used for gene expression reconstruction. If `nb`, uses
         a negative binomial distribution. If `zinb`, uses a zero-inflated
@@ -130,6 +134,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  dropout_rate_graph_decoder: float=0.,
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
+                 include_cond_contrastive_loss: bool=True,
                  gene_expr_recon_dist: Literal["nb", "zinb"]="nb",
                  node_label_method: Literal[
                     "self",
@@ -138,8 +143,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     "one-hop-attention"]="one-hop-attention",
                  active_gp_thresh_ratio: float=1.,
                  log_variational: bool=True,
-                 cond_embed_injection: Optional[list]=["encoder",
-                                                       "gene_expr_decoder"],
+                 cond_embed_injection: Optional[list]=["gene_expr_decoder"],
                  cond_edge_neg_sampling: bool=True):
         super().__init__()
         self.n_input_ = n_input
@@ -160,6 +164,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
         self.include_edge_recon_loss_ = include_edge_recon_loss
         self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
+        self.include_cond_contrastive_loss_ = include_cond_contrastive_loss
         self.gene_expr_recon_dist_ = gene_expr_recon_dist
         self.node_label_method_ = node_label_method
         self.active_gp_thresh_ratio_ = active_gp_thresh_ratio
@@ -340,6 +345,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
              lambda_group_lasso: float,
              lambda_gene_expr_recon: float=1.0,
              lambda_edge_recon: Optional[float]=None,
+             lambda_cond_contrastive: Optional[float]=1.0,
              edge_recon_active: bool=True) -> dict:
         """
         Calculate the optimization loss for backpropagation as well as the 
@@ -375,6 +381,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Lambda (weighting factor) for the L1 regularization loss of genes in
             addon gene programs. If ´>0´, this will enforce sparsity of genes in
             addon gene programs.
+        lambda_cond_contrastive:
+            Lambda (weighting factor) for the conditional contrastive loss. If
+            ´>0´, this will enforce the most similar observations (with respect
+            to their latent representation) from different conditions to become
+            more similar.       
         edge_recon_active:
             If ´True´, includes the edge reconstruction loss in the optimization
             / backpropagation. Setting this to ´False´ at the beginning of model
@@ -407,14 +418,22 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_nodes=edge_data_batch.x.size(0))
 
         # Compute edge reconstruction binary cross entropy loss
-        loss_dict["edge_recon_loss"] = (lambda_edge_recon *
-        compute_edge_recon_loss(
+        loss_dict["edge_recon_loss"] = (
+            lambda_edge_recon * compute_edge_recon_loss(
             adj_recon_logits=edge_model_output["adj_recon_logits"],
             edge_labels=edge_data_batch.edge_label,
             edge_label_index=edge_data_batch.edge_label_index,
             edge_label_conditions=edge_data_batch.conditions if
                                   (len(self.conditions_) != 0) &
                                   self.cond_edge_neg_sampling_ else None))
+        
+        if (len(self.conditions_) != 0):
+            loss_dict["cond_contrastive_loss"] = (
+                lambda_cond_contrastive * compute_cond_contrastive_loss(
+                adj_recon_logits=edge_model_output["adj_recon_logits"],
+                edge_labels=edge_data_batch.edge_label,
+                edge_label_index=edge_data_batch.edge_label_index,
+                edge_label_conditions=edge_data_batch.conditions))
 
         # Compute gene expression reconstruction negative binomial or
         # zero-inflated negative binomial loss
@@ -458,6 +477,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             loss_dict["global_loss"] += loss_dict["edge_recon_loss"]
             if edge_recon_active:
                 loss_dict["optim_loss"] += loss_dict["edge_recon_loss"]
+        if self.include_cond_contrastive_loss_ & (len(self.conditions_) != 0):
+            loss_dict["global_loss"] += loss_dict["cond_contrastive_loss"]
+            loss_dict["optim_loss"] += loss_dict["cond_contrastive_loss"]            
         if self.include_gene_expr_recon_loss_:
             loss_dict["global_loss"] += loss_dict["gene_expr_recon_loss"]
             loss_dict["optim_loss"] += loss_dict["gene_expr_recon_loss"]

@@ -149,7 +149,7 @@ class Autotalker(BaseModelMixin):
                  latent_key: str="autotalker_latent",
                  condition_key: Optional[str]=None,
                  cond_embed_key: Optional[str]="autotalker_cond_embed",
-                 cond_embed_injection: Optional[list]=["graph_decoder",
+                 cond_embed_injection: Optional[list]=["encoder",
                                                        "gene_expr_decoder"],
                  genes_idx_key: str="autotalker_genes_idx",
                  recon_adj_key: str="autotalker_recon_connectivities",
@@ -323,8 +323,9 @@ class Autotalker(BaseModelMixin):
               n_epochs_no_edge_recon: int=0,
               lr: float=0.001,
               weight_decay: float=0.,
-              lambda_edge_recon: Optional[float]=1000.,
-              lambda_gene_expr_recon: float=1.,
+              lambda_edge_recon: Optional[float]=1.,
+              lambda_gene_expr_recon: float=0.1,
+              lambda_cond_contrastive: float=1.,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,
               lambda_l1_addon: float=0.,
@@ -356,6 +357,7 @@ class Autotalker(BaseModelMixin):
             this will enforce gene programs to be meaningful for edge
             reconstruction and, hence, to preserve spatial colocalization
             information.
+        lambda_cond_contrastive:
         lambda_gene_expr_recon:
             Lambda (weighting factor) for the gene expression reconstruction
             loss. If ´>0´, this will enforce interpretable gene programs that
@@ -406,6 +408,7 @@ class Autotalker(BaseModelMixin):
                            weight_decay=weight_decay,
                            lambda_edge_recon=lambda_edge_recon,
                            lambda_gene_expr_recon=lambda_gene_expr_recon,
+                           lambda_cond_contrastive=lambda_cond_contrastive,
                            lambda_group_lasso=lambda_group_lasso,
                            lambda_l1_masked=lambda_l1_masked,
                            lambda_l1_addon=lambda_l1_addon,

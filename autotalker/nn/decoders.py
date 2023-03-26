@@ -151,6 +151,7 @@ class CosineSimGraphDecoder(nn.Module):
         z = self.dropout(z)
         adj_recon_logits = compute_cosine_similarity(
             z[reduced_obs_start_idx:reduced_obs_end_idx, :], z)
+
         return adj_recon_logits
 
 

@@ -183,6 +183,7 @@ class Trainer(BaseTrainerMixin):
               lr: float=0.01,
               weight_decay: float=0.,
               lambda_edge_recon: Optional[float]=None,
+              lambda_cond_contrastive: Optional[float]=None,
               lambda_gene_expr_recon: float=1.,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,

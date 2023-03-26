@@ -35,6 +35,72 @@ def compute_addon_l1_reg_loss(model: nn.Module) -> torch.Tensor:
     addon_l1_reg_loss = torch.sum(addon_decoder_layerwise_param_sum)
     return addon_l1_reg_loss
 
+def compute_cond_contrastive_loss(
+        adj_recon_logits: torch.Tensor,
+        edge_labels: torch.Tensor,
+        edge_label_index: torch.Tensor,
+        edge_label_conditions: Optional[torch.Tensor]=None) -> torch.Tensor:
+    """
+    Compute conditional contrastive loss.
+
+    Parameters
+    ----------
+    adj_recon_logits:
+        Adjacency matrix containing the predicted edge logits.
+    edge_labels:
+        Edge ground truth labels for both positive and negatively sampled edges.
+    edge_label_index:
+        Index with edge labels for both positive and negatively sampled edges.
+    edge_label_conditions:
+        Conditions to which edges belong.
+
+    Returns
+    ----------
+    cond_contrastive_loss:
+        Conditional contrastive loss.
+    """
+    # Keep only negative edges
+    negative_edge = edge_labels == 0
+    cond_labels = edge_labels[negative_edge]
+    edge_label_index = edge_label_index[:, negative_edge]
+
+    # Divide negative edges by same and different condition of edge nodes
+    diff_condition_edge = (edge_label_conditions[edge_label_index[0]] !=
+                           edge_label_conditions[edge_label_index[1]])
+
+    # Set labels of different condition to 1 (same condition is 0)
+    cond_labels[diff_condition_edge] = 1
+
+    edge_recon_logits, cond_labels_sorted = edge_values_and_sorted_labels(
+        adj=adj_recon_logits,
+        edge_label_index=edge_label_index,
+        edge_labels=cond_labels)
+    
+    edge_recon_logits_thresh = 0.8
+    low_prob_diff_condition_edge = (
+        (cond_labels_sorted == 1) & 
+        (edge_recon_logits < edge_recon_logits_thresh))
+    cond_labels_sorted[low_prob_diff_condition_edge] = 0
+
+    # Determine weighting of positive examples
+    if (cond_labels_sorted == 1.).sum(dim=0) != 0:
+        pos_labels = (cond_labels_sorted == 1.).sum(dim=0)
+        neg_labels = (cond_labels_sorted == 0.).sum(dim=0)
+        pos_weight = neg_labels / pos_labels
+
+        print(edge_recon_logits)
+        print(cond_labels_sorted)
+
+        # Compute weighted cross entropy loss
+        cond_contrastive_loss = F.binary_cross_entropy_with_logits(
+            edge_recon_logits,
+            cond_labels_sorted,
+            pos_weight=pos_weight)
+        return cond_contrastive_loss
+    else:
+        cond_contrastive_loss = torch.tensor(0.,
+                                             device=cond_labels_sorted.device)
+        return cond_contrastive_loss
 
 def compute_edge_recon_loss(
         adj_recon_logits: torch.Tensor,
@@ -54,6 +120,8 @@ def compute_edge_recon_loss(
         Edge ground truth labels for both positive and negatively sampled edges.
     edge_label_index:
         Index with edge labels for both positive and negatively sampled edges.
+    edge_label_conditions:
+        Conditions to which edges belong.
 
     Returns
     ----------

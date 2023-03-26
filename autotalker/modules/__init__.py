@@ -1,5 +1,6 @@
 from .basemodulemixin import BaseModuleMixin
 from .losses import (compute_addon_l1_reg_loss,
+                     compute_cond_contrastive_loss,
                      compute_edge_recon_loss,
                      compute_gene_expr_recon_nb_loss,
                      compute_gene_expr_recon_zinb_loss,
