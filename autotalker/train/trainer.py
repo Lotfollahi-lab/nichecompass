@@ -456,6 +456,15 @@ class Trainer(BaseTrainerMixin):
                     adj=adj_recon_probs_val,
                     edge_label_index=edge_val_data_batch.edge_label_index,
                     edge_labels=edge_val_data_batch.edge_label))
+            if hasattr(edge_val_data_batch, "conditions"):
+                # only keep edge labels from same condition for eval
+                same_condition_edge = (
+                    edge_val_data_batch.conditions[
+                    edge_val_data_batch.edge_label_index[0]] ==
+                    edge_val_data_batch.conditions[
+                    edge_val_data_batch.edge_label_index[1]])
+                edge_recon_probs_val = edge_recon_probs_val[same_condition_edge]
+                edge_labels_val = edge_labels_val[same_condition_edge]
             edge_recon_probs_val_accumulated = np.append(
                 edge_recon_probs_val_accumulated,
                 edge_recon_probs_val.detach().cpu().numpy())
