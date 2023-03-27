@@ -331,7 +331,8 @@ class Autotalker(BaseModelMixin):
               weight_decay: float=0.,
               lambda_edge_recon: Optional[float]=1.,
               lambda_gene_expr_recon: float=0.1,
-              lambda_cond_contrastive: float=100.,
+              lambda_cond_contrastive: float=1.,
+              cond_contrastive_thresh: float=0.7,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,
               lambda_l1_addon: float=0.,
@@ -369,6 +370,10 @@ class Autotalker(BaseModelMixin):
             very similar latent representations to become more similar and 
             observations with different latent representations to become more
             different.
+        cond_contrastive_thresh:
+            Edge reconstruction logits threshold above which edges with nodes
+            from different conditions are considered positive examples for the
+            conditional contrastive loss.
         lambda_gene_expr_recon:
             Lambda (weighting factor) for the gene expression reconstruction
             loss. If ´>0´, this will enforce interpretable gene programs that
@@ -420,6 +425,7 @@ class Autotalker(BaseModelMixin):
                            lambda_edge_recon=lambda_edge_recon,
                            lambda_gene_expr_recon=lambda_gene_expr_recon,
                            lambda_cond_contrastive=lambda_cond_contrastive,
+                           cond_contrastive_thresh=cond_contrastive_thresh,
                            lambda_group_lasso=lambda_group_lasso,
                            lambda_l1_masked=lambda_l1_masked,
                            lambda_l1_addon=lambda_l1_addon,

@@ -345,7 +345,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
              lambda_group_lasso: float,
              lambda_gene_expr_recon: float=0.1,
              lambda_edge_recon: Optional[float]=1.,
-             lambda_cond_contrastive: Optional[float]=100.,
+             lambda_cond_contrastive: Optional[float]=1.,
+             cond_contrastive_thresh: float=0.7,
              edge_recon_active: bool=True) -> dict:
         """
         Calculate the optimization loss for backpropagation as well as the 
@@ -387,6 +388,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             very similar latent representations to become more similar and 
             observations with different latent representations to become more
             different.
+        cond_contrastive_thresh:
+            Edge reconstruction logits threshold above which edges with nodes
+            from different conditions are considered positive examples for the
+            conditional contrastive loss.
         edge_recon_active:
             If ´True´, includes the edge reconstruction loss in the optimization
             / backpropagation. Setting this to ´False´ at the beginning of model
@@ -434,7 +439,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 adj_recon_logits=edge_model_output["adj_recon_logits"],
                 edge_labels=edge_data_batch.edge_label,
                 edge_label_index=edge_data_batch.edge_label_index,
-                edge_label_conditions=edge_data_batch.conditions))
+                edge_label_conditions=edge_data_batch.conditions,
+                edge_recon_logits_thresh=cond_contrastive_thresh))
 
         # Compute gene expression reconstruction negative binomial or
         # zero-inflated negative binomial loss

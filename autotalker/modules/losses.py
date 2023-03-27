@@ -39,8 +39,8 @@ def compute_cond_contrastive_loss(
         adj_recon_logits: torch.Tensor,
         edge_labels: torch.Tensor,
         edge_label_index: torch.Tensor,
-        edge_label_conditions: Optional[torch.Tensor]=None,
-        edge_recon_logits_thresh: float=0.8) -> torch.Tensor:
+        edge_label_conditions: Optional[torch.Tensor],
+        edge_recon_logits_thresh: float=0.7) -> torch.Tensor:
     """
     Compute conditional contrastive loss. Negative edges with nodes from
     different conditions whose edge reconstruction logits are above

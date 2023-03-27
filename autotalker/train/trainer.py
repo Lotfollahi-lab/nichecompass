@@ -183,7 +183,8 @@ class Trainer(BaseTrainerMixin):
               lr: float=0.01,
               weight_decay: float=0.,
               lambda_edge_recon: Optional[float]=1.,
-              lambda_cond_contrastive: Optional[float]=100.,
+              lambda_cond_contrastive: Optional[float]=1.,
+              cond_contrastive_thresh: Optional[float]=0.7,
               lambda_gene_expr_recon: float=0.1,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,
@@ -211,6 +212,16 @@ class Trainer(BaseTrainerMixin):
             this will enforce gene programs to be meaningful for edge
             reconstruction and, hence, to preserve spatial colocalization
             information.
+        lambda_cond_contrastive:
+            Lambda (weighting factor) for the conditional contrastive loss. If
+            ´>0´, this will enforce observations from different conditions with
+            very similar latent representations to become more similar and 
+            observations with different latent representations to become more
+            different.
+        cond_contrastive_thresh:
+            Edge reconstruction logits threshold above which edges with nodes
+            from different conditions are considered positive examples for the
+            conditional contrastive loss.
         lambda_gene_expr_recon:
             Lambda (weighting factor) for the gene expression reconstruction
             loss. If ´>0´, this will enforce interpretable gene programs that
@@ -237,6 +248,7 @@ class Trainer(BaseTrainerMixin):
         self.lambda_edge_recon_ = lambda_edge_recon
         self.lambda_gene_expr_recon_ = lambda_gene_expr_recon
         self.lambda_cond_contrastive_ = lambda_cond_contrastive
+        self.cond_contrastive_thresh_ = cond_contrastive_thresh
         self.lambda_group_lasso_ = lambda_group_lasso
         self.lambda_l1_masked_ = lambda_l1_masked
         self.lambda_l1_addon_ = lambda_l1_addon
@@ -300,10 +312,12 @@ class Trainer(BaseTrainerMixin):
                     lambda_edge_recon=self.lambda_edge_recon_,
                     lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
                     lambda_cond_contrastive=self.lambda_cond_contrastive_,
+                    cond_contrastive_thresh=self.cond_contrastive_thresh_,
                     lambda_group_lasso=self.lambda_group_lasso_,
                     lambda_l1_masked=self.lambda_l1_masked_,
                     lambda_l1_addon=self.lambda_l1_addon_,
                     edge_recon_active=self.edge_recon_active)
+                
                 train_global_loss = train_loss_dict["global_loss"]
                 train_optim_loss = train_loss_dict["optim_loss"]
 
@@ -431,6 +445,7 @@ class Trainer(BaseTrainerMixin):
                     lambda_edge_recon=self.lambda_edge_recon_,
                     lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
                     lambda_cond_contrastive=self.lambda_cond_contrastive_,
+                    cond_contrastive_thresh=self.cond_contrastive_thresh_,
                     lambda_group_lasso=self.lambda_group_lasso_,
                     lambda_l1_masked=self.lambda_l1_masked_,
                     lambda_l1_addon=self.lambda_l1_addon_,
