@@ -80,6 +80,9 @@ class Autotalker(BaseModelMixin):
     include_gene_expr_recon_loss:
         If `True`, includes the gene expression reconstruction loss in the loss
         optimization.
+    include_cond_contrastive_loss:
+        If `True`, includes the conditional contrastive loss in the loss
+        optimization.   
     gene_expr_recon_dist:
         The distribution used for gene expression reconstruction. If `nb`, uses
         a negative binomial distribution. If `zinb`, uses a zero-inflated
@@ -156,6 +159,7 @@ class Autotalker(BaseModelMixin):
                  agg_alpha_key: str="autotalker_agg_alpha",
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
+                 include_cond_contrastive_loss: bool=True,
                  gene_expr_recon_dist: Literal["nb", "zinb"]="nb",
                  log_variational: bool=True,
                  node_label_method: Literal[
@@ -191,6 +195,7 @@ class Autotalker(BaseModelMixin):
         self.agg_alpha_key_ = agg_alpha_key
         self.include_edge_recon_loss_ = include_edge_recon_loss
         self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
+        self.include_cond_contrastive_loss_ = include_cond_contrastive_loss
         self.gene_expr_recon_dist_ = gene_expr_recon_dist
         self.log_variational_ = log_variational
         self.node_label_method_ = node_label_method
@@ -307,6 +312,7 @@ class Autotalker(BaseModelMixin):
             dropout_rate_graph_decoder=self.dropout_rate_graph_decoder_,
             include_edge_recon_loss=self.include_edge_recon_loss_,
             include_gene_expr_recon_loss=self.include_gene_expr_recon_loss_,
+            include_cond_contrastive_loss=self.include_cond_contrastive_loss_,
             gene_expr_recon_dist=self.gene_expr_recon_dist_,
             node_label_method=self.node_label_method_,
             active_gp_thresh_ratio=self.active_gp_thresh_ratio_,

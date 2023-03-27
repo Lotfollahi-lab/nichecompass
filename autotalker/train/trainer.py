@@ -276,32 +276,30 @@ class Trainer(BaseTrainerMixin):
             for edge_train_data_batch, node_train_data_batch in zip(
                     self.edge_train_loader,
                     _cycle_iterable(self.node_train_loader)): # itertools.cycle
-                    # resulted in a painful memory leak
-                    
-                node_train_data_batch = node_train_data_batch.to(self.device)
-
+                                                              # resulted in
+                                                              # memory leak
                 # Forward pass node-level batch
+                node_train_data_batch = node_train_data_batch.to(self.device)
                 node_train_model_output = self.model(
                     data_batch=node_train_data_batch,
                     decoder="gene_expr",
                     use_only_active_gps=self.use_only_active_gps)
 
-                edge_train_data_batch = edge_train_data_batch.to(self.device)
-
                 # Forward pass edge-level batch
+                edge_train_data_batch = edge_train_data_batch.to(self.device)
                 edge_train_model_output = self.model(
                     data_batch=edge_train_data_batch,
                     decoder="graph",
                     use_only_active_gps=self.use_only_active_gps)
 
-                # Calculate training loss (edge reconstruction loss + gene
-                # expression reconstruction loss + regularization losses)
+                # Calculate training loss
                 train_loss_dict = self.model.loss(
                     edge_data_batch=edge_train_data_batch,
                     edge_model_output=edge_train_model_output,
                     node_model_output=node_train_model_output,
                     lambda_edge_recon=self.lambda_edge_recon_,
                     lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
+                    lambda_cond_contrastive=self.lambda_cond_contrastive_,
                     lambda_group_lasso=self.lambda_group_lasso_,
                     lambda_l1_masked=self.lambda_l1_masked_,
                     lambda_l1_addon=self.lambda_l1_addon_,
@@ -416,17 +414,16 @@ class Trainer(BaseTrainerMixin):
             node_val_model_output = self.model(
                 data_batch=node_val_data_batch,
                 decoder="gene_expr",
-                use_only_active_gps=True)
+                use_only_active_gps=self.use_only_active_gps)
 
             # Forward pass edge level batch
             edge_val_data_batch = edge_val_data_batch.to(self.device)
             edge_val_model_output = self.model(
                 data_batch=edge_val_data_batch,
                 decoder="graph",
-                use_only_active_gps=True)
+                use_only_active_gps=self.use_only_active_gps)
 
-            # Calculate validation loss (edge reconstruction loss + gene 
-            # expression reconstruction loss + regularization losses)
+            # Calculate validation loss
             val_loss_dict = self.model.loss(
                     edge_data_batch=edge_val_data_batch,
                     edge_model_output=edge_val_model_output,
@@ -438,6 +435,7 @@ class Trainer(BaseTrainerMixin):
                     lambda_l1_masked=self.lambda_l1_masked_,
                     lambda_l1_addon=self.lambda_l1_addon_,
                     edge_recon_active=True)
+
             val_global_loss = val_loss_dict["global_loss"]
             val_optim_loss = val_loss_dict["optim_loss"]
             if self.verbose_:
