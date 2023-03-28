@@ -155,24 +155,14 @@ def compute_clisis(
             n_cores=1,
             verbose=False)
         
-        print(spatial_cell_clisi_scores.shape)
-        
     elif condition_key is not None:
         # Compute cell CLISI scores for spatial nearest neighbor graph
         # of each condition separately and store in one array
-        unique_cell_types = sorted(adata.obs[cell_type_key].unique().tolist())
         unique_conditions = adata.obs[condition_key].unique().tolist()
-        condition_spatial_cell_clisi_scores = np.zeros((
-            len(unique_conditions),
-            len(unique_cell_types),
-            len(unique_cell_types)))
-        for i, condition in enumerate(unique_conditions):
+        spatial_cell_clisi_scores = np.zeros(len(adata))
+        adata.obs["index"] = np.arange(len(adata))
+        for condition in unique_conditions:
             adata_condition = adata[adata.obs[condition_key] == condition]
-            condition_unique_cell_types = sorted(
-                adata_condition.obs[cell_type_key].unique().tolist())
-            condition_cell_type_idx = [unique_cell_types.index(cell_type) for 
-                                       cell_type in condition_unique_cell_types]
-            
             
             print("Computing spatial nearest neighbor graph for "
                   f"{condition_key} {condition}...")
@@ -187,7 +177,7 @@ def compute_clisis(
             
             # Create tmp adata as scib does not allow to pass custom keys for
             # connectivities and neighbors
-            adata_tmp = adata.copy()
+            adata_tmp = adata_condition.copy()
             adata_tmp.obsp["connectivities"] = (
                 adata_condition.obsp[spatial_knng_connectivities_key])
             adata_tmp.uns["neighbors"] = (
@@ -202,18 +192,9 @@ def compute_clisis(
                 n_cores=1,
                 verbose=False)
             
-            # Save results: 'condition_cell_type_idx' to take into account
-            # that not all conditions include all cell types
-            for j, k in enumerate(condition_cell_type_idx):
-                condition_spatial_cell_clisi_scores[
-                    i, k, condition_cell_type_idx] = (
-                    condition_spatial_cell_clisi_scores[j, :])
-            print(condition_spatial_cell_clisi_scores)
-            
-        print("Combining spatial cell CLISI scores across conditions...")
-        # Compute mean cell CLISI scores across conditions
-        spatial_cell_clisi_scores = (
-            np.mean(condition_spatial_cell_clisi_scores, axis=0))      
+            # Save results
+            spatial_cell_clisi_scores[adata_condition.obs["index"].values] = (
+                condition_spatial_cell_clisi_scores)  
 
     if latent_knng_connectivities_key in adata.obsp:
         print("Using precomputed latent nearest neighbor graph...")
@@ -226,9 +207,10 @@ def compute_clisis(
                         random_state=seed,
                         key_added=latent_knng_key)
 
-    print("Computing latent cell CLISI scores for entire dataset...")
+    print("Computing latent cell CLISI scores...")
     # Create tmp adata as scib does not allow to pass custom keys for
     # connectivities and neighbors
+    adata_tmp = adata.copy()
     adata_tmp.obsp["connectivities"] = (
         adata.obsp[latent_knng_connectivities_key])
     adata_tmp.uns["neighbors"] = (

@@ -253,6 +253,7 @@ def compute_cas(
         print("Combining spatial neighborhood enrichment scores across "
                 "conditions...")
         # Compute mean zscores across conditions
+        adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"] = {}
         adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"] = (
             np.mean(condition_spatial_nhood_enrichments, axis=0))      
 
@@ -267,8 +268,7 @@ def compute_cas(
                         random_state=seed,
                         key_added=latent_knng_key)
 
-    print("Computing latent neighborhood enrichment scores for entire "
-          "dataset...")
+    print("Computing latent neighborhood enrichment scores...")
     # Compute cell type affinity matrix for latent nearest neighbor graph
     sq.gr.nhood_enrichment(adata,
                            cluster_key=cell_type_key,
