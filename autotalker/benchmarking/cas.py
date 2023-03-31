@@ -1,8 +1,8 @@
 """
 This module contains the Cell Type Affinity Similiarity (CAS) benchmark for
 testing how accurately the latent nearest neighbor graph preserves
-cell-type-pair edges from the spatial (ground truth) nearest neighbor graph, a
-measure for global cell type neighborhood preservation.
+cell-type-pair edges from the spatial (ground truth) nearest neighbor graph(s).
+It is a measure for global cell type neighborhood preservation.
 """
 
 import math
@@ -27,14 +27,19 @@ def compute_cas(
         seed: int=0) -> float:
     """
     Compute the Cell Type Affinity Similarity (CAS) between the latent nearest
-    neighbor graph and the spatial nearest neighbor graph. The CAS measures how
-    accurately the latent nearest neighbor graph preserves cell-type-pair edges
-    from the spatial (ground truth) nearest neighbor graph. A value of '1'
-    indicates perfect cell-type-pair similarity and a value of '0' indicates no
+    neighbor graph and the spatial nearest neighbor graph (or spatial nearest
+    neighbor graphs if multiple conditions are present in the adata and the
+    respective ´condition_key´ is passed). The CAS measures how accurately the
+    latent nearest neighbor graph preserves cell-type-pair edges from the
+    spatial (ground truth) nearest neighbor graph(s). A value of '1' indicates
+    perfect cell-type-pair similarity and a value of '0' indicates no
     cell-type-pair similarity at all. The CAS is a variation of the Cell Type
     Affinity Distance which was first introduced by Lohoff, T. et al.
     Integration of spatial and single-cell transcriptomic data elucidates mouse
-    organogenesis. Nat. Biotechnol. 40, 74–85 (2022).
+    organogenesis. Nat. Biotechnol. 40, 74–85 (2022). It has also been adjusted
+    to work with multiple (unaligned) conditions by using separate spatial
+    nearest neighbor graphs for each condition and using the cell type counts
+    per condition as weighting factors.
     If existent, uses precomputed nearest neighbor graphs stored in
     ´adata.obsp[spatial_knng_key + '_connectivities']´ and
     ´adata.obsp[latent_knng_key + '_connectivities']´.
@@ -45,11 +50,9 @@ def compute_cas(
     Note that the used neighborhood enrichment implementation from squidpy
     slightly deviates from the original method and we construct nearest neighbor
     graphs using the original spatial coordinates and the latent representation
-    from a model respectively to compute the similarity. If a ´condition_key´ is
-    provided and no precomputed nearest neighbor graph is given, spatial
-    neighborhood enrichments are computed separately for each condition and
-    zscores are averaged. The cell type affinity matrices, also called cell-cell
-    contact (ccc) maps are stored in the AnnData object.
+    from a model respectively to compute the similarity. The cell type affinity
+    matrices, also called cell-cell contact (ccc) maps are stored in the AnnData
+    object.
 
     Parameters
     ----------
@@ -90,8 +93,9 @@ def compute_cas(
     ----------
     cas:
         Matrix similarity between the latent cell type affinity matrix and the
-        spatial (ground truth) cell type affinity matrix as measured by one
-        minus the size-normalied Frobenius norm of the element-wise matrix
+        spatial (ground truth) cell type affinity matrix (or
+        condition-aggregated spatial cell type affinity matrices) as measured by
+        one minus the size-normalied Frobenius norm of the element-wise matrix
         differences.
     """
     # Adding '_connectivities' as automatically added by sc.pp.neighbors()
@@ -120,7 +124,7 @@ def compute_cas(
         print("Computing spatial nearest neighbor graph for entire dataset...")
         # Compute spatial (ground truth) connectivities 
         # sc.pp.neighbors() returns weighted symmetric knn graph but
-        # nhood_enrichment will ignore the weights and treat it as binary knn
+        # nhood_enrichment will ignore the weights and treat it as a binary knn
         # graph)
         sc.pp.neighbors(adata=adata,
                         use_rep=spatial_key,
@@ -146,8 +150,9 @@ def compute_cas(
 
     elif condition_key is not None:
         # Compute cell type affinity matrix for spatial nearest neighbor graph
-        # of each condition separately, weigh by the counts of cell types and
-        # store in one array to compute weighted mean across conditions
+        # of each condition separately, weight by the condition-specific counts
+        # of cell types and store in one array to compute weighted mean across
+        # conditions
         unique_cell_types = sorted(adata.obs[cell_type_key].unique().tolist())
         unique_conditions = adata.obs[condition_key].unique().tolist()
         condition_spatial_nhood_enrichments = np.zeros((
@@ -162,7 +167,7 @@ def compute_cas(
             # Compute condition-specific spatial (ground truth) nearest
             # neighbor graph
             # sc.pp.neighbors() returns weighted symmetric knn graph but
-            # nhood_enrichment will ignore the weights and treat it as binary
+            # nhood_enrichment will ignore the weights and treat it as a binary
             # knn graph)
             sc.pp.neighbors(
                 adata=adata_condition,
@@ -195,33 +200,23 @@ def compute_cas(
                 adata_condition.obs[cell_type_key].value_counts().sort_index()
                 .values)
 
-            # Weigh zscores by condition cell type counts
+            # Weight zscores by condition-specific cell type counts
             for j, k in enumerate(condition_cell_type_idx):
                 condition_spatial_nhood_enrichments[
                     i, k, condition_cell_type_idx] = (
                 adata_condition.uns[f"{cell_type_key}_nhood_enrichment"]
                 ["zscore"][j, :] * condition_cell_type_counts[j])
-
-            print("stored enrichments")
-            print(condition_spatial_nhood_enrichments)
-            print("curr enrichments")
-            print(adata_condition.uns[f"{cell_type_key}_nhood_enrichment"]["count"])
-            print(adata_condition.uns[f"{cell_type_key}_nhood_enrichment"]["zscore"])
             
         print("Combining spatial neighborhood enrichment scores across "
                 "conditions...")
         cell_type_counts = (
             adata.obs[cell_type_key].value_counts().sort_index().values
             .reshape(-1, 1))
-        print(cell_type_counts)
-        print(np.mean(condition_spatial_nhood_enrichments, axis=0))
         # Compute weighted mean zscores across conditions
         adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"] = {}
         adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"] = (
             np.mean(condition_spatial_nhood_enrichments, axis=0) /
             cell_type_counts)
-
-        print(adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"])  
 
     if latent_knng_connectivities_key in adata.obsp:
         print("Using precomputed latent nearest neighbor graph...")
@@ -229,7 +224,7 @@ def compute_cas(
         print("Computing latent nearest neighbor graph...")
         # Compute latent connectivities
         # sc.pp.neighbors() returns weighted symmetric knn graph but
-        # nhood_enrichment will ignore the weights and treat it as binary knn
+        # nhood_enrichment will ignore the weights and treat it as a binary knn
         # graph)
         sc.pp.neighbors(adata=adata,
                         use_rep=latent_key,
@@ -250,7 +245,6 @@ def compute_cas(
     adata.uns[f"{cell_type_key}_latent_nhood_enrichment"] = {}
     adata.uns[f"{cell_type_key}_latent_nhood_enrichment"]["zscore"] = (
         adata.uns[f"{cell_type_key}_nhood_enrichment"]["zscore"])
-
     del adata.uns[f"{cell_type_key}_nhood_enrichment"]["zscore"]
 
     print("Computing CAS...")
@@ -261,7 +255,7 @@ def compute_cas(
         adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"])
 
     # Remove np.nan ´z_scores´ which can happen as a result of
-    # ´sq.pl.nhood_enrichment´ permutation
+    # ´sq.pl.nhood_enrichment´ permutation if std is 0
     nhood_enrichment_zscores_diff = (
         nhood_enrichment_zscores_diff[~np.isnan(nhood_enrichment_zscores_diff)])
     
@@ -279,11 +273,10 @@ def compute_avg_cas(
         adata: AnnData,
         cell_type_key: str="cell_type",
         spatial_key: str="spatial",
-        latent_key: str="autotalker_latent",
+        latent_key: str="latent",
         min_n_neighbors: int=1,
         max_n_neighbors: int=15,
-        seed: int=0,
-        visualize_ccc_maps: bool=False) -> float:
+        seed: int=0) -> float:
     """
     Compute multiple Cell Type Affinity Similarities (CAS) by varying the
     number of neighbors used for nearest neighbor graph construction (between
@@ -316,9 +309,6 @@ def compute_avg_cas(
         Maximum number of neighbors used for computing the average CAS.
     seed:
         Random seed for reproducibility.
-    visualize_ccc_maps:
-        If ´True´, also visualize the spatial and latent cell type affinity
-        matrices (cell-cell-contact maps).
 
     Returns
     ----------
