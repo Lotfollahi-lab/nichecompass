@@ -1,8 +1,9 @@
 """
 This module contains the Cell Type Local Inverse Simpson's Index Similarity
 (CLISIS) benchmark for testing how accurately the latent nearest neighbor graph
-preserves local neighborhood cell type heterogeneity from the physical (spatial)
-nearest neighbor graph.
+preserves local neighborhood cell type heterogeneity from the spatial (ground
+truth) nearest neighbor graph(s). It is a measure for local cell type
+neighborhood preservation.
 """
 
 from typing import Optional
@@ -17,35 +18,37 @@ def compute_clisis(
         adata: AnnData,
         cell_type_key: str="cell_type",
         condition_key: Optional[str]=None,
-        spatial_knng_key: str="autotalker_spatial_knng",
-        latent_knng_key: str="autotalker_latent_knng",
+        spatial_knng_key: str="spatial_knng",
+        latent_knng_key: str="latent_knng",
         spatial_key: Optional[str]="spatial",
-        latent_key: Optional[str]="autotalker_latent",
+        latent_key: Optional[str]="latent",
         n_neighbors: Optional[int]=15,
         lisi_graph_n_neighbors: int=90,
         seed: int=0) -> float:
     """
     Compute the Cell Type Local Inverse Simpson's Index Similarity (CLISIS). The
     CLISIS measures how accurately the latent nearest neighbor graph preserves
-    local neighborhood cell type heterogeneity from the spatial (ground truth)
-    nearest neighbor graph. The CLISIS ranges between '0' and '1' with higher
-    values indicating better local neighborhood cell type heterogeneity
-    preservation. It is computed by first calculating the Cell Type Local
-    Inverse Simpson's Index (CLISI) as proposed by Luecken, M. D. et al.
-    Benchmarking atlas-level data integration in single-cell genomics. Nat.
-    Methods 19, 41–50 (2022) on the latent and spatial nearest neighbor graphs
-    respectively.* Afterwards, the ratio of the two CLISI scores is taken and
-    logarithmized as proposed by Heidari, E. et al. Supervised spatial inference
-    of dissociated single-cell data with SageNet. bioRxiv 2022.04.14.488419
-    (2022) doi:10.1101/2022.04.14.488419, leveraging the properties of the log
-    that np.log2(x/y) = -np.log2(y/x) and np.log2(x/x) = 0. At this stage,
-    values closer to 0 indicate better local neighborhood cell type
-    heterogeneity preservation. We then normalize the resulting value by the
-    maximum possible value that would occur in the case of minimal local
-    neighborhood cell ype preservation to scale our metric between '0' and '1'.
-    Finally, we compute the median of the absolute normalized scores and
-    subtract it from 1 so that values closer to '1' indicate better local
-    neighborhood cell type heterogeneity preservation.
+    local neighborhood cell type heterogeneity from the spatial nearest neighbor
+    graph (or spatial nearest neighbor graphs if multiple conditions are present
+    in the adata and the respective ´condition_key´ is passed). The CLISIS
+    ranges between '0' and '1' with higher values indicating better local
+    neighborhood cell type heterogeneity preservation. It is computed by first
+    calculating the Cell Type Local Inverse Simpson's Index (CLISI) as proposed
+    by Luecken, M. D. et al. Benchmarking atlas-level data integration in
+    single-cell genomics. Nat. Methods 19, 41–50 (2022) on the latent and
+    spatial nearest neighbor graph(s) respectively.* Afterwards, the ratio of
+    the two CLISI scores is taken and logarithmized as proposed by Heidari, E.
+    et al. Supervised spatial inference of dissociated single-cell data with
+    SageNet. bioRxiv 2022.04.14.488419 (2022) doi:10.1101/2022.04.14.488419,
+    leveraging the properties of the log that np.log2(x/y) = -np.log2(y/x) and
+    np.log2(x/x) = 0. At this stage, values closer to 0 indicate better local
+    neighborhood cell type heterogeneity preservation. We then normalize the
+    resulting value by the maximum possible value that would occur in the case
+    of minimal local neighborhood cell ype preservation to scale our metric
+    between '0' and '1'. Finally, we compute the median of the absolute
+    normalized scores and subtract it from 1 so that values closer to '1'
+    indicate better local neighborhood cell type heterogeneity preservation.
+    The metric also works for multiple (unaligned) conditions.
     If existent, uses precomputed nearest neighbor graphs stored in
     ´adata.obsp[spatial_knng_key + '_connectivities']´ and
     ´adata.obsp[latent_knng_key + '_connectivities']´.
