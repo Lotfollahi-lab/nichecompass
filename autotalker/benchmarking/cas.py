@@ -1,7 +1,7 @@
 """
 This module contains the Cell Type Affinity Similiarity (CAS) benchmark for
 testing how accurately the latent nearest neighbor graph preserves
-cell-type-pair edges from the spatial (ground truth) nearest neighbor graph(s).
+cell-type-pair edges from the spatial (ground truth) nearest neighbor graph.
 It is a measure for global cell type neighborhood preservation.
 """
 
@@ -10,6 +10,7 @@ from typing import Optional
 
 import numpy as np
 import scanpy as sc
+import scipy.sparse as sp
 import squidpy as sq
 from anndata import AnnData
 
@@ -27,19 +28,18 @@ def compute_cas(
         seed: int=0) -> float:
     """
     Compute the Cell Type Affinity Similarity (CAS) between the latent nearest
-    neighbor graph and the spatial nearest neighbor graph (or spatial nearest
-    neighbor graphs if multiple conditions are present in the adata and the
-    respective ´condition_key´ is passed). The CAS measures how accurately the
-    latent nearest neighbor graph preserves cell-type-pair edges from the
-    spatial (ground truth) nearest neighbor graph(s). A value of '1' indicates
-    perfect cell-type-pair similarity and a value of '0' indicates no
+    neighbor graph and the spatial nearest neighbor graph. The CAS measures how
+    accurately the latent nearest neighbor graph preserves cell-type-pair edges
+    from the spatial (ground truth) nearest neighbor graph. A value of '1'
+    indicates perfect cell-type-pair similarity and a value of '0' indicates no
     cell-type-pair similarity at all. The CAS is a variation of the Cell Type
     Affinity Distance which was first introduced by Lohoff, T. et al.
     Integration of spatial and single-cell transcriptomic data elucidates mouse
     organogenesis. Nat. Biotechnol. 40, 74–85 (2022). It has also been adjusted
-    to work with multiple (unaligned) conditions by using separate spatial
-    nearest neighbor graphs for each condition and using the cell type counts
-    per condition as weighting factors.
+    to work with multiple (unaligned) conditions. If multiple conditions are
+    present in the adata and the respective ´condition_key´ is passed, separate
+    spatial nearest neighbor graphs per condition will be computed and are then
+    combined as disconnected components by padding with 0s.
     If existent, uses precomputed nearest neighbor graphs stored in
     ´adata.obsp[spatial_knng_key + '_connectivities']´ and
     ´adata.obsp[latent_knng_key + '_connectivities']´.
@@ -104,71 +104,29 @@ def compute_cas(
 
     if spatial_knng_connectivities_key in adata.obsp:
         print("Using precomputed spatial nearest neighbor graph...")
-        print("Computing spatial neighborhood enrichment scores for entire "
-              "dataset...")
-        # Compute cell type affinity matrix for spatial nearest neighbor graph
-        sq.gr.nhood_enrichment(adata=adata,
-                               cluster_key=cell_type_key,
-                               connectivity_key=spatial_knng_key,
-                               n_perms=n_perms,
-                               seed=seed,
-                               show_progress_bar=False)
-        
-        # Save results in adata (no ´key_added´ functionality in squidpy)
-        adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"] = {}
-        adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"] = (
-            adata.uns[f"{cell_type_key}_nhood_enrichment"]["zscore"])
-        del(adata.uns[f"{cell_type_key}_nhood_enrichment"]["zscore"])
-
     elif condition_key is None:
         print("Computing spatial nearest neighbor graph for entire dataset...")
-        # Compute spatial (ground truth) connectivities 
         # sc.pp.neighbors() returns weighted symmetric knn graph but
-        # nhood_enrichment will ignore the weights and treat it as a binary knn
-        # graph)
+        # nhood_enrichment will ignore the weights and treat it as an unweighted
+        # knn graph)
         sc.pp.neighbors(adata=adata,
                         use_rep=spatial_key,
                         n_neighbors=n_neighbors,
                         random_state=seed,
                         key_added=spatial_knng_key)
-        
-        print("Computing spatial neighborhood enrichment scores for entire "
-              "dataset...")
-        # Compute cell type affinity matrix for spatial nearest neighbor graph
-        sq.gr.nhood_enrichment(adata=adata,
-                               cluster_key=cell_type_key,
-                               connectivity_key=spatial_knng_key,
-                               n_perms=n_perms,
-                               seed=seed,
-                               show_progress_bar=False)
-        
-        # Save results in adata (no ´key_added´ functionality in squidpy)
-        adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"] = {}
-        adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"] = (
-            adata.uns[f"{cell_type_key}_nhood_enrichment"]["zscore"])
-        del(adata.uns[f"{cell_type_key}_nhood_enrichment"]["zscore"])
-
     elif condition_key is not None:
-        # Compute cell type affinity matrix for spatial nearest neighbor graph
-        # of each condition separately, weight by the condition-specific counts
-        # of cell types and store in one array to compute weighted mean across
-        # conditions
-        unique_cell_types = sorted(adata.obs[cell_type_key].unique().tolist())
+        # Compute spatial nearest neighbor graph for each condition separately,
+        # then combine them as disconnected components by padding with 0s
+        adata_condition_list = []
         unique_conditions = adata.obs[condition_key].unique().tolist()
-        condition_spatial_nhood_enrichments = np.zeros((
-            len(unique_conditions),
-            len(unique_cell_types),
-            len(unique_cell_types)))
-        for i, condition in enumerate(unique_conditions):
-            adata_condition = adata[adata.obs[condition_key] == condition]
-            
+        for condition in unique_conditions:
             print("Computing spatial nearest neighbor graph for "
                   f"{condition_key} {condition}...")
-            # Compute condition-specific spatial (ground truth) nearest
-            # neighbor graph
+            adata_condition = adata[adata.obs[condition_key] == condition]
+
             # sc.pp.neighbors() returns weighted symmetric knn graph but
-            # nhood_enrichment will ignore the weights and treat it as a binary
-            # knn graph)
+            # nhood_enrichment will ignore the weights and treat it as an
+            # unweighted knn graph)
             sc.pp.neighbors(
                 adata=adata_condition,
                 use_rep=spatial_key,
@@ -176,56 +134,71 @@ def compute_cas(
                 random_state=seed,
                 key_added=spatial_knng_key)
 
-            print("Computing spatial neighborhood enrichment scores for "
-                    f"{condition_key} {condition}...")
+            adata_condition_list.append(adata_condition)
 
-            # Compute cell type affinity matrix for condition-specific
-            # spatial nearest neighbor graph
-            sq.gr.nhood_enrichment(
-                adata=adata_condition,
-                cluster_key=cell_type_key,
-                connectivity_key=spatial_knng_key,
-                n_perms=n_perms,
-                seed=seed,
-                show_progress_bar=False)
+        print("Combining spatial nearest neighbor graphs...")
+        condition_connectivities = []
+        len_before_condition = 0
+        for i in range(len(adata_condition_list)):
+            if i == 0: # first condition
+                after_condition_connectivities_extension = sp.csr_matrix(
+                    (adata_condition_list[0].shape[0],
+                    (adata.shape[0] -
+                    adata_condition_list[0].shape[0])))
+                condition_connectivities.append(sp.hstack(
+                    (adata_condition_list[0].obsp[
+                        spatial_knng_connectivities_key],
+                    after_condition_connectivities_extension)))
+            elif i == (len(adata_condition_list) - 1): # last condition
+                before_condition_connectivities_extension = sp.csr_matrix(
+                    (adata_condition_list[i].shape[0],
+                    (adata.shape[0] -
+                    adata_condition_list[i].shape[0])))
+                condition_connectivities.append(sp.hstack(
+                    (before_condition_connectivities_extension,
+                    adata_condition_list[i].obsp[
+                        spatial_knng_connectivities_key])))
+            else: # middle conditiones
+                before_condition_connectivities_extension = sp.csr_matrix(
+                    (adata_condition_list[i].shape[0], len_before_condition))
+                after_condition_connectivities_extension = sp.csr_matrix(
+                    (adata_condition_list[i].shape[0],
+                    (adata.shape[0] -
+                    adata_condition_list[i].shape[0] -
+                    len_before_condition)))
+                condition_connectivities.append(sp.hstack(
+                    (before_condition_connectivities_extension,
+                    adata_condition_list[i].obsp[
+                        spatial_knng_connectivities_key],
+                    after_condition_connectivities_extension)))
+            len_before_condition += adata_condition_list[i].shape[0]
+        connectivities = sp.vstack(condition_connectivities)
+        adata.obsp[spatial_knng_connectivities_key] = connectivities
+        adata.uns[spatial_knng_key] = adata_condition_list[0].uns[
+            spatial_knng_key]
 
-            # Save results: 'condition_cell_type_idx' to take into account
-            # that not all conditions include all cell types
-            condition_unique_cell_types = sorted(
-                adata_condition.obs[cell_type_key].unique().tolist())
-            condition_cell_type_idx = [unique_cell_types.index(cell_type) for 
-                                       cell_type in condition_unique_cell_types]
-
-            condition_cell_type_counts = (
-                adata_condition.obs[cell_type_key].value_counts().sort_index()
-                .values)
-
-            # Weight zscores by condition-specific cell type counts
-            for j, k in enumerate(condition_cell_type_idx):
-                condition_spatial_nhood_enrichments[
-                    i, k, condition_cell_type_idx] = (
-                adata_condition.uns[f"{cell_type_key}_nhood_enrichment"]
-                ["zscore"][j, :] * condition_cell_type_counts[j])
-            
-        print("Combining spatial neighborhood enrichment scores across "
-                "conditions...")
-        cell_type_counts = (
-            adata.obs[cell_type_key].value_counts().sort_index().values
-            .reshape(-1, 1))
-        # Compute weighted mean zscores across conditions
-        adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"] = {}
-        adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"] = (
-            np.mean(condition_spatial_nhood_enrichments, axis=0) /
-            cell_type_counts)
+    print("Computing spatial neighborhood enrichment scores...")
+    # Compute cell type affinity matrix for spatial nearest neighbor graph
+    sq.gr.nhood_enrichment(adata=adata,
+                            cluster_key=cell_type_key,
+                            connectivity_key=spatial_knng_key,
+                            n_perms=n_perms,
+                            seed=seed,
+                            show_progress_bar=False)
+    
+    # Save results in adata (no ´key_added´ functionality in squidpy)
+    adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"] = {}
+    adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"] = (
+        adata.uns[f"{cell_type_key}_nhood_enrichment"]["zscore"])
+    del(adata.uns[f"{cell_type_key}_nhood_enrichment"]["zscore"])
 
     if latent_knng_connectivities_key in adata.obsp:
         print("Using precomputed latent nearest neighbor graph...")
     else:
         print("Computing latent nearest neighbor graph...")
-        # Compute latent connectivities
         # sc.pp.neighbors() returns weighted symmetric knn graph but
-        # nhood_enrichment will ignore the weights and treat it as a binary knn
-        # graph)
+        # nhood_enrichment will ignore the weights and treat it as an unweighted
+        # knn graph)
         sc.pp.neighbors(adata=adata,
                         use_rep=latent_key,
                         n_neighbors=n_neighbors,
