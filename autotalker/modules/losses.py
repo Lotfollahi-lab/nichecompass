@@ -5,6 +5,7 @@ Graph Autoencoder module.
 
 from typing import Iterable, Optional, Tuple
 
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -40,14 +41,15 @@ def compute_cond_contrastive_loss(
         edge_labels: torch.Tensor,
         edge_label_index: torch.Tensor,
         edge_label_conditions: Optional[torch.Tensor],
-        edge_recon_logits_thresh: float=0.7) -> torch.Tensor:
+        contrastive_logits_ratio: float=0.1) -> torch.Tensor:
     """
-    Compute conditional contrastive loss. Negative edges with nodes from
-    different conditions whose edge reconstruction logits are above
-    ´edge_recon_logits_thresh´ are considered positive examples. Negative edges
-    with nodes from the same condition and negative edges with nodes from
-    different conditions whose edge reconstruction logits are below
-    ´edge_recon_logits_thresh´ are considered negative examples.
+    Compute conditional contrastive weighted binary cross entropy loss with
+    logits. Sampled negative edges with nodes from different conditions whose
+    edge reconstruction logits are among the top (´contrastive_logits_ratio´ *
+    100)% logits are considered positive examples. Sampled negative edges with
+    nodes from different conditions whose edge reconstruction logits are among
+    the bottom (´contrastive_logits_ratio´ * 100)% logits are considered
+    negative examples.
 
     Parameters
     ----------
@@ -58,56 +60,65 @@ def compute_cond_contrastive_loss(
     edge_label_index:
         Index with edge labels for both positive and negatively sampled edges.
     edge_label_conditions:
-        Conditions to which edges belong.
-    edge_recon_logits_thresh:
-        Edge reconstruction logits threshold above which edges with nodes from
-        different conditions are considered positive examples.
+        Conditions to which edge nodes belong.
+    logits_contrastive_ratio:
+        Ratio for determining the contrastive logits. The top
+        (´contrastive_logits_ratio´ * 100)% logits of sampled negative edges
+        with nodes from different conditions serve as positive labels for the
+        contrastive loss and the bottom (´contrastive_logits_ratio´ * 100)%
+        logits of sampled negative edges with nodes from different conditions
+        serve as negative labels.
 
     Returns
     ----------
     cond_contrastive_loss:
-        Conditional contrastive loss.
+        Conditional contrastive binary cross entropy loss.
     """
-    # Keep only negative edges
-    negative_edge = edge_labels == 0
-    cond_labels = edge_labels[negative_edge]
-    edge_label_index = edge_label_index[:, negative_edge]
+    if edge_label_conditions is not None:
+        # Remove examples that have nodes from the same condition
+        same_condition_edge = (edge_label_conditions[edge_label_index[0]] ==
+                               edge_label_conditions[edge_label_index[1]])
+        edge_labels = edge_labels[~same_condition_edge]
+        edge_label_index = edge_label_index[:, ~same_condition_edge]
+    else:
+        return torch.tensor(0.)
 
-    # Divide negative edges by same and different condition of edge nodes
-    diff_condition_edge = (edge_label_conditions[edge_label_index[0]] !=
-                           edge_label_conditions[edge_label_index[1]])
-
-    # Set labels of different condition to 1 (same condition is 0)
-    cond_labels[diff_condition_edge] = 1
-
-    edge_recon_logits, cond_labels_sorted = edge_values_and_sorted_labels(
+    edge_recon_logits, edge_labels_sorted = edge_values_and_sorted_labels(
         adj=adj_recon_logits,
         edge_label_index=edge_label_index,
-        edge_labels=cond_labels)
+        edge_labels=edge_labels)
 
-    # Set labels of different condition with logits below
-    # ´logits_below_thresh_diff_condition_edge 1´ to 0
-    logits_below_thresh_diff_condition_edge = (
-        (cond_labels_sorted == 1) & 
-        (edge_recon_logits < edge_recon_logits_thresh))
-    cond_labels_sorted[logits_below_thresh_diff_condition_edge] = 0
+    # Determine thresholds for positive and negative examples
+    pos_thresh = torch.topk(
+        edge_recon_logits.detach().clone(),
+        math.ceil(contrastive_logits_ratio * len(edge_recon_logits))).values[-1]
+    neg_thresh = torch.topk(
+        edge_recon_logits.detach().clone(),
+        math.ceil(contrastive_logits_ratio * len(edge_recon_logits)),
+        largest=False).values[-1]
+
+    # Set labels of logits above ´pos_thresh´ to 1 and labels of logits below
+    # ´neg_thresh´ to 0 and exclude other examples from the loss
+    logits_above_pos_thresh = edge_recon_logits >= pos_thresh
+    logits_below_neg_thresh = edge_recon_logits <= neg_thresh
+    edge_labels_sorted[logits_above_pos_thresh] = 1
+    edge_labels_sorted[logits_below_neg_thresh] = 0
+    edge_recon_logits = edge_recon_logits[
+        logits_above_pos_thresh | logits_below_neg_thresh]
+    edge_labels_sorted = edge_labels_sorted[
+        logits_above_pos_thresh | logits_below_neg_thresh]
 
     # Determine weighting of positive examples
-    if (cond_labels_sorted == 1.).sum(dim=0) != 0:
-        pos_labels = (cond_labels_sorted == 1.).sum(dim=0)
-        neg_labels = (cond_labels_sorted == 0.).sum(dim=0)
-        pos_weight = neg_labels / pos_labels
+    pos_labels = (edge_labels_sorted == 1.).sum(dim=0)
+    neg_labels = (edge_labels_sorted == 0.).sum(dim=0)
+    pos_weight = neg_labels / pos_labels
 
-        # Compute weighted cross entropy loss
-        cond_contrastive_loss = F.binary_cross_entropy_with_logits(
-            edge_recon_logits,
-            cond_labels_sorted,
-            pos_weight=pos_weight)
-        return cond_contrastive_loss
-    else:
-        cond_contrastive_loss = torch.tensor(0.,
-                                             device=cond_labels_sorted.device)
-        return cond_contrastive_loss
+    # Compute weighted cross entropy loss
+    cond_contrastive_loss = F.binary_cross_entropy_with_logits(
+        edge_recon_logits,
+        edge_labels_sorted,
+        pos_weight=pos_weight)
+    return cond_contrastive_loss
 
 def compute_edge_recon_loss(
         adj_recon_logits: torch.Tensor,
@@ -138,23 +149,21 @@ def compute_edge_recon_loss(
         backpropagation).
     """
     if edge_label_conditions is not None:
-        # Remove negative samples that are not within a condition
-        # (This implementation is not super efficient and could be improved
-        # in the future by avoiding to sample these edges in the first place)
+        # Remove examples that are not within a condition
         same_condition_edge = (edge_label_conditions[edge_label_index[0]] ==
                                edge_label_conditions[edge_label_index[1]])
         edge_labels = edge_labels[same_condition_edge]
         edge_label_index = edge_label_index[:, same_condition_edge]
 
-    # Determine weighting of positive examples
-    pos_labels = (edge_labels == 1.).sum(dim=0)
-    neg_labels = (edge_labels == 0.).sum(dim=0)
-    pos_weight = neg_labels / pos_labels
-
     edge_recon_logits, edge_labels_sorted = edge_values_and_sorted_labels(
         adj=adj_recon_logits,
         edge_label_index=edge_label_index,
         edge_labels=edge_labels)
+
+    # Determine weighting of positive examples
+    pos_labels = (edge_labels_sorted == 1.).sum(dim=0)
+    neg_labels = (edge_labels_sorted == 0.).sum(dim=0)
+    pos_weight = neg_labels / pos_labels
 
     # Compute weighted cross entropy loss
     edge_recon_loss = F.binary_cross_entropy_with_logits(edge_recon_logits,

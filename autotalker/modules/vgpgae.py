@@ -346,7 +346,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
              lambda_gene_expr_recon: float=0.1,
              lambda_edge_recon: Optional[float]=1.,
              lambda_cond_contrastive: Optional[float]=1.,
-             cond_contrastive_thresh: float=0.7,
+             contrastive_logits_ratio: float=0.1,
              edge_recon_active: bool=True) -> dict:
         """
         Calculate the optimization loss for backpropagation as well as the 
@@ -388,10 +388,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             very similar latent representations to become more similar and 
             observations with different latent representations to become more
             different.
-        cond_contrastive_thresh:
-            Edge reconstruction logits threshold above which edges with nodes
-            from different conditions are considered positive examples for the
-            conditional contrastive loss.
+        contrastive_logits_ratio:
+            Ratio for determining the contrastive logits for the conditional
+            contrastive loss. The top (´contrastive_logits_ratio´ * 100)% logits
+            of sampled negative edges with nodes from different conditions serve
+            as positive labels for the contrastive loss and the bottom
+            (´contrastive_logits_ratio´ * 100)% logits of sampled negative edges
+            with nodes from different conditions serve as negative labels.
         edge_recon_active:
             If ´True´, includes the edge reconstruction loss in the optimization
             / backpropagation. Setting this to ´False´ at the beginning of model
@@ -440,7 +443,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 edge_labels=edge_data_batch.edge_label,
                 edge_label_index=edge_data_batch.edge_label_index,
                 edge_label_conditions=edge_data_batch.conditions,
-                edge_recon_logits_thresh=cond_contrastive_thresh))
+                contrastive_logits_ratio=contrastive_logits_ratio))
 
         # Compute gene expression reconstruction negative binomial or
         # zero-inflated negative binomial loss
@@ -485,7 +488,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             if edge_recon_active:
                 loss_dict["optim_loss"] += loss_dict["edge_recon_loss"]
         if self.include_cond_contrastive_loss_ & (len(self.conditions_) != 0):
-            loss_dict["global_loss"] += loss_dict["cond_contrastive_loss"]
+            # loss_dict["global_loss"] += loss_dict["cond_contrastive_loss"]
             loss_dict["optim_loss"] += loss_dict["cond_contrastive_loss"]            
         if self.include_gene_expr_recon_loss_:
             loss_dict["global_loss"] += loss_dict["gene_expr_recon_loss"]
