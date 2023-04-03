@@ -65,8 +65,12 @@ class GraphEncoder(nn.Module):
               f"{n_attention_heads if conv_layer == 'gatv2conv' else '0'}, "
               f"dropout_rate: {dropout_rate}")
 
+        # Conditional embedding layer
         if n_cond_embed_input != 0:
-            n_input += n_cond_embed_input
+            # n_input += n_cond_embed_input
+            self.cond_embed_l = nn.Linear(n_cond_embed_input,
+                                          n_latent,
+                                          bias=False)
 
         if conv_layer == "gcnconv":
             if n_layers == 2:
@@ -133,8 +137,9 @@ class GraphEncoder(nn.Module):
             normal distribution.
         """
         # Add conditional embedding to node feature vector
-        if cond_embed is not None:
-            x = torch.cat((x, cond_embed), dim=-1)
+        # if cond_embed is not None:
+            # x = torch.cat((x, cond_embed), dim=-1)
+
 
         if self.n_layers == 2:
             # Part of forward pass shared across all nodes
@@ -145,6 +150,11 @@ class GraphEncoder(nn.Module):
         # Part of forward pass only for maskable latent nodes
         mu = self.conv_mu(hidden, edge_index)
         logstd = self.conv_logstd(hidden, edge_index)
+
+        # Add conditional embedding to latent feature vector
+        if cond_embed is not None:
+            mu += self.cond_embed_l(cond_embed)
+            logstd += self.cond_embed_l(cond_embed)
         
         # Part of forward pass only for unmaskable add-on latent nodes
         if self.n_addon_latent != 0:
