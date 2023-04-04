@@ -152,8 +152,7 @@ class Autotalker(BaseModelMixin):
                  latent_key: str="autotalker_latent",
                  condition_key: Optional[str]=None,
                  cond_embed_key: Optional[str]="autotalker_cond_embed",
-                 cond_embed_injection: Optional[list]=["encoder",
-                                                       "gene_expr_decoder"],
+                 cond_embed_injection: Optional[list]=["gene_expr_decoder"],
                  genes_idx_key: str="autotalker_genes_idx",
                  recon_adj_key: str="autotalker_recon_connectivities",
                  agg_alpha_key: str="autotalker_agg_alpha",
@@ -168,7 +167,7 @@ class Autotalker(BaseModelMixin):
                     "one-hop-norm",
                     "one-hop-attention"]="one-hop-attention",
                  active_gp_thresh_ratio: float=0.03,
-                 n_layers_encoder: int=2,
+                 n_layers_encoder: int=1,
                  n_hidden_encoder: int=256,
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=4,
@@ -178,7 +177,7 @@ class Autotalker(BaseModelMixin):
                  gp_sources_mask: Optional[Union[np.ndarray, list]]=None,
                  conditions: Optional[list]=None, 
                  n_addon_gps: int=0,
-                 n_cond_embed: int=10):
+                 n_cond_embed: int=128):
         self.adata = adata
         self.counts_key_ = counts_key
         self.adj_key_ = adj_key
@@ -329,9 +328,9 @@ class Autotalker(BaseModelMixin):
               n_epochs_no_edge_recon: int=0,
               lr: float=0.001,
               weight_decay: float=0.,
-              lambda_edge_recon: Optional[float]=1.,
-              lambda_gene_expr_recon: float=0.1,
-              lambda_cond_contrastive: float=1.,
+              lambda_edge_recon: Optional[float]=10.,
+              lambda_gene_expr_recon: float=0.01,
+              lambda_cond_contrastive: float=10.,
               contrastive_logits_ratio: float=0.1,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,

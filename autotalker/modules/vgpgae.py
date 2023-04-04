@@ -141,7 +141,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     "one-hop-norm",
                     "one-hop-sum",
                     "one-hop-attention"]="one-hop-attention",
-                 active_gp_thresh_ratio: float=1.,
+                 active_gp_thresh_ratio: float=0.03,
                  log_variational: bool=True,
                  cond_embed_injection: Optional[list]=["gene_expr_decoder"],
                  cond_edge_neg_sampling: bool=True):
