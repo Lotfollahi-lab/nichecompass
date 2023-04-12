@@ -72,11 +72,11 @@ class GraphEncoder(nn.Module):
                                           n_latent,
                                           bias=False)
 
+        self.fc_l = nn.Linear(n_input, n_hidden, bias=False)
+
         if conv_layer == "gcnconv":
             if n_layers == 2:
-                self.conv_l1 = GCNConv(n_input, n_hidden)
-            elif n_layers == 1:
-                n_hidden = n_input
+                self.conv_l1 = GCNConv(n_hidden, n_hidden)
             self.conv_mu = GCNConv(n_hidden, n_latent)
             self.conv_logstd = GCNConv(n_hidden, n_latent)
             if n_addon_latent != 0:
@@ -84,12 +84,10 @@ class GraphEncoder(nn.Module):
                 self.addon_conv_logstd = GCNConv(n_hidden, n_addon_latent)           
         elif conv_layer == "gatv2conv":
             if n_layers == 2:
-                self.conv_l1 = GATv2Conv(n_input,
+                self.conv_l1 = GATv2Conv(n_hidden,
                                          n_hidden,
                                          heads=n_attention_heads,
                                          concat=False)
-            elif n_layers == 1:
-                n_hidden = n_input
             self.conv_mu = GATv2Conv(n_hidden,
                                      n_latent,
                                      heads=n_attention_heads,
@@ -136,16 +134,12 @@ class GraphEncoder(nn.Module):
             Tensor containing the log standard deviations of the latent space
             normal distribution.
         """
-        # Add conditional embedding to node feature vector
-        # if cond_embed is not None:
-            # x = torch.cat((x, cond_embed), dim=-1)
-
-
+        # FC forward pass shared across all nodes
+        hidden = self.dropout(self.activation(self.fc_l(x)))
         if self.n_layers == 2:
             # Part of forward pass shared across all nodes
-            hidden = self.dropout(self.activation(self.conv_l1(x, edge_index)))
-        elif self.n_layers == 1:
-            hidden = x
+            hidden = self.dropout(self.activation(
+                self.conv_l1(hidden, edge_index)))
 
         # Part of forward pass only for maskable latent nodes
         mu = self.conv_mu(hidden, edge_index)
