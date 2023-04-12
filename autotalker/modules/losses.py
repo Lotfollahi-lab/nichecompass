@@ -108,16 +108,10 @@ def compute_cond_contrastive_loss(
     edge_labels_sorted = edge_labels_sorted[
         logits_above_pos_thresh | logits_below_neg_thresh]
 
-    # Determine weighting of positive examples
-    pos_labels = (edge_labels_sorted == 1.).sum(dim=0)
-    neg_labels = (edge_labels_sorted == 0.).sum(dim=0)
-    pos_weight = neg_labels / pos_labels
-
-    # Compute weighted cross entropy loss
+    # Compute bce loss from logits for numerical stability
     cond_contrastive_loss = F.binary_cross_entropy_with_logits(
         edge_recon_logits,
-        edge_labels_sorted,
-        pos_weight=pos_weight)
+        edge_labels_sorted)
     return cond_contrastive_loss
 
 def compute_edge_recon_loss(
