@@ -74,7 +74,7 @@ def compute_cond_contrastive_loss(
     cond_contrastive_loss:
         Conditional contrastive binary cross entropy loss.
     """
-    if edge_label_conditions is not None:
+    if edge_label_conditions is not None and contrastive_logits_ratio > 0:
         # Remove examples that have nodes from the same condition
         same_condition_edge = (edge_label_conditions[edge_label_index[0]] ==
                                edge_label_conditions[edge_label_index[1]])
