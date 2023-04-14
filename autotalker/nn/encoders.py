@@ -72,7 +72,7 @@ class GraphEncoder(nn.Module):
                                           n_latent,
                                           bias=False)
 
-        self.fc_l = nn.Linear(n_input, n_hidden, bias=False)
+        self.fc_l = nn.Linear(n_input, n_hidden)
 
         if conv_layer == "gcnconv":
             if n_layers == 2:
