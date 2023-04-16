@@ -260,7 +260,7 @@ class MaskedGeneExprDecoder(nn.Module):
         return gene_expr_decoder_params
     
 
-    class MaskedChromAccessDecoder(nn.Module):
+class MaskedChromAccessDecoder(nn.Module):
     """
     Masked chromatin accessibility decoder class.
 
@@ -291,18 +291,18 @@ class MaskedGeneExprDecoder(nn.Module):
         Negative Binomial distribution.
     """
     def __init__(self,
-                 n_input: int,
-                 n_addon_input: int,
-                 n_cond_embed_input: int,
-                 n_output: int,
-                 mask: torch.Tensor,
-                 genes_idx: torch.Tensor,
-                 recon_dist: Literal["nb", "zinb"]):
+                    n_input: int,
+                    n_addon_input: int,
+                    n_cond_embed_input: int,
+                    n_output: int,
+                    mask: torch.Tensor,
+                    genes_idx: torch.Tensor,
+                    recon_dist: Literal["nb", "zinb"]):
         super().__init__()
 
-        print(f"MASKED GENE EXPRESSION DECODER -> n_input: {n_input}, "
-              f"n_cond_embed_input: {n_cond_embed_input}, n_addon_input: "
-              f"{n_addon_input}, n_output: {n_output}")
+        print("MASKED CHROMATIN ACCESSIBILITY DECODER -> n_input: "
+                f"{n_input}, n_cond_embed_input: {n_cond_embed_input}, "
+                f"n_addon_input: {n_addon_input}, n_output: {n_output}")
 
         self.genes_idx = genes_idx
         self.recon_dist = recon_dist
@@ -332,7 +332,7 @@ class MaskedGeneExprDecoder(nn.Module):
                 cond_embed: Optional[torch.Tensor]=None
                 ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Forward pass of the masked gene expression decoder.
+        Forward pass of the masked chromatin accessibility decoder.
 
         Parameters
         ----------
@@ -357,9 +357,9 @@ class MaskedGeneExprDecoder(nn.Module):
         nb_means = torch.exp(log_library_size) * nb_means_normalized
         nb_means = nb_means[:, self.genes_idx]
         if self.recon_dist == "nb":
-            gene_expr_decoder_params = nb_means
+            chrom_access_decoder_params = nb_means
         elif self.recon_dist == "zinb":
             zi_prob_logits = self.zi_prob_logits_decoder(z)
             zi_prob_logits = zi_prob_logits[:, self.genes_idx]
-            gene_expr_decoder_params = (nb_means, zi_prob_logits)
-        return gene_expr_decoder_params
+            chrom_access_decoder_params = (nb_means, zi_prob_logits)
+        return chrom_access_decoder_params

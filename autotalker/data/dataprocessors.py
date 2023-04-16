@@ -4,6 +4,7 @@ This module contains data processors for the training of an Autotalker model.
 
 from typing import Optional, Tuple
 
+import torch
 from anndata import AnnData
 from torch_geometric.data import Data
 from torch_geometric.transforms import RandomNodeSplit, RandomLinkSplit
@@ -93,6 +94,7 @@ def node_level_split_mask(data: Data,
 
 def prepare_data(adata: AnnData,
                  condition_label_encoder: dict,
+                 adata_atac: Optional[AnnData]=None,
                  counts_key: Optional[str]="counts",
                  adj_key: str="spatial_connectivities",
                  condition_key: Optional[str]=None,
@@ -111,6 +113,8 @@ def prepare_data(adata: AnnData,
         AnnData object with counts stored in ´adata.layers[counts_key]´ or
         ´adata.X´ depending on ´counts_key´, and sparse adjacency matrix stored
         in ´adata.obsp[adj_key]´.
+    adata_atac:
+        Additional optional AnnData object with paired spatial ATAC data.
     condition_label_encoder:
         Condition label encoder from the model (label encoding indeces need to
         be aligned with the ones from the model to get the correct conditional
@@ -145,15 +149,22 @@ def prepare_data(adata: AnnData,
     data_dict = {}
     dataset = SpatialAnnTorchDataset(
         adata=adata,
+        adata_atac=adata_atac,
         counts_key=counts_key,
         adj_key=adj_key,
         condition_key=condition_key,
         condition_label_encoder=condition_label_encoder)
+    
+    # Concatenate ATAC feature vector if provided
+    if adata_atac is not None:
+        x = torch.cat((dataset.x, dataset.x_atac), axis=1)
+    else:
+        x = dataset.x
 
     # PyG Data object (has 2 edge index pairs for one edge because of symmetry;
     # one edge index pair will be removed in the edge-level split).
     if condition_key is not None:
-        data = Data(x=dataset.x,
+        data = Data(x=x,
                     edge_index=dataset.edge_index,
                     edge_attr=dataset.edge_index.t(), # store index of edge
                                                       # nodes as edge attribute
@@ -162,7 +173,7 @@ def prepare_data(adata: AnnData,
                                                       # batches
                     conditions=dataset.conditions)
     else:
-        data = Data(x=dataset.x,
+        data = Data(x=x,
                     edge_index=dataset.edge_index,
                     edge_attr=dataset.edge_index.t())
 

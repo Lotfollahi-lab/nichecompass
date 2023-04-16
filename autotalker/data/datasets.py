@@ -24,6 +24,8 @@ class SpatialAnnTorchDataset():
         AnnData object with counts stored in ´adata.layers[counts_key]´ or
         ´adata.X´ depending on ´counts_key´, and sparse adjacency matrix stored
         in ´adata.obsp[adj_key]´.
+    adata_atac:
+        Additional optional AnnData object with paired spatial ATAC data.
     condition_label_encoder:
         Condition label encoder from the model (label encoding indeces need to
         be aligned with the ones from the model to get the correct conditional
@@ -40,6 +42,7 @@ class SpatialAnnTorchDataset():
     def __init__(self,
                  adata: AnnData,
                  condition_label_encoder: dict,
+                 adata_atac: Optional[AnnData]=None,
                  counts_key: Optional[str]="counts",
                  adj_key: str="spatial_connectivities",
                  condition_key: Optional[str]=None):
@@ -47,11 +50,20 @@ class SpatialAnnTorchDataset():
             x = adata.X
         else:
             x = adata.layers[counts_key]
+
         # Store features in dense format
         if sp.issparse(x): 
             self.x = torch.tensor(x.toarray())
         else:
             self.x = torch.tensor(x)
+
+        # Store ATAC feature vector in dense format if provided
+        if adata_atac is not None:
+            if sp.issparse(adata_atac.X): 
+                self.x_atac = torch.tensor(adata_atac.X.toarray())
+            else:
+                self.x_atac = torch.tensor(adata_atac.X)
+
 
         # Store adjacency matrix in torch_sparse SparseTensor format
         if sp.issparse(adata.obsp[adj_key]):
@@ -73,7 +85,7 @@ class SpatialAnnTorchDataset():
                               condition_key), dtype=torch.long)
 
         self.n_node_features = self.x.size(1)
-        self.size_factors = self.x.sum(1)
+        self.size_factors = self.x.sum(1) # fix for ATAC case
 
     def __len__(self):
         """Return the number of observations stored in SpatialAnnTorchDataset"""

@@ -15,6 +15,7 @@ from autotalker.nn import (CosineSimGraphDecoder,
                            DotProductGraphDecoder,
                            GraphEncoder,
                            MaskedGeneExprDecoder,
+                           MaskedChromAccessDecoder,
                            OneHopAttentionNodeLabelAggregator,
                            OneHopGCNNormNodeLabelAggregator,
                            OneHopSumNodeLabelAggregator,
@@ -126,6 +127,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  n_output: int,
                  gene_expr_decoder_mask: torch.Tensor,
                  genes_idx: torch.Tensor,
+                 chrom_access_decoder_mask: Optional[torch.Tensor]=None,
                  conditions: list=[],
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=4,
@@ -136,6 +138,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  include_gene_expr_recon_loss: bool=True,
                  include_cond_contrastive_loss: bool=True,
                  gene_expr_recon_dist: Literal["nb", "zinb"]="nb",
+                 chrom_access_recon_dist: Literal["nb", "zinb"]="nb",
                  node_label_method: Literal[
                     "self",
                     "one-hop-norm",
@@ -228,6 +231,18 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             mask=gene_expr_decoder_mask,
             genes_idx=genes_idx,
             recon_dist=self.gene_expr_recon_dist_)
+        
+        if chrom_access_decoder_mask is not None:
+            self.gene_expr_decoder = MaskedChromAccessDecoder(
+                n_input=n_nonaddon_gps,
+                n_addon_input=n_addon_gps,
+                n_cond_embed_input=(n_cond_embed if ("chrom_access_decoder" in
+                                    self.cond_embed_injection_) &
+                                    (self.n_conditions_ != 0) else 0),
+                n_output=n_output,
+                mask=chrom_access_decoder_mask,
+                genes_idx=genes_idx,
+                recon_dist=self.gene_expr_recon_dist_)            
 
         if node_label_method == "self":
             self.gene_expr_node_label_aggregator = (
@@ -344,6 +359,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
              lambda_l1_addon: float,
              lambda_group_lasso: float,
              lambda_gene_expr_recon: float=0.1,
+             lambda_chrom_access_recon: float=0.1,
              lambda_edge_recon: Optional[float]=1.,
              lambda_cond_contrastive: Optional[float]=1.,
              contrastive_logits_ratio: float=0.1,

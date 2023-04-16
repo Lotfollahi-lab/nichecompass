@@ -1,8 +1,6 @@
 name: autotalker
 channels:
   - pytorch
-  - conda-forge
-  - bioconda
 dependencies:
   - cudatoolkit=11.3.1
   - pip=22.2.2
@@ -16,7 +14,7 @@ dependencies:
     - jupyterlab==3.4.7
     - mlflow==1.28.0
     - pyreadr==0.4.6
-    - scglue==0.2.3
+    - scglue==0.3.2
     - selenium=4.8.2
     - scib==1.1.1
     - scikit-misc==0.1.4

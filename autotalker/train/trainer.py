@@ -40,6 +40,8 @@ class Trainer(BaseTrainerMixin):
         AnnData object with counts stored in ´adata.layers[counts_key]´ or
         ´adata.X´ depending on ´counts_key´ and sparse adjacency matrix stored
         in ´adata.obsp[adj_key]´.
+    adata_atac:
+        Additional optional AnnData object with paired spatial ATAC data.
     model:
         An Autotalker module model instance.
     counts_key:
@@ -76,6 +78,7 @@ class Trainer(BaseTrainerMixin):
     def __init__(self,
                  adata: AnnData,
                  model: nn.Module,
+                 adata_atac: Optional[AnnData]=None,
                  counts_key: Optional[str]="counts",
                  adj_key: str="spatial_connectivities",
                  condition_key: Optional[str]=None,
@@ -91,6 +94,7 @@ class Trainer(BaseTrainerMixin):
                  verbose: bool=False,
                  **kwargs):
         self.adata = adata
+        self.adata_atac = adata_atac
         self.model = model
         self.counts_key = counts_key
         self.adj_key = adj_key
@@ -141,6 +145,7 @@ class Trainer(BaseTrainerMixin):
         data_dict = prepare_data(
             adata=adata,
             condition_label_encoder=self.model.condition_label_encoder_,
+            adata_atac=adata_atac,
             counts_key=self.counts_key,
             adj_key=self.adj_key,
             condition_key=self.condition_key,

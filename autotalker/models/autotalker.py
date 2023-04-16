@@ -39,6 +39,8 @@ class Autotalker(BaseModelMixin):
         masks are passed explicitly to the model via parameters 
         ´gp_targets_mask´ and ´gp_sources_mask´, in which case this will have
         prevalence).
+    adata_atac:
+        Additional optional AnnData object with paired spatial ATAC data.
     counts_key:
         Key under which the counts are stored in ´adata.layer´. If ´None´, uses
         ´adata.X´ as counts. 
@@ -143,6 +145,7 @@ class Autotalker(BaseModelMixin):
     """
     def __init__(self,
                  adata: AnnData,
+                 adata_atac: Optional[AnnData]=None,
                  counts_key: Optional[str]="counts",
                  adj_key: str="spatial_connectivities",
                  gp_names_key: str="autotalker_gp_names",
@@ -179,6 +182,7 @@ class Autotalker(BaseModelMixin):
                  n_addon_gps: int=0,
                  n_cond_embed: int=128):
         self.adata = adata
+        self.adata_atac = adata_atac
         self.counts_key_ = counts_key
         self.adj_key_ = adj_key
         self.gp_names_key_ = gp_names_key
@@ -303,6 +307,7 @@ class Autotalker(BaseModelMixin):
             n_cond_embed=self.n_cond_embed_,
             n_output=self.n_output_,
             gene_expr_decoder_mask=self.gp_mask_,
+            chrom_access_decoder_mask=self.ca_mask_,
             genes_idx=self.genes_idx_,
             conditions=self.conditions_,
             conv_layer_encoder=self.conv_layer_encoder_,
@@ -409,6 +414,7 @@ class Autotalker(BaseModelMixin):
         """
         self.trainer = Trainer(
             adata=self.adata,
+            adata_atac=self.adata_atac,
             model=self.model,
             counts_key=self.counts_key_,
             adj_key=self.adj_key_,
