@@ -260,7 +260,7 @@ class MaskedGeneExprDecoder(nn.Module):
         return gene_expr_decoder_params
     
 
-    class MaskedChromAccessDecoder(nn.Module):
+class MaskedChromAccessDecoder(nn.Module):
     """
     Masked chromatin accessibility decoder class.
 
