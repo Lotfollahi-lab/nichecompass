@@ -13,6 +13,7 @@ from scglue import genomics
 
 def get_gene_annotations(
         adata: AnnData,
+        adata_atac: Optional[AnnData]=None,
         gtf_file_path: Optional[os.PathLike]="gencode.vM32.chr_patch_hapl_scaff.annotation.gtf.gz",
         adata_join_col_name: str=None,
         gtf_join_col_name: Optional[str]="gene_name",
@@ -67,3 +68,9 @@ def get_gene_annotations(
         gene_names).set_index(adata.var.index)
 
     adata.var = pd.concat([adata.var, merge_df], axis=1)
+
+    if adata_atac is not None:
+        split = adata_atac.var_names.str.split(r"[:-]")
+        adata_atac.var["chrom"] = split.map(lambda x: x[0])
+        adata_atac.var["chromStart"] = split.map(lambda x: x[1]).astype(int)
+        adata_atac.var["chromEnd"] = split.map(lambda x: x[2]).astype(int)
