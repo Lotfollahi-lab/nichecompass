@@ -4,7 +4,7 @@ chromosomes) as prior knowledge for use by the Autotalker model.
 """
 
 import os
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -17,7 +17,7 @@ def get_gene_annotations(
         gtf_file_path: Optional[os.PathLike]="gencode.vM32.chr_patch_hapl_scaff.annotation.gtf.gz",
         adata_join_col_name: str=None,
         gtf_join_col_name: Optional[str]="gene_name",
-        by_func: Optional[Callable] = None) -> None:
+        by_func: Optional[Callable]=None) -> None:
     """
     Get genomic annotations of genes by joining with a GTF file from GENCODE.
     The GFT file is provided but can also be downloaded from 
@@ -75,20 +75,20 @@ def get_gene_annotations(
         adata_atac.var["chromStart"] = split.map(lambda x: x[1]).astype(int)
         adata_atac.var["chromEnd"] = split.map(lambda x: x[2]).astype(int)
 
-def generate_multimodal_pairing_graph(
-    adata_rna: AnnData, 
-    adata_atac: AnnData,
-    gene_region: str = "combined",
-    promoter_len: int = 2000,
-    extend_range: int = 0,
-    extend_fn: Callable[[int], float] = dist_power_decay,
-    signs: Optional[List[int]] = None) -> nx.MultiDiGraph:
-    r"""
+def generate_multimodal_pairing_dict(
+        adata_rna: AnnData, 
+        adata_atac: AnnData,
+        gene_region: str="combined",
+        promoter_len: int=2000,
+        extend_range: int=0,
+        extend_fn: Callable[[int], float]=genomics.dist_power_decay,
+        uppercase=True) -> dict:
+    """
     Build guidance graph anchored on RNA genes
 
     Parameters
     ----------
-    rna
+    adata_rna
         Anchor RNA dataset
     *others
         Other datasets
@@ -116,8 +116,8 @@ def generate_multimodal_pairing_graph(
 
     Returns
     -------
-    graph
-        Prior regulatory graph
+    multimodal_dict:
+        Dictionary that maps genes to other modalities.
 
     Note
     ----
@@ -125,59 +125,108 @@ def generate_multimodal_pairing_graph(
     anchor genes via the same edge sign. For more flexibility, please
     construct the guidance graph manually.
     """
-    signs = signs or [1] * len(adata_atac)
-    if len(others) != len(signs):
+    signs = [1] * len(adata_atac)
+    if len(adata_atac) != len(signs):
         raise RuntimeError("Length of ``others`` and ``signs`` must match!")
     if set(signs).difference({-1, 1}):
         raise RuntimeError("``signs`` can only contain {-1, 1}!")
 
-    rna_bed = Bed(rna.var.assign(name=rna.var_names))
-    other_beds = [Bed(other.var.assign(name=other.var_names)) for other in others]
+    rna_bed = genomics.Bed(adata_rna.var.assign(name=adata_rna.var_names))
+    atac_bed = genomics.Bed(adata_atac.var.assign(name=adata_atac.var_names))
+
     if gene_region == "promoter":
         rna_bed = rna_bed.strand_specific_start_site().expand(promoter_len, 0)
     elif gene_region == "combined":
         rna_bed = rna_bed.expand(promoter_len, 0)
     elif gene_region != "gene_body":
         raise ValueError("Unrecognized `gene_range`!")
-    graphs = [window_graph(
-        rna_bed, other_bed, window_size=extend_range,
-        attr_fn=lambda l, r, d, s=sign: {
+    graph = genomics.window_graph(
+        rna_bed, atac_bed, window_size=extend_range,
+        attr_fn=lambda l, r, d, s=signs: {
             "dist": abs(d), "weight": extend_fn(abs(d)), "sign": s
         }
-    ) for other_bed, sign in zip(other_beds, signs)]
-    graph = compose_multigraph(*graphs)
+    )
+    gene_peak_edges_list = list(graph.edges)
 
-    corrupt_num = round(corrupt_rate * graph.number_of_edges())
-    if corrupt_num:
-        rna_anchored_guidance_graph.logger.warning("Corrupting guidance graph!")
-        rs = get_rs(random_state)
-        rna_var_names = rna.var_names.tolist()
-        other_var_names = reduce(add, [other.var_names.tolist() for other in others])
+    multimodal_dict = {}
+    for gene, peak, _ in gene_peak_edges_list:
+        if uppercase:
+            gene = gene.upper()
+        if gene in multimodal_dict:
+            multimodal_dict[gene].append(peak)
+        else:
+            multimodal_dict[gene] = [peak]
+    return multimodal_dict
 
-        corrupt_remove = set(rs.choice(graph.number_of_edges(), corrupt_num, replace=False))
-        corrupt_remove = set(edge for i, edge in enumerate(graph.edges) if i in corrupt_remove)
-        corrupt_add = []
-        while len(corrupt_add) < corrupt_num:
-            corrupt_add += [
-                (u, v) for u, v in zip(
-                    rs.choice(rna_var_names, corrupt_num - len(corrupt_add)),
-                    rs.choice(other_var_names, corrupt_num - len(corrupt_add))
-                ) if not graph.has_edge(u, v)
-            ]
 
-        graph.add_edges_from([
-            (add[0], add[1], graph.edges[remove])
-            for add, remove in zip(corrupt_add, corrupt_remove)
-        ])
-        graph.remove_edges_from(corrupt_remove)
+def add_multimodal_pairings_to_adata(
+        gp_dict: dict,
+        atac_pairing_dict: dict,
+        adata_atac: AnnData,
+        ca_targets_mask_key: str="autotalker_ca_targets",
+        ca_sources_mask_key: str="autotalker_ca_sources") -> None:
+    """
+    Add chromatin accessibility of gene programs defined in a gene program 
+    dictionary to an AnnData object by converting the gene program lists of gene program target and source genes
+    to binary masks and aligning the masks with chromatin accessibility peaks
+    for which data is available in the ATAC AnnData object.
 
-    rgraph = graph.reverse()
-    nx.set_edge_attributes(graph, "fwd", name="type")
-    nx.set_edge_attributes(rgraph, "rev", name="type")
-    graph = compose_multigraph(graph, rgraph)
-    all_features = set(chain.from_iterable(
-        map(lambda x: x.var_names, [rna, *others])
-    ))
-    for item in all_features:
-        graph.add_edge(item, item, weight=1.0, sign=1, type="loop")
-    return graph
+    Parameters
+    ----------
+    gp_dict:
+        Nested dictionary containing the gene programs with keys being gene 
+        program names and values being dictionaries with keys ´targets´ and 
+        ´sources´, where ´targets´ contains a list of the names of genes in the
+        gene program for the reconstruction of the gene expression of the node
+        itself (receiving node) and ´sources´ contains a list of the names of
+        genes in the gene program for the reconstruction of the gene expression
+        of the node's neighbors (transmitting nodes).
+    adata_atac:
+        AnnData object to which the gene programs will be added.
+    gp_targets_mask_key:
+        Key in ´adata.varm´ where the binary gene program mask for target genes
+        of a gene program will be stored (target genes are used for the 
+        reconstruction of the gene expression of the node itself (receiving node
+        )).
+    gp_sources_mask_key:
+        Key in ´adata.varm´ where the binary gene program mask for source genes
+        of a gene program will be stored (source genes are used for the 
+        reconstruction of the gene expression of the node's neighbors 
+        (transmitting nodes)).
+    """
+    # Retrieve probed peaks from adata
+    adata_peaks = adata_atac.var_names
+
+    target_atac_pairings = []
+    for gp_target_genes in [gp_genes_dict["targets"] for _, gp_genes_dict in
+                            gp_dict.items()]:
+        gp_target_atac_pairings = []
+        for gene in gp_target_genes:
+            if gene in atac_pairing_dict:
+                gp_target_atac_pairings.extend(atac_pairing_dict[gene])
+        target_atac_pairings.append(gp_target_atac_pairings)
+
+    ca_targets_mask = [[int(peak in gp_peaks)
+                        for gp_peaks in target_atac_pairings]
+                        for peak in adata_peaks]
+    ca_targets_mask = np.asarray(ca_targets_mask, dtype="int32")
+
+    source_atac_pairings = []
+    for gp_source_genes in [gp_genes_dict["sources"] for _, gp_genes_dict in
+                            gp_dict.items()]:
+        gp_source_atac_pairings = []
+        for gene in gp_source_genes:
+            if gene in atac_pairing_dict:
+                gp_source_atac_pairings.extend(atac_pairing_dict[gene])
+        source_atac_pairings.append(gp_source_atac_pairings)
+        
+    ca_sources_mask = [[int(peak in gp_peaks)
+                        for gp_peaks in source_atac_pairings]
+                        for peak in adata_peaks]
+    ca_sources_mask = np.asarray(ca_targets_mask, dtype="int32")
+
+    ca_mask = np.concatenate((ca_sources_mask, ca_targets_mask), axis=0)
+
+    # Add binary chromatin accessibility masks to ´adata_atac.varm´
+    adata_atac.varm[ca_sources_mask_key] = ca_sources_mask
+    adata_atac.varm[ca_targets_mask_key] = ca_targets_mask

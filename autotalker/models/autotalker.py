@@ -4,7 +4,7 @@ integrated directly into the model API for easy use.
 """
 
 import warnings
-from typing import Literal, Optional, Tuple, Union
+from typing import Literal, List, Optional, Tuple, Union
 
 import mlflow
 import numpy as np
@@ -155,7 +155,7 @@ class Autotalker(BaseModelMixin):
                  latent_key: str="autotalker_latent",
                  condition_key: Optional[str]=None,
                  cond_embed_key: Optional[str]="autotalker_cond_embed",
-                 cond_embed_injection: Optional[list]=["gene_expr_decoder"],
+                 cond_embed_injection: Optional[List]=["gene_expr_decoder"],
                  genes_idx_key: str="autotalker_genes_idx",
                  recon_adj_key: str="autotalker_recon_connectivities",
                  agg_alpha_key: str="autotalker_agg_alpha",
@@ -232,6 +232,7 @@ class Autotalker(BaseModelMixin):
                                  "created with ´mask = "
                                  "np.ones((n_latent, n_output))´).")
         self.gp_mask_ = torch.tensor(gp_targets_mask, dtype=torch.float32)
+        self.ca_mask_ = None
         if node_label_method != "self":
             if gp_sources_mask is None:
                 if gp_sources_mask_key in adata.varm:

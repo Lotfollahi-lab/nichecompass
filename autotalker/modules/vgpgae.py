@@ -169,12 +169,17 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
         self.include_cond_contrastive_loss_ = include_cond_contrastive_loss
         self.gene_expr_recon_dist_ = gene_expr_recon_dist
+        self.chrom_access_recon_dist_ = chrom_access_recon_dist
         self.node_label_method_ = node_label_method
         self.active_gp_thresh_ratio_ = active_gp_thresh_ratio
         self.log_variational_ = log_variational
         self.cond_embed_injection_ = cond_embed_injection
         self.cond_edge_neg_sampling_ = cond_edge_neg_sampling
         self.freeze_ = False
+        if chrom_access_decoder_mask is not None:
+            self.use_chrom_access_decoder_ = True
+        else:
+            self.use_chrom_access_decoder_ = False
 
         print("--- INITIALIZING NEW NETWORK MODULE: VARIATIONAL GENE PROGRAM "
               "GRAPH AUTOENCODER ---")
@@ -233,7 +238,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             recon_dist=self.gene_expr_recon_dist_)
         
         if chrom_access_decoder_mask is not None:
-            self.gene_expr_decoder = MaskedChromAccessDecoder(
+            self.chrom_access_decoder = MaskedChromAccessDecoder(
                 n_input=n_nonaddon_gps,
                 n_addon_input=n_addon_gps,
                 n_cond_embed_input=(n_cond_embed if ("chrom_access_decoder" in
@@ -242,7 +247,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 n_output=n_output,
                 mask=chrom_access_decoder_mask,
                 genes_idx=genes_idx,
-                recon_dist=self.gene_expr_recon_dist_)            
+                recon_dist=self.chrom_access_recon_dist_)            
 
         if node_label_method == "self":
             self.gene_expr_node_label_aggregator = (
@@ -344,6 +349,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             output["alpha_edge_index"] = data_batch.edge_attr.t()
 
             output["gene_expr_dist_params"] = self.gene_expr_decoder(
+                z=z[:data_batch.batch_size],
+                log_library_size=self.log_library_size[:data_batch.batch_size],
+                cond_embed=(self.cond_embed[:data_batch.batch_size] if
+                            (self.cond_embed is not None) & ("gene_expr_decoder"
+                            in self.cond_embed_injection_) else None))
+            
+            if self.use_chrom_access_decoder_:
+                output["chrom_access_dist_params"] = self.chrom_access_decoder(
                 z=z[:data_batch.batch_size],
                 log_library_size=self.log_library_size[:data_batch.batch_size],
                 cond_embed=(self.cond_embed[:data_batch.batch_size] if
@@ -492,6 +505,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         if self.n_addon_gps_ != 0:
             loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon *
             compute_addon_l1_reg_loss(self))
+
+        if self.use_chrom_access_decoder_:
+            nb_means = node_model_output["chrom_access_dist_params"]
+            loss_dict["chrom_access_recon_loss"] = (lambda_chrom_access_recon * 
+            compute_gene_expr_recon_nb_loss(
+                    x=node_model_output["node_labels"],
+                    mu=nb_means,
+                    theta=theta))
 
         # Compute optimization loss used for backpropagation as well as global
         # loss used for early stopping of model training and best model saving
