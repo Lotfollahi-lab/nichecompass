@@ -528,7 +528,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             loss_dict["global_loss"] += loss_dict["edge_recon_loss"]
             if edge_recon_active:
                 loss_dict["optim_loss"] += loss_dict["edge_recon_loss"]
-        if self.include_cond_contrastive_loss_:
+        if self.include_cond_contrastive_loss_ & (
+        "cond_contrastive_loss" in loss_dict.keys()):
             loss_dict["global_loss"] += loss_dict["cond_contrastive_loss"]
             if cond_contrastive_active:
                 loss_dict["optim_loss"] += loss_dict["cond_contrastive_loss"]            
