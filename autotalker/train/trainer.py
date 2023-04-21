@@ -185,6 +185,7 @@ class Trainer(BaseTrainerMixin):
               n_epochs: int=40,
               n_epochs_all_gps: int=20,
               n_epochs_no_edge_recon: int=0,
+              n_epochs_no_cond_contrastive: int=5,
               lr: float=0.001,
               weight_decay: float=0.,
               lambda_edge_recon: Optional[float]=10.,
@@ -251,6 +252,7 @@ class Trainer(BaseTrainerMixin):
         self.n_epochs_ = n_epochs
         self.n_epochs_all_gps_ = n_epochs_all_gps
         self.n_epochs_no_edge_recon_ = n_epochs_no_edge_recon
+        self.n_epochs_no_cond_contrastive_ = n_epochs_no_cond_contrastive
         self.lr_ = lr
         self.weight_decay_ = weight_decay
         self.lambda_edge_recon_ = lambda_edge_recon
@@ -287,6 +289,11 @@ class Trainer(BaseTrainerMixin):
                 self.use_only_active_gps = False
             else:
                 self.use_only_active_gps = True
+            if self.epoch < self.n_epochs_no_cond_contrastive_:
+                self.cond_contrastive_active = False
+            else:
+                self.cond_contrastive_active = True
+
             self.iter_logs = defaultdict(list)
             self.iter_logs["n_train_iter"] = 0
             self.iter_logs["n_val_iter"] = 0
@@ -324,7 +331,8 @@ class Trainer(BaseTrainerMixin):
                     lambda_group_lasso=self.lambda_group_lasso_,
                     lambda_l1_masked=self.lambda_l1_masked_,
                     lambda_l1_addon=self.lambda_l1_addon_,
-                    edge_recon_active=self.edge_recon_active)
+                    edge_recon_active=self.edge_recon_active,
+                    cond_contrastive_active=self.cond_contrastive_active)
                 
                 train_global_loss = train_loss_dict["global_loss"]
                 train_optim_loss = train_loss_dict["optim_loss"]

@@ -302,27 +302,30 @@ def compute_group_lasso_reg_loss(model: nn.Module) -> torch.Tensor:
 
 
 def compute_kl_reg_loss(mu: torch.Tensor,
-                        logstd: torch.Tensor,
-                        n_nodes: int) -> torch.Tensor:
+                        logstd: torch.Tensor) -> torch.Tensor:
     """
     Compute Kullback-Leibler divergence as per Kingma, D. P. & Welling, M. 
-    Auto-Encoding Variational Bayes. arXiv [stat.ML] (2013).
+    Auto-Encoding Variational Bayes. arXiv [stat.ML] (2013). Equation (10).
+    This will encourage encodings to distribute evenly around the center of
+    the latent space. For detailed derivation, see
+    https://stats.stackexchange.com/questions/318748/deriving-the-kl-divergence-loss-for-vaes.
 
     Parameters
     ----------
     mu:
-        Expected values of the latent distribution.
+        Expected values of the latent distribution (dim: n_nodes_current_batch,
+        n_gps).
     logstd:
-        Log of standard deviations of the latent distribution.
-    n_nodes:
-        Number of nodes in the graph.
+        Log standard deviations of the latent distribution (dim:
+        n_nodes_current_batch, n_gps).
 
     Returns
     ----------
     kl_reg_loss:
         Kullback-Leibler divergence.
     """
-    kl_reg_loss = (-0.5 / n_nodes) * torch.mean(
+    # Sum over n_gps and mean over n_nodes_current_batch
+    kl_reg_loss = -0.5 * torch.mean(
     torch.sum(1 + 2 * logstd - mu ** 2 - torch.exp(logstd) ** 2, 1))
     return kl_reg_loss
 

@@ -376,7 +376,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
              lambda_edge_recon: Optional[float]=1.,
              lambda_cond_contrastive: Optional[float]=1.,
              contrastive_logits_ratio: float=0.1,
-             edge_recon_active: bool=True) -> dict:
+             edge_recon_active: bool=True,
+             cond_contrastive_active: bool=True) -> dict:
         """
         Calculate the optimization loss for backpropagation as well as the 
         global loss that also contains components omitted from optimization 
@@ -449,11 +450,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_neg_edges = n_possible_edges - edge_data_batch.edge_index.shape[1]
             lambda_edge_recon = n_possible_edges / (n_neg_edges * 2)
 
-        # Compute Kullback-Leibler divergence loss
+        # Compute Kullback-Leibler divergence loss for edge and node batch
         loss_dict["kl_reg_loss"] = compute_kl_reg_loss(
             mu=edge_model_output["mu"],
-            logstd=edge_model_output["logstd"],
-            n_nodes=edge_data_batch.x.size(0))
+            logstd=edge_model_output["logstd"])
+        loss_dict["kl_reg_loss"] += compute_kl_reg_loss(
+            mu=node_model_output["mu"],
+            logstd=node_model_output["logstd"])
 
         # Compute edge reconstruction binary cross entropy loss
         loss_dict["edge_recon_loss"] = (
@@ -465,7 +468,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                   (len(self.conditions_) != 0) &
                                   self.cond_edge_neg_sampling_ else None))
         
-        if (len(self.conditions_) != 0):
+        if hasattr(edge_data_batch, "conditions") & (
+        lambda_cond_contrastive > 0):
             loss_dict["cond_contrastive_loss"] = (
                 lambda_cond_contrastive * compute_cond_contrastive_loss(
                 adj_recon_logits=edge_model_output["adj_recon_logits"],
@@ -524,9 +528,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             loss_dict["global_loss"] += loss_dict["edge_recon_loss"]
             if edge_recon_active:
                 loss_dict["optim_loss"] += loss_dict["edge_recon_loss"]
-        if self.include_cond_contrastive_loss_ & (len(self.conditions_) != 0):
+        if self.include_cond_contrastive_loss_:
             loss_dict["global_loss"] += loss_dict["cond_contrastive_loss"]
-            loss_dict["optim_loss"] += loss_dict["cond_contrastive_loss"]            
+            if cond_contrastive_active:
+                loss_dict["optim_loss"] += loss_dict["cond_contrastive_loss"]            
         if self.include_gene_expr_recon_loss_:
             loss_dict["global_loss"] += loss_dict["gene_expr_recon_loss"]
             loss_dict["optim_loss"] += loss_dict["gene_expr_recon_loss"]
