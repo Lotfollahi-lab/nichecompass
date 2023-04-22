@@ -171,10 +171,13 @@ def compute_gene_expr_recon_nb_loss(x: torch.Tensor,
                                     theta: torch.Tensor,
                                     eps: float=1e-8) -> torch.Tensor:
     """
-    Gene expression reconstruction loss according to a negative binomial gene
-    expression model which is used to model scRNA-seq count data.
+    Compute gene expression reconstruction loss according to a negative binomial
+    gene expression model, which is often used to model omics count data such as
+    scRNA-seq or scATAC-seq data.
 
-    Parts of the implementation are adapted from
+    Parts of the implementation are adapted from Lopez, R., Regier, J., Cole, M.
+    B., Jordan, M. I. & Yosef, N. Deep generative modeling for single-cell
+    transcriptomics. Nat. Methods 15, 1053–1058 (2018):
     https://github.com/scverse/scvi-tools/blob/main/scvi/distributions/_negative_binomial.py#L75
     (29.11.2022).
 
@@ -307,17 +310,20 @@ def compute_kl_reg_loss(mu: torch.Tensor,
     Compute Kullback-Leibler divergence as per Kingma, D. P. & Welling, M. 
     Auto-Encoding Variational Bayes. arXiv [stat.ML] (2013). Equation (10).
     This will encourage encodings to distribute evenly around the center of
-    the latent space. For detailed derivation, see
+    a continuous and complete latent space, producing similar (for points close
+    in latent space) and meaningful content after decoding.
+    
+    For detailed derivation, see
     https://stats.stackexchange.com/questions/318748/deriving-the-kl-divergence-loss-for-vaes.
 
     Parameters
     ----------
     mu:
-        Expected values of the latent distribution (dim: n_nodes_current_batch,
-        n_gps).
-    logstd:
-        Log standard deviations of the latent distribution (dim:
+        Expected values of the normal latent distribution of each node (dim:
         n_nodes_current_batch, n_gps).
+    logstd:
+        Log standard deviations of the normal latent distribution of each node
+        (dim: n_nodes_current_batch, n_gps).
 
     Returns
     ----------
