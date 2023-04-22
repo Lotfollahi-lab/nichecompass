@@ -4,7 +4,7 @@ integrated directly into the model API for easy use.
 """
 
 import warnings
-from typing import Literal, Optional, Tuple, Union
+from typing import Literal, List, Optional, Tuple, Union
 
 import mlflow
 import numpy as np
@@ -39,6 +39,8 @@ class Autotalker(BaseModelMixin):
         masks are passed explicitly to the model via parameters 
         ´gp_targets_mask´ and ´gp_sources_mask´, in which case this will have
         prevalence).
+    adata_atac:
+        Additional optional AnnData object with paired spatial ATAC data.
     counts_key:
         Key under which the counts are stored in ´adata.layer´. If ´None´, uses
         ´adata.X´ as counts. 
@@ -143,6 +145,7 @@ class Autotalker(BaseModelMixin):
     """
     def __init__(self,
                  adata: AnnData,
+                 adata_atac: Optional[AnnData]=None,
                  counts_key: Optional[str]="counts",
                  adj_key: str="spatial_connectivities",
                  gp_names_key: str="autotalker_gp_names",
@@ -152,7 +155,7 @@ class Autotalker(BaseModelMixin):
                  latent_key: str="autotalker_latent",
                  condition_key: Optional[str]=None,
                  cond_embed_key: Optional[str]="autotalker_cond_embed",
-                 cond_embed_injection: Optional[list]=["gene_expr_decoder"],
+                 cond_embed_injection: Optional[List]=["gene_expr_decoder"],
                  genes_idx_key: str="autotalker_genes_idx",
                  recon_adj_key: str="autotalker_recon_connectivities",
                  agg_alpha_key: str="autotalker_agg_alpha",
@@ -179,6 +182,7 @@ class Autotalker(BaseModelMixin):
                  n_addon_gps: int=0,
                  n_cond_embed: int=128):
         self.adata = adata
+        self.adata_atac = adata_atac
         self.counts_key_ = counts_key
         self.adj_key_ = adj_key
         self.gp_names_key_ = gp_names_key
@@ -228,6 +232,7 @@ class Autotalker(BaseModelMixin):
                                  "created with ´mask = "
                                  "np.ones((n_latent, n_output))´).")
         self.gp_mask_ = torch.tensor(gp_targets_mask, dtype=torch.float32)
+        self.ca_mask_ = None
         if node_label_method != "self":
             if gp_sources_mask is None:
                 if gp_sources_mask_key in adata.varm:
@@ -303,6 +308,7 @@ class Autotalker(BaseModelMixin):
             n_cond_embed=self.n_cond_embed_,
             n_output=self.n_output_,
             gene_expr_decoder_mask=self.gp_mask_,
+            chrom_access_decoder_mask=self.ca_mask_,
             genes_idx=self.genes_idx_,
             conditions=self.conditions_,
             conv_layer_encoder=self.conv_layer_encoder_,
@@ -409,6 +415,7 @@ class Autotalker(BaseModelMixin):
         """
         self.trainer = Trainer(
             adata=self.adata,
+            adata_atac=self.adata_atac,
             model=self.model,
             counts_key=self.counts_key_,
             adj_key=self.adj_key_,
@@ -1070,33 +1077,22 @@ class Autotalker(BaseModelMixin):
             n_obs_before_batch = i * node_batch_size
             n_obs_after_batch = n_obs_before_batch + node_batch.batch_size
             node_batch = node_batch.to(device)
-            x = node_batch.x
-            edge_index = node_batch.edge_index
-            conditions = (node_batch.conditions if "conditions" in node_batch
-                          else None)
-            if self.model.log_variational_:
-                x = torch.log(1 + x)
-
             if return_mu_std:
                 mu_batch, std_batch = self.model.get_latent_representation(
-                    x=x,
-                    edge_index=edge_index,
-                    conditions=conditions,
+                    node_batch=node_batch,
                     only_active_gps=only_active_gps,
                     return_mu_std=True)
                 mu[n_obs_before_batch:n_obs_after_batch, :] = (
-                    mu_batch[:node_batch.batch_size].detach().cpu().numpy())
+                    mu_batch.detach().cpu().numpy())
                 std[n_obs_before_batch:n_obs_after_batch, :] = (
-                    std_batch[:node_batch.batch_size].detach().cpu().numpy())
+                    std_batch.detach().cpu().numpy())
             else:
                 z_batch = self.model.get_latent_representation(
-                    x=x,
-                    edge_index=edge_index,
-                    conditions=conditions,
+                    node_batch=node_batch,
                     only_active_gps=only_active_gps,
                     return_mu_std=False)
                 z[n_obs_before_batch:n_obs_after_batch, :] = (
-                    z_batch[:node_batch.batch_size].detach().cpu().numpy())
+                    z_batch.detach().cpu().numpy())
         if return_mu_std:
             return mu, std
         else:
@@ -1310,10 +1306,9 @@ class Autotalker(BaseModelMixin):
             n_obs_before_batch = i * node_batch_size
             n_obs_after_batch = n_obs_before_batch + node_batch.batch_size
 
-            _, alpha = (self.model.gene_expr_node_label_aggregator(
+            _, alpha = (self.model.node_label_aggregator(
                 x=node_batch.x,
                 edge_index=node_batch.edge_index,
-                batch_size=node_batch.batch_size,
                 return_attention_weights=True))
 
             # Get edge index and attention weights of current node batch only
@@ -1382,8 +1377,6 @@ class Autotalker(BaseModelMixin):
         x = dataset.x.to(device)
         edge_index = dataset.edge_index.to(device)
         log_library_size = torch.log(x.sum(1)).unsqueeze(1)
-        if self.model.log_variational_:
-            x = torch.log(1 + x)
 
         mu, _ = self.model.get_latent_representation(
             x=x,

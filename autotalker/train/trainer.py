@@ -16,7 +16,6 @@ import torch.nn as nn
 from anndata import AnnData
 
 from autotalker.data import initialize_dataloaders, prepare_data
-from autotalker.modules.utils import edge_values_and_sorted_labels
 from .basetrainermixin import BaseTrainerMixin
 from .metrics import eval_metrics, plot_eval_metrics
 from .utils import (_cycle_iterable,
@@ -40,6 +39,8 @@ class Trainer(BaseTrainerMixin):
         AnnData object with counts stored in ´adata.layers[counts_key]´ or
         ´adata.X´ depending on ´counts_key´ and sparse adjacency matrix stored
         in ´adata.obsp[adj_key]´.
+    adata_atac:
+        Additional optional AnnData object with paired spatial ATAC data.
     model:
         An Autotalker module model instance.
     counts_key:
@@ -76,6 +77,7 @@ class Trainer(BaseTrainerMixin):
     def __init__(self,
                  adata: AnnData,
                  model: nn.Module,
+                 adata_atac: Optional[AnnData]=None,
                  counts_key: Optional[str]="counts",
                  adj_key: str="spatial_connectivities",
                  condition_key: Optional[str]=None,
@@ -91,6 +93,7 @@ class Trainer(BaseTrainerMixin):
                  verbose: bool=False,
                  **kwargs):
         self.adata = adata
+        self.adata_atac = adata_atac
         self.model = model
         self.counts_key = counts_key
         self.adj_key = adj_key
@@ -141,6 +144,7 @@ class Trainer(BaseTrainerMixin):
         data_dict = prepare_data(
             adata=adata,
             condition_label_encoder=self.model.condition_label_encoder_,
+            adata_atac=adata_atac,
             counts_key=self.counts_key,
             adj_key=self.adj_key,
             condition_key=self.condition_key,
@@ -180,6 +184,7 @@ class Trainer(BaseTrainerMixin):
               n_epochs: int=40,
               n_epochs_all_gps: int=20,
               n_epochs_no_edge_recon: int=0,
+              n_epochs_no_cond_contrastive: int=5,
               lr: float=0.001,
               weight_decay: float=0.,
               lambda_edge_recon: Optional[float]=10.,
@@ -246,6 +251,7 @@ class Trainer(BaseTrainerMixin):
         self.n_epochs_ = n_epochs
         self.n_epochs_all_gps_ = n_epochs_all_gps
         self.n_epochs_no_edge_recon_ = n_epochs_no_edge_recon
+        self.n_epochs_no_cond_contrastive_ = n_epochs_no_cond_contrastive
         self.lr_ = lr
         self.weight_decay_ = weight_decay
         self.lambda_edge_recon_ = lambda_edge_recon
@@ -282,6 +288,11 @@ class Trainer(BaseTrainerMixin):
                 self.use_only_active_gps = False
             else:
                 self.use_only_active_gps = True
+            if self.epoch < self.n_epochs_no_cond_contrastive_:
+                self.cond_contrastive_active = False
+            else:
+                self.cond_contrastive_active = True
+
             self.iter_logs = defaultdict(list)
             self.iter_logs["n_train_iter"] = 0
             self.iter_logs["n_val_iter"] = 0
@@ -297,7 +308,7 @@ class Trainer(BaseTrainerMixin):
                 node_train_data_batch = node_train_data_batch.to(self.device)
                 node_train_model_output = self.model(
                     data_batch=node_train_data_batch,
-                    decoder="gene_expr",
+                    decoder="omics",
                     use_only_active_gps=self.use_only_active_gps)
 
                 # Forward pass edge-level batch
@@ -309,7 +320,6 @@ class Trainer(BaseTrainerMixin):
 
                 # Calculate training loss
                 train_loss_dict = self.model.loss(
-                    edge_data_batch=edge_train_data_batch,
                     edge_model_output=edge_train_model_output,
                     node_model_output=node_train_model_output,
                     lambda_edge_recon=self.lambda_edge_recon_,
@@ -319,7 +329,8 @@ class Trainer(BaseTrainerMixin):
                     lambda_group_lasso=self.lambda_group_lasso_,
                     lambda_l1_masked=self.lambda_l1_masked_,
                     lambda_l1_addon=self.lambda_l1_addon_,
-                    edge_recon_active=self.edge_recon_active)
+                    edge_recon_active=self.edge_recon_active,
+                    cond_contrastive_active=self.cond_contrastive_active)
                 
                 train_global_loss = train_loss_dict["global_loss"]
                 train_optim_loss = train_loss_dict["optim_loss"]
@@ -420,7 +431,7 @@ class Trainer(BaseTrainerMixin):
         self.model.eval()
 
         edge_recon_probs_val_accumulated = np.array([])
-        edge_labels_val_accumulated = np.array([])
+        edge_recon_labels_val_accumulated = np.array([])
 
         # Jointly loop through edge- and node-level batches, repeating node-
         # level batches until edge-level batches are complete
@@ -430,7 +441,7 @@ class Trainer(BaseTrainerMixin):
             node_val_data_batch = node_val_data_batch.to(self.device)
             node_val_model_output = self.model(
                 data_batch=node_val_data_batch,
-                decoder="gene_expr",
+                decoder="omics",
                 use_only_active_gps=self.use_only_active_gps)
 
             # Forward pass edge level batch
@@ -442,7 +453,6 @@ class Trainer(BaseTrainerMixin):
 
             # Calculate validation loss
             val_loss_dict = self.model.loss(
-                    edge_data_batch=edge_val_data_batch,
                     edge_model_output=edge_val_model_output,
                     node_model_output=node_val_model_output,
                     lambda_edge_recon=self.lambda_edge_recon_,
@@ -465,31 +475,24 @@ class Trainer(BaseTrainerMixin):
             self.iter_logs["n_val_iter"] += 1
             
             # Calculate evaluation metrics
-            adj_recon_probs_val = torch.sigmoid(
-                edge_val_model_output["adj_recon_logits"])
-            edge_recon_probs_val, edge_labels_val = (
-                edge_values_and_sorted_labels(
-                    adj=adj_recon_probs_val,
-                    edge_label_index=edge_val_data_batch.edge_label_index,
-                    edge_labels=edge_val_data_batch.edge_label))
-            if hasattr(edge_val_data_batch, "conditions"):
+            edge_recon_probs_val = torch.sigmoid(
+                edge_val_model_output["edge_recon_logits"])
+            edge_recon_labels_val = edge_val_model_output["edge_recon_labels"]
+            if edge_val_model_output["edge_same_condition_labels"] is not None:
                 # only keep edge labels from same condition for eval
-                same_condition_edge = (
-                    edge_val_data_batch.conditions[
-                    edge_val_data_batch.edge_label_index[0]] ==
-                    edge_val_data_batch.conditions[
-                    edge_val_data_batch.edge_label_index[1]])
-                edge_recon_probs_val = edge_recon_probs_val[same_condition_edge]
-                edge_labels_val = edge_labels_val[same_condition_edge]
+                edge_recon_probs_val = edge_recon_probs_val[
+                    edge_val_model_output["edge_same_condition_labels"]]
+                edge_recon_labels_val = edge_recon_labels_val[
+                    edge_val_model_output["edge_same_condition_labels"]]
             edge_recon_probs_val_accumulated = np.append(
                 edge_recon_probs_val_accumulated,
                 edge_recon_probs_val.detach().cpu().numpy())
-            edge_labels_val_accumulated = np.append(
-                edge_labels_val_accumulated,
-                edge_labels_val.detach().cpu().numpy())
+            edge_recon_labels_val_accumulated = np.append(
+                edge_recon_labels_val_accumulated,
+                edge_recon_labels_val.detach().cpu().numpy())
         val_eval_dict = eval_metrics(
             edge_recon_probs=edge_recon_probs_val_accumulated,
-            edge_labels=edge_labels_val_accumulated)
+            edge_labels=edge_recon_labels_val_accumulated)
         if self.verbose_:
             self.epoch_logs["val_auroc_score"].append(
                 val_eval_dict["auroc_score"])
@@ -511,7 +514,7 @@ class Trainer(BaseTrainerMixin):
 
         # Get edge-level ground truth and predictions
         edge_recon_probs_val_accumulated = np.array([])
-        edge_labels_val_accumulated = np.array([])
+        edge_recon_labels_val_accumulated = np.array([])
         for edge_val_data_batch in self.edge_val_loader:
             edge_val_data_batch = edge_val_data_batch.to(self.device)
 
@@ -521,19 +524,21 @@ class Trainer(BaseTrainerMixin):
                 use_only_active_gps=True)
     
             # Calculate evaluation metrics
-            adj_recon_probs_val = torch.sigmoid(
-                edge_val_model_output["adj_recon_logits"])
-            edge_recon_probs_val, edge_labels_val = (
-                edge_values_and_sorted_labels(
-                    adj=adj_recon_probs_val,
-                    edge_label_index=edge_val_data_batch.edge_label_index,
-                    edge_labels=edge_val_data_batch.edge_label))
+            edge_recon_probs_val = torch.sigmoid(
+                edge_val_model_output["edge_recon_logits"])
+            edge_recon_labels_val = edge_val_model_output["edge_recon_labels"]
+            if edge_val_model_output["edge_same_condition_labels"] is not None:
+                # only keep edge labels from same condition for eval
+                edge_recon_probs_val = edge_recon_probs_val[
+                    edge_val_model_output["edge_same_condition_labels"]]
+                edge_recon_labels_val = edge_recon_labels_val[
+                    edge_val_model_output["edge_same_condition_labels"]]
             edge_recon_probs_val_accumulated = np.append(
                 edge_recon_probs_val_accumulated,
                 edge_recon_probs_val.detach().cpu().numpy())
-            edge_labels_val_accumulated = np.append(
-                edge_labels_val_accumulated,
-                edge_labels_val.detach().cpu().numpy())
+            edge_recon_labels_val_accumulated = np.append(
+                edge_recon_labels_val_accumulated,
+                edge_recon_labels_val.detach().cpu().numpy())
 
         # Get node-level ground truth and predictions
         gene_expr_preds_val_accumulated = np.array([])
@@ -543,7 +548,7 @@ class Trainer(BaseTrainerMixin):
 
             node_val_model_output = self.model(
                 data_batch=node_val_data_batch,
-                decoder="gene_expr",
+                decoder="omics",
                 use_only_active_gps=True)
 
             gene_expr_val = node_val_model_output["node_labels"]
@@ -568,7 +573,7 @@ class Trainer(BaseTrainerMixin):
 
         val_eval_dict = eval_metrics(
             edge_recon_probs=edge_recon_probs_val_accumulated,
-            edge_labels=edge_labels_val_accumulated,
+            edge_labels=edge_recon_labels_val_accumulated,
             gene_expr_preds=gene_expr_preds_val_accumulated,
             gene_expr=gene_expr_val_accumulated)
         print("\n--- MODEL EVALUATION ---")

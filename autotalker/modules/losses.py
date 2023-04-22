@@ -10,8 +10,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .utils import edge_values_and_sorted_labels
-
 
 def compute_addon_l1_reg_loss(model: nn.Module) -> torch.Tensor:
     """
@@ -37,10 +35,9 @@ def compute_addon_l1_reg_loss(model: nn.Module) -> torch.Tensor:
     return addon_l1_reg_loss
 
 def compute_cond_contrastive_loss(
-        adj_recon_logits: torch.Tensor,
-        edge_labels: torch.Tensor,
-        edge_label_index: torch.Tensor,
-        edge_label_conditions: Optional[torch.Tensor],
+        edge_recon_logits: torch.Tensor,
+        edge_recon_labels: torch.Tensor,
+        edge_same_condition_labels: Optional[torch.Tensor]=None,
         contrastive_logits_ratio: float=0.1) -> torch.Tensor:
     """
     Compute conditional contrastive weighted binary cross entropy loss with
@@ -53,14 +50,15 @@ def compute_cond_contrastive_loss(
 
     Parameters
     ----------
-    adj_recon_logits:
-        Adjacency matrix containing the predicted edge logits.
-    edge_labels:
-        Edge ground truth labels for both positive and negatively sampled edges.
-    edge_label_index:
-        Index with edge labels for both positive and negatively sampled edges.
-    edge_label_conditions:
-        Conditions to which edge nodes belong.
+    edge_recon_logits:
+        Predicted edge reconstruction logits for both positive and negative
+        sampled edges (dim: 2 * edge_batch_size).
+    edge_recon_labels:
+        Edge ground truth labels for both positive and negative sampled edges
+        (dim: 2 * edge_batch_size).
+    edge_same_condition_labels:
+        Edge same condition labels for both positive and negative sampled edges
+        (dim: 2 * edge_batch_size).
     logits_contrastive_ratio:
         Ratio for determining the contrastive logits. The top
         (´contrastive_logits_ratio´ * 100)% logits of sampled negative edges
@@ -72,21 +70,15 @@ def compute_cond_contrastive_loss(
     Returns
     ----------
     cond_contrastive_loss:
-        Conditional contrastive binary cross entropy loss.
-    """
-    if edge_label_conditions is not None and contrastive_logits_ratio > 0:
+        Conditional contrastive binary cross entropy loss (calculated from
+        logits for numerical stability in backpropagation).
+    """    
+    if edge_same_condition_labels is not None and contrastive_logits_ratio > 0:
         # Remove examples that have nodes from the same condition
-        same_condition_edge = (edge_label_conditions[edge_label_index[0]] ==
-                               edge_label_conditions[edge_label_index[1]])
-        edge_labels = edge_labels[~same_condition_edge]
-        edge_label_index = edge_label_index[:, ~same_condition_edge]
+        edge_recon_logits = edge_recon_logits[~edge_same_condition_labels]
+        edge_recon_labels = edge_recon_labels[~edge_same_condition_labels]
     else:
         return torch.tensor(0.)
-
-    edge_recon_logits, edge_labels_sorted = edge_values_and_sorted_labels(
-        adj=adj_recon_logits,
-        edge_label_index=edge_label_index,
-        edge_labels=edge_labels)
 
     # Determine thresholds for positive and negative examples
     pos_thresh = torch.topk(
@@ -101,67 +93,60 @@ def compute_cond_contrastive_loss(
     # ´neg_thresh´ to 0 and exclude other examples from the loss
     logits_above_pos_thresh = edge_recon_logits >= pos_thresh
     logits_below_neg_thresh = edge_recon_logits <= neg_thresh
-    edge_labels_sorted[logits_above_pos_thresh] = 1
-    edge_labels_sorted[logits_below_neg_thresh] = 0
+    edge_recon_labels[logits_above_pos_thresh] = 1
+    edge_recon_labels[logits_below_neg_thresh] = 0
     edge_recon_logits = edge_recon_logits[
         logits_above_pos_thresh | logits_below_neg_thresh]
-    edge_labels_sorted = edge_labels_sorted[
+    edge_recon_labels = edge_recon_labels[
         logits_above_pos_thresh | logits_below_neg_thresh]
 
     # Compute bce loss from logits for numerical stability
     cond_contrastive_loss = F.binary_cross_entropy_with_logits(
         edge_recon_logits,
-        edge_labels_sorted)
+        edge_recon_labels)
     return cond_contrastive_loss
 
 def compute_edge_recon_loss(
-        adj_recon_logits: torch.Tensor,
-        edge_labels: torch.Tensor,
-        edge_label_index: torch.Tensor,
-        edge_label_conditions: Optional[torch.Tensor]=None) -> torch.Tensor:
+        edge_recon_logits: torch.Tensor,
+        edge_recon_labels: torch.Tensor,
+        edge_same_condition_labels: Optional[torch.Tensor]=None
+        ) -> torch.Tensor:
     """
     Compute edge reconstruction weighted binary cross entropy loss with logits 
-    using ground truth edge labels and predicted edge logits (retrieved from the
-    reconstructed logits adjacency matrix).
+    using ground truth edge labels and predicted edge logits.
 
     Parameters
     ----------
-    adj_recon_logits:
-        Adjacency matrix containing the predicted edge logits.
-    edge_labels:
-        Edge ground truth labels for both positive and negatively sampled edges.
-    edge_label_index:
-        Index with edge labels for both positive and negatively sampled edges.
-    edge_label_conditions:
-        Conditions to which edges belong.
+    edge_recon_logits:
+        Predicted edge reconstruction logits for both positive and negative
+        sampled edges (dim: 2 * edge_batch_size).
+    edge_recon_labels:
+        Edge ground truth labels for both positive and negative sampled edges
+        (dim: 2 * edge_batch_size).
+    edge_same_condition_labels:
+        Edge same condition labels for both positive and negative sampled edges
+        (dim: 2 * edge_batch_size).
 
     Returns
     ----------
     edge_recon_loss:
-        Binary cross entropy loss between edge labels and predicted edge
-        probabilities (calculated from logits for numerical stability in
+        Weighted binary cross entropy loss between edge labels and predicted
+        edge probabilities (calculated from logits for numerical stability in
         backpropagation).
     """
-    if edge_label_conditions is not None:
-        # Remove examples that are not within a condition
-        same_condition_edge = (edge_label_conditions[edge_label_index[0]] ==
-                               edge_label_conditions[edge_label_index[1]])
-        edge_labels = edge_labels[same_condition_edge]
-        edge_label_index = edge_label_index[:, same_condition_edge]
-
-    edge_recon_logits, edge_labels_sorted = edge_values_and_sorted_labels(
-        adj=adj_recon_logits,
-        edge_label_index=edge_label_index,
-        edge_labels=edge_labels)
+    if edge_same_condition_labels is not None:
+        # Remove examples that have nodes from different conditions
+        edge_recon_logits = edge_recon_logits[edge_same_condition_labels]
+        edge_recon_labels = edge_recon_labels[edge_same_condition_labels]
 
     # Determine weighting of positive examples
-    pos_labels = (edge_labels_sorted == 1.).sum(dim=0)
-    neg_labels = (edge_labels_sorted == 0.).sum(dim=0)
+    pos_labels = (edge_recon_labels == 1.).sum(dim=0)
+    neg_labels = (edge_recon_labels == 0.).sum(dim=0)
     pos_weight = neg_labels / pos_labels
 
-    # Compute weighted cross entropy loss
+    # Compute weighted bce loss from logits for numerical stability
     edge_recon_loss = F.binary_cross_entropy_with_logits(edge_recon_logits,
-                                                         edge_labels_sorted,
+                                                         edge_recon_labels,
                                                          pos_weight=pos_weight)
     return edge_recon_loss
 
@@ -171,17 +156,22 @@ def compute_gene_expr_recon_nb_loss(x: torch.Tensor,
                                     theta: torch.Tensor,
                                     eps: float=1e-8) -> torch.Tensor:
     """
-    Gene expression reconstruction loss according to a negative binomial gene
-    expression model which is used to model scRNA-seq count data.
+    Compute gene expression reconstruction loss according to a negative binomial
+    gene expression model, which is often used to model omics count data such as
+    scRNA-seq or scATAC-seq data.
 
-    Parts of the implementation are adapted from
+    Parts of the implementation are adapted from Lopez, R., Regier, J., Cole, M.
+    B., Jordan, M. I. & Yosef, N. Deep generative modeling for single-cell
+    transcriptomics. Nat. Methods 15, 1053–1058 (2018):
     https://github.com/scverse/scvi-tools/blob/main/scvi/distributions/_negative_binomial.py#L75
     (29.11.2022).
 
     Parameters
     ----------
     x:
-        Reconstructed feature matrix.
+        Reconstructed feature vector (dim: batch_size, n_genes; nodes that
+        are in current batch beyond originally sampled batch_size for message
+        passing reasons are not considered).
     mu:
         Mean of the negative binomial with positive support.
         (dim: batch_size x n_genes)
@@ -302,27 +292,33 @@ def compute_group_lasso_reg_loss(model: nn.Module) -> torch.Tensor:
 
 
 def compute_kl_reg_loss(mu: torch.Tensor,
-                        logstd: torch.Tensor,
-                        n_nodes: int) -> torch.Tensor:
+                        logstd: torch.Tensor) -> torch.Tensor:
     """
     Compute Kullback-Leibler divergence as per Kingma, D. P. & Welling, M. 
-    Auto-Encoding Variational Bayes. arXiv [stat.ML] (2013).
+    Auto-Encoding Variational Bayes. arXiv [stat.ML] (2013). Equation (10).
+    This will encourage encodings to distribute evenly around the center of
+    a continuous and complete latent space, producing similar (for points close
+    in latent space) and meaningful content after decoding.
+    
+    For detailed derivation, see
+    https://stats.stackexchange.com/questions/318748/deriving-the-kl-divergence-loss-for-vaes.
 
     Parameters
     ----------
     mu:
-        Expected values of the latent distribution.
+        Expected values of the normal latent distribution of each node (dim:
+        n_nodes_current_batch, n_gps).
     logstd:
-        Log of standard deviations of the latent distribution.
-    n_nodes:
-        Number of nodes in the graph.
+        Log standard deviations of the normal latent distribution of each node
+        (dim: n_nodes_current_batch, n_gps).
 
     Returns
     ----------
     kl_reg_loss:
         Kullback-Leibler divergence.
     """
-    kl_reg_loss = (-0.5 / n_nodes) * torch.mean(
+    # Sum over n_gps and mean over n_nodes_current_batch
+    kl_reg_loss = -0.5 * torch.mean(
     torch.sum(1 + 2 * logstd - mu ** 2 - torch.exp(logstd) ** 2, 1))
     return kl_reg_loss
 

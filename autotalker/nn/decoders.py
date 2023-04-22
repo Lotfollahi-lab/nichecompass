@@ -116,43 +116,35 @@ class CosineSimGraphDecoder(nn.Module):
 
     def forward(self,
                 z: torch.Tensor,
-                cond_embed: Optional[torch.Tensor],
-                reduced_obs_start_idx: Optional[int]=None,
-                reduced_obs_end_idx: Optional[int]=None) -> torch.Tensor:
+                cond_embed: Optional[torch.Tensor]) -> torch.Tensor:
         """
         Forward pass of the cosine similarity graph decoder.
 
         Parameters
         ----------
         z:
-            Tensor containing the latent space features.
+            Concatenated latent feature vector of the source and destination
+            nodes (dim: 4 * edge_batch_size x n_gps due to negative edges).
         cond_embed:
-            Tensor containing the conditional embedding.
-        reduced_obs_start_idx:
-            If not `None`, specifies the start observation index from which the
-            cosine similarity with all observations will be computed. This can
-            be used for batched cosine similarity computation to alleviate the
-            memory consumption for big datasets.
-        reduced_obs_end_idx:
-            If not `None`, specifies the end observation index up to which the
-            cosine similarity with all observations will be computed. This can
-            be used for batched cosine similarity computation to alleviate the
-            memory consumption for big datasets.
+            Concatenated conditional embedding vector of the source and
+            destination nodes (dim: 4 * edge_batch_size x n_cond_embed).
 
         Returns
         ----------
-        adj_recon_logits:
-            Tensor containing the reconstructed adjacency matrix with logits.
+        edge_recon_logits:
+            Reconstructed edge logits (dim: 2 * edge_batch_size x 2 *
+            edge_batch_size)
         """
-        # Add conditional embedding to latent feature vector
+        # Add conditional embedding to latent feature vectors
         if cond_embed is not None:
             z += self.cond_embed_l(cond_embed)
         
         z = self.dropout(z)
-        adj_recon_logits = compute_cosine_similarity(
-            z[reduced_obs_start_idx:reduced_obs_end_idx, :], z)
-
-        return adj_recon_logits
+        edge_recon_logits = compute_cosine_similarity(
+            z[:int(z.shape[0]/2)], # ´edge_label_index[0]´
+            z[int(z.shape[0]/2):]) # ´edge_label_index[1]´
+        
+        return edge_recon_logits
 
 
 class MaskedGeneExprDecoder(nn.Module):
@@ -291,18 +283,18 @@ class MaskedChromAccessDecoder(nn.Module):
         Negative Binomial distribution.
     """
     def __init__(self,
-                 n_input: int,
-                 n_addon_input: int,
-                 n_cond_embed_input: int,
-                 n_output: int,
-                 mask: torch.Tensor,
-                 genes_idx: torch.Tensor,
-                 recon_dist: Literal["nb", "zinb"]):
+                    n_input: int,
+                    n_addon_input: int,
+                    n_cond_embed_input: int,
+                    n_output: int,
+                    mask: torch.Tensor,
+                    genes_idx: torch.Tensor,
+                    recon_dist: Literal["nb", "zinb"]):
         super().__init__()
 
-        print(f"MASKED GENE EXPRESSION DECODER -> n_input: {n_input}, "
-              f"n_cond_embed_input: {n_cond_embed_input}, n_addon_input: "
-              f"{n_addon_input}, n_output: {n_output}")
+        print("MASKED CHROMATIN ACCESSIBILITY DECODER -> n_input: "
+                f"{n_input}, n_cond_embed_input: {n_cond_embed_input}, "
+                f"n_addon_input: {n_addon_input}, n_output: {n_output}")
 
         self.genes_idx = genes_idx
         self.recon_dist = recon_dist
@@ -332,7 +324,7 @@ class MaskedChromAccessDecoder(nn.Module):
                 cond_embed: Optional[torch.Tensor]=None
                 ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Forward pass of the masked gene expression decoder.
+        Forward pass of the masked chromatin accessibility decoder.
 
         Parameters
         ----------
@@ -357,9 +349,9 @@ class MaskedChromAccessDecoder(nn.Module):
         nb_means = torch.exp(log_library_size) * nb_means_normalized
         nb_means = nb_means[:, self.genes_idx]
         if self.recon_dist == "nb":
-            gene_expr_decoder_params = nb_means
+            chrom_access_decoder_params = nb_means
         elif self.recon_dist == "zinb":
             zi_prob_logits = self.zi_prob_logits_decoder(z)
             zi_prob_logits = zi_prob_logits[:, self.genes_idx]
-            gene_expr_decoder_params = (nb_means, zi_prob_logits)
-        return gene_expr_decoder_params
+            chrom_access_decoder_params = (nb_means, zi_prob_logits)
+        return chrom_access_decoder_params
