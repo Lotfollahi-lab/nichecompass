@@ -679,9 +679,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
     def get_latent_representation(
             self,
-            x: torch.Tensor,
-            edge_index: torch.Tensor,
-            conditions: Optional[torch.Tensor]=None,
+            node_batch: Data,
             only_active_gps: bool=True,
             return_mu_std: bool=False
             ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
@@ -692,13 +690,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
            
         Parameters
         ----------
-        x:
-            Feature matrix to be encoded into latent space (dim: n_obs x 
-            n_genes).
-        edge_index:
-            Edge index of the graph (dim: 2, n_edges).
-        conditions:
-            Conditions for the conditional embedding.
+        node_batch:
+            PyG Data object containing a node-level batch.
         only_active_gps:
             If ´True´, return only the latent representation of active gps.
         return_mu_std:
@@ -714,16 +707,27 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Standard deviations of the latent posterior (dim: n_obs, 
             n_active_gps).
         """
+        x = node_batch.x # dim: n_obs x n_omics_features
+        edge_index = node_batch.edge_index # dim: 2 x n_edges
+        # Convert gene expression if done during training
+        if self.log_variational_:
+            x_enc = torch.log(1 + x)
+        else:
+            x_enc = x
+
         # Get conditional embeddings
         if ("encoder" in self.cond_embed_injection_) & (self.n_conditions_ > 0):
-            cond_embed = self.cond_embedder(conditions)
+            cond_embed = self.cond_embedder(
+                node_batch.conditions[:node_batch.batch_size])
         else:
             cond_embed = None
             
         # Get latent distribution parameters
-        mu, logstd = self.encoder(x=x,
-                                  edge_index=edge_index,
-                                  cond_embed=cond_embed)
+        encoder_outputs = self.encoder(x=x_enc,
+                                       edge_index=node_batch.edge_index,
+                                       cond_embed=cond_embed)
+        mu = encoder_outputs[0][:node_batch.batch_size, :]
+        logstd = encoder_outputs[1][:node_batch.batch_size, :]
 
         if only_active_gps:
             # Filter to active gene programs only
@@ -731,6 +735,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             mu, logstd = mu[:, active_gp_mask], logstd[:, active_gp_mask]
 
         if return_mu_std:
+            # (?) check whether this is redundant
             std = torch.exp(logstd)
             return mu, std
         else:

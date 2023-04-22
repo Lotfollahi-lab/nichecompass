@@ -10,8 +10,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .utils import edge_values_and_sorted_labels
-
 
 def compute_addon_l1_reg_loss(model: nn.Module) -> torch.Tensor:
     """

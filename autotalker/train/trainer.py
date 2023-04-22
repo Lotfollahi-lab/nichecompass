@@ -16,7 +16,6 @@ import torch.nn as nn
 from anndata import AnnData
 
 from autotalker.data import initialize_dataloaders, prepare_data
-from autotalker.modules.utils import edge_values_and_sorted_labels
 from .basetrainermixin import BaseTrainerMixin
 from .metrics import eval_metrics, plot_eval_metrics
 from .utils import (_cycle_iterable,

@@ -1077,33 +1077,22 @@ class Autotalker(BaseModelMixin):
             n_obs_before_batch = i * node_batch_size
             n_obs_after_batch = n_obs_before_batch + node_batch.batch_size
             node_batch = node_batch.to(device)
-            x = node_batch.x
-            edge_index = node_batch.edge_index
-            conditions = (node_batch.conditions if "conditions" in node_batch
-                          else None)
-            if self.model.log_variational_:
-                x = torch.log(1 + x)
-
             if return_mu_std:
                 mu_batch, std_batch = self.model.get_latent_representation(
-                    x=x,
-                    edge_index=edge_index,
-                    conditions=conditions,
+                    node_batch=node_batch,
                     only_active_gps=only_active_gps,
                     return_mu_std=True)
                 mu[n_obs_before_batch:n_obs_after_batch, :] = (
-                    mu_batch[:node_batch.batch_size].detach().cpu().numpy())
+                    mu_batch.detach().cpu().numpy())
                 std[n_obs_before_batch:n_obs_after_batch, :] = (
-                    std_batch[:node_batch.batch_size].detach().cpu().numpy())
+                    std_batch.detach().cpu().numpy())
             else:
                 z_batch = self.model.get_latent_representation(
-                    x=x,
-                    edge_index=edge_index,
-                    conditions=conditions,
+                    node_batch=node_batch,
                     only_active_gps=only_active_gps,
                     return_mu_std=False)
                 z[n_obs_before_batch:n_obs_after_batch, :] = (
-                    z_batch[:node_batch.batch_size].detach().cpu().numpy())
+                    z_batch.detach().cpu().numpy())
         if return_mu_std:
             return mu, std
         else:
@@ -1317,10 +1306,9 @@ class Autotalker(BaseModelMixin):
             n_obs_before_batch = i * node_batch_size
             n_obs_after_batch = n_obs_before_batch + node_batch.batch_size
 
-            _, alpha = (self.model.gene_expr_node_label_aggregator(
+            _, alpha = (self.model.node_label_aggregator(
                 x=node_batch.x,
                 edge_index=node_batch.edge_index,
-                batch_size=node_batch.batch_size,
                 return_attention_weights=True))
 
             # Get edge index and attention weights of current node batch only
@@ -1389,8 +1377,6 @@ class Autotalker(BaseModelMixin):
         x = dataset.x.to(device)
         edge_index = dataset.edge_index.to(device)
         log_library_size = torch.log(x.sum(1)).unsqueeze(1)
-        if self.model.log_variational_:
-            x = torch.log(1 + x)
 
         mu, _ = self.model.get_latent_representation(
             x=x,
