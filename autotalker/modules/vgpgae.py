@@ -250,16 +250,16 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 recon_dist=self.chrom_access_recon_dist_)            
 
         if node_label_method == "self":
-            self.gene_expr_node_label_aggregator = (
+            self.node_label_aggregator = (
                 SelfNodeLabelNoneAggregator(genes_idx=genes_idx))
         elif node_label_method == "one-hop-norm":
-            self.gene_expr_node_label_aggregator = (
+            self.node_label_aggregator = (
                 OneHopGCNNormNodeLabelAggregator(genes_idx=genes_idx))
         elif node_label_method == "one-hop-sum":
-            self.gene_expr_node_label_aggregator = (
+            self.node_label_aggregator = (
                 OneHopSumNodeLabelAggregator(genes_idx=genes_idx))
         elif node_label_method == "one-hop-attention":
-            self.gene_expr_node_label_aggregator = (
+            self.node_label_aggregator = (
                 OneHopAttentionNodeLabelAggregator(n_input=n_input,
                                                    genes_idx=genes_idx))
         
@@ -268,7 +268,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
     def forward(self,
                 data_batch: Data,
-                decoder: Literal["graph", "gene_expr"],
+                decoder: Literal["graph", "omics"],
                 use_only_active_gps: bool=False,
                 return_agg_attention_weights: bool=True) -> dict:
         """
@@ -281,10 +281,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             ´decoder == graph´ or a node-level batch if ´decoder == gene_expr´.
         decoder:
             Decoder to use for the forward pass, either ´graph´ for edge
-            reconstruction or ´gene_expr´ for gene expression reconstruction.
+            reconstruction or ´omics´ for gene expression and (if specified)
+            chromatin accessibility reconstruction.
         use_only_active_gps:
-            Only relevant if ´decoder == graph´. If ´True´, use only active gene
-            programs for edge reconstruction.
+            If ´True´, use only active gene programs as input to decoder.
         return_agg_attention_weights:
             If ´True´, also return the attention weights of the gene expression
             node label aggregator with the corresponding edge index.
@@ -297,75 +297,105 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             distribution if ´decoder == gene_expr´, as well as ´mu´ and ´logstd´ 
             from the latent space distribution.
         """
-        if (self.cond_embed_injection_ is not None) & (self.n_conditions_ > 0):
-            self.cond_embed = self.cond_embedder(data_batch.conditions)
-        else:
-            self.cond_embed = None
-
-        x = data_batch.x # dim: n_obs x n_genes
-        edge_index = data_batch.edge_index # dim 2 x n_edges
+        x = data_batch.x # dim: n_obs x n_omics_features
+        edge_index = data_batch.edge_index # dim: 2 x n_edges
         output = {}
-        # Use observed library size as scaling factor for the negative binomial 
-        # means of the gene expression distribution
-        self.log_library_size = torch.log(x.sum(1)).unsqueeze(1)
-        
         # Convert gene expression for numerical stability
         if self.log_variational_:
             x_enc = torch.log(1 + x)
         else:
             x_enc = x
 
-        # Use encoder to get latent distribution parameters and latent features
-        self.mu, self.logstd = self.encoder(
+        # Get index of sampled nodes for batch as well as edge or node labels
+        if decoder == "omics":
+            # ´data_batch´ will be a node batch and first node_batch_size
+            # elements are the sampled nodes, leading to a dim of ´batch_idx´ of
+            # node_batch_size
+            batch_idx = torch.tensor(range(data_batch.batch_size))
+
+            # Compute aggregated neighborhood omics feature vector to create
+            # concatenated omics reconstruction labels and retrieve attention
+            # weights and attention edge index
+            node_label_aggregator_output = self.node_label_aggregator(
+                    x=x, # (?) no log variational
+                    edge_index=edge_index,
+                    return_attention_weights=return_agg_attention_weights)
+            output["node_labels"] = node_label_aggregator_output[0][batch_idx]
+            output["alpha"] = node_label_aggregator_output[1][batch_idx]
+            output["alpha_edge_index"] = data_batch.edge_attr.t()[:, batch_idx]
+            # ´edge_attr´ stores the global edge index instead of batch index
+        elif decoder == "graph":
+            # ´data_batch´ will be an edge batch with sampled positive and
+            # negative edges of size edge_batch_size respectively. Each edge has
+            # a source and destination node, leading to a dim of ´batch_idx´ of
+            # 4 * edge_batch_size
+            batch_idx = torch.cat((data_batch.edge_label_index[0],
+                                   data_batch.edge_label_index[1]), 0)
+            
+            # Store edge labels and edge conditions for loss computation
+            output["edge_recon_labels"] = data_batch.edge_label
+            if (len(self.conditions_) != 0) & self.cond_edge_neg_sampling_:
+                output["edge_same_condition_labels"] = (
+                    data_batch.conditions[data_batch.edge_label_index[0]] ==
+                    data_batch.conditions[data_batch.edge_label_index[1]])
+            else:
+                output["edge_same_condition_labels"] = None
+
+        # Get conditional embeddings
+        if (self.cond_embed_injection_ is not None) & (self.n_conditions_ > 0):
+            self.cond_embed = self.cond_embedder(
+                data_batch.conditions[batch_idx])
+        else:
+            self.cond_embed = None
+
+        # Use encoder and reparameterization trick to get latent distribution
+        # parameters and features for current batch
+        encoder_outputs = self.encoder(
             x=x_enc,
             edge_index=edge_index,
             cond_embed=(self.cond_embed if "encoder" in
                         self.cond_embed_injection_ else None))
+        self.mu = encoder_outputs[0][batch_idx, :]
+        self.logstd = encoder_outputs[1][batch_idx, :]
         output["mu"] = self.mu
         output["logstd"] = self.logstd
         z = self.reparameterize(self.mu, self.logstd)
 
-        # Only retain active gene programs
         if use_only_active_gps:
+            # Only retain active gene programs
             active_gp_mask = self.get_active_gp_mask()
             z[:, ~active_gp_mask] = 0
 
-        # Use decoder to get either the reconstructed adjacency matrix logits
-        # or the gene expression parameters
+        # Use decoder to get either the edge reconstruction logits or the omics
+        # distribution parameters from the latent feature vectors
         if decoder == "graph":
-            output["adj_recon_logits"] = self.graph_decoder(
+            output["edge_recon_logits"] = self.graph_decoder(
                 z=z,
                 cond_embed=(self.cond_embed if "graph_decoder" in
                             self.cond_embed_injection_ else None))
-        elif decoder == "gene_expr":
-            # Compute aggregated neighborhood gene expression for gene
-            # expression reconstruction
-            output["node_labels"], output["alpha"] = (
-                self.gene_expr_node_label_aggregator(
-                x=x,
-                edge_index=edge_index,
-                batch_size=data_batch.batch_size,
-                return_attention_weights=return_agg_attention_weights))
-            output["alpha_edge_index"] = data_batch.edge_attr.t()
+        elif decoder == "omics":
+            # Get gene expression reconstruction distribution parameters
+            # Use observed library size as scaling factor for the negative binomial 
+            # means of the gene expression distribution
+            self.log_library_size = torch.log(x.sum(1)).unsqueeze(1)[batch_idx]
+            # (?) adjust for ATAC
 
             output["gene_expr_dist_params"] = self.gene_expr_decoder(
-                z=z[:data_batch.batch_size],
-                log_library_size=self.log_library_size[:data_batch.batch_size],
-                cond_embed=(self.cond_embed[:data_batch.batch_size] if
-                            (self.cond_embed is not None) & ("gene_expr_decoder"
-                            in self.cond_embed_injection_) else None))
+                z=z,
+                log_library_size=self.log_library_size,
+                cond_embed=(self.cond_embed if "gene_expr_decoder" in
+                            self.cond_embed_injection_ else None))
             
+            # Get chromatin accessibility reconstruction distribution parameters
             if self.use_chrom_access_decoder_:
                 output["chrom_access_dist_params"] = self.chrom_access_decoder(
-                z=z[:data_batch.batch_size],
-                log_library_size=self.log_library_size[:data_batch.batch_size],
-                cond_embed=(self.cond_embed[:data_batch.batch_size] if
-                            (self.cond_embed is not None) & ("gene_expr_decoder"
-                            in self.cond_embed_injection_) else None))
+                z=z,
+                log_library_size=self.log_library_size, # (?) adjust for ATAC
+                cond_embed=(self.cond_embed if "chrom_access_decoder" in
+                            self.cond_embed_injection_ else None))
         return output
 
     def loss(self,
-             edge_data_batch: Data,
              edge_model_output: dict,
              node_model_output: dict,
              lambda_l1_masked: float,
@@ -381,12 +411,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         """
         Calculate the optimization loss for backpropagation as well as the 
         global loss that also contains components omitted from optimization 
-        (not backpropagated).
+        (not backpropagated) and is used for early stopping evaluation.
 
         Parameters
         ----------
-        edge_data_batch:
-            PyG Data object containing an edge-level batch.
         edge_model_output:
             Output of the edge-level forward pass for edge reconstruction.
         node_model_output:
@@ -443,13 +471,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         """
         loss_dict = {}
 
-        # If not specified explicitly, compute edge reconstruction loss
-        # weighting factor based on number of possible edges and negative edges
-        if lambda_edge_recon is None:
-            n_possible_edges = edge_data_batch.x.shape[0] ** 2
-            n_neg_edges = n_possible_edges - edge_data_batch.edge_index.shape[1]
-            lambda_edge_recon = n_possible_edges / (n_neg_edges * 2)
-
         # Compute Kullback-Leibler divergence loss for edge and node batch
         loss_dict["kl_reg_loss"] = compute_kl_reg_loss(
             mu=edge_model_output["mu"],
@@ -461,21 +482,19 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         # Compute edge reconstruction binary cross entropy loss
         loss_dict["edge_recon_loss"] = (
             lambda_edge_recon * compute_edge_recon_loss(
-            adj_recon_logits=edge_model_output["adj_recon_logits"],
-            edge_labels=edge_data_batch.edge_label,
-            edge_label_index=edge_data_batch.edge_label_index,
-            edge_label_conditions=edge_data_batch.conditions if
-                                  (len(self.conditions_) != 0) &
-                                  self.cond_edge_neg_sampling_ else None))
+                edge_recon_logits=edge_model_output["edge_recon_logits"],
+                edge_recon_labels=edge_model_output["edge_recon_labels"],
+                edge_same_condition_labels=edge_model_output[
+                    "edge_same_condition_labels"]))
         
-        if hasattr(edge_data_batch, "conditions") & (
+        if (edge_model_output["edge_same_condition_labels"] is not None) & (
         lambda_cond_contrastive > 0):
             loss_dict["cond_contrastive_loss"] = (
                 lambda_cond_contrastive * compute_cond_contrastive_loss(
-                adj_recon_logits=edge_model_output["adj_recon_logits"],
-                edge_labels=edge_data_batch.edge_label,
-                edge_label_index=edge_data_batch.edge_label_index,
-                edge_label_conditions=edge_data_batch.conditions,
+                edge_recon_logits=edge_model_output["edge_recon_logits"],
+                edge_recon_labels=edge_model_output["edge_recon_labels"],
+                edge_same_condition_labels=edge_model_output[
+                    "edge_same_condition_labels"],
                 contrastive_logits_ratio=contrastive_logits_ratio))
 
         # Compute gene expression reconstruction negative binomial or

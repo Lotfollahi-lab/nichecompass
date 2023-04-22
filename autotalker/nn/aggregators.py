@@ -78,7 +78,6 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
     def forward(self,
                 x: torch.Tensor,
                 edge_index: torch.Tensor,
-                batch_size: int,
                 return_attention_weights: bool=False) -> torch.Tensor:
         """
         Forward pass of the One-hop Attention Node Label Aggregator.
@@ -93,9 +92,6 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
             Tensor containing the node indices of edges in the current node 
             batch including sampled neighbors.
             (Size: 2 x n_edges_batch_and_sampled_neighbors)
-        batch_size:
-            Node batch size. Is used to return only node labels for the nodes
-            in the current node batch.
         return_attention_weights:
             If ´True´, also return the attention weights with the corresponding
             edge index.
@@ -117,7 +113,7 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         output = self.propagate(edge_index, x=(x_l, x_r), g=(g_l, g_r))
         x_neighbors_att = output.mean(dim=1)
         node_labels = torch.cat(
-            (x, x_neighbors_att), dim=-1)[:batch_size, self.genes_idx]
+            (x, x_neighbors_att), dim=-1)[:, self.genes_idx]
         alpha = self._alpha
         self._alpha = None
         if return_attention_weights:

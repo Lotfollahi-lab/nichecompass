@@ -116,43 +116,35 @@ class CosineSimGraphDecoder(nn.Module):
 
     def forward(self,
                 z: torch.Tensor,
-                cond_embed: Optional[torch.Tensor],
-                reduced_obs_start_idx: Optional[int]=None,
-                reduced_obs_end_idx: Optional[int]=None) -> torch.Tensor:
+                cond_embed: Optional[torch.Tensor]) -> torch.Tensor:
         """
         Forward pass of the cosine similarity graph decoder.
 
         Parameters
         ----------
         z:
-            Tensor containing the latent space features.
+            Concatenated latent feature vector of the source and destination
+            nodes (dim: 4 * edge_batch_size x n_gps due to negative edges).
         cond_embed:
-            Tensor containing the conditional embedding.
-        reduced_obs_start_idx:
-            If not `None`, specifies the start observation index from which the
-            cosine similarity with all observations will be computed. This can
-            be used for batched cosine similarity computation to alleviate the
-            memory consumption for big datasets.
-        reduced_obs_end_idx:
-            If not `None`, specifies the end observation index up to which the
-            cosine similarity with all observations will be computed. This can
-            be used for batched cosine similarity computation to alleviate the
-            memory consumption for big datasets.
+            Concatenated conditional embedding vector of the source and
+            destination nodes (dim: 4 * edge_batch_size x n_cond_embed).
 
         Returns
         ----------
-        adj_recon_logits:
-            Tensor containing the reconstructed adjacency matrix with logits.
+        edge_recon_logits:
+            Reconstructed edge logits (dim: 2 * edge_batch_size x 2 *
+            edge_batch_size)
         """
-        # Add conditional embedding to latent feature vector
+        # Add conditional embedding to latent feature vectors
         if cond_embed is not None:
             z += self.cond_embed_l(cond_embed)
         
         z = self.dropout(z)
-        adj_recon_logits = compute_cosine_similarity(
-            z[reduced_obs_start_idx:reduced_obs_end_idx, :], z)
-
-        return adj_recon_logits
+        edge_recon_logits = compute_cosine_similarity(
+            z[:int(z.shape[0]/2)], # ´edge_label_index[0]´
+            z[int(z.shape[0]/2):]) # ´edge_label_index[1]´
+        
+        return edge_recon_logits
 
 
 class MaskedGeneExprDecoder(nn.Module):
