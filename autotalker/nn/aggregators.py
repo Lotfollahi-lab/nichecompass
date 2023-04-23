@@ -8,7 +8,7 @@ from torch_geometric.nn.inits import glorot
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.conv.gcn_conv import gcn_norm
 from torch_geometric.nn.dense.linear import Linear
-from torch_geometric.utils import softmax
+from torch_geometric.utils import add_self_loops, remove_self_loops, softmax
 from torch_sparse import SparseTensor
 
 
@@ -18,7 +18,8 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
                  genes_idx: torch.Tensor,
                  n_heads: int=4,
                  leaky_relu_negative_slope: float=0.2,
-                 dropout_rate: float=0.):
+                 dropout_rate: float=0.,
+                 self_loops: bool=True):
         """
         One-hop Attention Node Label Aggregator class that uses a weighted sum
         of the gene expression of a node's 1-hop neighbors to build an
@@ -53,6 +54,7 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         self.genes_idx = genes_idx
         self.n_heads = n_heads
         self.leaky_relu_negative_slope = leaky_relu_negative_slope
+        self.self_loops = self_loops
         self.linear_l_l = Linear(n_input,
                                  n_input * n_heads,
                                  bias=False,
@@ -110,6 +112,15 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         g_l = self.linear_l_l(x_l).view(-1, self.n_heads, self.n_input)
         g_r = self.linear_r_l(x_r).view(-1, self.n_heads, self.n_input)
         x_l = x_l.repeat(1, self.n_heads).view(-1, self.n_heads, self.n_input)
+
+        if self.self_loops:
+            # Add self loops to account for autocrine communication
+            n_nodes = x.size(0)
+            edge_index, _ = remove_self_loops(edge_index) # in case there are
+                                                          # already self loops
+            edge_index, _ = add_self_loops(edge_index,
+                                           num_nodes=n_nodes)
+
         output = self.propagate(edge_index, x=(x_l, x_r), g=(g_l, g_r))
         x_neighbors_att = output.mean(dim=1)
         node_labels = torch.cat(
