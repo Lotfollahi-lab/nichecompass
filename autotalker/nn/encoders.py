@@ -9,7 +9,7 @@ import torch.nn as nn
 from torch_geometric.nn import GATv2Conv, GCNConv
 
 
-class GraphEncoder(nn.Module):
+class Encoder(nn.Module):
     """
     Graph Convolutional Network encoder class as per Kipf, T. N. & Welling, M.
     Variational Graph Auto-Encoders. arXiv [stat.ML] (2016).
@@ -58,7 +58,7 @@ class GraphEncoder(nn.Module):
         self.n_addon_latent = n_addon_latent
         self.n_layers = n_layers
 
-        print(f"GRAPH ENCODER -> n_input: {n_input}, n_cond_embed_input: "
+        print(f"ENCODER -> n_input: {n_input}, n_cond_embed_input: "
               f"{n_cond_embed_input}, n_layers: {n_layers}, n_hidden: "
               f"{n_hidden}, n_latent: {n_latent}, n_addon_latent: "
               f"{n_addon_latent}, conv_layer: {conv_layer}, n_attention_heads: "

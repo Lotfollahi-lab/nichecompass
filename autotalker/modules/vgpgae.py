@@ -13,7 +13,7 @@ from torch_geometric.data import Data
 
 from autotalker.nn import (CosineSimGraphDecoder,
                            DotProductGraphDecoder,
-                           GraphEncoder,
+                           Encoder,
                            MaskedGeneExprDecoder,
                            MaskedChromAccessDecoder,
                            OneHopAttentionNodeLabelAggregator,
@@ -192,12 +192,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         if len(conditions) != 0:
             print(f"CONDITIONAL EMBEDDING INJECTION -> {cond_embed_injection}")
 
+        # Initialize conditional embedder module
         if (cond_embed_injection is not None) & (self.n_conditions_ > 0):
-            self.cond_embedder = nn.Embedding(
-                self.n_conditions_,
-                n_cond_embed)
+            self.cond_embedder = nn.Embedding(self.n_conditions_, n_cond_embed)
 
-        self.encoder = GraphEncoder(
+        # Initialize encoder module
+        self.encoder = Encoder(
             n_input=n_input,
             n_cond_embed_input=(n_cond_embed if ("encoder" in
                                 self.cond_embed_injection_) &
@@ -211,21 +211,19 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             dropout_rate=dropout_rate_encoder,
             activation=torch.relu)
         
+        # Initialize graph decoder module
         if decoder_type == "cosine_sim":
-            self.graph_decoder = CosineSimGraphDecoder(
-                n_cond_embed_input=(n_cond_embed if ("graph_decoder" in
-                                    self.cond_embed_injection_) &
-                                    (self.n_conditions_ != 0) else 0),
-                n_output=(n_nonaddon_gps + n_addon_gps),
-                dropout_rate=dropout_rate_graph_decoder)
+            graph_decoder = CosineSimGraphDecoder
         elif decoder_type == "dot_prod":
-            self.graph_decoder = DotProductGraphDecoder(
-                n_cond_embed_input=(n_cond_embed if ("graph_decoder" in
-                                    self.cond_embed_injection_) &
-                                    (self.n_conditions_ != 0) else 0),
-                n_output=(n_nonaddon_gps + n_addon_gps),
-                dropout_rate=dropout_rate_graph_decoder)
+            graph_decoder = DotProductGraphDecoder
+        self.graph_decoder = graph_decoder(
+            n_cond_embed_input=(n_cond_embed if ("graph_decoder" in
+                                self.cond_embed_injection_) &
+                                (self.n_conditions_ != 0) else 0),
+            n_cond_embed_output=(n_nonaddon_gps + n_addon_gps),
+            dropout_rate=dropout_rate_graph_decoder)
 
+        # Initialize masked gene expression decoder
         self.gene_expr_decoder = MaskedGeneExprDecoder(
             n_input=n_nonaddon_gps,
             n_addon_input=n_addon_gps,
