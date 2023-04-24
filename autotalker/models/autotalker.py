@@ -339,6 +339,7 @@ class Autotalker(BaseModelMixin):
               n_epochs: int=40,
               n_epochs_all_gps: int=20,
               n_epochs_no_edge_recon: int=0,
+              n_epochs_no_cond_contrastive: int=5,
               lr: float=0.001,
               weight_decay: float=0.,
               lambda_edge_recon: Optional[float]=50000.,
@@ -367,6 +368,9 @@ class Autotalker(BaseModelMixin):
         n_epochs_no_edge_recon:
             Number of epochs without edge reconstruction loss for gene
             expression decoder pretraining.
+        n_epochs_no_cond_contrastive:
+            Number of epochs without conditional contrastive loss for decoder
+            pretraining.
         lr:
             Learning rate.
         weight_decay:
@@ -420,6 +424,8 @@ class Autotalker(BaseModelMixin):
         trainer_kwargs:
             Kwargs for the model Trainer.
         """
+        self.node_batch_size = node_batch_size
+
         self.trainer = Trainer(
             adata=self.adata,
             adata_atac=self.adata_atac,
@@ -433,19 +439,21 @@ class Autotalker(BaseModelMixin):
             node_batch_size=node_batch_size,
             **trainer_kwargs)
 
-        self.trainer.train(n_epochs=n_epochs,
-                           n_epochs_no_edge_recon=n_epochs_no_edge_recon,
-                           n_epochs_all_gps=n_epochs_all_gps,
-                           lr=lr,
-                           weight_decay=weight_decay,
-                           lambda_edge_recon=lambda_edge_recon,
-                           lambda_gene_expr_recon=lambda_gene_expr_recon,
-                           lambda_cond_contrastive=lambda_cond_contrastive,
-                           contrastive_logits_ratio=contrastive_logits_ratio,
-                           lambda_group_lasso=lambda_group_lasso,
-                           lambda_l1_masked=lambda_l1_masked,
-                           lambda_l1_addon=lambda_l1_addon,
-                           mlflow_experiment_id=mlflow_experiment_id)
+        self.trainer.train(
+            n_epochs=n_epochs,
+            n_epochs_no_edge_recon=n_epochs_no_edge_recon,
+            n_epochs_no_cond_contrastive=n_epochs_no_cond_contrastive,
+            n_epochs_all_gps=n_epochs_all_gps,
+            lr=lr,
+            weight_decay=weight_decay,
+            lambda_edge_recon=lambda_edge_recon,
+            lambda_gene_expr_recon=lambda_gene_expr_recon,
+            lambda_cond_contrastive=lambda_cond_contrastive,
+            contrastive_logits_ratio=contrastive_logits_ratio,
+            lambda_group_lasso=lambda_group_lasso,
+            lambda_l1_masked=lambda_l1_masked,
+            lambda_l1_addon=lambda_l1_addon,
+            mlflow_experiment_id=mlflow_experiment_id)
         
         self.is_trained_ = True
         self.adata.obsm[self.latent_key_], _ = self.get_latent_representation(
@@ -454,7 +462,8 @@ class Autotalker(BaseModelMixin):
            adj_key=self.adj_key_,
            condition_key=self.condition_key_,
            only_active_gps=True,
-           return_mu_std=True)
+           return_mu_std=True,
+           node_batch_size=self.trainer.node_batch_size_)
         self.adata.uns[self.active_gp_names_key_] = self.get_active_gps()
 
         if len(self.conditions_) > 0:
@@ -465,7 +474,7 @@ class Autotalker(BaseModelMixin):
         if self.node_label_method_ == "one-hop-attention":
             self.adata.obsp[self.agg_alpha_key_] = (
                 self.get_gene_expr_agg_att_weights(
-                    node_batch_size=node_batch_size))
+                    node_batch_size=self.trainer.node_batch_size_))
 
         if mlflow_experiment_id is not None:
             mlflow.log_metric("n_active_gps",

@@ -4,6 +4,7 @@ This module contains the Trainer to train an Autotalker model.
 
 import copy
 import itertools
+import math
 import time
 import warnings
 from collections import defaultdict
@@ -163,6 +164,11 @@ class Trainer(BaseTrainerMixin):
         print(f"Number of validation nodes: {self.n_nodes_val}")
         print(f"Number of training edges: {self.n_edges_train}")
         print(f"Number of validation edges: {self.n_edges_val}")
+
+        # Determine node batch size automatically if not specified
+        if self.node_batch_size_ is None:
+            self.node_batch_size_ = int(self.edge_batch_size_ / math.floor(
+                self.n_edges_train / self.n_nodes_train))
         
         # Initialize node-level and edge-level dataloaders
         loader_dict = initialize_dataloaders(
@@ -184,7 +190,7 @@ class Trainer(BaseTrainerMixin):
               n_epochs: int=40,
               n_epochs_all_gps: int=20,
               n_epochs_no_edge_recon: int=0,
-              n_epochs_no_cond_contrastive: int=1,
+              n_epochs_no_cond_contrastive: int=3,
               lr: float=0.001,
               weight_decay: float=0.,
               lambda_edge_recon: Optional[float]=10.,
