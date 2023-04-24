@@ -157,6 +157,7 @@ class Autotalker(BaseModelMixin):
                  cond_embed_key: Optional[str]="autotalker_cond_embed",
                  cond_embed_injection: Optional[List]=["gene_expr_decoder"],
                  genes_idx_key: str="autotalker_genes_idx",
+                 peaks_idx_key: str="autotalker_peaks_idx",
                  recon_adj_key: str="autotalker_recon_connectivities",
                  agg_alpha_key: str="autotalker_agg_alpha",
                  include_edge_recon_loss: bool=True,
@@ -194,6 +195,7 @@ class Autotalker(BaseModelMixin):
         self.cond_embed_key_ = cond_embed_key
         self.cond_embed_injection_ = cond_embed_injection
         self.genes_idx_key_ = genes_idx_key
+        self.peaks_idx_key_ = peaks_idx_key
         self.recon_adj_key_ = recon_adj_key
         self.agg_alpha_key_ = agg_alpha_key
         self.include_edge_recon_loss_ = include_edge_recon_loss
@@ -252,6 +254,10 @@ class Autotalker(BaseModelMixin):
         
         # Retrieve index of genes in gp mask
         self.genes_idx_ = adata.uns[genes_idx_key]
+        if adata_atac is not None:
+            self.peaks_idx_ = adata_atac.uns[peaks_idx_key]
+        else:
+            self.peaks_idx_ = None
 
         # Retrieve conditions
         if conditions is None:
@@ -310,6 +316,7 @@ class Autotalker(BaseModelMixin):
             gene_expr_decoder_mask=self.gp_mask_,
             chrom_access_decoder_mask=self.ca_mask_,
             genes_idx=self.genes_idx_,
+            peaks_idx=self.peaks_idx_,
             conditions=self.conditions_,
             conv_layer_encoder=self.conv_layer_encoder_,
             encoder_n_attention_heads=self.encoder_n_attention_heads_,
@@ -336,8 +343,8 @@ class Autotalker(BaseModelMixin):
               weight_decay: float=0.,
               lambda_edge_recon: Optional[float]=50000.,
               lambda_gene_expr_recon: float=10.,
-              lambda_cond_contrastive: float=10000.,
-              contrastive_logits_ratio: float=0.00390625,
+              lambda_cond_contrastive: float=5000.,
+              contrastive_logits_ratio: float=0.125,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,
               lambda_l1_addon: float=0.,

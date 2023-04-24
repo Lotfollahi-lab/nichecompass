@@ -57,13 +57,13 @@ class SpatialAnnTorchDataset():
         else:
             self.x = torch.tensor(x)
 
-        # Store ATAC feature vector in dense format if provided
+        # Concatenate ATAC feature vector in dense format if provided
         if adata_atac is not None:
             if sp.issparse(adata_atac.X): 
-                self.x_atac = torch.tensor(adata_atac.X.toarray())
+                self.x = torch.cat(
+                    (self.x, torch.tensor(adata_atac.X.toarray())), axis=1)
             else:
-                self.x_atac = torch.tensor(adata_atac.X)
-
+                self.x = torch.cat((self.x, torch.tensor(adata_atac.X)), axis=1)            
 
         # Store adjacency matrix in torch_sparse SparseTensor format
         if sp.issparse(adata.obsp[adj_key]):

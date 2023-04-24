@@ -184,7 +184,7 @@ class Trainer(BaseTrainerMixin):
               n_epochs: int=40,
               n_epochs_all_gps: int=20,
               n_epochs_no_edge_recon: int=0,
-              n_epochs_no_cond_contrastive: int=5,
+              n_epochs_no_cond_contrastive: int=1,
               lr: float=0.001,
               weight_decay: float=0.,
               lambda_edge_recon: Optional[float]=10.,

@@ -172,11 +172,14 @@ def add_multimodal_pairings_to_adata(
         atac_pairing_dict: dict,
         adata_atac: AnnData,
         ca_targets_mask_key: str="autotalker_ca_targets",
-        ca_sources_mask_key: str="autotalker_ca_sources") -> None:
+        ca_sources_mask_key: str="autotalker_ca_sources",
+        source_peaks_idx_key: str="autotalker_source_peaks_idx",
+        target_peaks_idx_key: str="autotalker_target_peaks_idx",
+        peaks_idx_key: str="autotalker_peaks_idx") -> None:
     """
     Add chromatin accessibility of gene programs defined in a gene program 
-    dictionary to an AnnData object by converting the gene program lists of gene program target and source genes
-    to binary masks and aligning the masks with chromatin accessibility peaks
+    dictionary to an AnnData object by converting the gene program lists of gene
+    program target and source genes to binary masks and aligning the masks with chromatin accessibility peaks
     for which data is available in the ATAC AnnData object.
 
     Parameters
@@ -201,6 +204,16 @@ def add_multimodal_pairings_to_adata(
         of a gene program will be stored (source genes are used for the 
         reconstruction of the gene expression of the node's neighbors 
         (transmitting nodes)).
+    source_peaks_idx_key:
+        Key in ´adata_atac.uns´ where the index of the source peaks that are in
+        the chromatin accessibility mask will be stored.
+    target_peaks_idx_key:
+        Key in ´adata_atac.uns´ where the index of the target peaks that are in
+        the chromatin accessibility mask will be stored.
+    peaks_idx_key:
+        Key in ´adata_atac.uns´ where the index of a concatenated vector of
+        target and source peaks that are in the chromatin accessibility masks
+        will be stored.
     """
     # Retrieve probed peaks from adata
     adata_peaks = adata_atac.var_names
@@ -238,3 +251,12 @@ def add_multimodal_pairings_to_adata(
     # Add binary chromatin accessibility masks to ´adata_atac.varm´
     adata_atac.varm[ca_sources_mask_key] = ca_sources_mask
     adata_atac.varm[ca_targets_mask_key] = ca_targets_mask
+
+    # Get index of peaks present in the sources and targets mask respectively
+    adata_atac.uns[source_peaks_idx_key] = np.nonzero(
+        adata_atac.varm[ca_sources_mask_key].sum(axis=1))[0]
+    adata_atac.uns[target_peaks_idx_key] = np.nonzero(
+        adata_atac.varm[ca_targets_mask_key].sum(axis=1))[0]
+    adata_atac.uns[peaks_idx_key] = np.concatenate(
+        (adata_atac.uns[source_peaks_idx_key],
+         adata_atac.uns[target_peaks_idx_key] + adata_atac.n_vars), axis=0)

@@ -53,6 +53,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         Number of conditional embedding nodes.
     n_output:
         Number of nodes in the output layer.
+    n_output_peaks:
+        Number of output peaks for the masked chromatin accessibility decoder.
     n_genes_in_mask:
         Number of source and target genes that are included in the gp mask.
     gene_expr_decoder_mask:
@@ -127,7 +129,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  n_output: int,
                  gene_expr_decoder_mask: torch.Tensor,
                  genes_idx: torch.Tensor,
+                 n_output_peaks: int=0,
                  chrom_access_decoder_mask: Optional[torch.Tensor]=None,
+                 peaks_idx: Optional[torch.Tensor]=None,
                  conditions: list=[],
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=4,
@@ -146,7 +150,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     "one-hop-attention"]="one-hop-attention",
                  active_gp_thresh_ratio: float=0.03,
                  log_variational: bool=True,
-                 cond_embed_injection: Optional[list]=["gene_expr_decoder"],
+                 cond_embed_injection: Optional[list]=["gene_expr_decoder",
+                                                       "chrom_access_decoder"],
                  cond_edge_neg_sampling: bool=True):
         super().__init__()
         self.n_input_ = n_input
@@ -156,7 +161,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.n_addon_gps_ = n_addon_gps
         self.n_cond_embed_ = n_cond_embed
         self.n_output_ = n_output
+        self.n_output_peaks_ = n_output_peaks
         self.genes_idx_ = genes_idx
+        self.peaks_idx_ = peaks_idx
         self.conditions_ = conditions
         self.n_conditions_ = len(conditions)
         self.condition_label_encoder_ = {
@@ -177,9 +184,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.cond_edge_neg_sampling_ = cond_edge_neg_sampling
         self.freeze_ = False
         if chrom_access_decoder_mask is not None:
-            self.use_chrom_access_decoder_ = True
+            self.includes_atac_modality_ = True
         else:
-            self.use_chrom_access_decoder_ = False
+            self.includes_atac_modality_ = False
 
         print("--- INITIALIZING NEW NETWORK MODULE: VARIATIONAL GENE PROGRAM "
               "GRAPH AUTOENCODER ---")
@@ -235,22 +242,23 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             genes_idx=genes_idx,
             recon_dist=self.gene_expr_recon_dist_)
         
-        if chrom_access_decoder_mask is not None:
+        if self.includes_atac_modality_:
+            # Initialize masked chromatin accessibility decoder
             self.chrom_access_decoder = MaskedChromAccessDecoder(
                 n_input=n_nonaddon_gps,
                 n_addon_input=n_addon_gps,
                 n_cond_embed_input=(n_cond_embed if ("chrom_access_decoder" in
                                     self.cond_embed_injection_) &
                                     (self.n_conditions_ != 0) else 0),
-                n_output=n_output,
+                n_output=n_output_peaks,
                 mask=chrom_access_decoder_mask,
-                genes_idx=genes_idx,
+                peaks_idx=peaks_idx,
                 recon_dist=self.chrom_access_recon_dist_)            
 
         if node_label_method == "self":
             self.node_label_aggregator = (
                 SelfNodeLabelNoneAggregator(genes_idx=genes_idx))
-        elif node_label_method == "one-hop-norm":
+        if node_label_method == "one-hop-norm":
             self.node_label_aggregator = (
                 OneHopGCNNormNodeLabelAggregator(genes_idx=genes_idx))
         elif node_label_method == "one-hop-sum":
@@ -261,8 +269,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 OneHopAttentionNodeLabelAggregator(n_input=n_input,
                                                    genes_idx=genes_idx))
         
-        # Gene-specific dispersion parameters
+        # Initialize gene-specific dispersion parameters
         self.theta = torch.nn.Parameter(torch.randn(len(genes_idx)))
+
+        if self.includes_atac_modality_:
+            # Initialize peak-specific dispersion parameters
+            self.theta_atac = torch.nn.Parameter(torch.randn(len(peaks_idx)))
 
     def forward(self,
                 data_batch: Data,
@@ -298,13 +310,15 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         x = data_batch.x # dim: n_obs x n_omics_features
         edge_index = data_batch.edge_index # dim: 2 x n_edges
         output = {}
-        # Convert gene expression for numerical stability
+
+        # Logarithmitize omics feature vector for numerical stability
         if self.log_variational_:
             x_enc = torch.log(1 + x)
         else:
             x_enc = x
 
-        # Get index of sampled nodes for batch as well as edge or node labels
+        # Get index of sampled nodes for current batch as well as node or edge
+        # labels depending on decoder
         if decoder == "omics":
             # ´data_batch´ will be a node batch and first node_batch_size
             # elements are the sampled nodes, leading to a dim of ´batch_idx´ of
@@ -372,25 +386,41 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 cond_embed=(self.cond_embed if "graph_decoder" in
                             self.cond_embed_injection_ else None))
         elif decoder == "omics":
-            # Get gene expression reconstruction distribution parameters
-            # Use observed library size as scaling factor for the negative binomial 
-            # means of the gene expression distribution
+            if self.includes_atac_modality_:
+                # Separate node feature vector into RNA and ATAC part
+                x = x[:, :self.n_output_] 
+                x_atac = x[:, self.n_output_:]
+                assert x_atac.size(1) == self.n_output_peaks_
+                output["node_labels"] = output["node_labels"][
+                    :, :len(self.genes_idx_)]
+                output["node_labels_atac"] = output["node_labels"][
+                    :, len(self.genes_idx_):]
+                assert output["node_labels_atac"].size(1) == len(self.genes_idx_)
+                
+            # Use observed library size as scaling factor for the negative
+            # binomial means of the gene expression distribution
             self.log_library_size = torch.log(x.sum(1)).unsqueeze(1)[batch_idx]
-            # (?) adjust for ATAC
 
+            # Get gene expression reconstruction distribution parameters
             output["gene_expr_dist_params"] = self.gene_expr_decoder(
                 z=z,
                 log_library_size=self.log_library_size,
                 cond_embed=(self.cond_embed if "gene_expr_decoder" in
                             self.cond_embed_injection_ else None))
             
-            # Get chromatin accessibility reconstruction distribution parameters
-            if self.use_chrom_access_decoder_:
+            if self.includes_atac_modality_:
+                # Use observed library size as scaling factor for the negative
+                # binomial means of the chromatin accessibility distribution            
+                self.log_library_size_atac = torch.log(
+                    x_atac.sum(1)).unsqueeze(1)[batch_idx]
+
+                # Get chromatin accessibility reconstruction distribution
+                # parameters
                 output["chrom_access_dist_params"] = self.chrom_access_decoder(
-                z=z,
-                log_library_size=self.log_library_size, # (?) adjust for ATAC
-                cond_embed=(self.cond_embed if "chrom_access_decoder" in
-                            self.cond_embed_injection_ else None))
+                    z=z,
+                    log_library_size=self.log_library_size_atac,
+                    cond_embed=(self.cond_embed if "chrom_access_decoder" in
+                                self.cond_embed_injection_ else None))
         return output
 
     def loss(self,
@@ -527,13 +557,17 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon *
             compute_addon_l1_reg_loss(self))
 
-        if self.use_chrom_access_decoder_:
-            nb_means = node_model_output["chrom_access_dist_params"]
+        if self.includes_atac_modality_:
+            # Compute chromatin accessibility reconstruction negative binomial
+            # loss
+            theta_atac = torch.exp(self.theta_atac) # peak-specific inverse
+                                                    # dispersion
+            nb_means_atac = node_model_output["chrom_access_dist_params"]
             loss_dict["chrom_access_recon_loss"] = (lambda_chrom_access_recon * 
             compute_gene_expr_recon_nb_loss(
-                    x=node_model_output["node_labels"],
-                    mu=nb_means,
-                    theta=theta))
+                    x=node_model_output["node_labels_atac"],
+                    mu=nb_means_atac,
+                    theta=theta_atac))
 
         # Compute optimization loss used for backpropagation as well as global
         # loss used for early stopping of model training and best model saving
