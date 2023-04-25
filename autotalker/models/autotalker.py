@@ -354,6 +354,9 @@ class Autotalker(BaseModelMixin):
               edge_batch_size: int=128,
               node_batch_size: int=16,
               mlflow_experiment_id: Optional[str]=None,
+              retrieve_cond_embeddings: bool=False,
+              retrieve_recon_edge_probs: bool=False,
+              retrieve_att_weights: bool=False,
               **trainer_kwargs):
         """
         Train the Autotalker model.
@@ -466,12 +469,14 @@ class Autotalker(BaseModelMixin):
            node_batch_size=self.trainer.node_batch_size_)
         self.adata.uns[self.active_gp_names_key_] = self.get_active_gps()
 
-        if len(self.conditions_) > 0:
+        if (len(self.conditions_) > 0) & retrieve_cond_embeddings:
             self.adata.uns[self.cond_embed_key_] = self.get_cond_embeddings()
 
-        # self.adata.obsp[self.recon_adj_key_] = self.get_recon_edge_probs()
+        if retrieve_recon_edge_probs:
+            self.adata.obsp[self.recon_adj_key_] = self.get_recon_edge_probs()
 
-        if self.node_label_method_ == "one-hop-attention":
+        if (self.node_label_method_ == "one-hop-attention") & (
+        retrieve_att_weights):
             self.adata.obsp[self.agg_alpha_key_] = (
                 self.get_gene_expr_agg_att_weights(
                     node_batch_size=self.trainer.node_batch_size_))
