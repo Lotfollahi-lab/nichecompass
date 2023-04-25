@@ -327,14 +327,15 @@ def compute_masked_l1_reg_loss(model: nn.Module,
                                only_target_genes: bool=False) -> torch.Tensor:
     """
     Compute L1 regularization loss for the masked decoder layer weights to 
-    enforce gene sparsity of masked gene programs.
+    encourage gene sparsity of masked gene programs.
 
     Parameters
     ----------
     model:
         The VGPGAE module.
     only_target_genes:
-        If ´True´, compute regularization loss only for target genes.
+        If ´True´, compute regularization loss only for target genes (not for
+        source genes).
 
     Returns
     ----------
@@ -346,10 +347,12 @@ def compute_masked_l1_reg_loss(model: nn.Module,
     else:
         param_end_gene_idx = None
 
+    # First compute layer-wise sum of absolute weights over all masked gene
+    # expression decoder layers, them sum across layers
     masked_decoder_layerwise_param_sum = torch.stack(
         [torch.linalg.vector_norm(param[:param_end_gene_idx, :], ord=1) for
          param_name, param in model.named_parameters() if
          "nb_means_normalized_decoder.masked_l" in param_name],
-         dim=0)
+        dim=0)
     masked_l1_reg_loss = torch.sum(masked_decoder_layerwise_param_sum)
     return masked_l1_reg_loss

@@ -333,8 +333,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     edge_index=edge_index,
                     return_attention_weights=return_agg_attention_weights)
             output["node_labels"] = node_label_aggregator_output[0][batch_idx]
-            output["alpha"] = node_label_aggregator_output[1][batch_idx]
-            output["alpha_edge_index"] = data_batch.edge_attr.t()[:, batch_idx]
+            if self.node_label_method_ == "one-hop-attention":
+                output["alpha"] = node_label_aggregator_output[1][batch_idx]
+                output["alpha_edge_index"] = data_batch.edge_attr.t()[:, batch_idx]
             # ´edge_attr´ stores the global edge index instead of batch index
         elif decoder == "graph":
             # ´data_batch´ will be an edge batch with sampled positive and
