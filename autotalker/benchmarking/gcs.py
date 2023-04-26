@@ -83,7 +83,7 @@ def compute_gcs(
     accurately the latent nearest neighbor graph preserves edges and non-edges
     from the spatial (ground truth) nearest neighbor graph. A value of '1'
     indicates perfect graph similarity and a value of '0' indicates no graph
-    similarity at all.
+    connectivity similarity at all.
     If existent, uses precomputed nearest neighbor graphs stored in
     ´adata.obsp[spatial_knng_key + '_connectivities']´ and
     ´adata.obsp[latent_knng_key + '_connectivities']´.

@@ -1,6 +1,6 @@
 """
 This module contains the Maximum Leiden Adjusted Mutual Info (MLAMI) benchmark
-for testing how accurately the latent feature space preserves spatial
+for testing how accurately the latent feature space preserves global spatial
 organization from the physical (spatial) feature space by comparing clustering
 overlaps.
 """
@@ -27,7 +27,7 @@ def compute_mlami(
     Compute the Maximum Leiden Adjusted Mutual Info (MLAMI) between the latent
     nearest neighbor graph and the spatial nearest neighbor graph. The MLAMI
     ranges between '0' and '1' with higher values indicating that the latent
-    feature space more accurately preserves spatial organization from the
+    feature space more accurately preserves global spatial organization from the
     spatial (ground truth) feature space. To compute the MLAMI, Leiden
     clusterings with different resolutions are computed for both nearest
     neighbor graphs. The Adjusted Mutual Info (AMI) between all clustering
