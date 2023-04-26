@@ -1,14 +1,13 @@
-name: autotalker
+name: autotalker_cpu
 channels:
   - conda-forge
   - bioconda
   - pytorch
 dependencies:
-  - cudatoolkit=11.3.1
+  - bedtools=2.30.0
   - pip=22.2.2
   - python=3.9
   - pytorch=1.12.1
-  - scglue=0.3.2
   - pip:
     - bokeh==2.4.3
     - holoviews==1.15.4
@@ -24,6 +23,6 @@ dependencies:
     - squidpy==1.2.2
     - torch-geometric==2.1.0post1
     - torch-scatter==2.1.1
-    - -f https://data.pyg.org/whl/torch-2.0.0+cu117.html
+    - -f https://data.pyg.org/whl/torch-2.0.0+cpu.html
     - torch-sparse==0.6.17
-    - -f https://data.pyg.org/whl/torch-2.0.0+cu117.html
+    - -f https://data.pyg.org/whl/torch-2.0.0+cpu.html
