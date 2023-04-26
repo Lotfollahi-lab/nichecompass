@@ -136,7 +136,7 @@ def compute_mlami(
                           spot_size=0.03,
                           legend_loc=None)
 
-    # Calculate max lami over all clustering resolutions
+    # Calculate max LAMI over all clustering resolutions
     lami_list = []
     for spatial_resolution in clustering_resolutions:
         for latent_resolution in clustering_resolutions:
@@ -150,11 +150,11 @@ def compute_mlami(
 
 def _compute_ami(adata: AnnData,
                  cluster_group1_key: str,
-                 cluster_group2_key: str):
+                 cluster_group2_key: str) -> float:
     """
     Compute the Adjusted Mutual Information (AMI) between two different
     cluster assignments. AMI compares the overlap of two clusterings. For
-    more info, check
+    details, see documentation at
     https://scikit-learn.org/stable/modules/generated/sklearn.metrics.adjusted_mutual_info_score.html#sklearn.metrics.adjusted_mutual_info_score.
 
     Parameters
@@ -172,16 +172,10 @@ def _compute_ami(adata: AnnData,
     Returns
     ----------
     ami:
-        AMI score as calculated by sklearn.
+        AMI score as calculated by the sklearn implementation.
     """
     cluster_group1 = adata.obs[cluster_group1_key].tolist()
     cluster_group2 = adata.obs[cluster_group2_key].tolist()
-
-    # Validate cluster groups
-    if len(cluster_group1) != len(cluster_group2):
-        raise ValueError(
-            f"Different lengths in 'cluster_group1' ({len(cluster_group1)}) "
-            f"and 'cluster_group2' ({len(cluster_group2)}).")
 
     ami = adjusted_mutual_info_score(cluster_group1,
                                      cluster_group2,
