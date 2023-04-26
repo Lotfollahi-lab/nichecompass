@@ -170,7 +170,7 @@ class OneHopGCNNormNodeLabelAggregator(nn.Module):
     One-hop GCN Norm Node Label Aggregator class that uses a symmetrically
     normalized sum (as introduced in Kipf, T. N. & Welling, M. Semi-Supervised 
     Classification with Graph Convolutional Networks. arXiv [cs.LG] (2016)) of 
-    the gene expression of a node's 1-hop neighbors to build
+    the omics feature vector of a node's 1-hop neighbors to build
     an aggregated neighbor gene expression vector for a node. It returns a 
     concatenation of the node's own gene expression and the gcn-norm aggregated
     neighbor gene expression vector as node labels for the gene expression
@@ -215,7 +215,6 @@ class OneHopGCNNormNodeLabelAggregator(nn.Module):
         x_neighbors_norm = adj_norm.t().matmul(x)
         node_labels = torch.cat((x, x_neighbors_norm),
                                 dim=-1)[:, self.genes_idx]
-        print(node_labels.shape)
         return node_labels
 
 
