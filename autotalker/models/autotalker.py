@@ -280,13 +280,14 @@ class Autotalker(BaseModelMixin):
                     (self.ca_mask_, torch.tensor(ca_sources_mask, 
                     dtype=torch.bool)), dim=1)
 
-
         self.n_nonaddon_gps_ = len(self.gp_mask_)
         self.n_addon_gps_ = n_addon_gps
         self.n_cond_embed_ = n_cond_embed
         
         # Retrieve index of genes in gp mask
         self.genes_idx_ = adata.uns[genes_idx_key]
+
+        # Retrieve index of peaks in ca mask
         if adata_atac is not None:
             self.peaks_idx_ = adata_atac.uns[peaks_idx_key]
         else:
