@@ -8,6 +8,7 @@ from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import scipy.sparse as sp
 from anndata import AnnData
 from scglue import genomics
 
@@ -153,7 +154,6 @@ def generate_multimodal_pairing_dict(
             "dist": abs(d), "weight": extend_fn(abs(d)), "sign": s
         }
     )
-    print("this part works")
     gene_peak_edges_list = list(graph.edges)
 
     multimodal_dict = {}
@@ -215,8 +215,88 @@ def add_multimodal_pairings_to_adata(
         target and source peaks that are in the chromatin accessibility masks
         will be stored.
     """
-    # Retrieve probed peaks from adata
-    adata_peaks = adata_atac.var_names
+    # Get all corresponding peaks for each gene in a gene program and remove
+    # duplicate peaks
+    peak_dict = {
+        gp_name: {gp_entity: list(set([peak for gene_peaks in 
+                                       [atac_pairing_dict[gene] if gene in 
+                                        atac_pairing_dict.keys() else [] for
+                                        gene in genes] for peak in gene_peaks]))
+                  for gp_entity, genes in gp_genes_dict.items()}
+        for gp_name, gp_genes_dict in gp_dict.items()}
+
+    # Create mapping dict for computationally efficient mapping of peaks to
+    # adata idx    
+    peak_idx_mapping_dict = {value: index for index, value in 
+                             enumerate(adata_atac.var_names)}
+    
+    # Create binary chromatin accessibility masks and add to ´adata_atac.varm´
+    for entity in ["targets", "sources"]:
+        peak_idx = [peak_idx_mapping_dict[peak] for gp_peak_dict
+                    in peak_dict.values() for peak in gp_peak_dict[entity]]
+        gp_idx = [gp_idx for gp_idx, gp_peak_dict in
+                  enumerate(peak_dict.values()) for _ in
+                  range(len(gp_peak_dict[entity]))]
+        if entity == "targets":
+            ca_mask_key = ca_targets_mask_key
+        elif entity == "sources":
+            ca_mask_key = ca_sources_mask_key
+        adata_atac.varm[ca_mask_key] = sp.csr_matrix((np.ones(len(peak_idx),
+                                                              dtype=bool),
+                                                     (peak_idx, gp_idx)),
+                                                     shape=(adata_atac.shape[1],
+                                                            adata_atac.shape[0]),
+                                                     dtype=bool)
+
+    # Get index of peaks present in the sources and targets mask respectively
+    adata_atac.uns[source_peaks_idx_key] = np.nonzero(
+        adata_atac.varm[ca_sources_mask_key].sum(axis=1))[0]
+    adata_atac.uns[target_peaks_idx_key] = np.nonzero(
+        adata_atac.varm[ca_targets_mask_key].sum(axis=1))[0]
+    adata_atac.uns[peaks_idx_key] = np.concatenate(
+        (adata_atac.uns[source_peaks_idx_key],
+         adata_atac.uns[target_peaks_idx_key] + adata_atac.n_vars), axis=0)
+    
+    return peak_dict
+    #gp_idx = [gp_idx_peak_idx_pair[0] for gp_idx_peak_idx_pair in gp_idx_peak_idx_pair_list]
+    # peak_idx = [gp_idx_peak_idx_pair[1] for gp_idx_peak_idx_pair in gp_idx_peak_idx_pair_list]
+    # ca_targets_mask = [adata_atac.var_names.get_loc(peak) for gp_peak_dict in peak_dict.values() for peak in gp_peak_dict["targets"]]
+
+    """
+    # Create binary gene program peak masks 
+    ca_targets_mask = [[int(peak in gp_peaks_dict["targets"])
+                        for _, gp_peaks_dict in peak_dict.items()]
+                       for peak in adata_peaks]
+    ca_targets_mask = np.asarray(ca_targets_mask, dtype="int32")
+    ca_sources_mask = [[int(peak in gp_peaks_dict["sources"])
+                        for _, gp_peaks_dict in peak_dict.items()]
+                       for peak in adata_peaks]
+    ca_sources_mask = np.asarray(ca_sources_mask, dtype="int32")
+    """
+    
+    """
+    target_atac_pairings = []
+    source_atac_pairings = []
+
+    for gp_genes_dict in gp_dict.values():
+        gp_target_atac_pairings = []
+        gp_source_atac_pairings = []
+
+        for gene in gp_genes_dict["targets"]:
+            gp_target_atac_pairings.extend(atac_pairing_dict.get(gene, []))
+        target_atac_pairings.append(gp_target_atac_pairings)
+
+        for gene in gp_genes_dict["sources"]:
+            gp_source_atac_pairings.extend(atac_pairing_dict.get(gene, []))
+        source_atac_pairings.append(gp_source_atac_pairings)
+
+    ca_targets_mask = np.asarray([[int(peak in gp_peaks)
+                                   for gp_peaks in target_atac_pairings]
+                                  for peak in adata_peaks], dtype="int32")
+
+    ca_sources_mask = np.asarray([[int(peak in gp_peaks)
+                                   for gp_peaks in source_atac_pairings]
+                                  for peak in adata_peaks], dtype="int32")
 
     target_atac_pairings = []
     for gp_target_genes in [gp_genes_dict["targets"] for _, gp_genes_dict in
@@ -245,18 +325,4 @@ def add_multimodal_pairings_to_adata(
                         for gp_peaks in source_atac_pairings]
                         for peak in adata_peaks]
     ca_sources_mask = np.asarray(ca_targets_mask, dtype="int32")
-
-    ca_mask = np.concatenate((ca_sources_mask, ca_targets_mask), axis=0)
-
-    # Add binary chromatin accessibility masks to ´adata_atac.varm´
-    adata_atac.varm[ca_sources_mask_key] = ca_sources_mask
-    adata_atac.varm[ca_targets_mask_key] = ca_targets_mask
-
-    # Get index of peaks present in the sources and targets mask respectively
-    adata_atac.uns[source_peaks_idx_key] = np.nonzero(
-        adata_atac.varm[ca_sources_mask_key].sum(axis=1))[0]
-    adata_atac.uns[target_peaks_idx_key] = np.nonzero(
-        adata_atac.varm[ca_targets_mask_key].sum(axis=1))[0]
-    adata_atac.uns[peaks_idx_key] = np.concatenate(
-        (adata_atac.uns[source_peaks_idx_key],
-         adata_atac.uns[target_peaks_idx_key] + adata_atac.n_vars), axis=0)
+    """

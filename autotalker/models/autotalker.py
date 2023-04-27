@@ -152,6 +152,8 @@ class Autotalker(BaseModelMixin):
                  active_gp_names_key: str="autotalker_active_gp_names",
                  gp_targets_mask_key: str="autotalker_gp_targets",
                  gp_sources_mask_key: str="autotalker_gp_sources",
+                 ca_targets_mask_key: str="autotalker_ca_targets",
+                 ca_sources_mask_key: str="autotalker_ca_sources",
                  latent_key: str="autotalker_latent",
                  condition_key: Optional[str]=None,
                  cond_embed_key: Optional[str]="autotalker_cond_embed",
@@ -179,6 +181,8 @@ class Autotalker(BaseModelMixin):
                  dropout_rate_graph_decoder: float=0.,
                  gp_targets_mask: Optional[Union[np.ndarray, list]]=None,
                  gp_sources_mask: Optional[Union[np.ndarray, list]]=None,
+                 ca_targets_mask: Optional[Union[np.ndarray, list]]=None,
+                 ca_sources_mask: Optional[Union[np.ndarray, list]]=None,
                  conditions: Optional[list]=None, 
                  n_addon_gps: int=0,
                  n_cond_embed: int=128):
@@ -190,6 +194,8 @@ class Autotalker(BaseModelMixin):
         self.active_gp_names_key_ = active_gp_names_key
         self.gp_targets_mask_key_ = gp_targets_mask_key
         self.gp_sources_mask_key_ = gp_sources_mask_key
+        self.ca_targets_mask_key_ = ca_targets_mask_key
+        self.ca_sources_mask_key_ = ca_sources_mask_key
         self.latent_key_ = latent_key
         self.condition_key_ = condition_key
         self.cond_embed_key_ = cond_embed_key
@@ -234,7 +240,6 @@ class Autotalker(BaseModelMixin):
                                  "created with ´mask = "
                                  "np.ones((n_latent, n_output))´).")
         self.gp_mask_ = torch.tensor(gp_targets_mask, dtype=torch.float32)
-        self.ca_mask_ = None
         if node_label_method != "self":
             if gp_sources_mask is None:
                 if gp_sources_mask_key in adata.varm:
@@ -248,6 +253,34 @@ class Autotalker(BaseModelMixin):
             self.gp_mask_ = torch.cat(
                 (self.gp_mask_, torch.tensor(gp_sources_mask, 
                 dtype=torch.float32)), dim=1)
+        
+        if adata_atac is None:
+            self.ca_mask_ = None
+        else:
+            if ca_targets_mask is None:
+                if ca_targets_mask_key in adata_atac.varm:
+                    ca_targets_mask = adata_atac.varm[ca_targets_mask_key].T
+                else:
+                    raise ValueError("Please explicitly provide a "
+                                     "´ca_targets_mask´ to the model or specify"
+                                     " an adequate ´ca_targets_mask_key´ for "
+                                     "your adata_atac object.")
+            self.ca_mask_ = torch.tensor(ca_targets_mask, dtype=torch.bool)
+            if node_label_method != "self":
+                if ca_sources_mask is None:
+                    if ca_sources_mask_key in adata.varm:
+                        ca_sources_mask = adata_atac.varm[gp_sources_mask_key].T
+                    else:
+                        raise ValueError("Please explicitly provide a "
+                                        "´gp_sources_mask´ to the model or specify"
+                                        " an adequate ´gp_sources_mask_key´ for "
+                                        "your adata object.")
+                # Horizontally concatenate targets and sources masks
+                self.ca_mask_ = torch.cat(
+                    (self.ca_mask_, torch.tensor(ca_sources_mask, 
+                    dtype=torch.bool)), dim=1)
+
+
         self.n_nonaddon_gps_ = len(self.gp_mask_)
         self.n_addon_gps_ = n_addon_gps
         self.n_cond_embed_ = n_cond_embed
