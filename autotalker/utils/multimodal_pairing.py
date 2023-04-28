@@ -223,26 +223,24 @@ def add_multimodal_pairings_to_adata(
     # adata idx    
     peak_idx_mapping_dict = {value: index for index, value in 
                              enumerate(adata_atac.var_names)}
-
+    
     # Get all corresponding peaks for each gene in a gene program and remove
     # duplicate peaks
     for entity in ["targets", "sources"]:
         if entity == "targets":
             gp_mask_key = gp_targets_mask_key
+            ca_mask_key = ca_targets_mask_key
         elif entity == "sources":
             gp_mask_key = gp_sources_mask_key
-        non_zero_indices = np.where(adata.varm[gp_mask_key])
-        sort_idx = np.argsort(non_zero_indices[1])
-        gp_idx = non_zero_indices[1][sort_idx]
-        gene_idx = non_zero_indices[0][sort_idx]
-        genes = [adata.var_names[idx].upper() for idx in gene_idx]
-
-        # Use numpy.unique() to get the unique indices and their corresponding counts
-        _, unique_gp_counts = np.unique(gp_idx, return_counts=True)
-        cumulative_sums = np.cumsum(unique_gp_counts)
-        # Use numpy.split() to split string_list based on the cumulative sums
-        all_gp_genes = [list(gp_genes_arr) for gp_genes_arr in np.split(genes, cumulative_sums)]
-
+            ca_mask_key = ca_sources_mask_key
+ 
+        genes_rep = np.tile(adata.var_names,
+                            (adata.varm[gp_mask_key].shape[1], 1)).T
+                
+        all_gp_genes = [[gene.upper() for gene in gene_list if gene is not None]
+                        for gene_list in np.where(
+                            adata.varm[gp_mask_key], genes_rep, None).T]
+        
         if entity == "targets":
             all_target_gp_peaks = [list(set([peak for gene_peaks in 
                                     [atac_pairing_dict.get(gene, []) for 
@@ -250,7 +248,7 @@ def add_multimodal_pairings_to_adata(
                             for genes in all_gp_genes]
             
             peak_dict = {adata.uns[gp_names_key][gp_idx]:{
-                "targets": target_gp_peaks} for gp_idx, target_gp_peaks in
+                entity: target_gp_peaks} for gp_idx, target_gp_peaks in
                 enumerate(all_target_gp_peaks)}
 
         elif entity == "sources":
@@ -260,20 +258,16 @@ def add_multimodal_pairings_to_adata(
                             for genes in all_gp_genes]
             
             for gp_idx, source_gp_peaks in enumerate(all_source_gp_peaks):
-                peak_dict[adata.uns[gp_names_key][gp_idx]]["sources"] = source_gp_peaks
+                peak_dict[adata.uns[gp_names_key][gp_idx]][entity] = source_gp_peaks
     
-    # Create binary chromatin accessibility masks and add them to
-    # ´adata_atac.varm´
-    for entity in ["targets", "sources"]:
+        # Create binary chromatin accessibility masks and add them to
+        # ´adata_atac.varm´
         peak_idx = [peak_idx_mapping_dict[peak] for gp_peak_dict
                     in peak_dict.values() for peak in gp_peak_dict[entity]]
         gp_idx = [gp_idx for gp_idx, gp_peak_dict in
                   enumerate(peak_dict.values()) for _ in
                   range(len(gp_peak_dict[entity]))]
-        if entity == "targets":
-            ca_mask_key = ca_targets_mask_key
-        elif entity == "sources":
-            ca_mask_key = ca_sources_mask_key
+
         adata_atac.varm[ca_mask_key] = sp.csr_matrix((np.ones(len(peak_idx),
                                                               dtype=bool),
                                                      (peak_idx, gp_idx)),
