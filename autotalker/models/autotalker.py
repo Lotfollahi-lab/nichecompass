@@ -213,8 +213,11 @@ class Autotalker(BaseModelMixin):
         self.active_gp_thresh_ratio_ = active_gp_thresh_ratio
         self.n_input_ = adata.n_vars
         self.n_output_ = adata.n_vars
+        if adata_atac is not None:
+            self.n_output_peaks_ = adata_atac.n_vars
         if node_label_method != "self":
             self.n_output_ *= 2
+            self.n_output_peaks_ *= 2
         self.n_layers_encoder_ = n_layers_encoder
         self.n_hidden_encoder_ = n_hidden_encoder
         self.conv_layer_encoder_ = conv_layer_encoder
@@ -259,26 +262,45 @@ class Autotalker(BaseModelMixin):
         else:
             if ca_targets_mask is None:
                 if ca_targets_mask_key in adata_atac.varm:
-                    ca_targets_mask = adata_atac.varm[ca_targets_mask_key].T
+                    ca_targets_mask = adata_atac.varm[
+                        ca_targets_mask_key].T.tocoo()
                 else:
                     raise ValueError("Please explicitly provide a "
                                      "´ca_targets_mask´ to the model or specify"
                                      " an adequate ´ca_targets_mask_key´ for "
                                      "your adata_atac object.")
-            self.ca_mask_ = torch.tensor(ca_targets_mask, dtype=torch.bool)
+            self.ca_mask_ = torch.sparse_coo_tensor(
+                indices=[ca_targets_mask.row, ca_targets_mask.col],
+                values=ca_targets_mask.data,
+                size=ca_targets_mask.shape,
+                dtype=torch.bool)
             if node_label_method != "self":
                 if ca_sources_mask is None:
-                    if ca_sources_mask_key in adata.varm:
-                        ca_sources_mask = adata_atac.varm[gp_sources_mask_key].T
+                    if ca_sources_mask_key in adata_atac.varm:
+                        ca_sources_mask = adata_atac.varm[
+                            ca_sources_mask_key].T.tocoo()
                     else:
                         raise ValueError("Please explicitly provide a "
                                         "´gp_sources_mask´ to the model or specify"
                                         " an adequate ´gp_sources_mask_key´ for "
                                         "your adata object.")
                 # Horizontally concatenate targets and sources masks
-                self.ca_mask_ = torch.cat(
-                    (self.ca_mask_, torch.tensor(ca_sources_mask, 
-                    dtype=torch.bool)), dim=1)
+                ca_combined_mask_row = np.concatenate(
+                    (ca_targets_mask.row, ca_sources_mask.row), axis=0)
+                ca_combined_mask_col = np.concatenate(
+                    (ca_targets_mask.col, (ca_sources_mask.col + 
+                                           ca_targets_mask.shape[1])), axis=0)
+                ca_combined_mask_data = np.concatenate(
+                    (ca_targets_mask.data, ca_sources_mask.data), axis=0)
+                self.ca_mask_ = torch.sparse_coo_tensor(
+                    indices=[ca_combined_mask_row, ca_combined_mask_col],
+                    values=ca_combined_mask_data,
+                    size=(ca_targets_mask.shape[0],
+                          (ca_targets_mask.shape[1] + 
+                           ca_sources_mask.shape[1])),
+                    dtype=torch.bool)
+                
+        print(self.ca_mask_)
 
         self.n_nonaddon_gps_ = len(self.gp_mask_)
         self.n_addon_gps_ = n_addon_gps
@@ -347,6 +369,7 @@ class Autotalker(BaseModelMixin):
             n_addon_gps=self.n_addon_gps_,
             n_cond_embed=self.n_cond_embed_,
             n_output=self.n_output_,
+            n_output_peaks=self.n_output_peaks_,
             gene_expr_decoder_mask=self.gp_mask_,
             chrom_access_decoder_mask=self.ca_mask_,
             genes_idx=self.genes_idx_,

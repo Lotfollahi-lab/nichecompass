@@ -284,28 +284,28 @@ class MaskedChromAccessDecoder(nn.Module):
     mask:
         Mask that determines which input nodes / latent features can contribute
         to the reconstruction of which genes.
-    genes_idx:
-        Index of genes that are in the gp mask.
+    peaks_idx:
+        Index of peaks that are in the ca mask.
     gene_expr_recon_dist:
         The distribution used for gene expression reconstruction. If `nb`, uses
         a Negative Binomial distribution. If `zinb`, uses a Zero-inflated
         Negative Binomial distribution.
     """
     def __init__(self,
-                    n_input: int,
-                    n_addon_input: int,
-                    n_cond_embed_input: int,
-                    n_output: int,
-                    mask: torch.Tensor,
-                    genes_idx: torch.Tensor,
-                    recon_dist: Literal["nb", "zinb"]):
+                 n_input: int,
+                 n_addon_input: int,
+                 n_cond_embed_input: int,
+                 n_output: int,
+                 mask: torch.Tensor,
+                 peaks_idx: torch.Tensor,
+                 recon_dist: Literal["nb", "zinb"]):
         super().__init__()
 
         print("MASKED CHROMATIN ACCESSIBILITY DECODER -> n_input: "
                 f"{n_input}, n_cond_embed_input: {n_cond_embed_input}, "
                 f"n_addon_input: {n_addon_input}, n_output: {n_output}")
 
-        self.genes_idx = genes_idx
+        self.peaks_idx = peaks_idx
         self.recon_dist = recon_dist
 
         self.nb_means_normalized_decoder = AddOnMaskedLayer(
@@ -356,11 +356,11 @@ class MaskedChromAccessDecoder(nn.Module):
         nb_means_normalized = self.nb_means_normalized_decoder(z)
         
         nb_means = torch.exp(log_library_size) * nb_means_normalized
-        nb_means = nb_means[:, self.genes_idx]
+        nb_means = nb_means[:, self.peaks_idx]
         if self.recon_dist == "nb":
             chrom_access_decoder_params = nb_means
         elif self.recon_dist == "zinb":
             zi_prob_logits = self.zi_prob_logits_decoder(z)
-            zi_prob_logits = zi_prob_logits[:, self.genes_idx]
+            zi_prob_logits = zi_prob_logits[:, self.peaks_idx]
             chrom_access_decoder_params = (nb_means, zi_prob_logits)
         return chrom_access_decoder_params
