@@ -3,12 +3,11 @@ channels:
   - conda-forge
   - bioconda
   - pytorch
+  - nvidia
 dependencies:
-  - cudatoolkit=11.3.1
-  - pip=22.2.2
+  - bedtools=2.30.0
+  - pip=23.0.1
   - python=3.9
-  - pytorch=1.12.1
-  - scglue=0.3.2
   - pip:
     - bokeh==2.4.3
     - holoviews==1.15.4
@@ -17,11 +16,13 @@ dependencies:
     - jupyterlab==3.4.7
     - mlflow==1.28.0
     - pyreadr==0.4.6
-    - scglue==0.3.2
     - selenium==4.8.2
     - scib==1.1.1
     - scikit-misc==0.1.4
+    - scglue==0.3.2
     - squidpy==1.2.2
+    - torch==2.0.0
+    - --index-url https://download.pytorch.org/whl/cu117
     - torch-geometric==2.1.0post1
     - torch-scatter==2.1.1
     - -f https://data.pyg.org/whl/torch-2.0.0+cu117.html
