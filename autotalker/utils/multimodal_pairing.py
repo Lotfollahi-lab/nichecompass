@@ -171,6 +171,7 @@ def add_multimodal_mask_to_adata(
         adata: AnnData,
         adata_atac: AnnData,
         gene_peak_mapping_dict: dict,
+        filter_peaks_based_on_genes: bool=True,
         gp_targets_mask_key: str="autotalker_gp_targets",
         gp_sources_mask_key: str="autotalker_gp_sources",
         gp_names_key: str="autotalker_gp_names",
@@ -178,7 +179,7 @@ def add_multimodal_mask_to_adata(
         ca_sources_mask_key: str="autotalker_ca_sources",
         source_peaks_idx_key: str="autotalker_source_peaks_idx",
         target_peaks_idx_key: str="autotalker_target_peaks_idx",
-        peaks_idx_key: str="autotalker_peaks_idx") -> None:
+        peaks_idx_key: str="autotalker_peaks_idx") -> AnnData:
     """
     Retrieve chromatin accessibility target and source masks from gene program
     masks stored in ´adata´ by mapping the genes from the gene programs to
@@ -197,6 +198,9 @@ def add_multimodal_mask_to_adata(
     gene_peak_mapping_dict:
         A mapping dictionary with genes as keys and the corresponding list of
         peaks as values.
+    filter_peaks_based_on_genes:
+        If `True`, filter `adata_atac` to only keep peaks that are mapped to
+        genes in `gene_peak_mapping_dict`.
     gp_targets_mask_key:
         Key in ´adata.varm´ where the binary gene program mask for target genes
         of a gene program is stored.
@@ -221,7 +225,18 @@ def add_multimodal_mask_to_adata(
         Key in ´adata_atac.uns´ where the index of a concatenated vector of
         target and source peaks that are in the chromatin accessibility masks
         will be stored.
+
+    Returns
+    -------
+    adata_atac:
+        The modified AnnData object with added chromatin accessibility masks.
     """
+    if filter_peaks_based_on_genes:
+        all_gene_peaks = list(
+            set(peak for gene_peaks in gene_peak_mapping_dict.values() for peak
+                in gene_peaks))
+        adata_atac = adata_atac[:, adata_atac.var_names.isin(all_gene_peaks)]
+
     # Create mapping dict for computationally efficient mapping of peaks to
     # their index in ´adata_atac.var_names´    
     peak_idx_mapping_dict = {value: index for index, value in 
@@ -286,3 +301,5 @@ def add_multimodal_mask_to_adata(
     adata_atac.uns[peaks_idx_key] = np.concatenate(
         (adata_atac.uns[source_peaks_idx_key],
          adata_atac.uns[target_peaks_idx_key] + adata_atac.n_vars), axis=0)
+    
+    return adata_atac
