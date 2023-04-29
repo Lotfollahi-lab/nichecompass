@@ -167,11 +167,10 @@ def generate_multimodal_pairing_dict(
     return multimodal_dict
 
 
-def add_multimodal_pairings_to_adata(
-        gp_dict: dict,
-        atac_pairing_dict: dict,
+def add_multimodal_mask_to_adata(
         adata: AnnData,
         adata_atac: AnnData,
+        gene_peak_mapping_dict: dict,
         gp_targets_mask_key: str="autotalker_gp_targets",
         gp_sources_mask_key: str="autotalker_gp_sources",
         gp_names_key: str="autotalker_gp_names",
@@ -181,33 +180,37 @@ def add_multimodal_pairings_to_adata(
         target_peaks_idx_key: str="autotalker_target_peaks_idx",
         peaks_idx_key: str="autotalker_peaks_idx") -> None:
     """
-    Add chromatin accessibility of gene programs defined in a gene program 
-    dictionary to an AnnData object by converting the gene program lists of gene
-    program target and source genes to binary masks and aligning the masks with chromatin accessibility peaks
-    for which data is available in the ATAC AnnData object.
+    Retrieve chromatin accessibility target and source masks from gene program
+    masks stored in ´adata´ by mapping the genes from the gene programs to
+    the peaks defined in a mapping dictionary. Only consider peaks that are in
+    ´adata_atac´ and store the results as sparse boolean matrices in
+    ´adata_atac.varm´.
 
     Parameters
     ----------
-    gp_dict:
-        Nested dictionary containing the gene programs with keys being gene 
-        program names and values being dictionaries with keys ´targets´ and 
-        ´sources´, where ´targets´ contains a list of the names of genes in the
-        gene program for the reconstruction of the gene expression of the node
-        itself (receiving node) and ´sources´ contains a list of the names of
-        genes in the gene program for the reconstruction of the gene expression
-        of the node's neighbors (transmitting nodes).
+    adata:
+        AnnData object with gene program masks stored in 
+        ´adata.varm[gp_targets_mask_key]´ and ´adata.varm[gp_sources_mask_key]´,
+        and gene program names stored in ´adata.uns[gp_names_key]´.
     adata_atac:
-        AnnData object to which the gene programs will be added.
+        AnnData object to which the chromatin accessibility masks will be added.
+    gene_peak_mapping_dict:
+        A mapping dictionary with genes as keys and the corresponding list of
+        peaks as values.
     gp_targets_mask_key:
         Key in ´adata.varm´ where the binary gene program mask for target genes
-        of a gene program will be stored (target genes are used for the 
-        reconstruction of the gene expression of the node itself (receiving node
-        )).
+        of a gene program is stored.
     gp_sources_mask_key:
         Key in ´adata.varm´ where the binary gene program mask for source genes
-        of a gene program will be stored (source genes are used for the 
-        reconstruction of the gene expression of the node's neighbors 
-        (transmitting nodes)).
+        of a gene program is stored.
+    gp_names_key:
+        Key in ´adata.uns´ where the gene program names are stored.
+    ca_targets_mask_key:
+        Key in ´adata_atac.varm´ where the boolean chromatin accessibility
+        mask for target peaks of a gene program will be stored.
+    ca_sources_mask_key:
+        Key in ´adata_atac.varm´ where the boolean chromatin accessibility
+        mask for source peaks of a gene program will be stored.
     source_peaks_idx_key:
         Key in ´adata_atac.uns´ where the index of the source peaks that are in
         the chromatin accessibility mask will be stored.
@@ -220,12 +223,10 @@ def add_multimodal_pairings_to_adata(
         will be stored.
     """
     # Create mapping dict for computationally efficient mapping of peaks to
-    # adata idx    
+    # their index in ´adata_atac.var_names´    
     peak_idx_mapping_dict = {value: index for index, value in 
                              enumerate(adata_atac.var_names)}
     
-    # Get all corresponding peaks for each gene in a gene program and remove
-    # duplicate peaks
     for entity in ["targets", "sources"]:
         if entity == "targets":
             gp_mask_key = gp_targets_mask_key
@@ -234,6 +235,8 @@ def add_multimodal_pairings_to_adata(
             gp_mask_key = gp_sources_mask_key
             ca_mask_key = ca_sources_mask_key
  
+        # Get all corresponding peaks for each gene in a gene program and remove
+        # duplicate peaks
         genes_rep = np.tile(adata.var_names,
                             (adata.varm[gp_mask_key].shape[1], 1)).T
                 
@@ -243,7 +246,7 @@ def add_multimodal_pairings_to_adata(
         
         if entity == "targets":
             all_target_gp_peaks = [list(set([peak for gene_peaks in 
-                                    [atac_pairing_dict.get(gene, []) for 
+                                    [gene_peak_mapping_dict.get(gene, []) for 
                                     gene in genes] for peak in gene_peaks]))
                             for genes in all_gp_genes]
             
@@ -253,12 +256,13 @@ def add_multimodal_pairings_to_adata(
 
         elif entity == "sources":
             all_source_gp_peaks = [list(set([peak for gene_peaks in 
-                                    [atac_pairing_dict.get(gene, []) for 
+                                    [gene_peak_mapping_dict.get(gene, []) for 
                                     gene in genes] for peak in gene_peaks]))
                             for genes in all_gp_genes]
             
             for gp_idx, source_gp_peaks in enumerate(all_source_gp_peaks):
-                peak_dict[adata.uns[gp_names_key][gp_idx]][entity] = source_gp_peaks
+                peak_dict[adata.uns[gp_names_key][gp_idx]][entity] = (
+                    source_gp_peaks)
     
         # Create binary chromatin accessibility masks and add them to
         # ´adata_atac.varm´
@@ -268,12 +272,10 @@ def add_multimodal_pairings_to_adata(
                   enumerate(peak_dict.values()) for _ in
                   range(len(gp_peak_dict[entity]))]
 
-        adata_atac.varm[ca_mask_key] = sp.csr_matrix((np.ones(len(peak_idx),
-                                                              dtype=bool),
-                                                     (peak_idx, gp_idx)),
-                                                     shape=(adata_atac.shape[1],
-                                                            adata_atac.shape[0]),
-                                                     dtype=bool)
+        adata_atac.varm[ca_mask_key] = sp.csr_matrix(
+            (np.ones(len(peak_idx), dtype=bool), (peak_idx, gp_idx)),
+            shape=(adata_atac.shape[1], adata.varm[gp_mask_key].shape[1]),
+            dtype=bool)
 
     # Get index of peaks present in the sources and targets mask respectively
     # Most peaks will not be present in any mask
