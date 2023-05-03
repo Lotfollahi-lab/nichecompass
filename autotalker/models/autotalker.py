@@ -69,7 +69,23 @@ class Autotalker(BaseModelMixin):
         ´adata.uns´.
     genes_idx_key:
         Key in ´adata.uns´ where the index of a concatenated vector of target
-        and source genes that are in the gene program masks are stored.
+        and source genes that are in the gene program masks are stored.    
+    target_genes_idx_key:
+        Key in ´adata.uns´ where the index of target genes that are in the gene
+        program masks are stored.
+    source_genes_idx_key:
+        Key in ´adata.uns´ where the index of source genes that are in the gene
+        program masks are stored.
+    peaks_idx_key:
+        Key in ´adata_atac.uns´ where the index of a concatenated vector of
+        target and source peaks that are in the chromatin accessibility masks
+        are stored.          
+    target_peaks_idx_key:
+        Key in ´adata_atac.uns´ where the index of target peaks that are in the
+        chromatin accessibility masks are stored.
+    source_peaks_idx_key:
+        Key in ´adata_atac.uns´ where the index of source peaks that are in the
+        chromatin accessibility masks are stored.
     recon_adj_key:
         Key in ´adata.obsp´ where the reconstructed adjacency matrix edge
         probabilities will be stored.
@@ -157,9 +173,14 @@ class Autotalker(BaseModelMixin):
                  latent_key: str="autotalker_latent",
                  condition_key: Optional[str]=None,
                  cond_embed_key: Optional[str]="autotalker_cond_embed",
-                 cond_embed_injection: Optional[List]=["gene_expr_decoder"],
+                 cond_embed_injection: Optional[List]=["gene_expr_decoder",
+                                                       "chrom_access_decoder"],
                  genes_idx_key: str="autotalker_genes_idx",
+                 target_genes_idx_key: str="autotalker_target_genes_idx",
+                 source_genes_idx_key: str="autotalker_source_genes_idx",
                  peaks_idx_key: str="autotalker_peaks_idx",
+                 target_peaks_idx_key: str="autotalker_target_peaks_idx",
+                 source_peaks_idx_key: str="autotalker_source_peaks_idx",
                  recon_adj_key: str="autotalker_recon_connectivities",
                  agg_alpha_key: str="autotalker_agg_alpha",
                  include_edge_recon_loss: bool=True,
@@ -201,7 +222,11 @@ class Autotalker(BaseModelMixin):
         self.cond_embed_key_ = cond_embed_key
         self.cond_embed_injection_ = cond_embed_injection
         self.genes_idx_key_ = genes_idx_key
+        self.target_genes_idx_key_ = target_genes_idx_key
+        self.source_genes_idx_key_ = source_genes_idx_key
         self.peaks_idx_key_ = peaks_idx_key
+        self.target_peaks_idx_key_ = target_peaks_idx_key
+        self.source_peaks_idx_key_ = source_peaks_idx_key
         self.recon_adj_key_ = recon_adj_key
         self.agg_alpha_key_ = agg_alpha_key
         self.include_edge_recon_loss_ = include_edge_recon_loss
@@ -214,10 +239,15 @@ class Autotalker(BaseModelMixin):
         self.n_input_ = adata.n_vars
         self.n_output_ = adata.n_vars
         if adata_atac is not None:
+            # Concatenate peaks to gene feature vector
+            self.n_input_ += adata_atac.n_vars
             self.n_output_peaks_ = adata_atac.n_vars
+            if node_label_method != "self":
+                self.n_output_peaks_ *= 2
+        else:
+            self.n_output_peaks_ = 0
         if node_label_method != "self":
             self.n_output_ *= 2
-            self.n_output_peaks_ *= 2
         self.n_layers_encoder_ = n_layers_encoder
         self.n_hidden_encoder_ = n_hidden_encoder
         self.conv_layer_encoder_ = conv_layer_encoder
@@ -299,21 +329,25 @@ class Autotalker(BaseModelMixin):
                           (ca_targets_mask.shape[1] + 
                            ca_sources_mask.shape[1])),
                     dtype=torch.bool)
-                
-        print(self.ca_mask_)
 
         self.n_nonaddon_gps_ = len(self.gp_mask_)
         self.n_addon_gps_ = n_addon_gps
         self.n_cond_embed_ = n_cond_embed
         
-        # Retrieve index of genes in gp mask
+        # Retrieve target and source index of genes in gp mask
         self.genes_idx_ = adata.uns[genes_idx_key]
+        self.target_genes_idx_ = adata.uns[target_genes_idx_key]
+        self.source_genes_idx_ = adata.uns[source_genes_idx_key]
 
         # Retrieve index of peaks in ca mask
         if adata_atac is not None:
             self.peaks_idx_ = adata_atac.uns[peaks_idx_key]
+            self.target_peaks_idx_ = adata_atac.uns[target_peaks_idx_key]
+            self.source_peaks_idx_ = adata_atac.uns[source_peaks_idx_key]
         else:
             self.peaks_idx_ = None
+            self.target_peaks_idx_ = None
+            self.source_peaks_idx_ = None
 
         # Retrieve conditions
         if conditions is None:
@@ -373,7 +407,11 @@ class Autotalker(BaseModelMixin):
             gene_expr_decoder_mask=self.gp_mask_,
             chrom_access_decoder_mask=self.ca_mask_,
             genes_idx=self.genes_idx_,
+            target_genes_idx=self.target_genes_idx_,
+            source_genes_idx=self.source_genes_idx_,
             peaks_idx=self.peaks_idx_,
+            target_peaks_idx=self.target_peaks_idx_,
+            source_peaks_idx=self.source_peaks_idx_,
             conditions=self.conditions_,
             conv_layer_encoder=self.conv_layer_encoder_,
             encoder_n_attention_heads=self.encoder_n_attention_heads_,

@@ -46,6 +46,11 @@ class MaskedLinear(nn.Linear):
 
         # Zero out weights with the mask so that the optimizer does not consider
         # them
+        if self.mask.is_sparse: # this is the case for the ca decoder
+            # Convert mask to dense; in the future check whether weights could
+            # be sparse to use a multiplication (sparse, sparse) instead
+            self.mask = self.mask.to_dense()
+
         self.weight.data *= self.mask
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:

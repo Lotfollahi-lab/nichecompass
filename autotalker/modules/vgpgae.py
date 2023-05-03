@@ -59,9 +59,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         Number of source and target genes that are included in the gp mask.
     gene_expr_decoder_mask:
         Gene program mask for the gene expression decoder.
-    genes_idx:
-        Index of genes in a concatenated vector of target and source genes that
-        are in gps of the gp mask.
+    target_genes_idx:
+        Index of target genes that are in gps of the gp mask.
+    source_genes_idx:
+        Index of source genes that are in gps of the gp mask.
+    target_peaks_idx:
+        Index of target peaks that are in gps of the ca mask.
+    source_peaks_idx:
+        Index of source peaks that are in gps of the ca mask.
     conditions:
         Conditions used for the conditional embedding.
     conv_layer_encoder:
@@ -129,9 +134,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  n_output: int,
                  gene_expr_decoder_mask: torch.Tensor,
                  genes_idx: torch.Tensor,
+                 target_genes_idx: torch.Tensor,
+                 source_genes_idx: torch.Tensor,
                  n_output_peaks: int=0,
                  chrom_access_decoder_mask: Optional[torch.Tensor]=None,
                  peaks_idx: Optional[torch.Tensor]=None,
+                 target_peaks_idx: Optional[torch.Tensor]=None,
+                 source_peaks_idx: Optional[torch.Tensor]=None,
                  conditions: list=[],
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=4,
@@ -163,7 +172,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.n_output_ = n_output
         self.n_output_peaks_ = n_output_peaks
         self.genes_idx_ = genes_idx
+        self.target_genes_idx_ = target_genes_idx
+        self.source_genes_idx_ = source_genes_idx
         self.peaks_idx_ = peaks_idx
+        self.target_peaks_idx_ = target_peaks_idx
+        self.source_peaks_idx_ = source_peaks_idx
         self.conditions_ = conditions
         self.n_conditions_ = len(conditions)
         self.condition_label_encoder_ = {
@@ -185,8 +198,16 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.freeze_ = False
         if chrom_access_decoder_mask is not None:
             self.includes_atac_modality_ = True
+            self.features_idx_ = np.concatenate(
+                (target_genes_idx,
+                 (target_peaks_idx + int(n_output / 2)),
+                 (source_genes_idx + int(n_output / 2) + int(n_output_peaks / 2)),
+                 (source_peaks_idx + n_output + int(n_output_peaks / 2))),
+                 axis=0)
+
         else:
             self.includes_atac_modality_ = False
+            self.features_idx_ = self.genes_idx_
 
         print("--- INITIALIZING NEW NETWORK MODULE: VARIATIONAL GENE PROGRAM "
               "GRAPH AUTOENCODER ---")
@@ -256,18 +277,18 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 recon_dist=self.chrom_access_recon_dist_)            
 
         if node_label_method == "self":
-            self.node_label_aggregator = (
-                SelfNodeLabelNoneAggregator(genes_idx=genes_idx))
+            self.node_label_aggregator = SelfNodeLabelNoneAggregator(
+                features_idx=self.features_idx_)
         if node_label_method == "one-hop-norm":
-            self.node_label_aggregator = (
-                OneHopGCNNormNodeLabelAggregator(genes_idx=genes_idx))
+            self.node_label_aggregator = OneHopGCNNormNodeLabelAggregator(
+                features_idx=self.features_idx_)
         elif node_label_method == "one-hop-sum":
-            self.node_label_aggregator = (
-                OneHopSumNodeLabelAggregator(genes_idx=genes_idx))
+            self.node_label_aggregator = OneHopSumNodeLabelAggregator(
+                features_idx=self.features_idx_)
         elif node_label_method == "one-hop-attention":
-            self.node_label_aggregator = (
-                OneHopAttentionNodeLabelAggregator(n_input=n_input,
-                                                   genes_idx=genes_idx))
+            self.node_label_aggregator = OneHopAttentionNodeLabelAggregator(
+                n_input=n_input,
+                features_idx=self.features_idx_)
         
         # Initialize gene-specific dispersion parameters
         self.theta = torch.nn.Parameter(torch.randn(len(genes_idx)))
@@ -391,27 +412,31 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         elif decoder == "omics":
             if self.includes_atac_modality_:
                 # Separate node feature vector into RNA and ATAC part
-                x = x[:, :self.n_output_] 
-                x_atac = x[:, self.n_output_:]
-                assert x_atac.size(1) == self.n_output_peaks_
-                output["node_labels"] = output["node_labels"][
-                    :, :len(self.genes_idx_)]
-                output["node_labels_atac"] = output["node_labels"][
-                    :, len(self.genes_idx_):]
-                assert output["node_labels_atac"].size(1) == len(self.genes_idx_)
-                
-            # Use observed library size as scaling factor for the negative
-            # binomial means of the gene expression distribution
-            self.log_library_size = torch.log(x.sum(1)).unsqueeze(1)[batch_idx]
+                x_atac = x[:, int(self.n_output_ / 2):]
+                x = x[:, :int(self.n_output_ / 2)]
+                assert x_atac.size(1) == int(self.n_output_peaks_ / 2)
+                target_node_labels_atac_start_idx = len(self.target_genes_idx_)
+                source_node_labels_atac_start_idx = (
+                    len(self.target_genes_idx_) + 
+                    len(self.target_peaks_idx_) +
+                    len(self.source_genes_idx_))
+                source_node_labels_rna_start_idx = (
+                    len(self.target_genes_idx_) + 
+                    len(self.target_peaks_idx_))
 
-            # Get gene expression reconstruction distribution parameters
-            output["gene_expr_dist_params"] = self.gene_expr_decoder(
-                z=z,
-                log_library_size=self.log_library_size,
-                cond_embed=(self.cond_embed if "gene_expr_decoder" in
-                            self.cond_embed_injection_ else None))
-            
-            if self.includes_atac_modality_:
+                output["node_labels_atac"] = torch.cat((
+                    output["node_labels"][:, target_node_labels_atac_start_idx:
+                                          source_node_labels_rna_start_idx],
+                    output["node_labels"][:, source_node_labels_atac_start_idx:
+                                          ]), dim=1)
+                output["node_labels"] = torch.cat((
+                    output["node_labels"][:, :target_node_labels_atac_start_idx],
+                    output["node_labels"][:, source_node_labels_rna_start_idx: 
+                                          source_node_labels_atac_start_idx]),
+                                          dim=1)
+                assert output["node_labels_atac"].size(1) == len(self.peaks_idx_)
+                assert output["node_labels"].size(1) == len(self.genes_idx_)
+
                 # Use observed library size as scaling factor for the negative
                 # binomial means of the chromatin accessibility distribution            
                 self.log_library_size_atac = torch.log(
@@ -424,6 +449,18 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     log_library_size=self.log_library_size_atac,
                     cond_embed=(self.cond_embed if "chrom_access_decoder" in
                                 self.cond_embed_injection_ else None))
+
+            # Use observed library size as scaling factor for the negative
+            # binomial means of the gene expression distribution
+            self.log_library_size = torch.log(x.sum(1)).unsqueeze(1)[batch_idx]
+
+            # Get gene expression reconstruction distribution parameters
+            output["gene_expr_dist_params"] = self.gene_expr_decoder(
+                z=z,
+                log_library_size=self.log_library_size,
+                cond_embed=(self.cond_embed if "gene_expr_decoder" in
+                            self.cond_embed_injection_ else None))
+
         return output
 
     def loss(self,

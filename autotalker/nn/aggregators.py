@@ -2,6 +2,8 @@
 This module contains gene expression aggregators used by the Autotalker model.
 """
 
+from typing import Optional
+
 import torch
 import torch.nn as nn
 from torch_geometric.nn.inits import glorot
@@ -15,7 +17,7 @@ from torch_sparse import SparseTensor
 class OneHopAttentionNodeLabelAggregator(MessagePassing):
     def __init__(self,
                  n_input: int,
-                 genes_idx: torch.Tensor,
+                 features_idx: torch.Tensor,
                  n_heads: int=4,
                  leaky_relu_negative_slope: float=0.2,
                  dropout_rate: float=0.,
@@ -36,10 +38,9 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         Parameters
         ----------
         n_input:
-            Number of input nodes to the Node Label Aggregator (corresponds to
-            number of genes).
-        genes_idx:
-            Index of genes that are in the gp mask.
+            Number of omics features used for the Node Label Aggregation.
+        features_idx:
+            Index of omics features that are in the gp and ca masks.
         n_heads:
             Number of attention heads for multi-head attention.
         leaky_relu_negative_slope:
@@ -48,10 +49,12 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
             Dropout probability of the normalized attention coefficients which
             exposes each node to a stochastically sampled neighborhood during 
             training.
+        self_loops:
+            If ´True´, use self loops to model autocrine communication.
         """
         super().__init__(node_dim=0)
         self.n_input = n_input
-        self.genes_idx = genes_idx
+        self.features_idx = features_idx
         self.n_heads = n_heads
         self.leaky_relu_negative_slope = leaky_relu_negative_slope
         self.self_loops = self_loops
@@ -68,6 +71,9 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         self.dropout = nn.Dropout(p=dropout_rate)
         self._alpha = None
         self.reset_parameters()
+
+        print(f"ONE HOP ATTENTION NODE LABEL AGGREGATOR -> n_input: {n_input}, "
+              f"n_heads: {n_heads}, self_loops: {self.self_loops}")
 
     def reset_parameters(self):
         """
@@ -124,7 +130,7 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         output = self.propagate(edge_index, x=(x_l, x_r), g=(g_l, g_r))
         x_neighbors_att = output.mean(dim=1)
         node_labels = torch.cat(
-            (x, x_neighbors_att), dim=-1)[:, self.genes_idx]
+            (x, x_neighbors_att), dim=-1)[:, self.features_idx]
         alpha = self._alpha
         self._alpha = None
         if return_attention_weights:
@@ -177,11 +183,22 @@ class OneHopGCNNormNodeLabelAggregator(nn.Module):
     reconstruction task.
     """
     def __init__(self,
-                 genes_idx: torch.Tensor,
+                 features_idx: torch.Tensor,
                  self_loops: bool=True):
+        """
+        Parameters
+        ----------
+        features_idx:
+            Index of omics features that are in the gp and ca masks.
+        self_loops:
+            If ´True´, use self loops to model autocrine communication.
+        """
         super().__init__()
-        self.genes_idx = genes_idx
+        self.features_idx = features_idx
         self.self_loops = self_loops
+
+        print("ONE HOP GCN NORM NODE LABEL AGGREGATOR -> self_loops: "
+              f"{self_loops}")
 
     def forward(self,
                 x: torch.Tensor,
@@ -214,7 +231,7 @@ class OneHopGCNNormNodeLabelAggregator(nn.Module):
         adj_norm = gcn_norm(adj, add_self_loops=self.self_loops)
         x_neighbors_norm = adj_norm.t().matmul(x)
         node_labels = torch.cat((x, x_neighbors_norm),
-                                dim=-1)[:, self.genes_idx]
+                                dim=-1)[:, self.features_idx]
         return node_labels
 
 
