@@ -439,6 +439,7 @@ class Autotalker(BaseModelMixin):
               weight_decay: float=0.,
               lambda_edge_recon: Optional[float]=50000.,
               lambda_gene_expr_recon: float=10.,
+              lambda_chrom_access_recon: float=10.,
               lambda_cond_contrastive: float=5000.,
               contrastive_logits_ratio: float=0.125,
               lambda_group_lasso: float=0.,
@@ -494,7 +495,12 @@ class Autotalker(BaseModelMixin):
         lambda_gene_expr_recon:
             Lambda (weighting factor) for the gene expression reconstruction
             loss. If ´>0´, this will enforce interpretable gene programs that
-            can be combined in a linear way to reconstruct gene expression.   
+            can be combined in a linear way to reconstruct gene expression.
+        lambda_chrom_access_recon:
+            Lambda (weighting factor) for the chromatin accessibility
+            reconstruction loss. If ´>0´, this will enforce interpretable gene
+            programs that can be combined in a linear way to reconstruct
+            chromatin accessibility.
         lambda_group_lasso:
             Lambda (weighting factor) for the group lasso regularization loss of
             gene programs. If ´>0´, this will enforce sparsity of gene programs.
@@ -546,6 +552,7 @@ class Autotalker(BaseModelMixin):
             weight_decay=weight_decay,
             lambda_edge_recon=lambda_edge_recon,
             lambda_gene_expr_recon=lambda_gene_expr_recon,
+            lambda_chrom_access_recon=lambda_chrom_access_recon,
             lambda_cond_contrastive=lambda_cond_contrastive,
             contrastive_logits_ratio=contrastive_logits_ratio,
             lambda_group_lasso=lambda_group_lasso,
@@ -1107,6 +1114,7 @@ class Autotalker(BaseModelMixin):
     def get_latent_representation(
             self, 
             adata: Optional[AnnData]=None,
+            adata_atac: Optional[AnnData]=None,
             counts_key: Optional[str]="counts",
             adj_key: str="spatial_connectivities",
             condition_key: Optional[str]=None,
@@ -1152,11 +1160,14 @@ class Autotalker(BaseModelMixin):
 
         if adata is None:
             adata = self.adata
+        if (adata_atac is None) & hasattr(self, "adata_atac"):
+            adata_atac = self.adata_atac
 
         # Create single dataloader containing entire dataset
         data_dict = prepare_data(
             adata=adata,
             condition_label_encoder=self.model.condition_label_encoder_,
+            adata_atac=adata_atac,
             counts_key=counts_key,
             adj_key=adj_key,
             condition_key=condition_key,

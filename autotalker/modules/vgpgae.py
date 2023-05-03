@@ -497,6 +497,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Lambda (weighting factor) for the gene expression reconstruction
             loss. If ´>0´, this will enforce interpretable gene programs that
             can be combined in a linear way to reconstruct gene expression.
+        lambda_chrom_access_recon:
+            Lambda (weighting factor) for the chromatin accessibility
+            reconstruction loss. If ´>0´, this will enforce interpretable gene
+            programs that can be combined in a linear way to reconstruct
+            chromatin accessibility.
         lambda_group_lasso:
             Lambda (weighting factor) for the group lasso regularization loss of
             gene programs. If ´>0´, this will enforce sparsity of gene programs.
