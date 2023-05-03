@@ -239,6 +239,7 @@ class Autotalker(BaseModelMixin):
         self.n_input_ = adata.n_vars
         self.n_output_ = adata.n_vars
         if adata_atac is not None:
+            assert np.all(adata.obs.index == adata_atac.obs.index)
             # Concatenate peaks to gene feature vector
             self.n_input_ += adata_atac.n_vars
             self.n_output_peaks_ = adata_atac.n_vars
