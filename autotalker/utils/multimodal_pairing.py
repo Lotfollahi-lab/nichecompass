@@ -8,6 +8,7 @@ from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import scanpy as sc
 import scipy.sparse as sp
 from anndata import AnnData
 from scglue import genomics
@@ -172,6 +173,9 @@ def add_multimodal_mask_to_adata(
         adata_atac: AnnData,
         gene_peak_mapping_dict: dict,
         filter_peaks_based_on_genes: bool=True,
+        filter_hvg_peaks: bool=True,
+        n_hvg_peaks: int=40000,
+        condition_key: bool="batch",
         gp_targets_mask_key: str="autotalker_gp_targets",
         gp_sources_mask_key: str="autotalker_gp_sources",
         gp_names_key: str="autotalker_gp_names",
@@ -201,6 +205,15 @@ def add_multimodal_mask_to_adata(
     filter_peaks_based_on_genes:
         If `True`, filter `adata_atac` to only keep peaks that are mapped to
         genes in `gene_peak_mapping_dict`.
+    filter_hvg_peaks:
+        If `True`, filter `adata_atac` to only keep the ´n_hvg_peaks´ highly
+        variable peaks. Is applied after gene-based peak filter.
+    n_hvg_peaks:
+        Number of highly variable peaks to be filtered if ´filter_hvg_peaks´ is
+        ´True´.
+    condition_key:
+        Key in ´adata.obs´ where the conditions for highly variable peak
+        filtering are stored if ´filter_hvg_peaks´ is ´True´.
     gp_targets_mask_key:
         Key in ´adata.varm´ where the binary gene program mask for target genes
         of a gene program is stored.
@@ -236,6 +249,15 @@ def add_multimodal_mask_to_adata(
             set(peak for gene_peaks in gene_peak_mapping_dict.values() for peak
                 in gene_peaks))
         adata_atac = adata_atac[:, adata_atac.var_names.isin(all_gene_peaks)]
+
+    if filter_hvg_peaks:
+        print("Filtering peaks...")
+        print(f"Starting with {len(adata_atac.var_names)} peaks.")
+        sc.pp.highly_variable_genes(adata_atac,
+                                    n_top_genes=n_hvg_peaks,
+                                    flavor="seurat_v3",
+                                    batch_key=condition_key)
+        print(f"Keeping {len(adata_atac.var_names)} highly variable peaks.")
 
     # Create mapping dict for computationally efficient mapping of peaks to
     # their index in ´adata_atac.var_names´    
