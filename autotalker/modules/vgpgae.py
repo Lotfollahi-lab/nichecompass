@@ -85,6 +85,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     include_gene_expr_recon_loss:
         If `True`, includes the gene expression reconstruction loss in the 
         loss optimization.
+    include_chrom_access_recon_loss:
+        If `True`, includes the chromatin accessibility reconstruction loss in
+        the loss optimization.    
     include_cond_contrastive_loss:
         If `True`, includes the conditional contrastive loss in the loss
         optimization.       
@@ -149,6 +152,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  dropout_rate_graph_decoder: float=0.,
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
+                 include_chrom_access_recon_loss: bool=True,
                  include_cond_contrastive_loss: bool=True,
                  gene_expr_recon_dist: Literal["nb", "zinb"]="nb",
                  chrom_access_recon_dist: Literal["nb", "zinb"]="nb",
@@ -187,6 +191,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
         self.include_edge_recon_loss_ = include_edge_recon_loss
         self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
+        self.include_chrom_access_recon_loss_ = include_chrom_access_recon_loss
         self.include_cond_contrastive_loss_ = include_cond_contrastive_loss
         self.gene_expr_recon_dist_ = gene_expr_recon_dist
         self.chrom_access_recon_dist_ = chrom_access_recon_dist
@@ -213,8 +218,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
               "GRAPH AUTOENCODER ---")
         print(f"LOSS -> include_edge_recon_loss: {include_edge_recon_loss}, "
               f"include_gene_expr_recon_loss: {include_gene_expr_recon_loss}, "
-              f"gene_expr_recon_dist: {gene_expr_recon_dist}")
-        print(f"NODE LABEL METHOD -> {node_label_method}")
+              f"gene_expr_recon_dist: {gene_expr_recon_dist}", end="")
+        if self.includes_atac_modality_:
+            print(", include_chrom_access_recon_loss: "
+                  f"{include_chrom_access_recon_loss}, "
+                  "chrom_access_recon_dist: "
+                  f"{chrom_access_recon_dist}", end=" ")
+        print(f"\nNODE LABEL METHOD -> {node_label_method}")
         print(f"ACTIVE GP THRESHOLD RATIO -> {active_gp_thresh_ratio}")
         print(f"LOG VARIATIONAL -> {log_variational}")
         if len(conditions) != 0:
@@ -639,6 +649,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             if self.n_addon_gps_ != 0:
                 loss_dict["global_loss"] += loss_dict["addon_gp_l1_reg_loss"]
                 loss_dict["optim_loss"] += loss_dict["addon_gp_l1_reg_loss"]
+        if self.include_chrom_access_recon_loss_:
+            loss_dict["global_loss"] += loss_dict["chrom_access_recon_loss"]
+            loss_dict["optim_loss"] += loss_dict["chrom_access_recon_loss"]
         return loss_dict
 
     def get_gp_weights(self,
