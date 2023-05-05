@@ -24,7 +24,7 @@ from .basemodulemixin import BaseModuleMixin
 from .losses import (compute_addon_l1_reg_loss,
                      compute_cond_contrastive_loss,
                      compute_edge_recon_loss,
-                     compute_gene_expr_recon_nb_loss,
+                     compute_omics_recon_nb_loss,
                      compute_gene_expr_recon_zinb_loss,
                      compute_group_lasso_reg_loss,
                      compute_kl_reg_loss,
@@ -576,7 +576,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         if self.gene_expr_recon_dist_ == "nb":
             nb_means = node_model_output["gene_expr_dist_params"]
             loss_dict["gene_expr_recon_loss"] = (lambda_gene_expr_recon * 
-            compute_gene_expr_recon_nb_loss(
+            compute_omics_recon_nb_loss(
                     x=node_model_output["node_labels"],
                     mu=nb_means,
                     theta=theta))
@@ -609,7 +609,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                                     # dispersion
             nb_means_atac = node_model_output["chrom_access_dist_params"]
             loss_dict["chrom_access_recon_loss"] = (lambda_chrom_access_recon * 
-            compute_gene_expr_recon_nb_loss(
+            compute_omics_recon_nb_loss(
                     x=node_model_output["node_labels_atac"],
                     mu=nb_means_atac,
                     theta=theta_atac))

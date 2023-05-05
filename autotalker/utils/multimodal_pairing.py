@@ -46,6 +46,15 @@ def get_gene_annotations(
     by_func
         Specify an element-wise function used to transform merging fields,
         e.g. removing suffix in gene IDs.
+    drop_unannotated_genes:
+        If `True`, drop genes for which no annotation was found.
+
+    Returns
+    ----------
+    adata:
+        The annotated RNA-seq AnnData object.
+    adata_atac:
+        The annotated ATAC-seq AnnData object.
 
     Note
     ----
@@ -93,13 +102,19 @@ def generate_multimodal_pairing_dict(
         extend_fn: Callable[[int], float]=genomics.dist_power_decay,
         uppercase=True) -> dict:
     """
-    Build guidance graph anchored on RNA genes
+    Build guidance graph anchored on RNA genes.
+
+    Parts of the implementation are adapted from 
+    Cao, Z.-J. & Gao, G. Multi-omics single-cell data integration and regulatory
+    inference with graph-linked embedding. Nat. Biotechnol. 40, 1458–1466 (2022)
+    (https://github.com/gao-lab/GLUE/blob/master/scglue/data.py#L86); 14.04.23).
 
     Parameters
     ----------
     adata_rna
         Anchor RNA dataset
-    *others
+    adata_atac:
+        
         Other datasets
     gene_region
         Defines the genomic region of genes, must be one of
@@ -118,13 +133,9 @@ def generate_multimodal_pairing_dict(
     propagate_highly_variable
         Whether to propagate highly variable genes to other datasets,
         datasets in ``*others`` would be modified in place.
-    corrupt_rate
-        **CAUTION: DO NOT USE**, only for evaluation purpose
-    random_state
-        **CAUTION: DO NOT USE**, only for evaluation purpose
 
     Returns
-    -------
+    ----------
     multimodal_dict:
         Dictionary that maps genes to other modalities.
 

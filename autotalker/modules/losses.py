@@ -151,10 +151,10 @@ def compute_edge_recon_loss(
     return edge_recon_loss
 
 
-def compute_gene_expr_recon_nb_loss(x: torch.Tensor,
-                                    mu: torch.Tensor,
-                                    theta: torch.Tensor,
-                                    eps: float=1e-8) -> torch.Tensor:
+def compute_omics_recon_nb_loss(x: torch.Tensor,
+                                mu: torch.Tensor,
+                                theta: torch.Tensor,
+                                eps: float=1e-8) -> torch.Tensor:
     """
     Compute gene expression reconstruction loss according to a negative binomial
     gene expression model, which is often used to model omics count data such as

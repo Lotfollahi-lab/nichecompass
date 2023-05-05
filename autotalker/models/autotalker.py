@@ -195,7 +195,7 @@ class Autotalker(BaseModelMixin):
                     "one-hop-attention"]="one-hop-attention",
                  active_gp_thresh_ratio: float=0.03,
                  n_layers_encoder: int=1,
-                 n_hidden_encoder: int=256,
+                 n_hidden_encoder: Optional[int]=256,
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=4,
                  dropout_rate_encoder: float=0.,
@@ -239,7 +239,9 @@ class Autotalker(BaseModelMixin):
         self.n_input_ = adata.n_vars
         self.n_output_ = adata.n_vars
         if adata_atac is not None:
-            assert np.all(adata.obs.index == adata_atac.obs.index)
+            assert np.all(adata.obs.index == adata_atac.obs.index), "Please "
+            "make sure that 'adata' and 'adata_atac' have the same "
+            "observations in the same order."
             # Concatenate peaks to gene feature vector
             self.n_input_ += adata_atac.n_vars
             self.n_output_peaks_ = adata_atac.n_vars
@@ -250,7 +252,6 @@ class Autotalker(BaseModelMixin):
         if node_label_method != "self":
             self.n_output_ *= 2
         self.n_layers_encoder_ = n_layers_encoder
-        self.n_hidden_encoder_ = n_hidden_encoder
         self.conv_layer_encoder_ = conv_layer_encoder
         if conv_layer_encoder == "gatv2conv":
             self.encoder_n_attention_heads_ = encoder_n_attention_heads
@@ -334,6 +335,14 @@ class Autotalker(BaseModelMixin):
         self.n_nonaddon_gps_ = len(self.gp_mask_)
         self.n_addon_gps_ = n_addon_gps
         self.n_cond_embed_ = n_cond_embed
+
+        # Determine dimensionality of hidden encoder layer if not provided
+        if n_hidden_encoder is None:
+            if self.n_input_ > (2 * self.n_nonaddon_gps_):
+                n_hidden_encoder = int(self.n_input_ / 2)
+            else:
+                n_hidden_encoder = self.n_nonaddon_gps_
+        self.n_hidden_encoder_ = n_hidden_encoder
         
         # Retrieve target and source index of genes in gp mask
         self.genes_idx_ = adata.uns[genes_idx_key]
