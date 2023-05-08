@@ -6,7 +6,7 @@ from .decoders import (CosineSimGraphDecoder,
                        DotProductGraphDecoder,
                        MaskedGeneExprDecoder,
                        MaskedChromAccessDecoder)
-from .encoders import GraphEncoder
+from .encoders import Encoder
 from .layercomponents import MaskedLinear
 from .layers import GCNLayer, AddOnMaskedLayer
 
@@ -18,7 +18,7 @@ __all__ = ["OneHopAttentionNodeLabelAggregator",
            "DotProductGraphDecoder",
            "MaskedGeneExprDecoder",
            "MaskedChromAccessDecoder",
-           "GraphEncoder",
+           "Encoder",
            "MaskedLinear",
            "GCNLayer",
            "AddOnMaskedLayer"]

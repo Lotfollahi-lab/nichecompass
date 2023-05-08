@@ -13,7 +13,7 @@ from torch_geometric.data import Data
 
 from autotalker.nn import (CosineSimGraphDecoder,
                            DotProductGraphDecoder,
-                           GraphEncoder,
+                           Encoder,
                            MaskedGeneExprDecoder,
                            MaskedChromAccessDecoder,
                            OneHopAttentionNodeLabelAggregator,
@@ -24,7 +24,7 @@ from .basemodulemixin import BaseModuleMixin
 from .losses import (compute_addon_l1_reg_loss,
                      compute_cond_contrastive_loss,
                      compute_edge_recon_loss,
-                     compute_gene_expr_recon_nb_loss,
+                     compute_omics_recon_nb_loss,
                      compute_gene_expr_recon_zinb_loss,
                      compute_group_lasso_reg_loss,
                      compute_kl_reg_loss,
@@ -53,13 +53,20 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         Number of conditional embedding nodes.
     n_output:
         Number of nodes in the output layer.
+    n_output_peaks:
+        Number of output peaks for the masked chromatin accessibility decoder.
     n_genes_in_mask:
         Number of source and target genes that are included in the gp mask.
     gene_expr_decoder_mask:
         Gene program mask for the gene expression decoder.
-    genes_idx:
-        Index of genes in a concatenated vector of target and source genes that
-        are in gps of the gp mask.
+    target_genes_idx:
+        Index of target genes that are in gps of the gp mask.
+    source_genes_idx:
+        Index of source genes that are in gps of the gp mask.
+    target_peaks_idx:
+        Index of target peaks that are in gps of the ca mask.
+    source_peaks_idx:
+        Index of source peaks that are in gps of the ca mask.
     conditions:
         Conditions used for the conditional embedding.
     conv_layer_encoder:
@@ -78,6 +85,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     include_gene_expr_recon_loss:
         If `True`, includes the gene expression reconstruction loss in the 
         loss optimization.
+    include_chrom_access_recon_loss:
+        If `True`, includes the chromatin accessibility reconstruction loss in
+        the loss optimization.    
     include_cond_contrastive_loss:
         If `True`, includes the conditional contrastive loss in the loss
         optimization.       
@@ -127,7 +137,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  n_output: int,
                  gene_expr_decoder_mask: torch.Tensor,
                  genes_idx: torch.Tensor,
+                 target_genes_idx: torch.Tensor,
+                 source_genes_idx: torch.Tensor,
+                 n_output_peaks: int=0,
                  chrom_access_decoder_mask: Optional[torch.Tensor]=None,
+                 peaks_idx: Optional[torch.Tensor]=None,
+                 target_peaks_idx: Optional[torch.Tensor]=None,
+                 source_peaks_idx: Optional[torch.Tensor]=None,
                  conditions: list=[],
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=4,
@@ -136,6 +152,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  dropout_rate_graph_decoder: float=0.,
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
+                 include_chrom_access_recon_loss: bool=True,
                  include_cond_contrastive_loss: bool=True,
                  gene_expr_recon_dist: Literal["nb", "zinb"]="nb",
                  chrom_access_recon_dist: Literal["nb", "zinb"]="nb",
@@ -146,7 +163,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     "one-hop-attention"]="one-hop-attention",
                  active_gp_thresh_ratio: float=0.03,
                  log_variational: bool=True,
-                 cond_embed_injection: Optional[list]=["gene_expr_decoder"],
+                 cond_embed_injection: Optional[list]=["gene_expr_decoder",
+                                                       "chrom_access_decoder"],
                  cond_edge_neg_sampling: bool=True):
         super().__init__()
         self.n_input_ = n_input
@@ -156,7 +174,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.n_addon_gps_ = n_addon_gps
         self.n_cond_embed_ = n_cond_embed
         self.n_output_ = n_output
+        self.n_output_peaks_ = n_output_peaks
         self.genes_idx_ = genes_idx
+        self.target_genes_idx_ = target_genes_idx
+        self.source_genes_idx_ = source_genes_idx
+        self.peaks_idx_ = peaks_idx
+        self.target_peaks_idx_ = target_peaks_idx
+        self.source_peaks_idx_ = source_peaks_idx
         self.conditions_ = conditions
         self.n_conditions_ = len(conditions)
         self.condition_label_encoder_ = {
@@ -167,6 +191,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
         self.include_edge_recon_loss_ = include_edge_recon_loss
         self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
+        self.include_chrom_access_recon_loss_ = include_chrom_access_recon_loss
         self.include_cond_contrastive_loss_ = include_cond_contrastive_loss
         self.gene_expr_recon_dist_ = gene_expr_recon_dist
         self.chrom_access_recon_dist_ = chrom_access_recon_dist
@@ -177,27 +202,40 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.cond_edge_neg_sampling_ = cond_edge_neg_sampling
         self.freeze_ = False
         if chrom_access_decoder_mask is not None:
-            self.use_chrom_access_decoder_ = True
+            self.includes_atac_modality_ = True
+            self.features_idx_ = np.concatenate(
+                (target_genes_idx,
+                 (target_peaks_idx + int(n_output / 2)),
+                 (source_genes_idx + int(n_output / 2) + int(n_output_peaks / 2)),
+                 (source_peaks_idx + n_output + int(n_output_peaks / 2))),
+                 axis=0)
+
         else:
-            self.use_chrom_access_decoder_ = False
+            self.includes_atac_modality_ = False
+            self.features_idx_ = self.genes_idx_
 
         print("--- INITIALIZING NEW NETWORK MODULE: VARIATIONAL GENE PROGRAM "
               "GRAPH AUTOENCODER ---")
         print(f"LOSS -> include_edge_recon_loss: {include_edge_recon_loss}, "
               f"include_gene_expr_recon_loss: {include_gene_expr_recon_loss}, "
-              f"gene_expr_recon_dist: {gene_expr_recon_dist}")
-        print(f"NODE LABEL METHOD -> {node_label_method}")
+              f"gene_expr_recon_dist: {gene_expr_recon_dist}", end="")
+        if self.includes_atac_modality_:
+            print(", include_chrom_access_recon_loss: "
+                  f"{include_chrom_access_recon_loss}, "
+                  "chrom_access_recon_dist: "
+                  f"{chrom_access_recon_dist}", end=" ")
+        print(f"\nNODE LABEL METHOD -> {node_label_method}")
         print(f"ACTIVE GP THRESHOLD RATIO -> {active_gp_thresh_ratio}")
         print(f"LOG VARIATIONAL -> {log_variational}")
         if len(conditions) != 0:
             print(f"CONDITIONAL EMBEDDING INJECTION -> {cond_embed_injection}")
 
+        # Initialize conditional embedder module
         if (cond_embed_injection is not None) & (self.n_conditions_ > 0):
-            self.cond_embedder = nn.Embedding(
-                self.n_conditions_,
-                n_cond_embed)
+            self.cond_embedder = nn.Embedding(self.n_conditions_, n_cond_embed)
 
-        self.encoder = GraphEncoder(
+        # Initialize encoder module
+        self.encoder = Encoder(
             n_input=n_input,
             n_cond_embed_input=(n_cond_embed if ("encoder" in
                                 self.cond_embed_injection_) &
@@ -211,21 +249,19 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             dropout_rate=dropout_rate_encoder,
             activation=torch.relu)
         
+        # Initialize graph decoder module
         if decoder_type == "cosine_sim":
-            self.graph_decoder = CosineSimGraphDecoder(
-                n_cond_embed_input=(n_cond_embed if ("graph_decoder" in
-                                    self.cond_embed_injection_) &
-                                    (self.n_conditions_ != 0) else 0),
-                n_output=(n_nonaddon_gps + n_addon_gps),
-                dropout_rate=dropout_rate_graph_decoder)
+            graph_decoder = CosineSimGraphDecoder
         elif decoder_type == "dot_prod":
-            self.graph_decoder = DotProductGraphDecoder(
-                n_cond_embed_input=(n_cond_embed if ("graph_decoder" in
-                                    self.cond_embed_injection_) &
-                                    (self.n_conditions_ != 0) else 0),
-                n_output=(n_nonaddon_gps + n_addon_gps),
-                dropout_rate=dropout_rate_graph_decoder)
+            graph_decoder = DotProductGraphDecoder
+        self.graph_decoder = graph_decoder(
+            n_cond_embed_input=(n_cond_embed if ("graph_decoder" in
+                                self.cond_embed_injection_) &
+                                (self.n_conditions_ != 0) else 0),
+            n_cond_embed_output=(n_nonaddon_gps + n_addon_gps),
+            dropout_rate=dropout_rate_graph_decoder)
 
+        # Initialize masked gene expression decoder
         self.gene_expr_decoder = MaskedGeneExprDecoder(
             n_input=n_nonaddon_gps,
             n_addon_input=n_addon_gps,
@@ -237,34 +273,39 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             genes_idx=genes_idx,
             recon_dist=self.gene_expr_recon_dist_)
         
-        if chrom_access_decoder_mask is not None:
+        if self.includes_atac_modality_:
+            # Initialize masked chromatin accessibility decoder
             self.chrom_access_decoder = MaskedChromAccessDecoder(
                 n_input=n_nonaddon_gps,
                 n_addon_input=n_addon_gps,
                 n_cond_embed_input=(n_cond_embed if ("chrom_access_decoder" in
                                     self.cond_embed_injection_) &
                                     (self.n_conditions_ != 0) else 0),
-                n_output=n_output,
+                n_output=n_output_peaks,
                 mask=chrom_access_decoder_mask,
-                genes_idx=genes_idx,
+                peaks_idx=peaks_idx,
                 recon_dist=self.chrom_access_recon_dist_)            
 
         if node_label_method == "self":
-            self.node_label_aggregator = (
-                SelfNodeLabelNoneAggregator(genes_idx=genes_idx))
-        elif node_label_method == "one-hop-norm":
-            self.node_label_aggregator = (
-                OneHopGCNNormNodeLabelAggregator(genes_idx=genes_idx))
+            self.node_label_aggregator = SelfNodeLabelNoneAggregator(
+                features_idx=self.features_idx_)
+        if node_label_method == "one-hop-norm":
+            self.node_label_aggregator = OneHopGCNNormNodeLabelAggregator(
+                features_idx=self.features_idx_)
         elif node_label_method == "one-hop-sum":
-            self.node_label_aggregator = (
-                OneHopSumNodeLabelAggregator(genes_idx=genes_idx))
+            self.node_label_aggregator = OneHopSumNodeLabelAggregator(
+                features_idx=self.features_idx_)
         elif node_label_method == "one-hop-attention":
-            self.node_label_aggregator = (
-                OneHopAttentionNodeLabelAggregator(n_input=n_input,
-                                                   genes_idx=genes_idx))
+            self.node_label_aggregator = OneHopAttentionNodeLabelAggregator(
+                n_input=n_input,
+                features_idx=self.features_idx_)
         
-        # Gene-specific dispersion parameters
+        # Initialize gene-specific dispersion parameters
         self.theta = torch.nn.Parameter(torch.randn(len(genes_idx)))
+
+        if self.includes_atac_modality_:
+            # Initialize peak-specific dispersion parameters
+            self.theta_atac = torch.nn.Parameter(torch.randn(len(peaks_idx)))
 
     def forward(self,
                 data_batch: Data,
@@ -300,13 +341,15 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         x = data_batch.x # dim: n_obs x n_omics_features
         edge_index = data_batch.edge_index # dim: 2 x n_edges
         output = {}
-        # Convert gene expression for numerical stability
+
+        # Logarithmitize omics feature vector for numerical stability
         if self.log_variational_:
             x_enc = torch.log(1 + x)
         else:
             x_enc = x
 
-        # Get index of sampled nodes for batch as well as edge or node labels
+        # Get index of sampled nodes for current batch as well as node or edge
+        # labels depending on decoder
         if decoder == "omics":
             # ´data_batch´ will be a node batch and first node_batch_size
             # elements are the sampled nodes, leading to a dim of ´batch_idx´ of
@@ -320,9 +363,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     x=x, # (?) no log variational
                     edge_index=edge_index,
                     return_attention_weights=return_agg_attention_weights)
-            output["node_labels"] = node_label_aggregator_output[0][batch_idx]
-            output["alpha"] = node_label_aggregator_output[1][batch_idx]
-            output["alpha_edge_index"] = data_batch.edge_attr.t()[:, batch_idx]
+            if self.node_label_method_ == "one-hop-attention":
+                output["node_labels"] = node_label_aggregator_output[0][batch_idx]
+                output["alpha"] = node_label_aggregator_output[1][batch_idx]
+                output["alpha_edge_index"] = data_batch.edge_attr.t()[:, batch_idx]
+            elif self.node_label_method_ == "one-hop-norm":
+                output["node_labels"] = node_label_aggregator_output[batch_idx]
             # ´edge_attr´ stores the global edge index instead of batch index
         elif decoder == "graph":
             # ´data_batch´ will be an edge batch with sampled positive and
@@ -374,31 +420,64 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 cond_embed=(self.cond_embed if "graph_decoder" in
                             self.cond_embed_injection_ else None))
         elif decoder == "omics":
-            # Get gene expression reconstruction distribution parameters
-            # Use observed library size as scaling factor for the negative binomial 
-            # means of the gene expression distribution
-            self.log_library_size = torch.log(x.sum(1)).unsqueeze(1)[batch_idx]
-            # (?) adjust for ATAC
+            if self.includes_atac_modality_:
+                # Separate node feature vector into RNA and ATAC part
+                x_atac = x[:, int(self.n_output_ / 2):]
+                x = x[:, :int(self.n_output_ / 2)]
+                assert x_atac.size(1) == int(self.n_output_peaks_ / 2)
+                target_node_labels_atac_start_idx = len(self.target_genes_idx_)
+                source_node_labels_atac_start_idx = (
+                    len(self.target_genes_idx_) + 
+                    len(self.target_peaks_idx_) +
+                    len(self.source_genes_idx_))
+                source_node_labels_rna_start_idx = (
+                    len(self.target_genes_idx_) + 
+                    len(self.target_peaks_idx_))
 
+                output["node_labels_atac"] = torch.cat((
+                    output["node_labels"][:, target_node_labels_atac_start_idx:
+                                          source_node_labels_rna_start_idx],
+                    output["node_labels"][:, source_node_labels_atac_start_idx:
+                                          ]), dim=1)
+                output["node_labels"] = torch.cat((
+                    output["node_labels"][:, :target_node_labels_atac_start_idx],
+                    output["node_labels"][:, source_node_labels_rna_start_idx: 
+                                          source_node_labels_atac_start_idx]),
+                                          dim=1)
+                assert output["node_labels_atac"].size(1) == len(self.peaks_idx_)
+                assert output["node_labels"].size(1) == len(self.genes_idx_)
+
+                # Use observed library size as scaling factor for the negative
+                # binomial means of the chromatin accessibility distribution            
+                self.log_library_size_atac = torch.log(
+                    x_atac.sum(1)).unsqueeze(1)[batch_idx]
+
+                # Get chromatin accessibility reconstruction distribution
+                # parameters
+                output["chrom_access_dist_params"] = self.chrom_access_decoder(
+                    z=z,
+                    log_library_size=self.log_library_size_atac,
+                    cond_embed=(self.cond_embed if "chrom_access_decoder" in
+                                self.cond_embed_injection_ else None))
+
+            # Use observed library size as scaling factor for the negative
+            # binomial means of the gene expression distribution
+            self.log_library_size = torch.log(x.sum(1)).unsqueeze(1)[batch_idx]
+
+            # Get gene expression reconstruction distribution parameters
             output["gene_expr_dist_params"] = self.gene_expr_decoder(
                 z=z,
                 log_library_size=self.log_library_size,
                 cond_embed=(self.cond_embed if "gene_expr_decoder" in
                             self.cond_embed_injection_ else None))
-            
-            # Get chromatin accessibility reconstruction distribution parameters
-            if self.use_chrom_access_decoder_:
-                output["chrom_access_dist_params"] = self.chrom_access_decoder(
-                z=z,
-                log_library_size=self.log_library_size, # (?) adjust for ATAC
-                cond_embed=(self.cond_embed if "chrom_access_decoder" in
-                            self.cond_embed_injection_ else None))
+
         return output
 
     def loss(self,
              edge_model_output: dict,
              node_model_output: dict,
              lambda_l1_masked: float,
+             l1_masked_gp_idx: torch.Tensor,
              lambda_l1_addon: float,
              lambda_group_lasso: float,
              lambda_gene_expr_recon: float=0.1,
@@ -429,6 +508,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Lambda (weighting factor) for the gene expression reconstruction
             loss. If ´>0´, this will enforce interpretable gene programs that
             can be combined in a linear way to reconstruct gene expression.
+        lambda_chrom_access_recon:
+            Lambda (weighting factor) for the chromatin accessibility
+            reconstruction loss. If ´>0´, this will enforce interpretable gene
+            programs that can be combined in a linear way to reconstruct
+            chromatin accessibility.
         lambda_group_lasso:
             Lambda (weighting factor) for the group lasso regularization loss of
             gene programs. If ´>0´, this will enforce sparsity of gene programs.
@@ -436,6 +520,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Lambda (weighting factor) for the L1 regularization loss of genes in
             masked gene programs. If ´>0´, this will enforce sparsity of genes
             in masked gene programs.
+        l1_masked_gp_idx:
+            The index of gene programs that are included in the masked L1
+            regularization loss.
         lambda_l1_addon:
             Lambda (weighting factor) for the L1 regularization loss of genes in
             addon gene programs. If ´>0´, this will enforce sparsity of genes in
@@ -503,7 +590,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         if self.gene_expr_recon_dist_ == "nb":
             nb_means = node_model_output["gene_expr_dist_params"]
             loss_dict["gene_expr_recon_loss"] = (lambda_gene_expr_recon * 
-            compute_gene_expr_recon_nb_loss(
+            compute_omics_recon_nb_loss(
                     x=node_model_output["node_labels"],
                     mu=nb_means,
                     theta=theta))
@@ -518,7 +605,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     zi_prob_logits=zi_prob_logits))
             
         loss_dict["masked_gp_l1_reg_loss"] = (lambda_l1_masked *
-            compute_masked_l1_reg_loss(self))
+            compute_masked_l1_reg_loss(self,
+                                       l1_masked_gp_idx=l1_masked_gp_idx))
 
         # Compute group lasso regularization loss of gene programs
         loss_dict["group_lasso_reg_loss"] = (lambda_group_lasso *
@@ -529,13 +617,17 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon *
             compute_addon_l1_reg_loss(self))
 
-        if self.use_chrom_access_decoder_:
-            nb_means = node_model_output["chrom_access_dist_params"]
+        if self.includes_atac_modality_:
+            # Compute chromatin accessibility reconstruction negative binomial
+            # loss
+            theta_atac = torch.exp(self.theta_atac) # peak-specific inverse
+                                                    # dispersion
+            nb_means_atac = node_model_output["chrom_access_dist_params"]
             loss_dict["chrom_access_recon_loss"] = (lambda_chrom_access_recon * 
-            compute_gene_expr_recon_nb_loss(
-                    x=node_model_output["node_labels"],
-                    mu=nb_means,
-                    theta=theta))
+            compute_omics_recon_nb_loss(
+                    x=node_model_output["node_labels_atac"],
+                    mu=nb_means_atac,
+                    theta=theta_atac))
 
         # Compute optimization loss used for backpropagation as well as global
         # loss used for early stopping of model training and best model saving
@@ -562,6 +654,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             if self.n_addon_gps_ != 0:
                 loss_dict["global_loss"] += loss_dict["addon_gp_l1_reg_loss"]
                 loss_dict["optim_loss"] += loss_dict["addon_gp_l1_reg_loss"]
+        if self.includes_atac_modality_ & self.include_chrom_access_recon_loss_:
+            loss_dict["global_loss"] += loss_dict["chrom_access_recon_loss"]
+            loss_dict["optim_loss"] += loss_dict["chrom_access_recon_loss"]
         return loss_dict
 
     def get_gp_weights(self,

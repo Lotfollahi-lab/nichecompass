@@ -151,10 +151,10 @@ def compute_edge_recon_loss(
     return edge_recon_loss
 
 
-def compute_gene_expr_recon_nb_loss(x: torch.Tensor,
-                                    mu: torch.Tensor,
-                                    theta: torch.Tensor,
-                                    eps: float=1e-8) -> torch.Tensor:
+def compute_omics_recon_nb_loss(x: torch.Tensor,
+                                mu: torch.Tensor,
+                                theta: torch.Tensor,
+                                eps: float=1e-8) -> torch.Tensor:
     """
     Compute gene expression reconstruction loss according to a negative binomial
     gene expression model, which is often used to model omics count data such as
@@ -324,17 +324,22 @@ def compute_kl_reg_loss(mu: torch.Tensor,
 
 
 def compute_masked_l1_reg_loss(model: nn.Module,
+                               l1_masked_gp_idx,
                                only_target_genes: bool=False) -> torch.Tensor:
     """
     Compute L1 regularization loss for the masked decoder layer weights to 
-    enforce gene sparsity of masked gene programs.
+    encourage gene sparsity of masked gene programs.
 
     Parameters
     ----------
     model:
         The VGPGAE module.
     only_target_genes:
-        If ´True´, compute regularization loss only for target genes.
+        If ´True´, compute regularization loss only for target genes (not for
+        source genes).
+    min_genes_per_gp:
+        Minimum number of genes that are in the gene program mask for a gene
+        program to be included in the l1 reg loss.
 
     Returns
     ----------
@@ -346,10 +351,13 @@ def compute_masked_l1_reg_loss(model: nn.Module,
     else:
         param_end_gene_idx = None
 
+    # First compute layer-wise sum of absolute weights over all masked gene
+    # expression decoder layers, then sum across layers
     masked_decoder_layerwise_param_sum = torch.stack(
-        [torch.linalg.vector_norm(param[:param_end_gene_idx, :], ord=1) for
+        [torch.linalg.vector_norm(param[:param_end_gene_idx, l1_masked_gp_idx],
+                                  ord=1) for
          param_name, param in model.named_parameters() if
          "nb_means_normalized_decoder.masked_l" in param_name],
-         dim=0)
+        dim=0)
     masked_l1_reg_loss = torch.sum(masked_decoder_layerwise_param_sum)
     return masked_l1_reg_loss

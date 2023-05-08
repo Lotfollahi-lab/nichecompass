@@ -13,103 +13,111 @@ from .utils import compute_cosine_similarity
 
 class DotProductGraphDecoder(nn.Module):
     """
-    Dot product graph decoder class as per Kipf, T. N. & Welling, M. Variational 
-    Graph Auto-Encoders. arXiv [stat.ML] (2016).
-    Takes the latent space features z as input, calculates their dot product
-    to return the reconstructed adjacency matrix with logits `adj_rec_logits`.
-    Sigmoid activation function is skipped as it is integrated into the binary 
-    cross entropy loss for computational efficiency.
+    Dot product graph decoder class.
+
+    Takes the concatenated latent feature vectors z of the source and
+    destination nodes as input, and calculates the element-wise dot product
+    between source and destination nodes to return the reconstructed edge
+    logits. Sigmoid activation function to compute reconstructed edge
+    probabilities is integrated into the binary cross entropy loss for
+    computational efficiency. Optionally, takes a conditional embedding as input
+    and adds it to the concatenated latent feature vectors z.
+
     Parameters
     ----------
+    n_cond_embed_input:
+        Dimensionality of the conditional embedding.
+    n_cond_embed_output:
+        Dimensionality of the latent feature vectors.
     dropout_rate:
         Probability of nodes to be dropped during training.
     """
     def __init__(self,
                  n_cond_embed_input: int,
-                 n_output: int,
+                 n_cond_embed_output: int,
                  dropout_rate: float=0.):
         super().__init__()
 
         print(f"DOT PRODUCT GRAPH DECODER -> n_cond_embed_input: "
-              f"{n_cond_embed_input}, n_output: {n_output}, dropout_rate: "
-              F"{dropout_rate}")
+              f"{n_cond_embed_input}, n_cond_embed_output: "
+              f"{n_cond_embed_output}, dropout_rate: {dropout_rate}")
 
         # Conditional embedding layer
         if n_cond_embed_input != 0:
             self.cond_embed_l = nn.Linear(n_cond_embed_input,
-                                          n_output,
+                                          n_cond_embed_output,
                                           bias=False)
 
         self.dropout = nn.Dropout(dropout_rate)
 
     def forward(self,
                 z: torch.Tensor,
-                cond_embed: Optional[torch.Tensor],
-                reduced_obs_start_idx: Optional[int]=None,
-                reduced_obs_end_idx: Optional[int]=None) -> torch.Tensor:
+                cond_embed: Optional[torch.Tensor]) -> torch.Tensor:
         """
         Forward pass of the dot product graph decoder.
+
         Parameters
         ----------
         z:
-            Tensor containing the latent space features.
+            Concatenated latent feature vector of the source and destination
+            nodes (dim: 4 * edge_batch_size x n_gps due to negative edges).
         cond_embed:
-            Tensor containing the conditional embedding.
-        reduced_obs_start_idx:
-            If not `None`, specifies the start observation index from which the
-            dot product with all observations will be computed. This can be used
-            for batched dot product computation to alleviate the memory
-            consumption for big datasets.
-        reduced_obs_end_idx:
-            If not `None`, specifies the end observation index up to which the
-            dot product with all observations will be computed. This can be used
-            for batched dot product computation to alleviate the memory
-            consumption for big datasets.
+            Concatenated conditional embedding vector of the source and
+            destination nodes (dim: 4 * edge_batch_size x n_cond_embed).
 
         Returns
         ----------
-        adj_rec_logits:
-            Tensor containing the reconstructed adjacency matrix with logits.
+            Reconstructed edge logits (dim: 2 * edge_batch_size due to negative
+            edges).
         """
         # Add conditional embedding to latent feature vector
         if cond_embed is not None:
             z += self.cond_embed_l(cond_embed)
         
         z = self.dropout(z)
-        adj_rec_logits = torch.mm(
-            z[reduced_obs_start_idx:reduced_obs_end_idx, :],
-            z.t())
-        return adj_rec_logits
+
+        # Compute element-wise cosine similarity
+        edge_recon_logits = compute_cosine_similarity(
+            z[:int(z.shape[0]/2)], # ´edge_label_index[0]´
+            z[int(z.shape[0]/2):]) # ´edge_label_index[1]´
+        return edge_recon_logits
     
 
 class CosineSimGraphDecoder(nn.Module):
     """
     Cosine similarity graph decoder class.
 
-    Takes the latent space features z as input, calculates their cosine
-    similarity to return the reconstructed adjacency matrix with logits
-    `adj_rec_logits`. Sigmoid activation function is skipped as it is integrated
-    into the binary cross entropy loss for computational efficiency.
+    Takes the concatenated latent feature vectors z of the source and
+    destination nodes as input, and calculates the element-wise cosine
+    similarity between source and destination nodes to return the reconstructed
+    edge logits. Sigmoid activation function to compute reconstructed edge
+    probabilities is integrated into the binary cross entropy loss for
+    computational efficiency. Optionally, takes a conditional embedding as input
+    and adds it to the concatenated latent feature vectors z.
 
     Parameters
     ----------
+    n_cond_embed_input:
+        Dimensionality of the conditional embedding.
+    n_cond_embed_output:
+        Dimensionality of the latent feature vectors.
     dropout_rate:
         Probability of nodes to be dropped during training.
     """
     def __init__(self,
                  n_cond_embed_input: int,
-                 n_output: int,
+                 n_cond_embed_output: int,
                  dropout_rate: float=0.):
         super().__init__()
 
         print(f"COSINE SIM GRAPH DECODER -> n_cond_embed_input: "
-              f"{n_cond_embed_input}, n_output: {n_output}, dropout_rate: "
-              F"{dropout_rate}")
+              f"{n_cond_embed_input}, n_cond_embed_output: "
+              f"{n_cond_embed_output}, dropout_rate: {dropout_rate}")
 
         # Conditional embedding layer
         if n_cond_embed_input != 0:
             self.cond_embed_l = nn.Linear(n_cond_embed_input,
-                                          n_output,
+                                          n_cond_embed_output,
                                           bias=False)
 
         self.dropout = nn.Dropout(dropout_rate)
@@ -132,18 +140,19 @@ class CosineSimGraphDecoder(nn.Module):
         Returns
         ----------
         edge_recon_logits:
-            Reconstructed edge logits (dim: 2 * edge_batch_size x 2 *
-            edge_batch_size)
+            Reconstructed edge logits (dim: 2 * edge_batch_size due to negative
+            edges).
         """
         # Add conditional embedding to latent feature vectors
         if cond_embed is not None:
             z += self.cond_embed_l(cond_embed)
         
         z = self.dropout(z)
+
+        # Compute element-wise cosine similarity
         edge_recon_logits = compute_cosine_similarity(
             z[:int(z.shape[0]/2)], # ´edge_label_index[0]´
             z[int(z.shape[0]/2):]) # ´edge_label_index[1]´
-        
         return edge_recon_logits
 
 
@@ -152,7 +161,7 @@ class MaskedGeneExprDecoder(nn.Module):
     Masked gene expression decoder class.
 
     Takes the latent space features z as input, and has two separate masked
-    layers to decode the parameters of the ZINB distribution.
+    layers to decode the parameters of the gene expression distribution.
 
     Parameters
     ----------
@@ -179,8 +188,8 @@ class MaskedGeneExprDecoder(nn.Module):
     """
     def __init__(self,
                  n_input: int,
-                 n_addon_input: int,
                  n_cond_embed_input: int,
+                 n_addon_input: int,
                  n_output: int,
                  mask: torch.Tensor,
                  genes_idx: torch.Tensor,
@@ -275,28 +284,28 @@ class MaskedChromAccessDecoder(nn.Module):
     mask:
         Mask that determines which input nodes / latent features can contribute
         to the reconstruction of which genes.
-    genes_idx:
-        Index of genes that are in the gp mask.
+    peaks_idx:
+        Index of peaks that are in the ca mask.
     gene_expr_recon_dist:
         The distribution used for gene expression reconstruction. If `nb`, uses
         a Negative Binomial distribution. If `zinb`, uses a Zero-inflated
         Negative Binomial distribution.
     """
     def __init__(self,
-                    n_input: int,
-                    n_addon_input: int,
-                    n_cond_embed_input: int,
-                    n_output: int,
-                    mask: torch.Tensor,
-                    genes_idx: torch.Tensor,
-                    recon_dist: Literal["nb", "zinb"]):
+                 n_input: int,
+                 n_addon_input: int,
+                 n_cond_embed_input: int,
+                 n_output: int,
+                 mask: torch.Tensor,
+                 peaks_idx: torch.Tensor,
+                 recon_dist: Literal["nb", "zinb"]):
         super().__init__()
 
         print("MASKED CHROMATIN ACCESSIBILITY DECODER -> n_input: "
                 f"{n_input}, n_cond_embed_input: {n_cond_embed_input}, "
                 f"n_addon_input: {n_addon_input}, n_output: {n_output}")
 
-        self.genes_idx = genes_idx
+        self.peaks_idx = peaks_idx
         self.recon_dist = recon_dist
 
         self.nb_means_normalized_decoder = AddOnMaskedLayer(
@@ -347,11 +356,11 @@ class MaskedChromAccessDecoder(nn.Module):
         nb_means_normalized = self.nb_means_normalized_decoder(z)
         
         nb_means = torch.exp(log_library_size) * nb_means_normalized
-        nb_means = nb_means[:, self.genes_idx]
+        nb_means = nb_means[:, self.peaks_idx]
         if self.recon_dist == "nb":
             chrom_access_decoder_params = nb_means
         elif self.recon_dist == "zinb":
             zi_prob_logits = self.zi_prob_logits_decoder(z)
-            zi_prob_logits = zi_prob_logits[:, self.genes_idx]
+            zi_prob_logits = zi_prob_logits[:, self.peaks_idx]
             chrom_access_decoder_params = (nb_means, zi_prob_logits)
         return chrom_access_decoder_params

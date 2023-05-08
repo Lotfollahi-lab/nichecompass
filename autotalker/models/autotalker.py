@@ -69,7 +69,23 @@ class Autotalker(BaseModelMixin):
         ´adata.uns´.
     genes_idx_key:
         Key in ´adata.uns´ where the index of a concatenated vector of target
-        and source genes that are in the gene program masks are stored.
+        and source genes that are in the gene program masks are stored.    
+    target_genes_idx_key:
+        Key in ´adata.uns´ where the index of target genes that are in the gene
+        program masks are stored.
+    source_genes_idx_key:
+        Key in ´adata.uns´ where the index of source genes that are in the gene
+        program masks are stored.
+    peaks_idx_key:
+        Key in ´adata_atac.uns´ where the index of a concatenated vector of
+        target and source peaks that are in the chromatin accessibility masks
+        are stored.          
+    target_peaks_idx_key:
+        Key in ´adata_atac.uns´ where the index of target peaks that are in the
+        chromatin accessibility masks are stored.
+    source_peaks_idx_key:
+        Key in ´adata_atac.uns´ where the index of source peaks that are in the
+        chromatin accessibility masks are stored.
     recon_adj_key:
         Key in ´adata.obsp´ where the reconstructed adjacency matrix edge
         probabilities will be stored.
@@ -152,11 +168,19 @@ class Autotalker(BaseModelMixin):
                  active_gp_names_key: str="autotalker_active_gp_names",
                  gp_targets_mask_key: str="autotalker_gp_targets",
                  gp_sources_mask_key: str="autotalker_gp_sources",
+                 ca_targets_mask_key: str="autotalker_ca_targets",
+                 ca_sources_mask_key: str="autotalker_ca_sources",
                  latent_key: str="autotalker_latent",
                  condition_key: Optional[str]=None,
                  cond_embed_key: Optional[str]="autotalker_cond_embed",
-                 cond_embed_injection: Optional[List]=["gene_expr_decoder"],
+                 cond_embed_injection: Optional[List]=["gene_expr_decoder",
+                                                       "chrom_access_decoder"],
                  genes_idx_key: str="autotalker_genes_idx",
+                 target_genes_idx_key: str="autotalker_target_genes_idx",
+                 source_genes_idx_key: str="autotalker_source_genes_idx",
+                 peaks_idx_key: str="autotalker_peaks_idx",
+                 target_peaks_idx_key: str="autotalker_target_peaks_idx",
+                 source_peaks_idx_key: str="autotalker_source_peaks_idx",
                  recon_adj_key: str="autotalker_recon_connectivities",
                  agg_alpha_key: str="autotalker_agg_alpha",
                  include_edge_recon_loss: bool=True,
@@ -171,13 +195,15 @@ class Autotalker(BaseModelMixin):
                     "one-hop-attention"]="one-hop-attention",
                  active_gp_thresh_ratio: float=0.03,
                  n_layers_encoder: int=1,
-                 n_hidden_encoder: int=256,
+                 n_hidden_encoder: Optional[int]=256,
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=4,
                  dropout_rate_encoder: float=0.,
                  dropout_rate_graph_decoder: float=0.,
                  gp_targets_mask: Optional[Union[np.ndarray, list]]=None,
                  gp_sources_mask: Optional[Union[np.ndarray, list]]=None,
+                 ca_targets_mask: Optional[Union[np.ndarray, list]]=None,
+                 ca_sources_mask: Optional[Union[np.ndarray, list]]=None,
                  conditions: Optional[list]=None, 
                  n_addon_gps: int=0,
                  n_cond_embed: int=128):
@@ -189,11 +215,18 @@ class Autotalker(BaseModelMixin):
         self.active_gp_names_key_ = active_gp_names_key
         self.gp_targets_mask_key_ = gp_targets_mask_key
         self.gp_sources_mask_key_ = gp_sources_mask_key
+        self.ca_targets_mask_key_ = ca_targets_mask_key
+        self.ca_sources_mask_key_ = ca_sources_mask_key
         self.latent_key_ = latent_key
         self.condition_key_ = condition_key
         self.cond_embed_key_ = cond_embed_key
         self.cond_embed_injection_ = cond_embed_injection
         self.genes_idx_key_ = genes_idx_key
+        self.target_genes_idx_key_ = target_genes_idx_key
+        self.source_genes_idx_key_ = source_genes_idx_key
+        self.peaks_idx_key_ = peaks_idx_key
+        self.target_peaks_idx_key_ = target_peaks_idx_key
+        self.source_peaks_idx_key_ = source_peaks_idx_key
         self.recon_adj_key_ = recon_adj_key
         self.agg_alpha_key_ = agg_alpha_key
         self.include_edge_recon_loss_ = include_edge_recon_loss
@@ -205,10 +238,20 @@ class Autotalker(BaseModelMixin):
         self.active_gp_thresh_ratio_ = active_gp_thresh_ratio
         self.n_input_ = adata.n_vars
         self.n_output_ = adata.n_vars
+        if adata_atac is not None:
+            assert np.all(adata.obs.index == adata_atac.obs.index), "Please "
+            "make sure that 'adata' and 'adata_atac' have the same "
+            "observations in the same order."
+            # Concatenate peaks to gene feature vector
+            self.n_input_ += adata_atac.n_vars
+            self.n_output_peaks_ = adata_atac.n_vars
+            if node_label_method != "self":
+                self.n_output_peaks_ *= 2
+        else:
+            self.n_output_peaks_ = 0
         if node_label_method != "self":
             self.n_output_ *= 2
         self.n_layers_encoder_ = n_layers_encoder
-        self.n_hidden_encoder_ = n_hidden_encoder
         self.conv_layer_encoder_ = conv_layer_encoder
         if conv_layer_encoder == "gatv2conv":
             self.encoder_n_attention_heads_ = encoder_n_attention_heads
@@ -232,7 +275,6 @@ class Autotalker(BaseModelMixin):
                                  "created with ´mask = "
                                  "np.ones((n_latent, n_output))´).")
         self.gp_mask_ = torch.tensor(gp_targets_mask, dtype=torch.float32)
-        self.ca_mask_ = None
         if node_label_method != "self":
             if gp_sources_mask is None:
                 if gp_sources_mask_key in adata.varm:
@@ -246,12 +288,76 @@ class Autotalker(BaseModelMixin):
             self.gp_mask_ = torch.cat(
                 (self.gp_mask_, torch.tensor(gp_sources_mask, 
                 dtype=torch.float32)), dim=1)
+        
+        if adata_atac is None:
+            self.ca_mask_ = None
+        else:
+            if ca_targets_mask is None:
+                if ca_targets_mask_key in adata_atac.varm:
+                    ca_targets_mask = adata_atac.varm[
+                        ca_targets_mask_key].T.tocoo()
+                else:
+                    raise ValueError("Please explicitly provide a "
+                                     "´ca_targets_mask´ to the model or specify"
+                                     " an adequate ´ca_targets_mask_key´ for "
+                                     "your adata_atac object.")
+            self.ca_mask_ = torch.sparse_coo_tensor(
+                indices=[ca_targets_mask.row, ca_targets_mask.col],
+                values=ca_targets_mask.data,
+                size=ca_targets_mask.shape,
+                dtype=torch.bool)
+            if node_label_method != "self":
+                if ca_sources_mask is None:
+                    if ca_sources_mask_key in adata_atac.varm:
+                        ca_sources_mask = adata_atac.varm[
+                            ca_sources_mask_key].T.tocoo()
+                    else:
+                        raise ValueError("Please explicitly provide a "
+                                        "´gp_sources_mask´ to the model or specify"
+                                        " an adequate ´gp_sources_mask_key´ for "
+                                        "your adata object.")
+                # Horizontally concatenate targets and sources masks
+                ca_combined_mask_row = np.concatenate(
+                    (ca_targets_mask.row, ca_sources_mask.row), axis=0)
+                ca_combined_mask_col = np.concatenate(
+                    (ca_targets_mask.col, (ca_sources_mask.col + 
+                                           ca_targets_mask.shape[1])), axis=0)
+                ca_combined_mask_data = np.concatenate(
+                    (ca_targets_mask.data, ca_sources_mask.data), axis=0)
+                self.ca_mask_ = torch.sparse_coo_tensor(
+                    indices=[ca_combined_mask_row, ca_combined_mask_col],
+                    values=ca_combined_mask_data,
+                    size=(ca_targets_mask.shape[0],
+                          (ca_targets_mask.shape[1] + 
+                           ca_sources_mask.shape[1])),
+                    dtype=torch.bool)
+
         self.n_nonaddon_gps_ = len(self.gp_mask_)
         self.n_addon_gps_ = n_addon_gps
         self.n_cond_embed_ = n_cond_embed
+
+        # Determine dimensionality of hidden encoder layer if not provided
+        if n_hidden_encoder is None:
+            if self.n_input_ > (2 * self.n_nonaddon_gps_):
+                n_hidden_encoder = int(self.n_input_ / 2)
+            else:
+                n_hidden_encoder = self.n_nonaddon_gps_
+        self.n_hidden_encoder_ = n_hidden_encoder
         
-        # Retrieve index of genes in gp mask
+        # Retrieve target and source index of genes in gp mask
         self.genes_idx_ = adata.uns[genes_idx_key]
+        self.target_genes_idx_ = adata.uns[target_genes_idx_key]
+        self.source_genes_idx_ = adata.uns[source_genes_idx_key]
+
+        # Retrieve index of peaks in ca mask
+        if adata_atac is not None:
+            self.peaks_idx_ = adata_atac.uns[peaks_idx_key]
+            self.target_peaks_idx_ = adata_atac.uns[target_peaks_idx_key]
+            self.source_peaks_idx_ = adata_atac.uns[source_peaks_idx_key]
+        else:
+            self.peaks_idx_ = None
+            self.target_peaks_idx_ = None
+            self.source_peaks_idx_ = None
 
         # Retrieve conditions
         if conditions is None:
@@ -307,9 +413,15 @@ class Autotalker(BaseModelMixin):
             n_addon_gps=self.n_addon_gps_,
             n_cond_embed=self.n_cond_embed_,
             n_output=self.n_output_,
+            n_output_peaks=self.n_output_peaks_,
             gene_expr_decoder_mask=self.gp_mask_,
             chrom_access_decoder_mask=self.ca_mask_,
             genes_idx=self.genes_idx_,
+            target_genes_idx=self.target_genes_idx_,
+            source_genes_idx=self.source_genes_idx_,
+            peaks_idx=self.peaks_idx_,
+            target_peaks_idx=self.target_peaks_idx_,
+            source_peaks_idx=self.source_peaks_idx_,
             conditions=self.conditions_,
             conv_layer_encoder=self.conv_layer_encoder_,
             encoder_n_attention_heads=self.encoder_n_attention_heads_,
@@ -332,12 +444,14 @@ class Autotalker(BaseModelMixin):
               n_epochs: int=40,
               n_epochs_all_gps: int=20,
               n_epochs_no_edge_recon: int=0,
+              n_epochs_no_cond_contrastive: int=5,
               lr: float=0.001,
               weight_decay: float=0.,
-              lambda_edge_recon: Optional[float]=10.,
-              lambda_gene_expr_recon: float=0.01,
-              lambda_cond_contrastive: float=10.,
-              contrastive_logits_ratio: float=0.1,
+              lambda_edge_recon: Optional[float]=50000.,
+              lambda_gene_expr_recon: float=10.,
+              lambda_chrom_access_recon: float=10.,
+              lambda_cond_contrastive: float=5000.,
+              contrastive_logits_ratio: float=0.125,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,
               lambda_l1_addon: float=0.,
@@ -346,6 +460,9 @@ class Autotalker(BaseModelMixin):
               edge_batch_size: int=128,
               node_batch_size: int=16,
               mlflow_experiment_id: Optional[str]=None,
+              retrieve_cond_embeddings: bool=False,
+              retrieve_recon_edge_probs: bool=False,
+              retrieve_att_weights: bool=False,
               **trainer_kwargs):
         """
         Train the Autotalker model.
@@ -360,6 +477,9 @@ class Autotalker(BaseModelMixin):
         n_epochs_no_edge_recon:
             Number of epochs without edge reconstruction loss for gene
             expression decoder pretraining.
+        n_epochs_no_cond_contrastive:
+            Number of epochs without conditional contrastive loss for decoder
+            pretraining.
         lr:
             Learning rate.
         weight_decay:
@@ -385,7 +505,12 @@ class Autotalker(BaseModelMixin):
         lambda_gene_expr_recon:
             Lambda (weighting factor) for the gene expression reconstruction
             loss. If ´>0´, this will enforce interpretable gene programs that
-            can be combined in a linear way to reconstruct gene expression.   
+            can be combined in a linear way to reconstruct gene expression.
+        lambda_chrom_access_recon:
+            Lambda (weighting factor) for the chromatin accessibility
+            reconstruction loss. If ´>0´, this will enforce interpretable gene
+            programs that can be combined in a linear way to reconstruct
+            chromatin accessibility.
         lambda_group_lasso:
             Lambda (weighting factor) for the group lasso regularization loss of
             gene programs. If ´>0´, this will enforce sparsity of gene programs.
@@ -413,12 +538,16 @@ class Autotalker(BaseModelMixin):
         trainer_kwargs:
             Kwargs for the model Trainer.
         """
+        self.node_batch_size = node_batch_size
+
         self.trainer = Trainer(
             adata=self.adata,
             adata_atac=self.adata_atac,
             model=self.model,
             counts_key=self.counts_key_,
             adj_key=self.adj_key_,
+            gp_targets_mask_key=self.gp_targets_mask_key_,
+            gp_sources_mask_key=self.gp_sources_mask_key_,
             condition_key=self.condition_key_,
             edge_val_ratio=edge_val_ratio,
             node_val_ratio=node_val_ratio,
@@ -426,19 +555,22 @@ class Autotalker(BaseModelMixin):
             node_batch_size=node_batch_size,
             **trainer_kwargs)
 
-        self.trainer.train(n_epochs=n_epochs,
-                           n_epochs_no_edge_recon=n_epochs_no_edge_recon,
-                           n_epochs_all_gps=n_epochs_all_gps,
-                           lr=lr,
-                           weight_decay=weight_decay,
-                           lambda_edge_recon=lambda_edge_recon,
-                           lambda_gene_expr_recon=lambda_gene_expr_recon,
-                           lambda_cond_contrastive=lambda_cond_contrastive,
-                           contrastive_logits_ratio=contrastive_logits_ratio,
-                           lambda_group_lasso=lambda_group_lasso,
-                           lambda_l1_masked=lambda_l1_masked,
-                           lambda_l1_addon=lambda_l1_addon,
-                           mlflow_experiment_id=mlflow_experiment_id)
+        self.trainer.train(
+            n_epochs=n_epochs,
+            n_epochs_no_edge_recon=n_epochs_no_edge_recon,
+            n_epochs_no_cond_contrastive=n_epochs_no_cond_contrastive,
+            n_epochs_all_gps=n_epochs_all_gps,
+            lr=lr,
+            weight_decay=weight_decay,
+            lambda_edge_recon=lambda_edge_recon,
+            lambda_gene_expr_recon=lambda_gene_expr_recon,
+            lambda_chrom_access_recon=lambda_chrom_access_recon,
+            lambda_cond_contrastive=lambda_cond_contrastive,
+            contrastive_logits_ratio=contrastive_logits_ratio,
+            lambda_group_lasso=lambda_group_lasso,
+            lambda_l1_masked=lambda_l1_masked,
+            lambda_l1_addon=lambda_l1_addon,
+            mlflow_experiment_id=mlflow_experiment_id)
         
         self.is_trained_ = True
         self.adata.obsm[self.latent_key_], _ = self.get_latent_representation(
@@ -447,18 +579,21 @@ class Autotalker(BaseModelMixin):
            adj_key=self.adj_key_,
            condition_key=self.condition_key_,
            only_active_gps=True,
-           return_mu_std=True)
+           return_mu_std=True,
+           node_batch_size=self.trainer.node_batch_size_)
         self.adata.uns[self.active_gp_names_key_] = self.get_active_gps()
 
-        if len(self.conditions_) > 0:
+        if (len(self.conditions_) > 0) & retrieve_cond_embeddings:
             self.adata.uns[self.cond_embed_key_] = self.get_cond_embeddings()
 
-        # self.adata.obsp[self.recon_adj_key_] = self.get_recon_edge_probs()
+        if retrieve_recon_edge_probs:
+            self.adata.obsp[self.recon_adj_key_] = self.get_recon_edge_probs()
 
-        if self.node_label_method_ == "one-hop-attention":
+        if (self.node_label_method_ == "one-hop-attention") & (
+        retrieve_att_weights):
             self.adata.obsp[self.agg_alpha_key_] = (
                 self.get_gene_expr_agg_att_weights(
-                    node_batch_size=node_batch_size))
+                    node_batch_size=self.trainer.node_batch_size_))
 
         if mlflow_experiment_id is not None:
             mlflow.log_metric("n_active_gps",
@@ -991,6 +1126,7 @@ class Autotalker(BaseModelMixin):
     def get_latent_representation(
             self, 
             adata: Optional[AnnData]=None,
+            adata_atac: Optional[AnnData]=None,
             counts_key: Optional[str]="counts",
             adj_key: str="spatial_connectivities",
             condition_key: Optional[str]=None,
@@ -1036,11 +1172,14 @@ class Autotalker(BaseModelMixin):
 
         if adata is None:
             adata = self.adata
+        if (adata_atac is None) & hasattr(self, "adata_atac"):
+            adata_atac = self.adata_atac
 
         # Create single dataloader containing entire dataset
         data_dict = prepare_data(
             adata=adata,
             condition_label_encoder=self.model.condition_label_encoder_,
+            adata_atac=adata_atac,
             counts_key=counts_key,
             adj_key=adj_key,
             condition_key=condition_key,

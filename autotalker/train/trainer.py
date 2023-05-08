@@ -4,6 +4,7 @@ This module contains the Trainer to train an Autotalker model.
 
 import copy
 import itertools
+import math
 import time
 import warnings
 from collections import defaultdict
@@ -49,7 +50,15 @@ class Trainer(BaseTrainerMixin):
     adj_key:
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
     condition_key:
-        Key under which the conditions are stored in ´adata.obs´.    
+        Key under which the conditions are stored in ´adata.obs´.
+    gp_targets_mask_key:
+        Key under which the gene program targets mask is stored in ´model.adata.varm´. 
+        This mask will only be used if no ´gp_targets_mask´ is passed explicitly
+        to the model.
+    gp_sources_mask_key:
+        Key under which the gene program sources mask is stored in ´model.adata.varm´. 
+        This mask will only be used if no ´gp_sources_mask´ is passed explicitly
+        to the model.
     edge_val_ratio:
         Fraction of the data that is used as validation set on edge-level. The
         rest of the data will be used as training set on edge-level.
@@ -81,6 +90,8 @@ class Trainer(BaseTrainerMixin):
                  counts_key: Optional[str]="counts",
                  adj_key: str="spatial_connectivities",
                  condition_key: Optional[str]=None,
+                 gp_targets_mask_key: str="autotalker_gp_targets",
+                 gp_sources_mask_key: str="autotalker_gp_sources",                 
                  edge_val_ratio: float=0.1,
                  node_val_ratio: float=0.1,
                  edge_batch_size: int=128,
@@ -98,6 +109,8 @@ class Trainer(BaseTrainerMixin):
         self.counts_key = counts_key
         self.adj_key = adj_key
         self.condition_key = condition_key
+        self.gp_targets_mask_key = gp_targets_mask_key
+        self.gp_sources_mask_key = gp_sources_mask_key
         self.edge_train_ratio_ = 1 - edge_val_ratio
         self.edge_val_ratio_ = edge_val_ratio
         self.node_train_ratio_ = 1 - node_val_ratio
@@ -163,6 +176,11 @@ class Trainer(BaseTrainerMixin):
         print(f"Number of validation nodes: {self.n_nodes_val}")
         print(f"Number of training edges: {self.n_edges_train}")
         print(f"Number of validation edges: {self.n_edges_val}")
+
+        # Determine node batch size automatically if not specified
+        if self.node_batch_size_ is None:
+            self.node_batch_size_ = int(self.edge_batch_size_ / math.floor(
+                self.n_edges_train / self.n_nodes_train))
         
         # Initialize node-level and edge-level dataloaders
         loader_dict = initialize_dataloaders(
@@ -181,18 +199,20 @@ class Trainer(BaseTrainerMixin):
         self.node_val_loader = loader_dict.pop("node_val_loader", None)
 
     def train(self,
-              n_epochs: int=40,
-              n_epochs_all_gps: int=20,
+              n_epochs: int=100,
+              n_epochs_all_gps: int=25,
               n_epochs_no_edge_recon: int=0,
-              n_epochs_no_cond_contrastive: int=5,
+              n_epochs_no_cond_contrastive: int=3,
               lr: float=0.001,
               weight_decay: float=0.,
-              lambda_edge_recon: Optional[float]=10.,
-              lambda_cond_contrastive: Optional[float]=10.,
-              contrastive_logits_ratio: Optional[float]=0.1,
-              lambda_gene_expr_recon: float=0.01,
+              lambda_edge_recon: Optional[float]=500000.,
+              lambda_cond_contrastive: Optional[float]=1000.,
+              contrastive_logits_ratio: Optional[float]=0.125,
+              lambda_gene_expr_recon: float=100.,
+              lambda_chrom_access_recon: float=100.,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,
+              min_gp_genes_l1_masked: int=3,
               lambda_l1_addon: float=0.,
               mlflow_experiment_id: Optional[str]=None):
         """
@@ -234,13 +254,21 @@ class Trainer(BaseTrainerMixin):
             Lambda (weighting factor) for the gene expression reconstruction
             loss. If ´>0´, this will enforce interpretable gene programs that
             can be combined in a linear way to reconstruct gene expression.
+        lambda_chrom_access_recon:
+            Lambda (weighting factor) for the chromatin accessibility
+            reconstruction loss. If ´>0´, this will enforce interpretable gene
+            programs that can be combined in a linear way to reconstruct
+            chromatin accessibility.
         lambda_group_lasso:
             Lambda (weighting factor) for the group lasso regularization loss of
             gene programs. If ´>0´, this will enforce sparsity of gene programs.
         lambda_l1_masked:
             Lambda (weighting factor) for the L1 regularization loss of genes in
             masked gene programs. If ´>0´, this will enforce sparsity of genes
-            in masked gene programs.        
+            in masked gene programs.
+        min_gp_genes_l1_masked:
+            Minimum number of genes in a gene program for it to be considered
+            in the masked l1 reg loss computation.        
         lambda_l1_addon:
             Lambda (weighting factor) for the L1 regularization loss of genes in
             addon gene programs. If ´>0´, this will enforce sparsity of genes in
@@ -256,10 +284,12 @@ class Trainer(BaseTrainerMixin):
         self.weight_decay_ = weight_decay
         self.lambda_edge_recon_ = lambda_edge_recon
         self.lambda_gene_expr_recon_ = lambda_gene_expr_recon
+        self.lambda_chrom_access_recon_ = lambda_chrom_access_recon
         self.lambda_cond_contrastive_ = lambda_cond_contrastive
         self.contrastive_logits_ratio_ = contrastive_logits_ratio
         self.lambda_group_lasso_ = lambda_group_lasso
         self.lambda_l1_masked_ = lambda_l1_masked
+        self.min_gp_genes_l1_masked_ = min_gp_genes_l1_masked
         self.lambda_l1_addon_ = lambda_l1_addon
         self.mlflow_experiment_id = mlflow_experiment_id
 
@@ -278,6 +308,15 @@ class Trainer(BaseTrainerMixin):
         self.optimizer = torch.optim.Adam(params,
                                           lr=lr,
                                           weight_decay=weight_decay)
+        
+        if min_gp_genes_l1_masked == 0:
+            self.l1_masked_gp_idx = torch.arange(
+                self.adata.varm[self.gp_targets_mask_key].shape[1])
+        else:
+            self.l1_masked_gp_idx = torch.tensor(np.where(
+                (self.adata.varm[self.gp_targets_mask_key].sum(axis=0) +
+                 self.adata.varm[self.gp_sources_mask_key].sum(axis=0))
+                >= min_gp_genes_l1_masked)[0])
 
         for self.epoch in range(n_epochs):
             if self.epoch < self.n_epochs_no_edge_recon_:
@@ -324,10 +363,12 @@ class Trainer(BaseTrainerMixin):
                     node_model_output=node_train_model_output,
                     lambda_edge_recon=self.lambda_edge_recon_,
                     lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
+                    lambda_chrom_access_recon=self.lambda_chrom_access_recon_,
                     lambda_cond_contrastive=self.lambda_cond_contrastive_,
                     contrastive_logits_ratio=self.contrastive_logits_ratio_,
                     lambda_group_lasso=self.lambda_group_lasso_,
                     lambda_l1_masked=self.lambda_l1_masked_,
+                    l1_masked_gp_idx=self.l1_masked_gp_idx,
                     lambda_l1_addon=self.lambda_l1_addon_,
                     edge_recon_active=self.edge_recon_active,
                     cond_contrastive_active=self.cond_contrastive_active)
@@ -457,10 +498,12 @@ class Trainer(BaseTrainerMixin):
                     node_model_output=node_val_model_output,
                     lambda_edge_recon=self.lambda_edge_recon_,
                     lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
+                    lambda_chrom_access_recon=self.lambda_chrom_access_recon_,
                     lambda_cond_contrastive=self.lambda_cond_contrastive_,
                     contrastive_logits_ratio=self.contrastive_logits_ratio_,
                     lambda_group_lasso=self.lambda_group_lasso_,
                     lambda_l1_masked=self.lambda_l1_masked_,
+                    l1_masked_gp_idx=self.l1_masked_gp_idx,
                     lambda_l1_addon=self.lambda_l1_addon_,
                     edge_recon_active=True)
 

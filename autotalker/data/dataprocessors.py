@@ -154,17 +154,11 @@ def prepare_data(adata: AnnData,
         adj_key=adj_key,
         condition_key=condition_key,
         condition_label_encoder=condition_label_encoder)
-    
-    # Concatenate ATAC feature vector if provided
-    if adata_atac is not None:
-        x = torch.cat((dataset.x, dataset.x_atac), axis=1)
-    else:
-        x = dataset.x
 
     # PyG Data object (has 2 edge index pairs for one edge because of symmetry;
     # one edge index pair will be removed in the edge-level split).
     if condition_key is not None:
-        data = Data(x=x,
+        data = Data(x=dataset.x,
                     edge_index=dataset.edge_index,
                     edge_attr=dataset.edge_index.t(), # store index of edge
                                                       # nodes as edge attribute
@@ -173,7 +167,7 @@ def prepare_data(adata: AnnData,
                                                       # batches
                     conditions=dataset.conditions)
     else:
-        data = Data(x=x,
+        data = Data(x=dataset.x,
                     edge_index=dataset.edge_index,
                     edge_attr=dataset.edge_index.t())
 
