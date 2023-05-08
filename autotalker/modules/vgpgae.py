@@ -766,8 +766,23 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         else:
             return active_gp_mask
 
-    def log_module_hyperparams_to_mlflow(self, excluded_attr: list=["genes_idx_"]):
-        """Log module hyperparameters to Mlflow."""
+    def log_module_hyperparams_to_mlflow(
+            self,
+            excluded_attr: list=["genes_idx_",
+                                 "target_genes_idx_",
+                                 "source_genes_idx_",
+                                 "peaks_idx_",
+                                 "target_peaks_idx_",
+                                 "source_peaks_idx_"]):
+        """
+        Log module hyperparameters to Mlflow.
+        
+        Parameters
+        ----------
+        excluded_attr:
+            Attributes that are excluded despite being public because of length
+            restrictions of mlflow.
+        """
         for attr, attr_value in self._get_public_attributes().items():
             if attr not in excluded_attr:
                 mlflow.log_param(attr, attr_value)
