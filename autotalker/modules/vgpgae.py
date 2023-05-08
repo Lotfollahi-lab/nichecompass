@@ -477,6 +477,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
              edge_model_output: dict,
              node_model_output: dict,
              lambda_l1_masked: float,
+             l1_masked_gp_idx: torch.Tensor,
              lambda_l1_addon: float,
              lambda_group_lasso: float,
              lambda_gene_expr_recon: float=0.1,
@@ -519,6 +520,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Lambda (weighting factor) for the L1 regularization loss of genes in
             masked gene programs. If ´>0´, this will enforce sparsity of genes
             in masked gene programs.
+        l1_masked_gp_idx:
+            The index of gene programs that are included in the masked L1
+            regularization loss.
         lambda_l1_addon:
             Lambda (weighting factor) for the L1 regularization loss of genes in
             addon gene programs. If ´>0´, this will enforce sparsity of genes in
@@ -601,7 +605,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     zi_prob_logits=zi_prob_logits))
             
         loss_dict["masked_gp_l1_reg_loss"] = (lambda_l1_masked *
-            compute_masked_l1_reg_loss(self))
+            compute_masked_l1_reg_loss(self,
+                                       l1_masked_gp_idx=l1_masked_gp_idx))
 
         # Compute group lasso regularization loss of gene programs
         loss_dict["group_lasso_reg_loss"] = (lambda_group_lasso *

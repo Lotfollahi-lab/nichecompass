@@ -546,6 +546,8 @@ class Autotalker(BaseModelMixin):
             model=self.model,
             counts_key=self.counts_key_,
             adj_key=self.adj_key_,
+            gp_targets_mask_key=self.gp_targets_mask_key_,
+            gp_sources_mask_key=self.gp_sources_mask_key_,
             condition_key=self.condition_key_,
             edge_val_ratio=edge_val_ratio,
             node_val_ratio=node_val_ratio,
