@@ -217,6 +217,9 @@ class OneHopGCNNormNodeLabelAggregator(nn.Module):
             Tensor containing the node indices of edges in the current node 
             batch including sampled neighbors.
             (Size: 2 x n_edges_batch_and_sampled_neighbors)
+        return_attention_weigts:
+            Placeholder parameter to make API compatible with
+            OneHopAttentionNodeLabelAggregator.
 
         Returns
         ----------

@@ -51,7 +51,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         Number of add-on nodes in the latent space (de-novo gene programs).
     n_cond_embed:
         Number of conditional embedding nodes.
-    n_output:
+    n_output_genes:
         Number of nodes in the output layer.
     n_output_peaks:
         Number of output peaks for the masked chromatin accessibility decoder.
@@ -134,7 +134,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  n_nonaddon_gps: int,
                  n_addon_gps: int,
                  n_cond_embed: int,
-                 n_output: int,
+                 n_output_genes: int,
                  gene_expr_decoder_mask: torch.Tensor,
                  genes_idx: torch.Tensor,
                  target_genes_idx: torch.Tensor,
@@ -155,7 +155,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  include_chrom_access_recon_loss: bool=True,
                  include_cond_contrastive_loss: bool=True,
                  gene_expr_recon_dist: Literal["nb", "zinb"]="nb",
-                 chrom_access_recon_dist: Literal["nb", "zinb"]="nb",
+                 chrom_access_recon_dist: Literal["nb"]="nb",
                  node_label_method: Literal[
                     "self",
                     "one-hop-norm",
@@ -173,7 +173,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.n_nonaddon_gps_ = n_nonaddon_gps
         self.n_addon_gps_ = n_addon_gps
         self.n_cond_embed_ = n_cond_embed
-        self.n_output_ = n_output
+        self.n_output_genes_ = n_output_genes
         self.n_output_peaks_ = n_output_peaks
         self.genes_idx_ = genes_idx
         self.target_genes_idx_ = target_genes_idx
@@ -205,9 +205,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             self.includes_atac_modality_ = True
             self.features_idx_ = np.concatenate(
                 (target_genes_idx,
-                 (target_peaks_idx + int(n_output / 2)),
-                 (source_genes_idx + int(n_output / 2) + int(n_output_peaks / 2)),
-                 (source_peaks_idx + n_output + int(n_output_peaks / 2))),
+                 (target_peaks_idx + int(n_output_genes / 2)),
+                 (source_genes_idx + int(n_output_genes / 2) + int(n_output_peaks / 2)),
+                 (source_peaks_idx + n_output_genes + int(n_output_peaks / 2))),
                  axis=0)
 
         else:
@@ -268,7 +268,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_cond_embed_input=(n_cond_embed if ("gene_expr_decoder" in
                                 self.cond_embed_injection_) &
                                 (self.n_conditions_ != 0) else 0),
-            n_output=n_output,
+            n_output=n_output_genes,
             mask=gene_expr_decoder_mask,
             genes_idx=genes_idx,
             recon_dist=self.gene_expr_recon_dist_)
@@ -422,8 +422,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         elif decoder == "omics":
             if self.includes_atac_modality_:
                 # Separate node feature vector into RNA and ATAC part
-                x_atac = x[:, int(self.n_output_ / 2):]
-                x = x[:, :int(self.n_output_ / 2)]
+                x_atac = x[:, int(self.n_output_genes_ / 2):]
+                x = x[:, :int(self.n_output_genes_ / 2)]
                 assert x_atac.size(1) == int(self.n_output_peaks_ / 2)
                 target_node_labels_atac_start_idx = len(self.target_genes_idx_)
                 source_node_labels_atac_start_idx = (

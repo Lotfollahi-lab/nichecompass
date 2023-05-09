@@ -3,7 +3,6 @@ This module contains the Autotalker model. Different analysis capabilities are
 integrated directly into the model API for easy use.
 """
 
-import warnings
 from typing import Literal, List, Optional, Tuple, Union
 
 import mlflow
@@ -15,11 +14,11 @@ import torch
 from anndata import AnnData
 from scipy.special import erfc
 
-from autotalker.data import SpatialAnnTorchDataset
-from autotalker.data import initialize_dataloaders, prepare_data
+from autotalker.data import (initialize_dataloaders,
+                             prepare_data,
+                             SpatialAnnTorchDataset)
 from autotalker.modules import VGPGAE
 from autotalker.train import Trainer
-from autotalker.utils import compute_graph_connectivities
 from .basemodelmixin import BaseModelMixin
 
 
@@ -30,20 +29,21 @@ class Autotalker(BaseModelMixin):
     Parameters
     ----------
     adata:
-        AnnData object with counts stored in ´adata.layers[counts_key]´ or
-        ´adata.X´ depending on ´counts_key´, sparse adjacency matrix stored in
-        ´adata.obsp[adj_key]´, gene program names stored in
-        ´adata.uns[gp_names_key]´, and binary gene program targets and sources
-        masks stored in ´adata.varm[gp_targets_mask_key]´ and
-        ´adata.varm[gp_sources_mask_key]´ respectively (unless gene program
-        masks are passed explicitly to the model via parameters 
-        ´gp_targets_mask´ and ´gp_sources_mask´, in which case this will have
-        prevalence).
+        AnnData object with gene expression raw counts stored in
+        ´adata.layers[counts_key]´ or ´adata.X´, depending on ´counts_key´,
+        sparse adjacency matrix stored in ´adata.obsp[adj_key]´, gene program
+        names stored in ´adata.uns[gp_names_key]´, and binary gene program
+        targets and sources masks stored in ´adata.varm[gp_targets_mask_key]´
+        and ´adata.varm[gp_sources_mask_key]´ respectively.
     adata_atac:
-        Additional optional AnnData object with paired spatial ATAC data.
+        Optional AnnData object with paired spatial chromatin accessibility
+        raw counts stored in ´adata_atac.X´, and sparse boolean chromatin
+        accessibility targets and sources masks stored in
+        ´adata_atac.varm[ca_targets_mask_key]´ and
+        ´adata_atac.varm[ca_sources_mask_key]´ respectively.
     counts_key:
-        Key under which the counts are stored in ´adata.layer´. If ´None´, uses
-        ´adata.X´ as counts. 
+        Key under which the gene expression raw counts are stored in
+        ´adata.layer´. If ´None´, uses ´adata.X´ as counts. 
     adj_key:
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
     gp_names_key:
@@ -52,13 +52,15 @@ class Autotalker(BaseModelMixin):
         Key under which the active gene program names will be stored in 
         ´adata.uns´.
     gp_targets_mask_key:
-        Key under which the gene program targets mask is stored in ´adata.varm´. 
-        This mask will only be used if no ´gp_targets_mask´ is passed explicitly
-        to the model.
+        Key under which the gene program targets mask is stored in ´adata.varm´.
     gp_sources_mask_key:
-        Key under which the gene program sources mask is stored in ´adata.varm´. 
-        This mask will only be used if no ´gp_sources_mask´ is passed explicitly
-        to the model.
+        Key under which the gene program sources mask is stored in ´adata.varm´.
+    ca_targets_mask_key:
+        Key under which the chromatin accessibility targets mask is stored in
+        ´adata_atac.varm´.
+    ca_sources_mask_key:
+        Key under which the chromatin accessibility sources mask is stored in
+        ´adata_atac.varm´.
     latent_key:
         Key under which the latent / gene program representation of active gene
         programs will be stored in ´adata.obsm´ after model training.
@@ -67,6 +69,8 @@ class Autotalker(BaseModelMixin):
     cond_embed_key:
         Key under which the conditional embeddings will be stored in
         ´adata.uns´.
+    cond_embed_injection:
+        List of VGPGAE modules in which the conditional embedding is injected.
     genes_idx_key:
         Key in ´adata.uns´ where the index of a concatenated vector of target
         and source genes that are in the gene program masks are stored.    
@@ -93,14 +97,16 @@ class Autotalker(BaseModelMixin):
         Key in ´adata.obsp´ where the attention weights of the gene expression
         node label aggregator will be stored.
     include_edge_recon_loss:
-        If `True`, includes the edge reconstruction loss in the loss 
-        optimization.
+        If `True`, includes the edge reconstruction loss in the backpropagation.
     include_gene_expr_recon_loss:
-        If `True`, includes the gene expression reconstruction loss in the loss
-        optimization.
+        If `True`, includes the gene expression reconstruction loss in the
+        backpropagation.
+    include_chrom_access_recon_loss:
+        If `True`, includes the chromatin accessibility reconstruction loss in
+        the backpropagation.
     include_cond_contrastive_loss:
-        If `True`, includes the conditional contrastive loss in the loss
-        optimization.   
+        If `True`, includes the conditional contrastive loss in the
+        backpropagation.
     gene_expr_recon_dist:
         The distribution used for gene expression reconstruction. If `nb`, uses
         a negative binomial distribution. If `zinb`, uses a zero-inflated
@@ -109,48 +115,44 @@ class Autotalker(BaseModelMixin):
         If ´True´, transforms x by log(x+1) prior to encoding for numerical 
         stability (not for normalization).
     node_label_method:
-        Node label method that will be used for gene expression reconstruction. 
-        If ´self´, use only the input features of the node itself as node labels
-        for gene expression reconstruction. If ´one-hop-sum´, use a 
-        concatenation of the node's input features with the sum of the input 
-        features of all nodes in the node's one-hop neighborhood. If 
-        ´one-hop-norm´, use a concatenation of the node`s input features with
-        the node's one-hop neighbors input features normalized as per Kipf, T. 
-        N. & Welling, M. Semi-Supervised Classification with Graph Convolutional
-        Networks. arXiv [cs.LG] (2016). If ´one-hop-attention´, use a 
-        concatenation of the node`s input features with the node's one-hop 
-        neighbors input features weighted by an attention mechanism.
+        Node label method that will be used for omics reconstruction. If ´self´,
+        uses only the input features of the node itself as node labels for omics
+        reconstruction. If ´one-hop-sum´, uses a concatenation of the node's
+        input features with the sum of the input features of all nodes in the
+        node's one-hop neighborhood. If ´one-hop-norm´, uses a concatenation of
+        the node`s input features with the node's one-hop neighbors input
+        features normalized as per Kipf, T. N. & Welling, M. Semi-Supervised
+        Classification with Graph Convolutional Networks. arXiv [cs.LG] (2016).
+        If ´one-hop-attention´, uses a concatenation of the node`s input
+        features with the node's one-hop neighbors input features weighted by an
+        attention mechanism.
     active_gp_thresh_ratio:
         Ratio that determines which gene programs are considered active and are
-        used for edge reconstruction. All inactive gene programs will be dropped
-        out. Aggregations of the absolute values of the gene weights of the 
-        gene expression decoder per gene program are calculated. The maximum 
-        value, i.e. the value of the gene program with the highest aggregated 
-        value will be used as a benchmark and all gene programs whose aggregated
-        value is smaller than ´active_gp_thresh_ratio´ times this maximum value 
-        will be set to inactive. If ´==0´, all gene programs will be considered
-        active. More information can be found in 
+        used in the latent representation after model training. All inactive
+        gene programs will be dropped during model training after a determined
+        number of epochs. Aggregations of the absolute values of the gene
+        weights of the gene expression decoder per gene program are calculated.
+        The maximum value, i.e. the value of the gene program with the highest
+        aggregated value will be used as a benchmark and all gene programs whose
+        aggregated value is smaller than ´active_gp_thresh_ratio´ times this
+        maximum value will be set to inactive. If ´==0´, all gene programs will
+        be considered active. More information can be found in 
         ´self.model.get_active_gp_mask()´.
+    n_layers_encoder:
+        Number of GNN layers in the encoder.
     n_hidden_encoder:
-        Number of nodes in the encoder hidden layer.
+        Number of nodes in the encoder hidden layers. If ´None´ is determined
+        automatically based on the number of input genes and gene programs.
     conv_layer_encoder:
-        Convolutional layer used in the graph encoder.
+        Convolutional layer used as GNN in the encoder.
     encoder_n_attention_heads:
         Only relevant if ´conv_layer_encoder == gatv2conv´. Number of attention
-        heads used in the graph encoder.
+        heads used in the GNN layers of the encoder.
     dropout_rate_encoder:
         Probability that nodes will be dropped in the encoder during training.
     dropout_rate_graph_decoder:
         Probability that nodes will be dropped in the graph decoder during 
         training.
-    gp_targets_mask:
-        Gene program targets mask that is directly passed to the model (if not 
-        ´None´, this mask will have prevalence over a gene program targets mask
-        stored in ´adata.varm[gp_targets_mask_key]´).
-    gp_sources_mask:
-        Gene program sources mask that is directly passed to the model (if not 
-        ´None´, this mask will have prevalence over a gene program sources mask
-        stored in ´adata.varm[gp_sources_mask_key]´).
     conditions:
         Condition names to get the right encoding when used after reloading.
     n_addon_gps:
@@ -168,8 +170,8 @@ class Autotalker(BaseModelMixin):
                  active_gp_names_key: str="autotalker_active_gp_names",
                  gp_targets_mask_key: str="autotalker_gp_targets",
                  gp_sources_mask_key: str="autotalker_gp_sources",
-                 ca_targets_mask_key: str="autotalker_ca_targets",
-                 ca_sources_mask_key: str="autotalker_ca_sources",
+                 ca_targets_mask_key: Optional[str]="autotalker_ca_targets",
+                 ca_sources_mask_key: Optional[str]="autotalker_ca_sources",
                  latent_key: str="autotalker_latent",
                  condition_key: Optional[str]=None,
                  cond_embed_key: Optional[str]="autotalker_cond_embed",
@@ -181,10 +183,11 @@ class Autotalker(BaseModelMixin):
                  peaks_idx_key: str="autotalker_peaks_idx",
                  target_peaks_idx_key: str="autotalker_target_peaks_idx",
                  source_peaks_idx_key: str="autotalker_source_peaks_idx",
-                 recon_adj_key: str="autotalker_recon_connectivities",
-                 agg_alpha_key: str="autotalker_agg_alpha",
+                 recon_adj_key: Optional[str]="autotalker_recon_connectivities",
+                 agg_alpha_key: Optional[str]="autotalker_agg_alpha",
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
+                 include_chrom_access_recon_loss: Optional[bool]=True,
                  include_cond_contrastive_loss: bool=True,
                  gene_expr_recon_dist: Literal["nb", "zinb"]="nb",
                  log_variational: bool=True,
@@ -195,20 +198,17 @@ class Autotalker(BaseModelMixin):
                     "one-hop-attention"]="one-hop-attention",
                  active_gp_thresh_ratio: float=0.03,
                  n_layers_encoder: int=1,
-                 n_hidden_encoder: Optional[int]=256,
+                 n_hidden_encoder: Optional[int]=None,
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
-                 encoder_n_attention_heads: int=4,
+                 encoder_n_attention_heads: Optional[int]=4,
                  dropout_rate_encoder: float=0.,
                  dropout_rate_graph_decoder: float=0.,
-                 gp_targets_mask: Optional[Union[np.ndarray, list]]=None,
-                 gp_sources_mask: Optional[Union[np.ndarray, list]]=None,
-                 ca_targets_mask: Optional[Union[np.ndarray, list]]=None,
-                 ca_sources_mask: Optional[Union[np.ndarray, list]]=None,
                  conditions: Optional[list]=None, 
                  n_addon_gps: int=0,
-                 n_cond_embed: int=128):
+                 n_cond_embed: Optional[int]=None):
         self.adata = adata
         self.adata_atac = adata_atac
+
         self.counts_key_ = counts_key
         self.adj_key_ = adj_key
         self.gp_names_key_ = gp_names_key
@@ -231,91 +231,81 @@ class Autotalker(BaseModelMixin):
         self.agg_alpha_key_ = agg_alpha_key
         self.include_edge_recon_loss_ = include_edge_recon_loss
         self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
+        self.include_chrom_access_recon_loss_ = include_chrom_access_recon_loss
         self.include_cond_contrastive_loss_ = include_cond_contrastive_loss
         self.gene_expr_recon_dist_ = gene_expr_recon_dist
         self.log_variational_ = log_variational
         self.node_label_method_ = node_label_method
         self.active_gp_thresh_ratio_ = active_gp_thresh_ratio
-        self.n_input_ = adata.n_vars
-        self.n_output_ = adata.n_vars
-        if adata_atac is not None:
-            assert np.all(adata.obs.index == adata_atac.obs.index), "Please "
-            "make sure that 'adata' and 'adata_atac' have the same "
-            "observations in the same order."
-            # Concatenate peaks to gene feature vector
-            self.n_input_ += adata_atac.n_vars
-            self.n_output_peaks_ = adata_atac.n_vars
-            if node_label_method != "self":
-                self.n_output_peaks_ *= 2
-        else:
-            self.n_output_peaks_ = 0
-        if node_label_method != "self":
-            self.n_output_ *= 2
-        self.n_layers_encoder_ = n_layers_encoder
-        self.conv_layer_encoder_ = conv_layer_encoder
-        if conv_layer_encoder == "gatv2conv":
-            self.encoder_n_attention_heads_ = encoder_n_attention_heads
-        else:
-            self.encoder_n_attention_heads_ = 0
-        self.dropout_rate_encoder_ = dropout_rate_encoder
-        self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
 
         # Retrieve gene program masks
-        if gp_targets_mask is None:
-            if gp_targets_mask_key in adata.varm:
-                gp_targets_mask = adata.varm[gp_targets_mask_key].T
-            else:
-                raise ValueError("Please explicitly provide a ´gp_targets_mask´"
-                                 " to the model or specify an adequate "
-                                 "´gp_targets_mask_key´ for your adata object. "
-                                 "If you do not want to mask gene expression "
-                                 "reconstruction, you can create a mask of 1s "
-                                 "that allows all gene program latent nodes "
-                                 "to reconstruct all genes by passing a mask "
-                                 "created with ´mask = "
-                                 "np.ones((n_latent, n_output))´).")
+        if gp_targets_mask_key in adata.varm:
+            gp_targets_mask = adata.varm[gp_targets_mask_key].T
+        else:
+            raise ValueError("Please specify an adequate ´gp_targets_mask_key´ "
+                             "for your adata object. The targets mask needs to "
+                             "be stored in ´adata.varm[gp_targets_mask_key]´. "
+                             " If you do not want to mask gene expression "
+                             "reconstruction, you can create a mask of 1s that"
+                             " allows all gene program latent nodes to "
+                             "reconstruct all genes.")
+        # NOTE: dtype can be changed to bool and should be able to handle sparse
+        # mask
         self.gp_mask_ = torch.tensor(gp_targets_mask, dtype=torch.float32)
         if node_label_method != "self":
-            if gp_sources_mask is None:
-                if gp_sources_mask_key in adata.varm:
-                    gp_sources_mask = adata.varm[gp_sources_mask_key].T
-                else:
-                    raise ValueError("Please explicitly provide a "
-                                     "´gp_sources_mask´ to the model or specify"
-                                     " an adequate ´gp_sources_mask_key´ for "
-                                     "your adata object.")
+            if gp_sources_mask_key in adata.varm:
+                gp_sources_mask = adata.varm[gp_sources_mask_key].T
+            else:
+                raise ValueError("Please specify an adequate "
+                                 "´gp_sources_mask_key´ for your adata object. "
+                                 "The sources mask needs to be stored in "
+                                 "´adata.varm[gp_sources_mask_key]´. If you do "
+                                 "not want to mask gene expression "
+                                 "reconstruction, you can create a mask of 1s "
+                                 " that allows all gene program latent nodes to"
+                                 " reconstruct all genes.")
             # Horizontally concatenate targets and sources masks
+            # NOTE: dtype can be changed to bool and should be able to handle
+            # sparse mask
             self.gp_mask_ = torch.cat(
                 (self.gp_mask_, torch.tensor(gp_sources_mask, 
                 dtype=torch.float32)), dim=1)
         
+        # Retrieve chromatin accessibility masks
         if adata_atac is None:
             self.ca_mask_ = None
         else:
-            if ca_targets_mask is None:
-                if ca_targets_mask_key in adata_atac.varm:
-                    ca_targets_mask = adata_atac.varm[
-                        ca_targets_mask_key].T.tocoo()
-                else:
-                    raise ValueError("Please explicitly provide a "
-                                     "´ca_targets_mask´ to the model or specify"
-                                     " an adequate ´ca_targets_mask_key´ for "
-                                     "your adata_atac object.")
+            if ca_targets_mask_key in adata_atac.varm:
+                ca_targets_mask = adata_atac.varm[ca_targets_mask_key].T.tocoo()
+            else:
+                raise ValueError("Please specify an adequate "
+                                 "´ca_targets_mask_key´ for your adata_atac "
+                                 "object. The targets mask needs to be stored "
+                                 "in ´adata_atac.varm[ca_targets_mask_key]´. If"
+                                 " you do not want to mask chromatin "
+                                 " accessibility reconstruction, you can create"
+                                 " a mask of 1s that allows all gene program "
+                                 "latent nodes to reconstruct all peaks.")
             self.ca_mask_ = torch.sparse_coo_tensor(
                 indices=[ca_targets_mask.row, ca_targets_mask.col],
                 values=ca_targets_mask.data,
                 size=ca_targets_mask.shape,
                 dtype=torch.bool)
             if node_label_method != "self":
-                if ca_sources_mask is None:
-                    if ca_sources_mask_key in adata_atac.varm:
-                        ca_sources_mask = adata_atac.varm[
-                            ca_sources_mask_key].T.tocoo()
-                    else:
-                        raise ValueError("Please explicitly provide a "
-                                        "´gp_sources_mask´ to the model or specify"
-                                        " an adequate ´gp_sources_mask_key´ for "
-                                        "your adata object.")
+                if ca_sources_mask_key in adata_atac.varm:
+                    ca_sources_mask = adata_atac.varm[
+                        ca_sources_mask_key].T.tocoo()
+                else:
+                    raise ValueError("Please specify an adequate "
+                                    "´ca_sources_mask_key´ for your adata_atac "
+                                    "object. The sources mask needs to be "
+                                    "stored in "
+                                    "´adata_atac.varm[ca_sources_mask_key]´. If"
+                                    "you do not want to mask chromatin "
+                                    " accessibility reconstruction, you can "
+                                    "create a mask of 1s that allows all gene "
+                                    "program latent nodes to reconstruct all "
+                                    "peaks.")
                 # Horizontally concatenate targets and sources masks
                 ca_combined_mask_row = np.concatenate(
                     (ca_targets_mask.row, ca_sources_mask.row), axis=0)
@@ -331,20 +321,8 @@ class Autotalker(BaseModelMixin):
                           (ca_targets_mask.shape[1] + 
                            ca_sources_mask.shape[1])),
                     dtype=torch.bool)
-
-        self.n_nonaddon_gps_ = len(self.gp_mask_)
-        self.n_addon_gps_ = n_addon_gps
-        self.n_cond_embed_ = n_cond_embed
-
-        # Determine dimensionality of hidden encoder layer if not provided
-        if n_hidden_encoder is None:
-            if self.n_input_ > (2 * self.n_nonaddon_gps_):
-                n_hidden_encoder = int(self.n_input_ / 2)
-            else:
-                n_hidden_encoder = self.n_nonaddon_gps_
-        self.n_hidden_encoder_ = n_hidden_encoder
-        
-        # Retrieve target and source index of genes in gp mask
+                
+        # Retrieve index of genes in gp mask
         self.genes_idx_ = adata.uns[genes_idx_key]
         self.target_genes_idx_ = adata.uns[target_genes_idx_key]
         self.source_genes_idx_ = adata.uns[source_genes_idx_key]
@@ -359,6 +337,52 @@ class Autotalker(BaseModelMixin):
             self.target_peaks_idx_ = None
             self.source_peaks_idx_ = None
 
+        # Determine VGPGAE inputs
+        self.n_input_ = adata.n_vars
+        self.n_output_genes_ = adata.n_vars
+        if node_label_method != "self":
+            # Target and source genes are concatenated in output
+            self.n_output_genes_ *= 2
+        if adata_atac is not None:
+            if not np.all(adata.obs.index == adata_atac.obs.index):
+                raise ValueError("Please make sure that 'adata' and "
+                                 "'adata_atac' contain the same observations in"
+                                 " the same order.")
+            # Peaks are concatenated to genes in input
+            self.n_input_ += adata_atac.n_vars
+            self.n_output_peaks_ = adata_atac.n_vars
+            if node_label_method != "self":
+                # Target and source peaks are concatenated in output
+                self.n_output_peaks_ *= 2
+        else:
+            self.n_output_peaks_ = 0
+        self.n_layers_encoder_ = n_layers_encoder
+        self.conv_layer_encoder_ = conv_layer_encoder
+        if conv_layer_encoder == "gatv2conv":
+            self.encoder_n_attention_heads_ = encoder_n_attention_heads
+        else:
+            self.encoder_n_attention_heads_ = 0
+        self.dropout_rate_encoder_ = dropout_rate_encoder
+        self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
+        self.n_nonaddon_gps_ = len(self.gp_mask_)
+        self.n_addon_gps_ = n_addon_gps
+
+        # Determine dimensionality of conditional embedding if not provided
+        if n_cond_embed is None:
+            if self.n_input_ > (2 * self.n_nonaddon_gps_):
+                n_cond_embed = int(self.n_input_ / 2)
+            else:
+                n_hidden_encoder = self.n_nonaddon_gps_
+        self.n_cond_embed_ = n_cond_embed
+
+        # Determine dimensionality of hidden encoder layer if not provided
+        if n_hidden_encoder is None:
+            if self.n_input_ > (2 * self.n_nonaddon_gps_):
+                n_hidden_encoder = int(self.n_input_ / 2)
+            else:
+                n_hidden_encoder = self.n_nonaddon_gps_
+        self.n_hidden_encoder_ = n_hidden_encoder
+
         # Retrieve conditions
         if conditions is None:
             if condition_key is not None:
@@ -370,9 +394,9 @@ class Autotalker(BaseModelMixin):
         
         # Validate counts layer key and counts values
         if counts_key is not None and counts_key not in adata.layers:
-            raise ValueError("Please specify an adequate ´counts_key´. The "
-                             "counts have to be stored in "
-                             f"adata.layers[counts_key].")
+            raise ValueError("Please specify an adequate ´counts_key´. By "
+                             "default the counts are assumed to be stored in "
+                             "data.layers['counts'].")
         if include_gene_expr_recon_loss and log_variational:
             if counts_key is None:
                 x = adata.X
@@ -383,7 +407,10 @@ class Autotalker(BaseModelMixin):
                                  "´adata.layers[counts_key]´ contains the"
                                  " raw counts (not log library size "
                                  "normalized) if ´include_gene_expr_recon_loss´"
-                                 " is ´True´ and ´log_variational´ is ´True´.")
+                                 " is ´True´ and ´log_variational´ is ´True´. "
+                                 "If you want to use log library size "
+                                 " normalized counts, make sure that "
+                                 "´log_variational´ is ´False´.")
 
         # Validate adjacency key
         if adj_key not in adata.obsp:
@@ -400,8 +427,8 @@ class Autotalker(BaseModelMixin):
         # Validate condition key
         if condition_key is not None and condition_key not in adata.obs:
             raise ValueError("Please specify an adequate ´condition_key´. "
-                             "By default the conditions are assumed to "
-                             "be stored in adata.obs['sample'].")
+                             "The conditions need to be stored in "
+                             "adata.obs[condition_key].")
         
         # Initialize model with Variational Gene Program Graph Autoencoder 
         # neural network module
@@ -412,7 +439,7 @@ class Autotalker(BaseModelMixin):
             n_nonaddon_gps=self.n_nonaddon_gps_,
             n_addon_gps=self.n_addon_gps_,
             n_cond_embed=self.n_cond_embed_,
-            n_output=self.n_output_,
+            n_output_genes=self.n_output_genes_,
             n_output_peaks=self.n_output_peaks_,
             gene_expr_decoder_mask=self.gp_mask_,
             chrom_access_decoder_mask=self.ca_mask_,
@@ -429,6 +456,7 @@ class Autotalker(BaseModelMixin):
             dropout_rate_graph_decoder=self.dropout_rate_graph_decoder_,
             include_edge_recon_loss=self.include_edge_recon_loss_,
             include_gene_expr_recon_loss=self.include_gene_expr_recon_loss_,
+            include_chrom_access_recon_loss=self.include_chrom_access_recon_loss_,
             include_cond_contrastive_loss=self.include_cond_contrastive_loss_,
             gene_expr_recon_dist=self.gene_expr_recon_dist_,
             node_label_method=self.node_label_method_,
@@ -437,28 +465,30 @@ class Autotalker(BaseModelMixin):
             cond_embed_injection=self.cond_embed_injection_)
 
         self.is_trained_ = False
+
         # Store init params for saving and loading
         self.init_params_ = self._get_init_params(locals())
 
     def train(self,
-              n_epochs: int=40,
-              n_epochs_all_gps: int=20,
+              n_epochs: int=100,
+              n_epochs_all_gps: int=25,
               n_epochs_no_edge_recon: int=0,
               n_epochs_no_cond_contrastive: int=5,
               lr: float=0.001,
               weight_decay: float=0.,
-              lambda_edge_recon: Optional[float]=50000.,
-              lambda_gene_expr_recon: float=10.,
+              lambda_edge_recon: Optional[float]=500000.,
+              lambda_gene_expr_recon: float=100.,
               lambda_chrom_access_recon: float=10.,
-              lambda_cond_contrastive: float=5000.,
+              lambda_cond_contrastive: float=0.,
               contrastive_logits_ratio: float=0.125,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,
+              min_gp_genes_l1_masked: int=0,
               lambda_l1_addon: float=0.,
               edge_val_ratio: float=0.1,
               node_val_ratio: float=0.1,
-              edge_batch_size: int=128,
-              node_batch_size: int=16,
+              edge_batch_size: int=256,
+              node_batch_size: Optional[int]=None,
               mlflow_experiment_id: Optional[str]=None,
               retrieve_cond_embeddings: bool=False,
               retrieve_recon_edge_probs: bool=False,
@@ -475,11 +505,13 @@ class Autotalker(BaseModelMixin):
             Number of epochs during which all gene programs are used for model
             training. After that only active gene programs are retained.
         n_epochs_no_edge_recon:
-            Number of epochs without edge reconstruction loss for gene
-            expression decoder pretraining.
+            Number of epochs during which the edge reconstruction loss is
+            excluded from backpropagation for pretraining using the other loss
+            components.
         n_epochs_no_cond_contrastive:
-            Number of epochs without conditional contrastive loss for decoder
-            pretraining.
+            Number of epochs during which the conditional contrastive loss is
+            excluded from backpropagation for pretraining using the other
+            loss components.
         lr:
             Learning rate.
         weight_decay:
@@ -489,6 +521,15 @@ class Autotalker(BaseModelMixin):
             this will enforce gene programs to be meaningful for edge
             reconstruction and, hence, to preserve spatial colocalization
             information.
+        lambda_gene_expr_recon:
+            Lambda (weighting factor) for the gene expression reconstruction
+            loss. If ´>0´, this will enforce interpretable gene programs that
+            can be combined in a linear way to reconstruct gene expression.
+        lambda_chrom_access_recon:
+            Lambda (weighting factor) for the chromatin accessibility
+            reconstruction loss. If ´>0´, this will enforce interpretable gene
+            programs that can be combined in a linear way to reconstruct
+            chromatin accessibility.
         lambda_cond_contrastive:
             Lambda (weighting factor) for the conditional contrastive loss. If
             ´>0´, this will enforce observations from different conditions with
@@ -502,22 +543,16 @@ class Autotalker(BaseModelMixin):
             as positive labels for the contrastive loss and the bottom
             (´contrastive_logits_ratio´ * 100)% logits of sampled negative edges
             with nodes from different conditions serve as negative labels.
-        lambda_gene_expr_recon:
-            Lambda (weighting factor) for the gene expression reconstruction
-            loss. If ´>0´, this will enforce interpretable gene programs that
-            can be combined in a linear way to reconstruct gene expression.
-        lambda_chrom_access_recon:
-            Lambda (weighting factor) for the chromatin accessibility
-            reconstruction loss. If ´>0´, this will enforce interpretable gene
-            programs that can be combined in a linear way to reconstruct
-            chromatin accessibility.
         lambda_group_lasso:
             Lambda (weighting factor) for the group lasso regularization loss of
             gene programs. If ´>0´, this will enforce sparsity of gene programs.
         lambda_l1_masked:
             Lambda (weighting factor) for the L1 regularization loss of genes in
             masked gene programs. If ´>0´, this will enforce sparsity of genes
-            in masked gene programs.        
+            in masked gene programs.
+        min_gp_genes_l1_masked:
+            The minimum number of genes that need to be in a gene program for
+            the L1 regularization loss to be applied to the gene program.
         lambda_l1_addon:
             Lambda (weighting factor) for the L1 regularization loss of genes in
             addon gene programs. If ´>0´, this will enforce sparsity of genes in
@@ -531,15 +566,24 @@ class Autotalker(BaseModelMixin):
         edge_batch_size:
             Batch size for the edge-level dataloaders.
         node_batch_size:
-            Batch size for the node-level dataloaders.
+            Batch size for the node-level dataloaders. If ´None´, is
+            automatically determined based on ´edge_batch_size´.
         mlflow_experiment_id:
             ID of the Mlflow experiment used for tracking training parameters
             and metrics.
+        retrieve_cond_embeddings:
+            If ´True´, retrieve the conditional embeddings after model training
+            is finished if multiple conditions are present.
+        retrieve_recon_edge_probs:
+            If ´True´, retrieve the reconstructed edge probabilities after model
+            training is finished.
+        retrieve_att_weights:
+            If ´True´, retrieve the node label aggregation attention weights
+            after model training is finished if ´one-hop-attention´ was used
+            for node label aggregation.
         trainer_kwargs:
             Kwargs for the model Trainer.
         """
-        self.node_batch_size = node_batch_size
-
         self.trainer = Trainer(
             adata=self.adata,
             adata_atac=self.adata_atac,
@@ -569,10 +613,12 @@ class Autotalker(BaseModelMixin):
             contrastive_logits_ratio=contrastive_logits_ratio,
             lambda_group_lasso=lambda_group_lasso,
             lambda_l1_masked=lambda_l1_masked,
+            min_gp_genes_l1_masked=min_gp_genes_l1_masked,
             lambda_l1_addon=lambda_l1_addon,
             mlflow_experiment_id=mlflow_experiment_id)
         
         self.is_trained_ = True
+
         self.adata.obsm[self.latent_key_], _ = self.get_latent_representation(
            adata=self.adata,
            counts_key=self.counts_key_,
@@ -581,6 +627,7 @@ class Autotalker(BaseModelMixin):
            only_active_gps=True,
            return_mu_std=True,
            node_batch_size=self.trainer.node_batch_size_)
+        
         self.adata.uns[self.active_gp_names_key_] = self.get_active_gps()
 
         if (len(self.conditions_) > 0) & retrieve_cond_embeddings:
@@ -1238,13 +1285,13 @@ class Autotalker(BaseModelMixin):
             return z
     
     @torch.no_grad()
-    def get_recon_adj(self,      
-                      node_batch_size: int=2048,
-                      device: Optional[str]=None,
-                      edge_thresh: Optional[float]=None,
-                      n_neighbors: Optional[int]=None,
-                      return_edge_probs: bool=False
-                      ) -> Union[sp.csr_matrix, torch.Tensor]:
+    def get_recon_edge_probs(self,      
+                             node_batch_size: int=2048,
+                             device: Optional[str]=None,
+                             edge_thresh: Optional[float]=None,
+                             n_neighbors: Optional[int]=None,
+                             return_edge_probs: bool=False
+                             ) -> Union[sp.csr_matrix, torch.Tensor]:
         """
         Get the reconstructed adjacency matrix (or edge probability matrix if 
         ´return_edge_probs == True´ from a trained Autotalker model.
