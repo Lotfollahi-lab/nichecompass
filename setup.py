@@ -12,5 +12,5 @@ if __name__ == "__main__":
         long_description="",
         author="Sebastian Birk",
         author_email="sebastian.birk@outlook.com",
-        url="https://github.com/sebastianbirk/nichecompass",
+        # url="https://github.com/sebastianbirk/nichecompass",
         packages=[])
