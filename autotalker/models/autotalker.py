@@ -369,10 +369,7 @@ class Autotalker(BaseModelMixin):
 
         # Determine dimensionality of conditional embedding if not provided
         if n_cond_embed is None:
-            if self.n_input_ > (2 * self.n_nonaddon_gps_):
-                n_cond_embed = int(self.n_input_ / 2)
-            else:
-                n_hidden_encoder = self.n_nonaddon_gps_
+            n_cond_embed = self.n_nonaddon_gps_
         self.n_cond_embed_ = n_cond_embed
 
         # Determine dimensionality of hidden encoder layer if not provided
