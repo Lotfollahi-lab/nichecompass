@@ -617,6 +617,8 @@ class Autotalker(BaseModelMixin):
             lambda_l1_addon=lambda_l1_addon,
             mlflow_experiment_id=mlflow_experiment_id)
         
+        self.node_batch_size_ = self.trainer.node_batch_size_
+        
         self.is_trained_ = True
 
         self.adata.obsm[self.latent_key_], _ = self.get_latent_representation(
@@ -626,7 +628,7 @@ class Autotalker(BaseModelMixin):
            condition_key=self.condition_key_,
            only_active_gps=True,
            return_mu_std=True,
-           node_batch_size=self.trainer.node_batch_size_)
+           node_batch_size=self.node_batch_size_)
         
         self.adata.uns[self.active_gp_names_key_] = self.get_active_gps()
 
@@ -640,7 +642,7 @@ class Autotalker(BaseModelMixin):
         retrieve_att_weights):
             self.adata.obsp[self.agg_alpha_key_] = (
                 self.get_gene_expr_agg_att_weights(
-                    node_batch_size=self.trainer.node_batch_size_))
+                    node_batch_size=self.node_batch_size_))
 
         if mlflow_experiment_id is not None:
             mlflow.log_metric("n_active_gps",
@@ -763,7 +765,7 @@ class Autotalker(BaseModelMixin):
             condition_key=self.condition_key_,
             only_active_gps=False,
             return_mu_std=True,
-            node_batch_size=self.trainer.node_batch_size_)
+            node_batch_size=self.node_batch_size_)
         mu_selected_gps = mu[:, selected_gps_idx]
         std_selected_gps = std[:, selected_gps_idx]
 
