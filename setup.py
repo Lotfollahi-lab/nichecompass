@@ -6,10 +6,11 @@ from setuptools import setup, find_packages
 
 if __name__ == "__main__":
     setup(
-        name="autotalker",
-        version='0.1.0',
+        name="nichecompass",
+        version='0.0.1',
         description="",
+        long_description="",
         author="Sebastian Birk",
         author_email="sebastian.birk@outlook.com",
-        url="https://github.com/sebastianbirk/autotalker",
-        packages=find_packages())
+        # url="https://github.com/sebastianbirk/nichecompass",
+        packages=[])

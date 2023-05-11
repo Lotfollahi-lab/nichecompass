@@ -372,10 +372,7 @@ class Autotalker(BaseModelMixin):
 
         # Determine dimensionality of conditional embedding if not provided
         if n_cond_embed is None:
-            if self.n_input_ > (2 * self.n_nonaddon_gps_):
-                n_cond_embed = int(self.n_input_ / 2)
-            else:
-                n_hidden_encoder = self.n_nonaddon_gps_
+            n_cond_embed = self.n_nonaddon_gps_
         self.n_cond_embed_ = n_cond_embed
 
         # Determine dimensionality of hidden encoder layer if not provided
@@ -667,12 +664,13 @@ class Autotalker(BaseModelMixin):
         specified comparison categories for all categories in ´selected_cats´
         (by default all categories in ´adata.obs[cat_key]´). Differential gp
         scores are measured through the log Bayes Factor between the hypothesis
-        h0 that the (normalized) gene program / latent scores of the category
-        under consideration (z0) are higher than the (normalized) gene program /
-        latent score of the comparison categories (z1) versus the alternative
-        hypothesis h1 that the (normalized) gene program / latent scores of the
-        comparison categories (z1) are higher or equal to the (normalized) gene
-        program / latent scores of the category under consideration (z0). The
+        h0 that the (normalized) gene program / latent scores of observations of
+        the category under consideration (z0) are higher than the (normalized)
+        gene program / latent score of observations of the comparison categories
+        (z1) versus the alternative hypothesis h1 that the (normalized) gene
+        program / latent scores of observations of the comparison categories
+        (z1) are higher or equal to the (normalized) gene program / latent
+        scores of observations of the category under consideration (z0). The
         log Bayes Factors per category are stored in a pandas DataFrame under
         ´adata.uns[key_added]´. The DataFrame also stores p_h0, the probability
         that z0 > z1 and p_h1, the probability that z1 >= z0. The rows are
@@ -681,10 +679,9 @@ class Autotalker(BaseModelMixin):
         gene programs and ´n_top_down_gps_retrieved´ top downregulated gene
         programs will be stored in ´adata.obs´.
 
-        Parts of the implementation are adapted from Lotfollahi, M. et al. 
-        Biologically informed deep learning to infer gene program activity in
-        single cells. bioRxiv 2022.02.05.479217 (2022)
-        doi:10.1101/2022.02.05.479217;
+        Parts of the implementation are inspired by Lotfollahi, M. et al.
+        Biologically informed deep learning to query gene programs in
+        single-cell atlases. Nat. Cell Biol. 25, 337–350 (2023);
         https://github.com/theislab/scarches/blob/master/scarches/models/expimap/expimap_model.py#L429
         (24.11.2022).
 
