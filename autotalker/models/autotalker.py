@@ -160,6 +160,8 @@ class Autotalker(BaseModelMixin):
         in masks but can be learned de novo).
     n_cond_embed:
         Number of conditional embedding nodes.
+    kwargs:
+        Autotalker kwargs (to support legacy versions).
     """
     def __init__(self,
                  adata: AnnData,
@@ -196,7 +198,7 @@ class Autotalker(BaseModelMixin):
                     "one-hop-sum",
                     "one-hop-norm",
                     "one-hop-attention"]="one-hop-attention",
-                 active_gp_thresh_ratio: float=0.03,
+                 active_gp_thresh_ratio: float=0.05,
                  n_layers_encoder: int=1,
                  n_hidden_encoder: Optional[int]=None,
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
@@ -205,7 +207,8 @@ class Autotalker(BaseModelMixin):
                  dropout_rate_graph_decoder: float=0.,
                  conditions: Optional[list]=None, 
                  n_addon_gps: int=0,
-                 n_cond_embed: Optional[int]=None):
+                 n_cond_embed: Optional[int]=None,
+                 **kwargs):
         self.adata = adata
         self.adata_atac = adata_atac
 
@@ -678,7 +681,10 @@ class Autotalker(BaseModelMixin):
         gene programs and ´n_top_down_gps_retrieved´ top downregulated gene
         programs will be stored in ´adata.obs´.
 
-        Parts of the implementation are inspired by
+        Parts of the implementation are adapted from Lotfollahi, M. et al. 
+        Biologically informed deep learning to infer gene program activity in
+        single cells. bioRxiv 2022.02.05.479217 (2022)
+        doi:10.1101/2022.02.05.479217;
         https://github.com/theislab/scarches/blob/master/scarches/models/expimap/expimap_model.py#L429
         (24.11.2022).
 
@@ -759,7 +765,8 @@ class Autotalker(BaseModelMixin):
             adj_key=self.adj_key_,
             condition_key=self.condition_key_,
             only_active_gps=False,
-            return_mu_std=True)
+            return_mu_std=True,
+            node_batch_size=self.trainer.node_batch_size_)
         mu_selected_gps = mu[:, selected_gps_idx]
         std_selected_gps = std[:, selected_gps_idx]
 
