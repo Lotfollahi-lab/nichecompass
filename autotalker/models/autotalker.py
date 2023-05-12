@@ -924,11 +924,14 @@ class Autotalker(BaseModelMixin):
         # Create test results dataframe and keep only enriched category gene
         # program pairs (log bayes factor above thresh)
         results = pd.DataFrame(results)
-        results[np.abs(results["log_bayes_factor"]) > log_bayes_factor_thresh]
-        results.sort_values(by="log_bayes_factor",
+        results["abs_log_bayes_factor"] = np.abs(results["log_bayes_factor"])
+        results = results[
+            results["abs_log_bayes_factor"] > log_bayes_factor_thresh]
+        results.sort_values(by="abs_log_bayes_factor",
                             ascending=False,
                             inplace=True)
         results.reset_index(drop=True, inplace=True)
+        results.drop("abs_log_bayes_factor", axis=1, inplace=True)
         adata.uns[key_added] = results
 
         # Normalize gp scores
