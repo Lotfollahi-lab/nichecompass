@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 def load_saved_files(dir_path: str,
                      load_adata: bool,
                      adata_file_name: str="adata.h5ad",
+                     load_adata_atac: bool=False,
+                     adata_atac_file_name: str="adata_atac.h5ad",
                      map_location: Optional[Literal["cpu", "cuda"]]=None
                      ) -> Tuple[OrderedDict, dict, np.ndarray, ad.AnnData]:
     """
@@ -36,6 +38,10 @@ def load_saved_files(dir_path: str,
         If `True`, also load the stored AnnData object.
     adata_file_name:
         File name under which the AnnData object is saved.
+    load_adata_atac:
+        If `True`, also load the stored ATAC AnnData object.
+    adata_atac_file_name:
+        File name under which the ATAC AnnData object is saved.
     map_location:
         Memory location where to map the model files to.
 
@@ -49,9 +55,12 @@ def load_saved_files(dir_path: str,
         The stored attributes.
     adata:
         The stored AnnData object.
+    adata_atac:
+        The stored ATAC AnnData object.
     """
     attr_path = os.path.join(dir_path, "attr.pkl")
     adata_path = os.path.join(dir_path, adata_file_name)
+    adata_atac_path = os.path.join(dir_path, adata_atac_file_name)
     var_names_path = os.path.join(dir_path, "var_names.csv")
     model_path = os.path.join(dir_path, "model_params.pt")
 
@@ -63,11 +72,19 @@ def load_saved_files(dir_path: str,
     else:
         adata = None
 
+    if os.path.exists(adata_atac_path) and load_adata_atac:
+        adata_atac = ad.read(adata_atac_path)
+    elif not os.path.exists(adata_atac_path) and load_adata_atac:
+        raise ValueError("Dir path contains no saved 'adata_atac' and no "
+                         "'adata_atac' was passed.")
+    else:
+        adata_atac = None
+
     model_state_dict = torch.load(model_path, map_location=map_location)
     var_names = np.genfromtxt(var_names_path, delimiter=",", dtype=str)
     with open(attr_path, "rb") as handle:
         attr_dict = pickle.load(handle)
-    return model_state_dict, var_names, attr_dict, adata
+    return model_state_dict, var_names, attr_dict, adata, adata_atac
 
 
 def validate_var_names(adata: ad.AnnData, source_var_names: str):
@@ -94,7 +111,8 @@ def validate_var_names(adata: ad.AnnData, source_var_names: str):
 
 def initialize_model(cls,
                      adata: ad.AnnData,
-                     attr_dict: dict) -> torch.nn.Module:
+                     attr_dict: dict,
+                     adata_atac: Optional[ad.AnnData]=None) -> torch.nn.Module:
     """
     Helper to initialize a model. Adapted from 
     https://github.com/scverse/scvi-tools/blob/master/scvi/model/base/_utils.py#L103.
@@ -105,6 +123,8 @@ def initialize_model(cls,
         AnnData object to be used for initialization.
     attr_dict:
         Dictionary with attributes for model initialization.
+    adata_atac:
+        ATAC AnnData object to be used for initialization.
     """
     if "init_params_" not in attr_dict.keys():
         raise ValueError("No init_params_ were saved by the model.")
@@ -116,5 +136,14 @@ def initialize_model(cls,
     # Expand out kwargs
     kwargs = {k: v for k, v in init_params.items() if isinstance(v, dict)}
     kwargs = {k: v for (i, j) in kwargs.items() for (k, v) in j.items()}
-    model = cls(adata, **non_kwargs, **kwargs)
+    if adata_atac is None:
+        # Support for legacy models
+        model = cls(adata=adata,
+                    **non_kwargs,
+                    **kwargs)
+    else:
+        model = cls(adata=adata,
+                    adata_atac=adata_atac,
+                    **non_kwargs,
+                    **kwargs)        
     return model
