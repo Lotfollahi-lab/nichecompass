@@ -483,7 +483,7 @@ class Autotalker(BaseModelMixin):
               contrastive_logits_ratio: float=0.125,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,
-              min_gp_genes_l1_masked: int=0,
+              min_gp_genes_l1_masked: int=4,
               lambda_l1_addon: float=0.,
               edge_val_ratio: float=0.1,
               node_val_ratio: float=0.1,
