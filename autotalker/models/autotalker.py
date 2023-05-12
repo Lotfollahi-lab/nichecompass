@@ -952,7 +952,11 @@ class Autotalker(BaseModelMixin):
             mu_selected_gps[:, enriched_gps_idx],
             columns=enriched_gps,
             index=adata.obs.index)
-        adata.obs = pd.concat([adata.obs, enriched_gps_gp_scores], axis=1)
+        new_cols = [col for col in enriched_gps_gp_scores.columns if col not in
+                    adata.obs.columns]
+        if new_cols:
+            adata.obs = pd.concat([adata.obs,
+                                   enriched_gps_gp_scores[new_cols]], axis=1)
 
         return enriched_gps
 
