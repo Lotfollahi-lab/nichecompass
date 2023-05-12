@@ -648,40 +648,40 @@ class Autotalker(BaseModelMixin):
             mlflow.log_metric("n_active_gps",
                               len(self.adata.uns[self.active_gp_names_key_]))
 
-    def compute_differential_gp_scores(
+    def run_differential_gp_tests(
             self,
             cat_key: str,
-            selected_gps: Optional[Union[str,list]]=None,
             selected_cats: Optional[Union[str,list]]=None,
-            gp_scores_weight_normalization: bool=False,
             comparison_cats: Union[str, list]="rest",
+            selected_gps: Optional[Union[str,list]]=None,
+            gp_scores_weight_normalization: bool=False,
             n_sample: int=10000,
-            key_added: str="autotalker_differential_gp_scores",
-            n_top_up_gps_retrieved: int=10,
-            n_top_down_gps_retrieved: int=10,
+            log_bayes_factor_thresh: float=2.3,
+            key_added: str="autotalker_differential_gp_test_results",
             seed: int=0,
             adata: Optional[AnnData]=None) -> list:
         """
-        Compute differential gene program / latent scores between a category and
-        specified comparison categories for all categories in ´selected_cats´
-        (by default all categories in ´adata.obs[cat_key]´). Differential gp
-        scores are measured through the log Bayes Factor between the hypothesis
-        h0 that the (normalized) gene program / latent scores of observations of
-        the category under consideration (z0) are higher than the (normalized)
-        gene program / latent score of observations of the comparison categories
+        Run differential gene program tests by comparing gene program / latent
+        scores between a category and specified comparison categories for all
+        categories in ´selected_cats´ (by default all categories in
+        ´adata.obs[cat_key]´). Enriched category gene programs are determined
+        through the log Bayes Factor between the hypothesis h0 that the
+        (normalized) gene program / latent scores of observations of the
+        category under consideration (z0) are higher than the (normalized) gene
+        program / latent scores of observations of the comparison categories
         (z1) versus the alternative hypothesis h1 that the (normalized) gene
         program / latent scores of observations of the comparison categories
         (z1) are higher or equal to the (normalized) gene program / latent
         scores of observations of the category under consideration (z0). The
-        log Bayes Factors per category are stored in a pandas DataFrame under
+        results of the differential tests including the log Bayes Factors for
+        enriched category gene programs are stored in a pandas DataFrame under
         ´adata.uns[key_added]´. The DataFrame also stores p_h0, the probability
         that z0 > z1 and p_h1, the probability that z1 >= z0. The rows are
         ordered by the log Bayes Factor. In addition, the (normalized) gene
-        program / latent scores of the ´n_top_up_gps_retrieved´ top upregulated
-        gene programs and ´n_top_down_gps_retrieved´ top downregulated gene
-        programs will be stored in ´adata.obs´.
+        program / latent scores of enriched gene programs across any of the
+        categories are stored in ´adata.obs´.
 
-        Parts of the implementation are inspired by Lotfollahi, M. et al.
+        Parts of the implementation are adapted from Lotfollahi, M. et al.
         Biologically informed deep learning to query gene programs in
         single-cell atlases. Nat. Cell Biol. 25, 337–350 (2023);
         https://github.com/theislab/scarches/blob/master/scarches/models/expimap/expimap_model.py#L429
@@ -692,32 +692,29 @@ class Autotalker(BaseModelMixin):
         cat_key:
             Key under which the categories and comparison categories are stored
             in ´adata.obs´.
-        selected_gps:
-            List of gene program names for which differential gp scores will be
-            computed. If ´None´, uses all active gene programs.
         selected_cats:
-            List of category labels for which differential gp scores will be
-            computed. If ´None´, uses all category labels from
-            ´adata.obs[cat_key]´.
-        gp_scores_weight_normalization:
-            If ´True´, normalize the gp scores by the nb means gene expression
-            decoder weights. If ´False´, normalize the gp scores by the signs of
-            the summed nb means gene expression decoder weights.
+            List of category labels for which differential tests will be run. If
+            ´None´, uses all category labels from ´adata.obs[cat_key]´.
         comparison_cats:
             Categories used as comparison group. If ´rest´, all categories other
             than the category under consideration are used as comparison group.
+        selected_gps:
+            List of gene program names for which differential tests will be run.
+            If ´None´, uses all active gene programs.
+        gp_scores_weight_normalization:
+            If ´True´, normalize the gp scores by the nb means gene expression
+            decoder weights. If ´False´, normalize the gp scores by the signs of
+            the summed nb means gene expression decoder weights (this is only
+            relevant with 'zinb' loss).
         n_sample:
             Number of observations to be drawn from the category and comparison
             categories for the log Bayes Factor computation.
+        log_bayes_factor_thresh:
+            Log bayes factor threshold. Category gene programs with a higher
+            absolute score than this threshold are considered enriched.
         key_added:
-            Key under which the differential gp scores pandas DataFrame is
-            stored in ´adata.uns´.
-        n_top_up_gps_retrieved:
-            Number of top upregulated gene programs which will be returned and
-            whose (normalized) gp scores will be stored in ´adata.obs´.
-        n_top_down_gps_retrieved:
-            Number of top downregulated gene programs which will be returned and
-            whose (normalized) gp scores will be stored in ´adata.obs´.
+            Key under which the test results pandas DataFrame is stored in
+            ´adata.uns´.
         seed:
             Random seed for reproducible sampling.
         adata:
@@ -726,11 +723,10 @@ class Autotalker(BaseModelMixin):
 
         Returns
         ----------
-        top_unique_gps:
-            Names of ´n_top_up_gps_retrieved´ upregulated and
-            ´n_top_down_gps_retrieved´ downregulated unique differential gene
-            programs across all categories (duplicate gene programs that appear
-            for multiple catgories are only considered once).
+        enriched_gps:
+            Names of enriched gene programs across all categories (duplicate
+            gene programs that appear for multiple catgories are only considered
+            once).
         """
         self._check_if_trained(warn=True)
 
@@ -834,9 +830,9 @@ class Autotalker(BaseModelMixin):
                              "comparison with all other categories) or contain "
                              "existing categories.")
 
-        # Compute differential gp scores for all selected categories that are
-        # not part of the comparison categories
-        scores = []
+        # Run differential gp tests for all selected categories that are not
+        # part of the comparison categories
+        results = []
         for cat in selected_cats:
             if cat in comparison_cats:
                 continue
@@ -910,69 +906,52 @@ class Autotalker(BaseModelMixin):
             p_h1[zeros_mask] = 0
             log_bayes_factor[zeros_mask] = 0
 
-            # Store differential gp scores
+            # Store differential gp test results
             zipped = zip(
                 selected_gps,
                 p_h0,
                 p_h1,
                 log_bayes_factor)
-            cat_scores = [{"category": cat,
+            cat_results = [{"category": cat,
                            "gene_program": gp,
                            "p_h0": p_h0,
                            "p_h1": p_h1,
                            "log_bayes_factor": log_bayes_factor}
                           for gp, p_h0, p_h1, log_bayes_factor in zipped]
-            for score in cat_scores:
-                scores.append(score)
+            for result in cat_results:
+                results.append(result)
 
-        # Create result dataframe
-        scores = pd.DataFrame(scores)
-        scores.sort_values(by="log_bayes_factor", ascending=False, inplace=True)
-        scores.reset_index(drop=True, inplace=True)
-        adata.uns[key_added] = scores
+        # Create test results dataframe and keep only enriched category gene
+        # program pairs (log bayes factor above thresh)
+        results = pd.DataFrame(results)
+        results[np.abs(results["log_bayes_factor"]) > log_bayes_factor_thresh]
+        results.sort_values(by="log_bayes_factor",
+                            ascending=False,
+                            inplace=True)
+        results.reset_index(drop=True, inplace=True)
+        adata.uns[key_added] = results
 
-        # Retrieve top unique gps and (normalized) gp scores
-        top_unique_gps = []
-        if n_top_up_gps_retrieved > 0 or n_top_down_gps_retrieved > 0:
-            if mu_norm_factors.ndim == 2:
-                mu_norm_factors = mu_norm_factors.mean(0) # mean over genes,
-                # dim: (n_selected_gps,)
-            elif norm_factors.ndim == 3:
-                mu_norm_factors = norm_factors.mean(1) # mean over genes,
-                # dim: (n_obs, n_selected_gps)
-            mu_selected_gps *= mu_norm_factors # use broadcasting
+        # Normalize gp scores
+        if mu_norm_factors.ndim == 2:
+            mu_norm_factors = mu_norm_factors.mean(0) # mean over genes,
+            # dim: (n_selected_gps,)
+        elif norm_factors.ndim == 3:
+            mu_norm_factors = norm_factors.mean(1) # mean over genes,
+            # dim: (n_obs, n_selected_gps)
+        mu_selected_gps *= mu_norm_factors # use broadcasting
 
-            # Store ´n_top_up_gps_retrieved´ top upregulated gene program scores
-            # in ´adata.obs´
-            if n_top_up_gps_retrieved > 0:
-                # Get unique top up gene programs while maintaining order
-                top_up_gps = scores["gene_program"]
-                _, top_up_gps_sort_idx = np.unique(top_up_gps,
-                                                   return_index=True)
-                top_up_gps = top_up_gps[np.sort(top_up_gps_sort_idx)]
-                top_up_gps = top_up_gps[:n_top_up_gps_retrieved].to_list()
-                top_up_gps_idx = [selected_gps.index(gp) for gp in top_up_gps]
-                for gp, gp_idx in zip(top_up_gps, top_up_gps_idx):
-                    adata.obs[gp] = mu_selected_gps[:, gp_idx]
-                top_unique_gps.extend(top_up_gps)
-            
-            # Store ´n_top_down_gps_retrieved´ top downregulated gene program
-            # scores in ´adata.obs´
-            if n_top_down_gps_retrieved > 0:
-                # Get unique top down gene programs while maintaining order
-                top_down_gps = scores["gene_program"][::-1]
-                top_down_gps.reset_index(inplace=True, drop=True)
-                _, top_down_gps_sort_idx = np.unique(top_down_gps,
-                                                     return_index=True)
-                top_down_gps = top_down_gps[np.sort(top_down_gps_sort_idx)]
-                top_down_gps = top_down_gps[:n_top_down_gps_retrieved].to_list()
-                top_down_gps_idx = [selected_gps.index(gp) for
-                                    gp in top_down_gps]
-                for gp, gp_idx in zip(top_down_gps, top_down_gps_idx):
-                    adata.obs[gp] = mu_selected_gps[:, gp_idx]
-                top_unique_gps.extend(top_down_gps)
-        top_unique_gps = list(set(top_unique_gps))
-        return top_unique_gps
+        # Retrieve enriched gene programs
+        enriched_gps = results["gene_program"].unique().tolist()
+        enriched_gps_idx = [selected_gps.index(gp) for gp in enriched_gps]
+        
+        # Add gene program scores of enriched gene programs to adata
+        enriched_gps_gp_scores = pd.DataFrame(
+            mu_selected_gps[:, enriched_gps_idx],
+            columns=enriched_gps,
+            index=adata.obs.index)
+        adata.obs = pd.concat([adata.obs, enriched_gps_gp_scores], axis=1)
+
+        return enriched_gps
 
     def compute_gp_gene_importances(
             self,
