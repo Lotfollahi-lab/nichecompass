@@ -76,6 +76,8 @@ class Trainer(BaseTrainerMixin):
         stopping criterion is reloaded at the end of training.
     early_stopping_kwargs:
         Kwargs for the EarlyStopping class.
+    use_cuda_if_available:
+        If `True`, use cuda if available.
     seed:
         Random seed to get reproducible results.
     monitor:
@@ -99,6 +101,7 @@ class Trainer(BaseTrainerMixin):
                  use_early_stopping: bool=True,
                  reload_best_model: bool=True,
                  early_stopping_kwargs: Optional[dict]=None,
+                 use_cuda_if_available: bool=True,
                  seed: int=0,
                  monitor: bool=True,
                  verbose: bool=False,
@@ -145,12 +148,13 @@ class Trainer(BaseTrainerMixin):
         print("\n--- INITIALIZING TRAINER ---")
         
         # Set seed and use GPU if available
-        torch.manual_seed(self.seed_)
-        if torch.cuda.is_available():
+        if use_cuda_if_available & torch.cuda.is_available():
             torch.cuda.manual_seed(self.seed_)
-            self.model.cuda()
-        self.device = torch.device("cuda" if torch.cuda.is_available() else
-                                   "cpu")
+            self.device = torch.device("cuda")
+        else:
+            torch.manual_seed(self.seed_)
+            self.device = torch.device("cpu")
+        self.model.to(self.device)
 
         # Prepare data and get node-level and edge-level training and validation
         # splits

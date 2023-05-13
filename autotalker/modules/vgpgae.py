@@ -59,13 +59,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         Number of source and target genes that are included in the gp mask.
     gene_expr_decoder_mask:
         Gene program mask for the gene expression decoder.
-    target_genes_idx:
+    target_gene_expr_mask_idx:
         Index of target genes that are in gps of the gp mask.
-    source_genes_idx:
+    source_gene_expr_mask_idx:
         Index of source genes that are in gps of the gp mask.
-    target_peaks_idx:
+    target_chrom_access_mask_idx:
         Index of target peaks that are in gps of the ca mask.
-    source_peaks_idx:
+    source_chrom_access_mask_idx:
         Index of source peaks that are in gps of the ca mask.
     conditions:
         Conditions used for the conditional embedding.
@@ -136,14 +136,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  n_cond_embed: int,
                  n_output_genes: int,
                  gene_expr_decoder_mask: torch.Tensor,
-                 genes_idx: torch.Tensor,
-                 target_genes_idx: torch.Tensor,
-                 source_genes_idx: torch.Tensor,
+                 gene_expr_mask_idx: torch.Tensor,
+                 target_gene_expr_mask_idx: torch.Tensor,
+                 source_gene_expr_mask_idx: torch.Tensor,
                  n_output_peaks: int=0,
                  chrom_access_decoder_mask: Optional[torch.Tensor]=None,
-                 peaks_idx: Optional[torch.Tensor]=None,
-                 target_peaks_idx: Optional[torch.Tensor]=None,
-                 source_peaks_idx: Optional[torch.Tensor]=None,
+                 chrom_access_mask_idx: Optional[torch.Tensor]=None,
+                 target_chrom_access_mask_idx: Optional[torch.Tensor]=None,
+                 source_chrom_access_mask_idx: Optional[torch.Tensor]=None,
                  conditions: list=[],
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=4,
@@ -175,12 +175,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.n_cond_embed_ = n_cond_embed
         self.n_output_genes_ = n_output_genes
         self.n_output_peaks_ = n_output_peaks
-        self.genes_idx_ = genes_idx
-        self.target_genes_idx_ = target_genes_idx
-        self.source_genes_idx_ = source_genes_idx
-        self.peaks_idx_ = peaks_idx
-        self.target_peaks_idx_ = target_peaks_idx
-        self.source_peaks_idx_ = source_peaks_idx
+        self.gene_expr_mask_idx_ = gene_expr_mask_idx
+        self.target_gene_expr_mask_idx_ = target_gene_expr_mask_idx
+        self.source_gene_expr_mask_idx_ = source_gene_expr_mask_idx
+        self.chrom_access_mask_idx_ = chrom_access_mask_idx
+        self.target_chrom_access_mask_idx_ = target_chrom_access_mask_idx
+        self.source_chrom_access_mask_idx_ = source_chrom_access_mask_idx
         self.conditions_ = conditions
         self.n_conditions_ = len(conditions)
         self.condition_label_encoder_ = {
@@ -201,25 +201,25 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.cond_embed_injection_ = cond_embed_injection
         self.cond_edge_neg_sampling_ = cond_edge_neg_sampling
         self.freeze_ = False
+        self.modalities_ = ["gene_expr"]
         if chrom_access_decoder_mask is not None:
-            self.includes_atac_modality_ = True
+            self.modalities_.append("chrom_access")
             self.features_idx_ = np.concatenate(
-                (target_genes_idx,
-                 (target_peaks_idx + int(n_output_genes / 2)),
-                 (source_genes_idx + int(n_output_genes / 2) + int(n_output_peaks / 2)),
-                 (source_peaks_idx + n_output_genes + int(n_output_peaks / 2))),
+                (target_gene_expr_mask_idx,
+                 (target_chrom_access_mask_idx + int(n_output_genes / 2)),
+                 (source_gene_expr_mask_idx + int(n_output_genes / 2) + int(n_output_peaks / 2)),
+                 (source_chrom_access_mask_idx + n_output_genes + int(n_output_peaks / 2))),
                  axis=0)
 
         else:
-            self.includes_atac_modality_ = False
-            self.features_idx_ = self.genes_idx_
+            self.features_idx_ = self.gene_expr_mask_idx_
 
         print("--- INITIALIZING NEW NETWORK MODULE: VARIATIONAL GENE PROGRAM "
               "GRAPH AUTOENCODER ---")
         print(f"LOSS -> include_edge_recon_loss: {include_edge_recon_loss}, "
               f"include_gene_expr_recon_loss: {include_gene_expr_recon_loss}, "
               f"gene_expr_recon_dist: {gene_expr_recon_dist}", end="")
-        if self.includes_atac_modality_:
+        if "chrom_access" in self.modalities_:
             print(", include_chrom_access_recon_loss: "
                   f"{include_chrom_access_recon_loss}, "
                   "chrom_access_recon_dist: "
@@ -270,10 +270,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                 (self.n_conditions_ != 0) else 0),
             n_output=n_output_genes,
             mask=gene_expr_decoder_mask,
-            genes_idx=genes_idx,
+            mask_idx=gene_expr_mask_idx,
             recon_dist=self.gene_expr_recon_dist_)
         
-        if self.includes_atac_modality_:
+        if "chrom_access" in self.modalities_:
             # Initialize masked chromatin accessibility decoder
             self.chrom_access_decoder = MaskedChromAccessDecoder(
                 n_input=n_nonaddon_gps,
@@ -283,7 +283,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                     (self.n_conditions_ != 0) else 0),
                 n_output=n_output_peaks,
                 mask=chrom_access_decoder_mask,
-                peaks_idx=peaks_idx,
+                mask_idx=chrom_access_mask_idx,
                 recon_dist=self.chrom_access_recon_dist_)            
 
         if node_label_method == "self":
@@ -301,11 +301,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 features_idx=self.features_idx_)
         
         # Initialize gene-specific dispersion parameters
-        self.theta = torch.nn.Parameter(torch.randn(len(genes_idx)))
+        self.theta = torch.nn.Parameter(torch.randn(len(gene_expr_mask_idx)))
 
-        if self.includes_atac_modality_:
+        if "chrom_access" in self.modalities_:
             # Initialize peak-specific dispersion parameters
-            self.theta_atac = torch.nn.Parameter(torch.randn(len(peaks_idx)))
+            self.theta_atac = torch.nn.Parameter(torch.randn(len(chrom_access_mask_idx)))
 
     def forward(self,
                 data_batch: Data,
@@ -420,19 +420,19 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 cond_embed=(self.cond_embed if "graph_decoder" in
                             self.cond_embed_injection_ else None))
         elif decoder == "omics":
-            if self.includes_atac_modality_:
+            if "chrom_access" in self.modalities_:
                 # Separate node feature vector into RNA and ATAC part
                 x_atac = x[:, int(self.n_output_genes_ / 2):]
                 x = x[:, :int(self.n_output_genes_ / 2)]
                 assert x_atac.size(1) == int(self.n_output_peaks_ / 2)
-                target_node_labels_atac_start_idx = len(self.target_genes_idx_)
+                target_node_labels_atac_start_idx = len(self.target_gene_expr_mask_idx_)
                 source_node_labels_atac_start_idx = (
-                    len(self.target_genes_idx_) + 
-                    len(self.target_peaks_idx_) +
-                    len(self.source_genes_idx_))
+                    len(self.target_gene_expr_mask_idx_) + 
+                    len(self.target_chrom_access_mask_idx_) +
+                    len(self.source_gene_expr_mask_idx_))
                 source_node_labels_rna_start_idx = (
-                    len(self.target_genes_idx_) + 
-                    len(self.target_peaks_idx_))
+                    len(self.target_gene_expr_mask_idx_) + 
+                    len(self.target_chrom_access_mask_idx_))
 
                 output["node_labels_atac"] = torch.cat((
                     output["node_labels"][:, target_node_labels_atac_start_idx:
@@ -444,8 +444,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     output["node_labels"][:, source_node_labels_rna_start_idx: 
                                           source_node_labels_atac_start_idx]),
                                           dim=1)
-                assert output["node_labels_atac"].size(1) == len(self.peaks_idx_)
-                assert output["node_labels"].size(1) == len(self.genes_idx_)
+                assert output["node_labels_atac"].size(1) == len(self.chrom_access_mask_idx_)
+                assert output["node_labels"].size(1) == len(self.gene_expr_mask_idx_)
 
                 # Use observed library size as scaling factor for the negative
                 # binomial means of the chromatin accessibility distribution            
@@ -617,7 +617,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon *
             compute_addon_l1_reg_loss(self))
 
-        if self.includes_atac_modality_:
+        if "chrom_access" in self.modalities_:
             # Compute chromatin accessibility reconstruction negative binomial
             # loss
             theta_atac = torch.exp(self.theta_atac) # peak-specific inverse
@@ -654,34 +654,85 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             if self.n_addon_gps_ != 0:
                 loss_dict["global_loss"] += loss_dict["addon_gp_l1_reg_loss"]
                 loss_dict["optim_loss"] += loss_dict["addon_gp_l1_reg_loss"]
-        if self.includes_atac_modality_ & self.include_chrom_access_recon_loss_:
+        if ("chrom_access" in self.modalities_) & self.include_chrom_access_recon_loss_:
             loss_dict["global_loss"] += loss_dict["chrom_access_recon_loss"]
             loss_dict["optim_loss"] += loss_dict["chrom_access_recon_loss"]
         return loss_dict
 
     def get_gp_weights(self,
-                       use_genes_idx: bool=False) -> torch.Tensor:
+                       use_mask_idx: bool=False) -> torch.Tensor:
         """
         Get the gene weights of the gene expression negative binomial means
         decoder.
 
         Returns:
         ----------
-        gp_weights:
-            Tensor containing the gene expression decoder gene weights (dim:
-            n_gps x n_genes_in_gp_mask)
+        gp_weights_all_modalities:
+            Tuple of tensors containing the decoder gp weights (dim:
+            n_gps x n_genes)
+        gp_peak_weights:
+            Tensor containing the chromatin accessibility decoder peak weights (
+            dim: n_gps x n_peaks)
         """
-        # Get gp gene expression decoder gene weights
-        gp_weights = (self.gene_expr_decoder.nb_means_normalized_decoder
-                      .masked_l.weight.data).clone()
+        gp_weights_all_modalities = []
+
+        for modality in self.modalities_:
+            decoder = getattr(self, modality + "_decoder")
+            
+            # Get decoder weights of masked gps
+            gp_weights = (
+                decoder.nb_means_normalized_decoder.masked_l.weight.data
+                ).clone()
+
+            # Add decoder weights of addon gps
+            if self.n_addon_gps_ > 0:
+                gp_weights_addon = (
+                    decoder.nb_means_normalized_decoder.addon_l.weight.data
+                    ).clone()
+                gp_weights = torch.cat([gp_weights, gp_weights_addon], axis=1)
+
+            # Only keep omics features in mask
+            if use_mask_idx:
+                mask_idx = getattr(self, modality + "_mask_idx_")
+                gp_weights = gp_weights[mask_idx, :]
+            
+            # append masked_decoder_weights to the list of weights
+            gp_weights_all_modalities.append(gp_weights)
+
+        # return the weights as a tuple
+        return tuple(gp_weights_all_modalities)
+
+
+        # Get gene expression decoder gene weights of masked gps
+        gp_gene_weights = (
+            self.gene_expr_decoder.nb_means_normalized_decoder.masked_l
+            .weight.data).clone()
         if self.n_addon_gps_ > 0:
-            gp_weights = torch.cat(
-                [gp_weights, 
+            # Add gene expression decoder gene weights of de-novo gps
+            gp_gene_weights = torch.cat(
+                [gp_gene_weights, 
                  (self.gene_expr_decoder.nb_means_normalized_decoder.addon_l
                   .weight.data).clone()], axis=1)
-        if use_genes_idx: # only keep genes in mask
-            gp_weights = gp_weights[self.genes_idx_, :]
-        return gp_weights
+        if use_gene_expr_mask_idx:
+            # Only keep genes in gp mask
+            gp_gene_weights = gp_gene_weights[self.gene_expr_mask_idx_, :]
+
+        if "chrom_access" in self.modalities_:
+            # Get chromatin accessibility decoder peak weights of masked gps
+            gp_peak_weights = (
+                self.chrom_access_decoder.nb_means_normalized_decoder.masked_l
+                .weight.data).clone()
+            # Add chromatin accessibility decoder peak weights of de-novo gps
+            if self.n_addon_gps_ > 0:
+                gp_peak_weights = torch.cat(
+                    [gp_peak_weights, 
+                        (self.chrom_access_decoder.nb_means_normalized_decoder
+                         .addon_l.weight.data).clone()], axis=1)            
+            if use_chrom_access_mask_idx:
+                # Only keep peaks in ca mask
+                gp_peak_weights = gp_peak_weights[self.chrom_access_mask_idx_, :]
+        
+        return gp_gene_weights, gp_peak_weights
 
     def get_active_gp_mask(
             self,
@@ -723,7 +774,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Tensor containing the gene expression decoder gene weights of active
             gene programs.
         """
-        gp_weights = self.get_gp_weights(use_genes_idx=True)
+        gp_weights = self.get_gp_weights(use_mask_idx=True)[0]
 
         # Correct gp weights for zero inflation using zero inflation
         # probabilities over all observations if zinb distribution is used to
@@ -768,12 +819,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
     def log_module_hyperparams_to_mlflow(
             self,
-            excluded_attr: list=["genes_idx_",
-                                 "target_genes_idx_",
-                                 "source_genes_idx_",
-                                 "peaks_idx_",
-                                 "target_peaks_idx_",
-                                 "source_peaks_idx_"]):
+            excluded_attr: list=["gene_expr_mask_idx_",
+                                 "target_gene_expr_mask_idx_",
+                                 "source_gene_expr_mask_idx_",
+                                 "chrom_access_mask_idx_",
+                                 "target_chrom_access_mask_idx_",
+                                 "source_chrom_access_mask_idx_"]):
         """
         Log module hyperparameters to Mlflow.
         

@@ -347,6 +347,7 @@ class Autotalker(BaseModelMixin):
             # Target and source genes are concatenated in output
             self.n_output_genes_ *= 2
         if adata_atac is not None:
+            self.includes_atac_modality_ = True
             if not np.all(adata.obs.index == adata_atac.obs.index):
                 raise ValueError("Please make sure that 'adata' and "
                                  "'adata_atac' contain the same observations in"
@@ -358,6 +359,7 @@ class Autotalker(BaseModelMixin):
                 # Target and source peaks are concatenated in output
                 self.n_output_peaks_ *= 2
         else:
+            self.is_multimodal = False
             self.n_output_peaks_ = 0
         self.n_layers_encoder_ = n_layers_encoder
         self.conv_layer_encoder_ = conv_layer_encoder
@@ -443,12 +445,12 @@ class Autotalker(BaseModelMixin):
             n_output_peaks=self.n_output_peaks_,
             gene_expr_decoder_mask=self.gp_mask_,
             chrom_access_decoder_mask=self.ca_mask_,
-            genes_idx=self.genes_idx_,
-            target_genes_idx=self.target_genes_idx_,
-            source_genes_idx=self.source_genes_idx_,
-            peaks_idx=self.peaks_idx_,
-            target_peaks_idx=self.target_peaks_idx_,
-            source_peaks_idx=self.source_peaks_idx_,
+            gene_expr_mask_idx=self.genes_idx_,
+            target_gene_expr_mask_idx=self.target_genes_idx_,
+            source_gene_expr_mask_idx=self.source_genes_idx_,
+            chrom_access_mask_idx=self.peaks_idx_,
+            target_chrom_access_mask_idx=self.target_peaks_idx_,
+            source_chrom_access_mask_idx=self.source_peaks_idx_,
             conditions=self.conditions_,
             conv_layer_encoder=self.conv_layer_encoder_,
             encoder_n_attention_heads=self.encoder_n_attention_heads_,
@@ -493,6 +495,7 @@ class Autotalker(BaseModelMixin):
               retrieve_cond_embeddings: bool=False,
               retrieve_recon_edge_probs: bool=False,
               retrieve_att_weights: bool=False,
+              use_cuda_if_available: bool=True,
               **trainer_kwargs):
         """
         Train the Autotalker model.
@@ -581,6 +584,8 @@ class Autotalker(BaseModelMixin):
             If ´True´, retrieve the node label aggregation attention weights
             after model training is finished if ´one-hop-attention´ was used
             for node label aggregation.
+        use_cuda_if_available:
+            If `True`, use cuda if available.
         trainer_kwargs:
             Kwargs for the model Trainer.
         """
@@ -597,6 +602,7 @@ class Autotalker(BaseModelMixin):
             node_val_ratio=node_val_ratio,
             edge_batch_size=edge_batch_size,
             node_batch_size=node_batch_size,
+            use_cuda_if_available=use_cuda_if_available,
             **trainer_kwargs)
 
         self.trainer.train(
@@ -1035,6 +1041,85 @@ class Autotalker(BaseModelMixin):
                                            inplace=True)
         gp_gene_importances_df.reset_index(drop=True, inplace=True)
         return gp_gene_importances_df
+    
+    def compute_gp_peak_importances(
+            self,
+            selected_gp: str,
+            adata_atac: Optional[AnnData]=None) -> pd.DataFrame:
+        """
+        Compute peak importances for the peaks of a given gene program. Peak
+        importances are determined by the normalized weights of the chromatin
+        accessibility decoder.
+
+        Parameters
+        ----------
+        selected_gp:
+            Name of the gene program for which the gene importances should be
+            retrieved.
+        adata_atac:
+            ATAC AnnData object to be used. If ´None´, uses the adata_atac
+            object stored in the model instance.
+     
+        Returns
+        ----------
+        gp_peak_importances_df:
+            Pandas DataFrame containing peaks, sign-corrected peak weights, peak
+            importances and an indicator whether the peak belongs to the
+            communication source or target, stored in ´peak_entity´.
+        """
+        self._check_if_trained(warn=True)
+
+        if not self.includes_atac_modality_:
+            raise ValueError("The model training needs to include ATAC data, "
+                             "otherwise peak importances cannot be retrieved.")
+        
+        if adata_atac is None:
+            adata = self.adata_atac
+
+        # Check if selected gene program is active
+        active_gps = adata.uns[self.active_gp_names_key_]
+        if selected_gp not in active_gps:
+            print(f"GP '{selected_gp}' is not an active gene program. "
+                  "Continuing anyways.")
+
+        _, gp_weights = self.get_gp_data(selected_gps=selected_gp,
+                                         adata=adata)
+
+        # Correct signs of gp weights to be aligned with (normalized) gp scores
+        if gp_weights.sum(0) < 0:
+            gp_weights *= -1
+
+        if self.gene_expr_recon_dist_ == "zinb":
+            # Correct for zero inflation probabilities
+            _, zi_probs = self.get_gene_expr_dist_params(
+                adata=adata,
+                counts_key=self.counts_key_,
+                adj_key=self.adj_key_)
+            non_zi_probs = 1 - zi_probs
+            gp_weights_zi = gp_weights * non_zi_probs.sum(0) # sum over all obs
+            # Normalize gp weights to get gene importances
+            gp_gene_importances = np.abs(gp_weights_zi / np.abs(gp_weights_zi).sum(0))
+        elif self.gene_expr_recon_dist_ == "nb":
+            # Normalize gp weights to get gene importances
+            gp_gene_importances = np.abs(gp_weights / np.abs(gp_weights).sum(0))
+
+        # Create result dataframe
+        gp_gene_importances_df = pd.DataFrame()
+        gp_gene_importances_df["gene"] = [gene for gene in
+                                          adata.var_names.tolist()] * 2
+        gp_gene_importances_df["gene_entity"] = (["target"] *
+                                                 len(adata.var_names) +
+                                                 ["source"] *
+                                                 len(adata.var_names))
+        gp_gene_importances_df["gene_weight_sign_corrected"] = gp_weights
+        gp_gene_importances_df["gene_importance"] = gp_gene_importances
+        gp_gene_importances_df = (gp_gene_importances_df
+            [gp_gene_importances_df["gene_importance"] != 0])
+        gp_gene_importances_df.sort_values(by="gene_importance",
+                                           ascending=False,
+                                           inplace=True)
+        gp_gene_importances_df.reset_index(drop=True, inplace=True)
+        return gp_gene_importances_df
 
     def compute_latent_graph_connectivities(
             self,
@@ -1116,7 +1201,7 @@ class Autotalker(BaseModelMixin):
         selected_gps_idx = np.array([all_gps.index(gp) for gp in selected_gps])
 
         # Get gene weights of selected gps
-        gp_weights = self.model.get_gp_weights()
+        gp_weights = self.model.get_gp_weights()[0]
         selected_gps_weights = (gp_weights[:, selected_gps_idx].cpu().detach()
                                 .numpy())
         return selected_gps_idx, selected_gps_weights
