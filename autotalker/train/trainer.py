@@ -590,6 +590,8 @@ class Trainer(BaseTrainerMixin):
         # Get node-level ground truth and predictions
         gene_expr_preds_val_accumulated = np.array([])
         gene_expr_val_accumulated = np.array([])
+        chrom_access_preds_val_accumulated = np.array([])
+        chrom_access_val_accumulated = np.array([])
         for node_val_data_batch in self.node_val_loader:
             node_val_data_batch = node_val_data_batch.to(self.device)
 
@@ -617,19 +619,39 @@ class Trainer(BaseTrainerMixin):
             gene_expr_val_accumulated = np.append(
                 gene_expr_val_accumulated,
                 gene_expr_val.detach().cpu().numpy())
+            
+            if "node_labels_atac" in node_val_model_output.keys():
+                chrom_access_val = node_val_model_output["node_labels_atac"]
+                chrom_access_preds_val = (
+                    node_val_model_output["chrom_access_dist_params"])
+                chrom_access_preds_val_accumulated = np.append(
+                    chrom_access_preds_val_accumulated,
+                    chrom_access_preds_val.detach().cpu().numpy())
+                chrom_access_val_accumulated = np.append(
+                    chrom_access_val_accumulated,
+                    chrom_access_val.detach().cpu().numpy())
+            else:
+                chrom_access_preds_val_accumulated = None
+                chrom_access_preds_val = None
 
         val_eval_dict = eval_metrics(
             edge_recon_probs=edge_recon_probs_val_accumulated,
             edge_labels=edge_recon_labels_val_accumulated,
             gene_expr_preds=gene_expr_preds_val_accumulated,
-            gene_expr=gene_expr_val_accumulated)
+            gene_expr=gene_expr_val_accumulated,
+            chrom_access_preds=chrom_access_preds_val_accumulated,
+            chrom_access=chrom_access_val_accumulated)
         print("\n--- MODEL EVALUATION ---")
         print(f"Val AUROC score: {val_eval_dict['auroc_score']:.4f}")
         print(f"Val AUPRC score: {val_eval_dict['auprc_score']:.4f}")
         print(f"Val best accuracy score: {val_eval_dict['best_acc_score']:.4f}")
         print(f"Val best F1 score: {val_eval_dict['best_f1_score']:.4f}")
-        print(f"Val MSE score: {val_eval_dict['mse_score']:.4f}")
-        
+        print("Val gene expr MSE score: "
+              f"{val_eval_dict['gene_expr_mse_score']:.4f}")
+        if "chrom_access_mse_score" in val_eval_dict.keys():
+            print("Val chrom access MSE score: "
+                f"{val_eval_dict['chrom_access_mse_score']:.4f}")            
+            
         # Log evaluation metrics
         if self.mlflow_experiment_id is not None:
             for key, value in val_eval_dict.items():

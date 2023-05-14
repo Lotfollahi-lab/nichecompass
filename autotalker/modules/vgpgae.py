@@ -700,39 +700,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             gp_weights_all_modalities.append(gp_weights)
 
         # return the weights as a tuple
-        return tuple(gp_weights_all_modalities)
-
-
-        # Get gene expression decoder gene weights of masked gps
-        gp_gene_weights = (
-            self.gene_expr_decoder.nb_means_normalized_decoder.masked_l
-            .weight.data).clone()
-        if self.n_addon_gps_ > 0:
-            # Add gene expression decoder gene weights of de-novo gps
-            gp_gene_weights = torch.cat(
-                [gp_gene_weights, 
-                 (self.gene_expr_decoder.nb_means_normalized_decoder.addon_l
-                  .weight.data).clone()], axis=1)
-        if use_gene_expr_mask_idx:
-            # Only keep genes in gp mask
-            gp_gene_weights = gp_gene_weights[self.gene_expr_mask_idx_, :]
-
-        if "chrom_access" in self.modalities_:
-            # Get chromatin accessibility decoder peak weights of masked gps
-            gp_peak_weights = (
-                self.chrom_access_decoder.nb_means_normalized_decoder.masked_l
-                .weight.data).clone()
-            # Add chromatin accessibility decoder peak weights of de-novo gps
-            if self.n_addon_gps_ > 0:
-                gp_peak_weights = torch.cat(
-                    [gp_peak_weights, 
-                        (self.chrom_access_decoder.nb_means_normalized_decoder
-                         .addon_l.weight.data).clone()], axis=1)            
-            if use_chrom_access_mask_idx:
-                # Only keep peaks in ca mask
-                gp_peak_weights = gp_peak_weights[self.chrom_access_mask_idx_, :]
-        
-        return gp_gene_weights, gp_peak_weights
+        return gp_weights_all_modalities
 
     def get_active_gp_mask(
             self,
