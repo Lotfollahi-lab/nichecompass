@@ -1930,9 +1930,9 @@ class Autotalker(BaseModelMixin):
                 gp_target_peaks_weights.append(sorted_target_peaks_weights)
                 gp_source_peaks_importances.append(sorted_source_peaks_importances)
                 gp_target_peaks_importances.append(sorted_target_peaks_importances)
-                
-            gp_summary_df["gp_source_peaks"] = gp_source_peaks
-            gp_summary_df["gp_target_peaks"] = gp_target_peaks
+
+            gp_summary_df["n_source_peaks"] = n_source_peaks
+            gp_summary_df["n_target_peaks"] = n_target_peaks
             gp_summary_df["gp_source_peaks_weights_sign_corrected"] = gp_source_peaks_weights
             gp_summary_df["gp_target_peaks_weights_sign_corrected"] = gp_target_peaks_weights
             gp_summary_df["gp_source_peaks_importances"] = gp_source_peaks_importances
