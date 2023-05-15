@@ -200,6 +200,7 @@ class BaseModelMixin():
                              load_adata,
                              adata_file_name,
                              load_adata_atac,
+                             adata_atac_file_name,
                              map_location=map_location))
         adata = new_adata if new_adata is not None else adata
         adata_atac = (new_adata_atac if new_adata_atac is not None else
