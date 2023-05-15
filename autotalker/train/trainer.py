@@ -76,6 +76,8 @@ class Trainer(BaseTrainerMixin):
         stopping criterion is reloaded at the end of training.
     early_stopping_kwargs:
         Kwargs for the EarlyStopping class.
+    use_cuda_if_available:
+        If `True`, use cuda if available.
     seed:
         Random seed to get reproducible results.
     monitor:
@@ -99,6 +101,7 @@ class Trainer(BaseTrainerMixin):
                  use_early_stopping: bool=True,
                  reload_best_model: bool=True,
                  early_stopping_kwargs: Optional[dict]=None,
+                 use_cuda_if_available: bool=True,
                  seed: int=0,
                  monitor: bool=True,
                  verbose: bool=False,
@@ -145,12 +148,13 @@ class Trainer(BaseTrainerMixin):
         print("\n--- INITIALIZING TRAINER ---")
         
         # Set seed and use GPU if available
-        torch.manual_seed(self.seed_)
-        if torch.cuda.is_available():
+        if use_cuda_if_available & torch.cuda.is_available():
             torch.cuda.manual_seed(self.seed_)
-            self.model.cuda()
-        self.device = torch.device("cuda" if torch.cuda.is_available() else
-                                   "cpu")
+            self.device = torch.device("cuda")
+        else:
+            torch.manual_seed(self.seed_)
+            self.device = torch.device("cpu")
+        self.model.to(self.device)
 
         # Prepare data and get node-level and edge-level training and validation
         # splits
@@ -586,6 +590,8 @@ class Trainer(BaseTrainerMixin):
         # Get node-level ground truth and predictions
         gene_expr_preds_val_accumulated = np.array([])
         gene_expr_val_accumulated = np.array([])
+        chrom_access_preds_val_accumulated = np.array([])
+        chrom_access_val_accumulated = np.array([])
         for node_val_data_batch in self.node_val_loader:
             node_val_data_batch = node_val_data_batch.to(self.device)
 
@@ -613,19 +619,39 @@ class Trainer(BaseTrainerMixin):
             gene_expr_val_accumulated = np.append(
                 gene_expr_val_accumulated,
                 gene_expr_val.detach().cpu().numpy())
+            
+            if "node_labels_atac" in node_val_model_output.keys():
+                chrom_access_val = node_val_model_output["node_labels_atac"]
+                chrom_access_preds_val = (
+                    node_val_model_output["chrom_access_dist_params"])
+                chrom_access_preds_val_accumulated = np.append(
+                    chrom_access_preds_val_accumulated,
+                    chrom_access_preds_val.detach().cpu().numpy())
+                chrom_access_val_accumulated = np.append(
+                    chrom_access_val_accumulated,
+                    chrom_access_val.detach().cpu().numpy())
+            else:
+                chrom_access_preds_val_accumulated = None
+                chrom_access_preds_val = None
 
         val_eval_dict = eval_metrics(
             edge_recon_probs=edge_recon_probs_val_accumulated,
             edge_labels=edge_recon_labels_val_accumulated,
             gene_expr_preds=gene_expr_preds_val_accumulated,
-            gene_expr=gene_expr_val_accumulated)
+            gene_expr=gene_expr_val_accumulated,
+            chrom_access_preds=chrom_access_preds_val_accumulated,
+            chrom_access=chrom_access_val_accumulated)
         print("\n--- MODEL EVALUATION ---")
         print(f"Val AUROC score: {val_eval_dict['auroc_score']:.4f}")
         print(f"Val AUPRC score: {val_eval_dict['auprc_score']:.4f}")
         print(f"Val best accuracy score: {val_eval_dict['best_acc_score']:.4f}")
         print(f"Val best F1 score: {val_eval_dict['best_f1_score']:.4f}")
-        print(f"Val MSE score: {val_eval_dict['mse_score']:.4f}")
-        
+        print("Val gene expr MSE score: "
+              f"{val_eval_dict['gene_expr_mse_score']:.4f}")
+        if "chrom_access_mse_score" in val_eval_dict.keys():
+            print("Val chrom access MSE score: "
+                f"{val_eval_dict['chrom_access_mse_score']:.4f}")            
+            
         # Log evaluation metrics
         if self.mlflow_experiment_id is not None:
             for key, value in val_eval_dict.items():

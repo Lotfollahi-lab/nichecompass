@@ -15,7 +15,9 @@ def eval_metrics(
         edge_recon_probs: Union[torch.Tensor, np.ndarray],
         edge_labels: Union[torch.Tensor, np.ndarray],
         gene_expr_preds: Optional[Union[torch.Tensor, np.ndarray]]=None,
-        gene_expr: Optional[Union[torch.Tensor, np.ndarray]]=None) -> dict:
+        gene_expr: Optional[Union[torch.Tensor, np.ndarray]]=None,
+        chrom_access_preds: Optional[Union[torch.Tensor, np.ndarray]]=None,
+        chrom_access: Optional[Union[torch.Tensor, np.ndarray]]=None,) -> dict:
     """
     Get the evaluation metrics for a (balanced) sample of positive and negative 
     edges and a sample of nodes.
@@ -30,6 +32,10 @@ def eval_metrics(
         Tensor or array containing the predicted gene expression.
     gene_expr:
         Tensor or array containing the ground truth gene expression.
+    chrom_access_preds:
+        Tensor or array containing the predicted chromatin accessibility.
+    chrom_access:
+        Tensor or array containing the ground truth chromatin accessibility.
 
     Returns
     ----------
@@ -53,8 +59,15 @@ def eval_metrics(
 
     if gene_expr_preds is not None and gene_expr is not None:
         # Calculate the gene expression mean squared error
-        eval_dict["mse_score"] = skm.mean_squared_error(gene_expr,
-                                                        gene_expr_preds)
+        eval_dict["gene_expr_mse_score"] = skm.mean_squared_error(
+            gene_expr,
+            gene_expr_preds)
+        
+    if chrom_access_preds is not None and chrom_access is not None:
+        # Calculate the gene expression mean squared error
+        eval_dict["chrom_access_mse_score"] = skm.mean_squared_error(
+            chrom_access,
+            chrom_access_preds)
 
     # Calculate threshold independent metrics
     eval_dict["auroc_score"] = skm.roc_auc_score(edge_labels, edge_recon_probs)

@@ -347,6 +347,7 @@ class Autotalker(BaseModelMixin):
             # Target and source genes are concatenated in output
             self.n_output_genes_ *= 2
         if adata_atac is not None:
+            self.modalities_ = ["gene_expr", "chrom_access"]
             if not np.all(adata.obs.index == adata_atac.obs.index):
                 raise ValueError("Please make sure that 'adata' and "
                                  "'adata_atac' contain the same observations in"
@@ -358,6 +359,7 @@ class Autotalker(BaseModelMixin):
                 # Target and source peaks are concatenated in output
                 self.n_output_peaks_ *= 2
         else:
+            self.modalities_ = ["gene_expr"]
             self.n_output_peaks_ = 0
         self.n_layers_encoder_ = n_layers_encoder
         self.conv_layer_encoder_ = conv_layer_encoder
@@ -377,10 +379,7 @@ class Autotalker(BaseModelMixin):
 
         # Determine dimensionality of hidden encoder layer if not provided
         if n_hidden_encoder is None:
-            if self.n_input_ > (2 * self.n_nonaddon_gps_):
-                n_hidden_encoder = int(self.n_input_ / 2)
-            else:
-                n_hidden_encoder = self.n_nonaddon_gps_
+            n_hidden_encoder = self.n_nonaddon_gps_
         self.n_hidden_encoder_ = n_hidden_encoder
 
         # Retrieve conditions
@@ -443,12 +442,12 @@ class Autotalker(BaseModelMixin):
             n_output_peaks=self.n_output_peaks_,
             gene_expr_decoder_mask=self.gp_mask_,
             chrom_access_decoder_mask=self.ca_mask_,
-            genes_idx=self.genes_idx_,
-            target_genes_idx=self.target_genes_idx_,
-            source_genes_idx=self.source_genes_idx_,
-            peaks_idx=self.peaks_idx_,
-            target_peaks_idx=self.target_peaks_idx_,
-            source_peaks_idx=self.source_peaks_idx_,
+            gene_expr_mask_idx=self.genes_idx_,
+            target_gene_expr_mask_idx=self.target_genes_idx_,
+            source_gene_expr_mask_idx=self.source_genes_idx_,
+            chrom_access_mask_idx=self.peaks_idx_,
+            target_chrom_access_mask_idx=self.target_peaks_idx_,
+            source_chrom_access_mask_idx=self.source_peaks_idx_,
             conditions=self.conditions_,
             conv_layer_encoder=self.conv_layer_encoder_,
             encoder_n_attention_heads=self.encoder_n_attention_heads_,
@@ -493,6 +492,7 @@ class Autotalker(BaseModelMixin):
               retrieve_cond_embeddings: bool=False,
               retrieve_recon_edge_probs: bool=False,
               retrieve_att_weights: bool=False,
+              use_cuda_if_available: bool=True,
               **trainer_kwargs):
         """
         Train the Autotalker model.
@@ -581,6 +581,8 @@ class Autotalker(BaseModelMixin):
             If ´True´, retrieve the node label aggregation attention weights
             after model training is finished if ´one-hop-attention´ was used
             for node label aggregation.
+        use_cuda_if_available:
+            If `True`, use cuda if available.
         trainer_kwargs:
             Kwargs for the model Trainer.
         """
@@ -597,6 +599,7 @@ class Autotalker(BaseModelMixin):
             node_val_ratio=node_val_ratio,
             edge_batch_size=edge_batch_size,
             node_batch_size=node_batch_size,
+            use_cuda_if_available=use_cuda_if_available,
             **trainer_kwargs)
 
         self.trainer.train(
@@ -749,7 +752,7 @@ class Autotalker(BaseModelMixin):
                           " anyways.")
 
         # Get indeces and weights for selected gps
-        selected_gps_idx, selected_gps_weights = self.get_gp_data(
+        selected_gps_idx, selected_gps_weights, chrom_access_gp_weights = self.get_gp_data(
             selected_gps=selected_gps,
             adata=adata)
 
@@ -997,7 +1000,7 @@ class Autotalker(BaseModelMixin):
             print(f"GP '{selected_gp}' is not an active gene program. "
                   "Continuing anyways.")
 
-        _, gp_weights = self.get_gp_data(selected_gps=selected_gp,
+        _, gp_weights, _ = self.get_gp_data(selected_gps=selected_gp,
                                          adata=adata)
 
         # Correct signs of gp weights to be aligned with (normalized) gp scores
@@ -1035,6 +1038,86 @@ class Autotalker(BaseModelMixin):
                                            inplace=True)
         gp_gene_importances_df.reset_index(drop=True, inplace=True)
         return gp_gene_importances_df
+    
+    def compute_gp_peak_importances(
+            self,
+            selected_gp: str,
+            adata: Optional[AnnData]=None,
+            adata_atac: Optional[AnnData]=None) -> pd.DataFrame:
+        """
+        Compute peak importances for the peaks of a given gene program. Peak
+        importances are determined by the normalized weights of the chromatin
+        accessibility decoder.
+
+        Parameters
+        ----------
+        selected_gp:
+            Name of the gene program for which the peak importances should be
+            retrieved.
+        adata:
+            AnnData object to be used. If ´None´, uses the adata object stored
+            in the model instance.
+        adata_atac:
+            ATAC AnnData object to be used. If ´None´, uses the adata_atac
+            object stored in the model instance.
+     
+        Returns
+        ----------
+        gp_peak_importances_df:
+            Pandas DataFrame containing peaks, sign-corrected peak weights, peak
+            importances and an indicator whether the peak belongs to the
+            communication source or target, stored in ´peak_entity´.
+        """
+        self._check_if_trained(warn=True)
+
+        if not "chrom_access" in self.modalities_:
+            raise ValueError("The model training needs to include ATAC data, "
+                             "otherwise peak importances cannot be retrieved.")
+        
+        if adata is None:
+            adata = self.adata
+
+        if adata_atac is None:
+            adata_atac = self.adata_atac
+
+        # Check if selected gene program is active
+        active_gps = adata.uns[self.active_gp_names_key_]
+        if selected_gp not in active_gps:
+            print(f"GP '{selected_gp}' is not an active gene program. "
+                  "Continuing anyways.")
+
+        _, gp_gene_expr_weights, gp_chrom_access_weights = self.get_gp_data(
+            selected_gps=selected_gp,
+            adata=adata)
+
+        # Correct signs of GP chrom access weights to be aligned with
+        # (normalized) GP scores. Note that GP scores are normalized based on
+        # gene expr weights
+        if gp_gene_expr_weights.sum(0) < 0:
+            gp_chrom_access_weights *= -1
+
+        # Normalize GP chrom access weights to get peak importances
+        gp_peak_importances = np.abs(
+            gp_chrom_access_weights / np.abs(gp_chrom_access_weights).sum(0))
+
+        # Create result dataframe
+        gp_peak_importances_df = pd.DataFrame()
+        gp_peak_importances_df["peak"] = [peak for peak in
+                                          adata_atac.var_names.tolist()] * 2
+        gp_peak_importances_df["peak_entity"] = (["target"] *
+                                                 len(adata_atac.var_names) +
+                                                 ["source"] *
+                                                 len(adata_atac.var_names))
+        gp_peak_importances_df["peak_weight_sign_corrected"] = (
+            gp_chrom_access_weights)
+        gp_peak_importances_df["peak_importance"] = gp_peak_importances
+        gp_peak_importances_df = (gp_peak_importances_df
+            [gp_peak_importances_df["peak_importance"] != 0])
+        gp_peak_importances_df.sort_values(by="peak_importance",
+                                           ascending=False,
+                                           inplace=True)
+        gp_peak_importances_df.reset_index(drop=True, inplace=True)
+        return gp_peak_importances_df
 
     def compute_latent_graph_connectivities(
             self,
@@ -1115,11 +1198,23 @@ class Autotalker(BaseModelMixin):
             selected_gps = [selected_gps]
         selected_gps_idx = np.array([all_gps.index(gp) for gp in selected_gps])
 
-        # Get gene weights of selected gps
-        gp_weights = self.model.get_gp_weights()
-        selected_gps_weights = (gp_weights[:, selected_gps_idx].cpu().detach()
-                                .numpy())
-        return selected_gps_idx, selected_gps_weights
+        # Get weights of selected gps
+        all_gps_gene_expr_weights = self.model.get_gp_weights()[0]
+        selected_gps_gene_expr_weights = (
+            all_gps_gene_expr_weights[:, selected_gps_idx]
+            .cpu().detach().numpy())
+        
+        if "chrom_access" in self.modalities_:
+            all_gps_chrom_access_weights = self.model.get_gp_weights()[1]
+            selected_gps_chrom_access_weights = (
+                all_gps_chrom_access_weights[:, selected_gps_idx]
+                .cpu().detach().numpy())
+        else:
+            selected_gps_chrom_access_weights = None
+
+        return (selected_gps_idx,
+                selected_gps_gene_expr_weights,
+                selected_gps_chrom_access_weights)
 
     def get_cond_embeddings(self) -> np.ndarray:
         """
@@ -1587,7 +1682,7 @@ class Autotalker(BaseModelMixin):
         TO DO: extend to addon gps.
         """
         # Get source and target (sign corrected) gene weights
-        _, gp_weights = self.get_gp_data()
+        _, gp_weights, chrom_access_gp_weights = self.get_gp_data()
         gp_weights_sum = gp_weights.sum(0) # sum over genes
         gp_weights_signs = np.zeros_like(gp_weights_sum)
         gp_weights_signs[gp_weights_sum>0] = 1. # keep sign of gp score
@@ -1606,7 +1701,7 @@ class Autotalker(BaseModelMixin):
             gp_gene_importances = np.abs(gp_weights_zi / np.abs(gp_weights_zi).sum(0))
         elif self.gene_expr_recon_dist_ == "nb":
             # Normalize gp weights to get gene importances
-            gp_gene_importances = np.abs(gp_weights / np.abs(gp_weights).sum(0))
+            gp_gene_importances = np.abs(gp_weights / np.abs(gp_weights).sum(0))            
 
         gp_weights = np.transpose(gp_weights)
         gp_gene_importances = np.transpose(gp_gene_importances)
@@ -1731,8 +1826,118 @@ class Autotalker(BaseModelMixin):
              "gp_target_genes_weights_sign_corrected": gp_target_genes_weights,
              "gp_source_genes_importances": gp_source_genes_importances,
              "gp_target_genes_importances": gp_target_genes_importances})
-
+        
         gp_summary_df["active_gp_idx"] = (
             gp_summary_df["active_gp_idx"].astype("Int64"))
+        
+        if "chrom_access" in self.modalities_:
+            gp_peak_importances = np.abs(
+                chrom_access_gp_weights / np.abs(chrom_access_gp_weights).sum(0))
+            chrom_access_gp_weights = np.transpose(chrom_access_gp_weights)
+            gp_peak_importances = np.transpose(gp_peak_importances)
+            gp_source_peaks_weights_all_arr = chrom_access_gp_weights[
+                :, int(chrom_access_gp_weights.shape[1]/2):]
+            gp_target_peaks_weights_all_arr = chrom_access_gp_weights[
+                :, :int(chrom_access_gp_weights.shape[1]/2)]
+            gp_source_peak_importances_all_arr = gp_peak_importances[
+                :, int(chrom_access_gp_weights.shape[1]/2):]
+            gp_target_peak_importances_all_arr = gp_peak_importances[
+                :, :int(chrom_access_gp_weights.shape[1]/2)]
+
+            # Get source and target peaks
+            gp_source_peaks_mask = np.transpose(
+                self.adata_atac.varm[self.ca_sources_mask_key_] != 0).toarray()
+            gp_target_peaks_mask = np.transpose(
+                self.adata_atac.varm[self.ca_targets_mask_key_] != 0).toarray()
+        
+            # Add entries to gp mask for addon gps
+            if self.n_addon_gps_ > 0:
+                addon_gp_source_peaks_mask = np.ones(
+                    (self.n_addon_gps_,
+                     self.adata_atac.n_vars), dtype=bool)
+                addon_gp_target_peaks_mask = np.ones(
+                    (self.n_addon_gps_,
+                     self.adata_atac.n_vars), dtype=bool)
+                gp_source_peaks_mask = np.concatenate(
+                    (gp_source_peaks_mask, addon_gp_source_peaks_mask), axis=0)
+                gp_target_peaks_mask = np.concatenate(
+                    (gp_target_peaks_mask, addon_gp_target_peaks_mask), axis=0)
+
+            # Collect info for each gp in lists of lists
+            n_source_peaks = []
+            n_non_zero_source_peaks = []
+            n_target_peaks = []
+            n_non_zero_target_peaks = []
+            gp_source_peaks = []
+            gp_target_peaks = []
+            gp_source_peaks_weights = []
+            gp_target_peaks_weights = []
+            gp_source_peaks_importances = []
+            gp_target_peaks_importances = []
+            for (gp_source_peaks_idx,
+                 gp_target_peaks_idx,
+                 gp_source_peaks_weights_arr,
+                 gp_target_peaks_weights_arr,
+                 gp_source_peaks_importances_arr,
+                 gp_target_peaks_importances_arr) in zip(
+                    gp_source_peaks_mask,
+                    gp_target_peaks_mask,
+                    gp_source_peaks_weights_all_arr,
+                    gp_target_peaks_weights_all_arr,
+                    gp_source_peak_importances_all_arr,
+                    gp_target_peak_importances_all_arr):
+                # Sort source peaks according to absolute weights
+                sorted_source_peaks_weights = []
+                sorted_source_peaks_importances = []
+                sorted_source_peaks = []
+                for _, weights, importances, peaks in sorted(zip(
+                    np.abs(np.around(gp_source_peaks_weights_arr[gp_source_peaks_idx],
+                                    decimals=4)),
+                    np.around(gp_source_peaks_weights_arr[gp_source_peaks_idx],
+                            decimals=4),
+                    np.around(gp_source_peaks_importances_arr[gp_source_peaks_idx],
+                            decimals=4),        
+                    self.adata_atac.var_names[gp_source_peaks_idx].tolist()),reverse=True):
+                        sorted_source_peaks.append(peaks)
+                        sorted_source_peaks_weights.append(weights)
+                        sorted_source_peaks_importances.append(importances)
+                
+                # Sort target peaks according to absolute weights
+                sorted_target_peaks_weights = []
+                sorted_target_peaks_importances = []
+                sorted_target_peaks = []
+                for _, weights, importances, peaks in sorted(zip(
+                    np.abs(np.around(gp_target_peaks_weights_arr[gp_target_peaks_idx],
+                                    decimals=4)),
+                    np.around(gp_target_peaks_weights_arr[gp_target_peaks_idx],
+                            decimals=4),                 
+                    np.around(gp_target_peaks_importances_arr[gp_target_peaks_idx],
+                            decimals=4),
+                    self.adata_atac.var_names[gp_target_peaks_idx].tolist()), reverse=True):
+                        sorted_target_peaks.append(peaks)
+                        sorted_target_peaks_weights.append(weights)
+                        sorted_target_peaks_importances.append(importances)                 
+                    
+                n_source_peaks.append(len(sorted_source_peaks))
+                n_non_zero_source_peaks.append(len(np.array(
+                    sorted_source_peaks_weights).nonzero()[0]))
+                n_target_peaks.append(len(sorted_target_peaks))
+                n_non_zero_target_peaks.append(len(np.array(
+                    sorted_target_peaks_weights).nonzero()[0]))
+                gp_source_peaks.append(sorted_source_peaks)
+                gp_target_peaks.append(sorted_target_peaks)
+                gp_source_peaks_weights.append(sorted_source_peaks_weights)
+                gp_target_peaks_weights.append(sorted_target_peaks_weights)
+                gp_source_peaks_importances.append(sorted_source_peaks_importances)
+                gp_target_peaks_importances.append(sorted_target_peaks_importances)
+
+            gp_summary_df["n_source_peaks"] = n_source_peaks
+            gp_summary_df["n_target_peaks"] = n_target_peaks
+            gp_summary_df["gp_source_peaks"] = gp_source_peaks
+            gp_summary_df["gp_target_peaks"] = gp_target_peaks
+            gp_summary_df["gp_source_peaks_weights_sign_corrected"] = gp_source_peaks_weights
+            gp_summary_df["gp_target_peaks_weights_sign_corrected"] = gp_target_peaks_weights
+            gp_summary_df["gp_source_peaks_importances"] = gp_source_peaks_importances
+            gp_summary_df["gp_target_peaks_importances"] = gp_target_peaks_importances
         
         return gp_summary_df

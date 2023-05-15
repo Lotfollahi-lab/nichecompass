@@ -86,6 +86,8 @@ class BaseModelMixin():
              overwrite: bool=False,
              save_adata: bool=False,
              adata_file_name: str="adata.h5ad",
+             save_adata_atac: bool=False,
+             adata_atac_file_name: str="adata_atac.h5ad",
              **anndata_write_kwargs):
         """
         Save model to disk (the Trainer optimizer state is not saved).
@@ -101,6 +103,10 @@ class BaseModelMixin():
             If `True`, also saves the AnnData object.
         adata_file_name:
             File name under which the AnnData object will be saved.
+        save_adata_atac:
+            If `True`, also saves the ATAC AnnData object.
+        adata_atac_file_name:
+            File name under which the ATAC AnnData object will be saved.
         adata_write_kwargs:
             Kwargs for adata write function.
         """
@@ -123,7 +129,10 @@ class BaseModelMixin():
             self.adata.write(
                 os.path.join(dir_path, adata_file_name), **anndata_write_kwargs)
             
-
+        if save_adata_atac:
+            self.adata_atac.write(
+                os.path.join(dir_path, adata_atac_file_name))
+            
         var_names = self.adata.var_names.astype(str).to_numpy()
         public_attributes = self._get_public_attributes()
         
@@ -136,7 +145,9 @@ class BaseModelMixin():
     def load(cls,
              dir_path: str,
              adata: Optional[AnnData]=None,
+             adata_atac: Optional[AnnData]=None,
              adata_file_name: str="adata.h5ad",
+             adata_atac_file_name: Optional[str]=None,
              use_cuda: bool=False,
              n_addon_gps: int=0,
              gp_names_key: Optional[str]=None,
@@ -156,8 +167,11 @@ class BaseModelMixin():
         adata:
             AnnData organized in the same way as data used to train the model.
             If ´None´, will check for and load adata saved with the model.
+        adata_atac:
         adata_file_name:
             File name of the AnnData object to be loaded.
+        adata_atac_file_name:
+            File name of the ATAC AnnData object to be loaded.
         use_cuda:
             If `True`, load model on GPU.
         n_addon_gps:
@@ -176,12 +190,21 @@ class BaseModelMixin():
             add-on weights.
         """
         load_adata = adata is None
+        load_adata_atac = ((adata_atac is None) &
+                           (adata_atac_file_name is not None))
         use_cuda = use_cuda and torch.cuda.is_available()
         map_location = torch.device("cpu") if use_cuda is False else None
 
-        model_state_dict, var_names, attr_dict, new_adata = load_saved_files(
-            dir_path, load_adata, adata_file_name, map_location=map_location)
+        model_state_dict, var_names, attr_dict, new_adata, new_adata_atac = (
+            load_saved_files(dir_path,
+                             load_adata,
+                             adata_file_name,
+                             load_adata_atac,
+                             adata_atac_file_name,
+                             map_location=map_location))
         adata = new_adata if new_adata is not None else adata
+        adata_atac = (new_adata_atac if new_adata_atac is not None else
+                      adata_atac)
 
         validate_var_names(adata, var_names)
 
@@ -226,7 +249,7 @@ class BaseModelMixin():
                 adata.uns[gp_names_key] = np.array(
                     gps + ["addon_GP_" + str(i) for i in range(n_addon_gps)])
 
-        model = initialize_model(cls, adata, attr_dict)
+        model = initialize_model(cls, adata, attr_dict, adata_atac)
 
         # set saved attrs for loaded model
         for attr, val in attr_dict.items():
