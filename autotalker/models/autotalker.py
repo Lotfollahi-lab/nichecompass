@@ -1212,9 +1212,9 @@ class Autotalker(BaseModelMixin):
         else:
             selected_gps_chrom_access_weights = None
 
-            return (selected_gps_idx,
-                    selected_gps_gene_expr_weights,
-                    selected_gps_chrom_access_weights)
+        return (selected_gps_idx,
+                selected_gps_gene_expr_weights,
+                selected_gps_chrom_access_weights)
 
     def get_cond_embeddings(self) -> np.ndarray:
         """
@@ -1833,6 +1833,7 @@ class Autotalker(BaseModelMixin):
         if "chrom_access" in self.modalities_:
             gp_peak_importances = np.abs(
                 chrom_access_gp_weights / np.abs(chrom_access_gp_weights).sum(0))
+            chrom_access_gp_weights = np.transpose(chrom_access_gp_weights)
             gp_peak_importances = np.transpose(gp_peak_importances)
             gp_source_peaks_weights_all_arr = chrom_access_gp_weights[
                 :, int(chrom_access_gp_weights.shape[1]/2):]
@@ -1845,9 +1846,9 @@ class Autotalker(BaseModelMixin):
 
             # Get source and target peaks
             gp_source_peaks_mask = np.transpose(
-                self.adata_atac.varm[self.ca_sources_mask_key_] != 0)
+                self.adata_atac.varm[self.ca_sources_mask_key_] != 0).toarray()
             gp_target_peaks_mask = np.transpose(
-                self.adata_atac.varm[self.ca_targets_mask_key_] != 0)
+                self.adata_atac.varm[self.ca_targets_mask_key_] != 0).toarray()
         
             # Add entries to gp mask for addon gps
             if self.n_addon_gps_ > 0:
