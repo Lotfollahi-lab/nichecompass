@@ -60,7 +60,6 @@ def load_saved_files(dir_path: str,
     """
     attr_path = os.path.join(dir_path, "attr.pkl")
     adata_path = os.path.join(dir_path, adata_file_name)
-    adata_atac_path = os.path.join(dir_path, adata_atac_file_name)
     var_names_path = os.path.join(dir_path, "var_names.csv")
     model_path = os.path.join(dir_path, "model_params.pt")
 
@@ -72,11 +71,13 @@ def load_saved_files(dir_path: str,
     else:
         adata = None
 
-    if os.path.exists(adata_atac_path) and load_adata_atac:
-        adata_atac = ad.read(adata_atac_path)
-    elif not os.path.exists(adata_atac_path) and load_adata_atac:
-        raise ValueError("Dir path contains no saved 'adata_atac' and no "
-                         "'adata_atac' was passed.")
+    if load_adata_atac:
+        adata_atac_path = os.path.join(dir_path, adata_atac_file_name)
+        if os.path.exists(adata_atac_path):
+            adata_atac = ad.read(adata_atac_path)
+        else:
+            raise ValueError("Dir path contains no saved 'adata_atac' and no "
+                             "'adata_atac' was passed.")
     else:
         adata_atac = None
 

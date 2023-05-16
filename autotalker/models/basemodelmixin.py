@@ -168,6 +168,9 @@ class BaseModelMixin():
             AnnData organized in the same way as data used to train the model.
             If ´None´, will check for and load adata saved with the model.
         adata_atac:
+            ATAC AnnData organized in the same way as data used to train the
+            model. If ´None´ and ´adata_atac_file_name´ is not ´None´, will
+            check for and load adata_atac saved with the model.
         adata_file_name:
             File name of the AnnData object to be loaded.
         adata_atac_file_name:
