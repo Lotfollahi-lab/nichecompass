@@ -1,5 +1,5 @@
 # NicheCompass
-Niche Identification based on Cellular grapH Embeddings of COMmunication Programs Across Spatial Samples.
+Niche Identification based on Cellular grapH Embeddings of COMmunication Programs Aligned across Spatial Samples.
 
 ## Installation
 1) Create the nichecompass conda environment:
