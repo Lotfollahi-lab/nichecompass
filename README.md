@@ -5,7 +5,7 @@ Niche Identification through Cellular grapH Embeddings of COMmunication Patterns
 1) First, create the autotalker conda environment:
 ```conda env create -f env/environment.yml```
 
-2) Active the conda environment
+2) Activate the conda environment
 ```conda activate autotalker```
 
 4) Install all Python dependencies via poetry:
