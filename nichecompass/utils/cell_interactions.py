@@ -1,5 +1,5 @@
 """
-This module contains utiilities to analyze cell interactions inferred by the
+This module contains utilities to analyze cell interactions inferred by the
 NicheCompass model.
 """
 

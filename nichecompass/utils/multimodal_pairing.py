@@ -1,5 +1,5 @@
 """
-This module contains utiilities to add gene annotations (gene positions in the
+This module contains utilities to add gene annotations (gene positions in the
 chromosomes) as prior knowledge for use by the NicheCompass model.
 """
 

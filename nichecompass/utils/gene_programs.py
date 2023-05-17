@@ -1,5 +1,5 @@
 """
-This module contains utiilities to add interpretable communication gene programs
+This module contains utilities to add interpretable communication gene programs
 as prior knowledge for use by the NicheCompass model.
 """
 
