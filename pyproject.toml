@@ -8,7 +8,7 @@ readme = "README.md"
 homepage = "https://github.com/sebastianbirk/nichecompass"
 repository = "https://github.com/sebastianbirk/nichecompass"
 documentation = "https://github.com/sebastianbirk/nichecompass"
-packages = [{ include = "nichecompass" }]
+packages = [{ include = "autotalker" }]
 classifiers = [
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
