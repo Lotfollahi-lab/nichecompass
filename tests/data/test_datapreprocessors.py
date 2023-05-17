@@ -1,8 +1,8 @@
 import numpy as np
 import squidpy as sq
 
-from autotalker.data import load_spatial_adata_from_csv
-from autotalker.data import prepare_data
+from nichecompass.data import load_spatial_adata_from_csv
+from nichecompass.data import prepare_data
 
 
 dataset = "squidpy_seqfish"

@@ -2,9 +2,9 @@ import numpy as np
 import pytest
 import torch
 
-from autotalker.train import eval_metrics
-from autotalker.data import simulate_spatial_adata
-from autotalker.data import SpatialAnnDataDataset
+from nichecompass.train import eval_metrics
+from nichecompass.data import simulate_spatial_adata
+from nichecompass.data import SpatialAnnDataDataset
 
 
 def test_eval_metrics():

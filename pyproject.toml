@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "autotalker"
+name = "nichecompass"
 version = "0.1.0"
 description = " Interpretable Niche Identification from Spatial Omics Data."
 authors = ["sebastianbirk <sebastian.birk@outlook.com>"]
@@ -8,7 +8,7 @@ readme = "README.md"
 homepage = "https://github.com/sebastianbirk/nichecompass"
 repository = "https://github.com/sebastianbirk/nichecompass"
 documentation = "https://github.com/sebastianbirk/nichecompass"
-packages = [{ include = "autotalker" }]
+packages = [{ include = "nichecompass" }]
 classifiers = [
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",

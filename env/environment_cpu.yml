@@ -1,4 +1,4 @@
-name: autotalker_cpu
+name: nichecompass_cpu
 channels:
   - conda-forge
   - bioconda

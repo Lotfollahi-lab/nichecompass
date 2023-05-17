@@ -5,10 +5,10 @@ import numpy as np
 import scipy.sparse as sp
 import torch
 
-from autotalker.data import SpatialAnnDataDataset
-from autotalker.data import sparse_A_to_edges
-from autotalker.data import has_overlapping_edges
-from autotalker.data import simulate_spatial_adata
+from nichecompass.data import SpatialAnnDataDataset
+from nichecompass.data import sparse_A_to_edges
+from nichecompass.data import has_overlapping_edges
+from nichecompass.data import simulate_spatial_adata
 
 
 class TestSpatialAnnDataDataset(unittest.TestCase):
