@@ -3,7 +3,7 @@ Niche Identification through Cellular grapH Embeddings of COMmunication Programs
 
 ## Installation
 1) Create the nichecompass conda environment:
-```conda env create -f env/environment.yml```
+```conda env create -f environment.yml```
 
 2) Activate the nichecompass conda environment:
 ```conda activate nichecompass```

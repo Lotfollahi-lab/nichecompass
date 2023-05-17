@@ -1,3 +1,0 @@
-PATH=/opt/code-server/bin:/root/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:
-MLFLOW_BACKEND_URI=sqlite:////home/sebastian.birk/mlflow/mlflow.db
-MLFLOW_ARTIFACT_ROOT=/home/sebastian.birk/mlflow/artifacts

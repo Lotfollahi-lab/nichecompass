@@ -164,7 +164,7 @@ def add_gps_from_gp_dict_to_adata(
 
 def extract_gp_dict_from_nichenet_ligand_target_mx(
         keep_target_genes_ratio: float=0.,
-        max_n_target_genes_per_gp: int=100,
+        max_n_target_genes_per_gp: int=1000,
         load_from_disk: bool=False,
         save_to_disk: bool=False,
         file_path: Optional[str]="nichenet_ligand_target_matrix.csv",
@@ -345,7 +345,7 @@ def extract_gp_dict_from_omnipath_lr_interactions(
 
 
 def extract_gp_dict_from_mebocost_es_interactions(
-        dir_path: str="../datasets/gp_data/metabolite_enzyme_sensor_gps/",
+        dir_path: str="../data/gene_programs/metabolite_enzyme_sensor_gps",
         species: Literal["mouse", "human"]="mouse",
         genes_uppercase: bool=False,
         plot_gp_gene_count_distributions: bool=True) -> dict:
@@ -380,14 +380,14 @@ def extract_gp_dict_from_mebocost_es_interactions(
     # Read data from directory
     if species == "human":
         metabolite_enzymes_df = pd.read_csv(
-            dir_path + "human_metabolite_enzymes.tsv", sep="\t")
+            dir_path + "/human_metabolite_enzymes.tsv", sep="\t")
         metabolite_sensors_df = pd.read_csv(
-            dir_path + "human_metabolite_sensors.tsv", sep="\t")
+            dir_path + "/human_metabolite_sensors.tsv", sep="\t")
     elif species == "mouse":
         metabolite_enzymes_df = pd.read_csv(
-            dir_path + "mouse_metabolite_enzymes.tsv", sep="\t")
+            dir_path + "/mouse_metabolite_enzymes.tsv", sep="\t")
         metabolite_sensors_df = pd.read_csv(
-            dir_path + "mouse_metabolite_sensors.tsv", sep="\t")
+            dir_path + "/mouse_metabolite_sensors.tsv", sep="\t")
     else:
         raise ValueError("Species should be either human or mouse.")
 
