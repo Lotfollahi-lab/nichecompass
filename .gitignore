@@ -133,10 +133,10 @@ dmypy.json
 .vscode/settings.json
 
 # data
-/datasets
+/data
 
-# model artifacts
-/model_artifacts
+# artifacts
+/artifacts
 
 # charliecloud image for HPC
-/env/autotalker.tar.gz
+/env/nichecompass.tar.gz
