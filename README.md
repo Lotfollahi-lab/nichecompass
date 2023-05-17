@@ -11,5 +11,7 @@ Niche Identification based on Cellular grapH Embeddings of COMmunication Program
 4) Install all Python dependencies via Poetry:
 ```poetry install```
 
-## Copyright
-This tool is developed in the Talavera-López Lab of the Institute of Computational Biology, Helmholtz Munich. The copyright holder for this project is the Talavera-López Lab. All rights reserved.
+## Resources
+Tutorial notebooks are available in the notebooks folder.
+
+## Reference
