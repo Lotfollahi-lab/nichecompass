@@ -133,10 +133,11 @@ dmypy.json
 .vscode/settings.json
 
 # data
-/data
+data/*
+!data/gene_programs/metabolite_enzyme_sensor_gps/
 
 # artifacts
-/artifacts
+artifacts
 
 # charliecloud image for HPC
 /env/nichecompass.tar.gz
