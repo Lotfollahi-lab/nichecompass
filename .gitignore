@@ -134,6 +134,7 @@ dmypy.json
 
 # data
 data/gene_programs/*
+data/spatial_omics/*
 !data/gene_programs/metabolite_enzyme_sensor_gps/
 
 # artifacts
