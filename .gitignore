@@ -133,7 +133,7 @@ dmypy.json
 .vscode/settings.json
 
 # data
-data/*
+data/gene_programs/*
 !data/gene_programs/metabolite_enzyme_sensor_gps/
 
 # artifacts
