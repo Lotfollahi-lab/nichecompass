@@ -792,7 +792,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                  "source_gene_expr_mask_idx_",
                                  "chrom_access_mask_idx_",
                                  "target_chrom_access_mask_idx_",
-                                 "source_chrom_access_mask_idx_"]):
+                                 "source_chrom_access_mask_idx_",
+                                 "features_idx_"]):
         """
         Log module hyperparameters to Mlflow.
         
