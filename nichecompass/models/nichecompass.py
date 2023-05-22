@@ -374,12 +374,18 @@ class NicheCompass(BaseModelMixin):
 
         # Determine dimensionality of conditional embedding if not provided
         if n_cond_embed is None:
-            n_cond_embed = self.n_nonaddon_gps_
+            if len(adata.var) > self.n_nonaddon_gps_:            
+                n_cond_embed = self.n_nonaddon_gps_
+            else:
+                n_cond_embed = len(adata.var)
         self.n_cond_embed_ = n_cond_embed
 
         # Determine dimensionality of hidden encoder layer if not provided
         if n_hidden_encoder is None:
-            n_hidden_encoder = self.n_nonaddon_gps_
+            if len(adata.var) > self.n_nonaddon_gps_:
+                n_hidden_encoder = self.n_nonaddon_gps_
+            else:
+                n_hidden_encoder = len(adata.var)
         self.n_hidden_encoder_ = n_hidden_encoder
 
         # Retrieve conditions
