@@ -186,6 +186,9 @@ class Trainer(BaseTrainerMixin):
             self.node_batch_size_ = int(self.edge_batch_size_ / math.floor(
                 self.n_edges_train / self.n_nodes_train))
         
+        print(f"Edge batch size: {edge_batch_size}")
+        print(f"Node batch size: {node_batch_size}")
+
         # Initialize node-level and edge-level dataloaders
         loader_dict = initialize_dataloaders(
             node_masked_data=self.node_masked_data,
