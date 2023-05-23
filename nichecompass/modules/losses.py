@@ -325,7 +325,7 @@ def compute_kl_reg_loss(mu: torch.Tensor,
 
 def compute_masked_l1_reg_loss(model: nn.Module,
                                l1_masked_gp_idx,
-                               only_target_genes: bool=False) -> torch.Tensor:
+                               only_target_genes: bool=True) -> torch.Tensor:
     """
     Compute L1 regularization loss for the masked decoder layer weights to 
     encourage gene sparsity of masked gene programs.
