@@ -55,33 +55,78 @@ def load_R_file_as_df(R_file_path: str,
 
 
 def create_gp_gene_count_distribution_plots(gp_dict: dict,
-                                            max_n_genes=100):
+                                            gp_dict_label: str):
     """
     Create distribution plots of the gene counts for source and target genes
-    of a gene program.
+    of all gene programs in the gp dict.
+
+    Parameters
+    ----------
+    gp_dict:
+        A gene program dictionary.
+    gp_dict_label:
+        Label of the gene program dictionary for plot title.
     """
+    # Get number of source and target genes for each gene program
     n_source_genes_list = []
     n_target_genes_list = []
-
     for _, gp_sources_targets_dict in gp_dict.items():
         n_source_genes_list.append(len(gp_sources_targets_dict["sources"]))
         n_target_genes_list.append(len(gp_sources_targets_dict["targets"]))
-
-    # Convert the array to a pandas DataFrame
+    
+    # Convert the arrays to a pandas DataFrame
     target_genes_df = pd.DataFrame({"values": n_target_genes_list})
     source_genes_df = pd.DataFrame({"values": n_source_genes_list})
 
-    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(10, 5))
+    # Determine plot configurations
+    max_n_target_genes = max(n_target_genes_list)
+    max_n_source_genes = max(n_source_genes_list)
+    if max_n_target_genes > 200:
+        target_genes_x_ticks_range = 100    
+    elif max_n_target_genes > 100:
+        target_genes_x_ticks_range = 20
+    elif max_n_target_genes > 10:
+        target_genes_x_ticks_range = 10
+    else:
+        target_genes_x_ticks_range = 1
+    if max_n_source_genes > 200:
+        source_genes_x_ticks_range = 100   
+    elif max_n_source_genes > 100:
+        source_genes_x_ticks_range = 20
+    elif max_n_source_genes > 10:
+        source_genes_x_ticks_range = 10
+    else:
+        source_genes_x_ticks_range = 1
 
-    sns.countplot(x="values", data=target_genes_df, ax=ax1)
-    ax1.set(title="Gene Program Target Genes Distribution",
-            xlabel="Number of Target Genes",
-            ylabel="Gene Program Count")
-    ax1.set_xticks(np.arange(0, max_n_genes+1, 10))
-    sns.countplot(x="values", data=source_genes_df, ax=ax2)
-    ax2.set(title="Gene Program Source Genes Distribution",
-        xlabel="Number of Source Genes",
-        ylabel="Gene Program Count")
-    ax2.set_xticks(np.arange(0, max_n_genes+1, 10))
+    # Create subplot
+    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(10, 5))
+    plt.suptitle(
+        f"{gp_dict_label} Gene Programs – Gene Count Distribution Plots")
+    sns.histplot(x="values", data=target_genes_df, ax=ax1)
+    ax1.set_title("Gene Program Target Genes Distribution",
+                  fontsize=10)
+    ax1.set(xlabel="Number of Target Genes",
+            ylabel="Number of Gene Programs")
+    ax1.set_xticks(
+        np.arange(0,
+                  max_n_target_genes + target_genes_x_ticks_range,
+                  target_genes_x_ticks_range))
+    ax1.set_xticklabels(
+        np.arange(0,
+                  max_n_target_genes + target_genes_x_ticks_range,
+                  target_genes_x_ticks_range))
+    sns.histplot(x="values", data=source_genes_df, ax=ax2)
+    ax2.set_title("Gene Program Source Genes Distribution",
+                  fontsize=10)
+    ax2.set(xlabel="Number of Source Genes",
+            ylabel="Number of Gene Programs")
+    ax2.set_xticks(
+        np.arange(0,
+                  max_n_source_genes + source_genes_x_ticks_range,
+                  source_genes_x_ticks_range))
+    ax2.set_xticklabels(
+        np.arange(0,
+                  max_n_source_genes + source_genes_x_ticks_range,
+                  source_genes_x_ticks_range))
     plt.subplots_adjust(wspace=0.35)
     plt.show()

@@ -255,7 +255,8 @@ def extract_gp_dict_from_nichenet_ligand_target_mx(
                         ligand_target_mask_dict[ligand].items() if include]}
         
     if plot_gp_gene_count_distributions:
-        create_gp_gene_count_distribution_plots(gp_dict)
+        create_gp_gene_count_distribution_plots(gp_dict,
+                                                gp_dict_label="NicheNet")
 
     return gp_dict
 
@@ -339,7 +340,8 @@ def extract_gp_dict_from_omnipath_lr_interactions(
             "targets": receptor}
         
     if plot_gp_gene_count_distributions:
-        create_gp_gene_count_distribution_plots(gp_dict)
+        create_gp_gene_count_distribution_plots(gp_dict,
+                                                gp_dict_label="OmniPath")
 
     return gp_dict
 
@@ -441,7 +443,8 @@ def extract_gp_dict_from_mebocost_es_interactions(
             "targets"] = sensor_genes
 
     if plot_gp_gene_count_distributions:
-        create_gp_gene_count_distribution_plots(gp_dict)
+        create_gp_gene_count_distribution_plots(gp_dict,
+                                                gp_dict_label="MEBOCOST")
 
     return gp_dict
 

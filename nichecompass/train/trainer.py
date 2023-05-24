@@ -219,7 +219,7 @@ class Trainer(BaseTrainerMixin):
               lambda_chrom_access_recon: float=10.,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,
-              min_gp_genes_l1_masked: int=3,
+              min_gp_genes_l1_masked: int=5,
               lambda_l1_addon: float=0.,
               mlflow_experiment_id: Optional[str]=None):
         """
