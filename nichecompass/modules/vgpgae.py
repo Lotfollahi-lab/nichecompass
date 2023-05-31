@@ -470,22 +470,27 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 self.log_library_size_atac = torch.log(
                     x_atac.sum(1)).unsqueeze(1)[batch_idx]
                 
-                # Get dynamic gene weight peak mask to turn off peaks that correspond
-                # to genes that are turned off
+                # Get dynamic gene weight peak mask to turn off peaks that
+                # correspond to genes that are turned off
                 with torch.no_grad():
                     non_zero_gene_weights = torch.ne(
                             self.gene_expr_decoder.nb_means_normalized_decoder.masked_l.weight, 
-                            0).float()
+                            0).float() # dim: (2 x n_genes, n_gps)
                     
-                    non_zero_target_gene_weights = non_zero_gene_weights[:int(non_zero_gene_weights.size(0) / 2), :]
-                    non_zero_source_gene_weights = non_zero_gene_weights[int(non_zero_gene_weights.size(0) / 2):, :]
+                    non_zero_target_gene_weights = non_zero_gene_weights[
+                        :int(non_zero_gene_weights.size(0) / 2), :]
+                        # dim: (n_genes, n_gps)
+                    non_zero_source_gene_weights = non_zero_gene_weights[
+                        int(non_zero_gene_weights.size(0) / 2):, :]
+                        # dim: (n_genes, n_gps)
                     
                     gene_weight_target_peak_mask = torch.matmul(
-                        non_zero_target_gene_weights.t(),
-                        self.gene_peaks_mask_)
+                        non_zero_target_gene_weights.t(), # dim: (n_gps, n_genes)
+                        self.gene_peaks_mask_) # dim: (n_genes, n_peaks)
+                        # dim: (n_gps, n_peaks)
                     gene_weight_target_peak_mask = torch.ne(
                         gene_weight_target_peak_mask, 
-                        0).float()
+                        0).float() # dim: (n_gps, n_peaks)
                     
                     gene_weight_source_peak_mask = torch.matmul(
                         non_zero_source_gene_weights.t(),
@@ -497,6 +502,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     gene_weight_peak_mask = torch.cat(
                         (gene_weight_target_peak_mask,
                          gene_weight_source_peak_mask), dim=1).t()
+                        # dim: (2 x n_peaks, n_gps)
 
                 # Get chromatin accessibility reconstruction distribution
                 # parameters
