@@ -90,6 +90,8 @@ class NicheCompass(BaseModelMixin):
     source_peaks_idx_key:
         Key in ´adata_atac.uns´ where the index of source peaks that are in the
         chromatin accessibility masks are stored.
+    gene_peaks_mask_key:
+        Key in ´adata.varm´ where the gene peak mapping mask is stored.    
     recon_adj_key:
         Key in ´adata.obsp´ where the reconstructed adjacency matrix edge
         probabilities will be stored.
@@ -185,6 +187,7 @@ class NicheCompass(BaseModelMixin):
                  peaks_idx_key: str="nichecompass_peaks_idx",
                  target_peaks_idx_key: str="nichecompass_target_peaks_idx",
                  source_peaks_idx_key: str="nichecompass_source_peaks_idx",
+                 gene_peaks_mask_key: str="nichecompass_gene_peaks",
                  recon_adj_key: Optional[str]="nichecompass_recon_connectivities",
                  agg_alpha_key: Optional[str]="nichecompass_agg_alpha",
                  include_edge_recon_loss: bool=True,
@@ -230,6 +233,7 @@ class NicheCompass(BaseModelMixin):
         self.peaks_idx_key_ = peaks_idx_key
         self.target_peaks_idx_key_ = target_peaks_idx_key
         self.source_peaks_idx_key_ = source_peaks_idx_key
+        self.gene_peaks_mask_key_ = gene_peaks_mask_key
         self.recon_adj_key_ = recon_adj_key
         self.agg_alpha_key_ = agg_alpha_key
         self.include_edge_recon_loss_ = include_edge_recon_loss
@@ -277,7 +281,9 @@ class NicheCompass(BaseModelMixin):
         # Retrieve chromatin accessibility masks
         if adata_atac is None:
             self.ca_mask_ = None
+            self.gene_peaks_mask_ = None
         else:
+            self.gene_peaks_mask_ = adata.varm[gene_peaks_mask_key]
             if ca_targets_mask_key in adata_atac.varm:
                 ca_targets_mask = adata_atac.varm[ca_targets_mask_key].T.tocoo()
             else:
@@ -454,6 +460,7 @@ class NicheCompass(BaseModelMixin):
             chrom_access_mask_idx=self.peaks_idx_,
             target_chrom_access_mask_idx=self.target_peaks_idx_,
             source_chrom_access_mask_idx=self.source_peaks_idx_,
+            gene_peaks_mask=self.gene_peaks_mask_,
             conditions=self.conditions_,
             conv_layer_encoder=self.conv_layer_encoder_,
             encoder_n_attention_heads=self.encoder_n_attention_heads_,

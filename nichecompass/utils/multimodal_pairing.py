@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 import scipy.sparse as sp
+import torch
 from anndata import AnnData
 from scglue import genomics
 
@@ -187,6 +188,7 @@ def add_multimodal_mask_to_adata(
         filter_hvg_peaks: bool=False,
         n_hvg_peaks: int=4000,
         condition_key: bool="batch",
+        gene_peaks_mask_key: str="nichecompass_gene_peaks",
         gp_targets_mask_key: str="nichecompass_gp_targets",
         gp_sources_mask_key: str="nichecompass_gp_sources",
         gp_names_key: str="nichecompass_gp_names",
@@ -225,6 +227,9 @@ def add_multimodal_mask_to_adata(
     condition_key:
         Key in ´adata.obs´ where the conditions for highly variable peak
         filtering are stored if ´filter_hvg_peaks´ is ´True´.
+    gene_peaks_mask_key:
+        Key in ´adata.varm´ where the binary mapping mask from genes to peaks
+        is stored.
     gp_targets_mask_key:
         Key in ´adata.varm´ where the binary gene program mask for target genes
         of a gene program is stored.
@@ -269,6 +274,24 @@ def add_multimodal_mask_to_adata(
                                     flavor="seurat_v3",
                                     batch_key=condition_key)
         print(f"Keeping {len(adata_atac.var_names)} highly variable peaks.")
+        
+    # Create gene peak mask and add to adata
+    uppercase_sorted_gene_list = [
+        gene.upper() for gene in adata.var_names.tolist()]
+    sorted_peak_list = adata_atac.var_names.tolist()
+
+    gene_idx_peak_idx_mapping_dict = {
+        uppercase_sorted_gene_list.index(gene): [
+            sorted_peak_list.index(peak) for peak in peaks] 
+        for gene, peaks in gene_peak_mapping_dict.items()}
+
+    gene_peak_mask = torch.zeros(
+        (len(uppercase_sorted_gene_list), len(sorted_peak_list)),
+        dtype=torch.float32)
+    for gene_idx, peak_idx in gene_idx_peak_idx_mapping_dict.items():
+        gene_peak_mask[gene_idx, peak_idx] = 1
+        
+    adata.varm[gene_peaks_mask_key] = gene_peak_mask
 
     # Create mapping dict for computationally efficient mapping of peaks to
     # their index in ´adata_atac.var_names´    
@@ -335,4 +358,4 @@ def add_multimodal_mask_to_adata(
         (adata_atac.uns[source_peaks_idx_key],
          adata_atac.uns[target_peaks_idx_key] + adata_atac.n_vars), axis=0)
     
-    return adata_atac
+    return adata, adata_atac

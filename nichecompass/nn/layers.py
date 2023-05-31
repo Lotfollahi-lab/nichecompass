@@ -44,7 +44,7 @@ class GCNLayer(nn.Module):
         """Initialize weights with Glorot weight initialization"""
         torch.nn.init.xavier_uniform_(self.weights)
 
-    def forward(self, input: torch.Tensor, adj :torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
         """
         Forward pass of the GCN layer.
 
@@ -124,7 +124,9 @@ class AddOnMaskedLayer(nn.Module):
 
         self.activation = activation
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self,
+                input: torch.Tensor,
+                dynamic_mask: Optional[torch.Tensor]=None) -> torch.Tensor:
         """
         Forward pass of the add-on masked layer.
 
@@ -133,6 +135,8 @@ class AddOnMaskedLayer(nn.Module):
         input:
             Input features to the add-on masked layer. Includes add-on input
             nodes and conditional embedding input nodes if specified.
+        dynamic_mask:
+            Additional optional dynamic mask for the masked layer.
 
         Returns
         ----------
@@ -157,7 +161,8 @@ class AddOnMaskedLayer(nn.Module):
                 [self.n_input, self.n_addon_input, self.n_cond_embed_input],
                 dim=1)
 
-        output = self.masked_l(maskable_input)
+        output = self.masked_l(input=maskable_input,
+                               dynamic_mask=dynamic_mask)
         if self.n_addon_input != 0:
             output += self.addon_l(addon_input)
         if self.n_cond_embed_input != 0:

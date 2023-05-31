@@ -67,6 +67,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         Index of target peaks that are in gps of the ca mask.
     source_chrom_access_mask_idx:
         Index of source peaks that are in gps of the ca mask.
+    gene_peaks_mask:
+        A mask to map from genes to peaks, used to turn off peaks in the
+        chromatin accessibility decoder if the corresponding genes have been
+        turned off by gene regularization.
     conditions:
         Conditions used for the conditional embedding.
     conv_layer_encoder:
@@ -144,6 +148,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  chrom_access_mask_idx: Optional[torch.Tensor]=None,
                  target_chrom_access_mask_idx: Optional[torch.Tensor]=None,
                  source_chrom_access_mask_idx: Optional[torch.Tensor]=None,
+                 gene_peaks_mask: Optional[torch.Tensor]=None,
                  conditions: list=[],
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=4,
@@ -181,6 +186,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.chrom_access_mask_idx_ = chrom_access_mask_idx
         self.target_chrom_access_mask_idx_ = target_chrom_access_mask_idx
         self.source_chrom_access_mask_idx_ = source_chrom_access_mask_idx
+        self.gene_peaks_mask_ = gene_peaks_mask
         self.conditions_ = conditions
         self.n_conditions_ = len(conditions)
         self.condition_label_encoder_ = {
@@ -447,19 +453,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 assert output["node_labels_atac"].size(1) == len(self.chrom_access_mask_idx_)
                 assert output["node_labels"].size(1) == len(self.gene_expr_mask_idx_)
 
-                # Use observed library size as scaling factor for the negative
-                # binomial means of the chromatin accessibility distribution            
-                self.log_library_size_atac = torch.log(
-                    x_atac.sum(1)).unsqueeze(1)[batch_idx]
-
-                # Get chromatin accessibility reconstruction distribution
-                # parameters
-                output["chrom_access_dist_params"] = self.chrom_access_decoder(
-                    z=z,
-                    log_library_size=self.log_library_size_atac,
-                    cond_embed=(self.cond_embed if "chrom_access_decoder" in
-                                self.cond_embed_injection_ else None))
-
             # Use observed library size as scaling factor for the negative
             # binomial means of the gene expression distribution
             self.log_library_size = torch.log(x.sum(1)).unsqueeze(1)[batch_idx]
@@ -470,6 +463,49 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 log_library_size=self.log_library_size,
                 cond_embed=(self.cond_embed if "gene_expr_decoder" in
                             self.cond_embed_injection_ else None))
+            
+            if "chrom_access" in self.modalities_:
+                # Use observed library size as scaling factor for the negative
+                # binomial means of the chromatin accessibility distribution            
+                self.log_library_size_atac = torch.log(
+                    x_atac.sum(1)).unsqueeze(1)[batch_idx]
+                
+                # Get dynamic gene weight peak mask to turn off peaks that correspond
+                # to genes that are turned off
+                with torch.no_grad():
+                    non_zero_gene_weights = torch.ne(
+                            self.gene_expr_decoder.nb_means_normalized_decoder.masked_l.weight, 
+                            0).float()
+                    
+                    non_zero_target_gene_weights = non_zero_gene_weights[:int(non_zero_gene_weights.size(0) / 2), :]
+                    non_zero_source_gene_weights = non_zero_gene_weights[int(non_zero_gene_weights.size(0) / 2):, :]
+                    
+                    gene_weight_target_peak_mask = torch.matmul(
+                        non_zero_target_gene_weights.t(),
+                        self.gene_peaks_mask_)
+                    gene_weight_target_peak_mask = torch.ne(
+                        gene_weight_target_peak_mask, 
+                        0).float()
+                    
+                    gene_weight_source_peak_mask = torch.matmul(
+                        non_zero_source_gene_weights.t(),
+                        self.gene_peaks_mask_)
+                    gene_weight_source_peak_mask = torch.ne(
+                        gene_weight_source_peak_mask, 
+                        0).float()
+                    
+                    gene_weight_peak_mask = torch.cat(
+                        (gene_weight_target_peak_mask,
+                         gene_weight_source_peak_mask), dim=1).t()
+
+                # Get chromatin accessibility reconstruction distribution
+                # parameters
+                output["chrom_access_dist_params"] = self.chrom_access_decoder(
+                    z=z,
+                    log_library_size=self.log_library_size_atac,
+                    gene_weight_peak_mask=gene_weight_peak_mask,
+                    cond_embed=(self.cond_embed if "chrom_access_decoder" in
+                                self.cond_embed_injection_ else None))
 
         return output
 
@@ -793,7 +829,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                  "chrom_access_mask_idx_",
                                  "target_chrom_access_mask_idx_",
                                  "source_chrom_access_mask_idx_",
-                                 "features_idx_"]):
+                                 "features_idx_",
+                                 "gene_peaks_mask_"]):
         """
         Log module hyperparameters to Mlflow.
         

@@ -155,6 +155,9 @@ class Trainer(BaseTrainerMixin):
             torch.manual_seed(self.seed_)
             self.device = torch.device("cpu")
         self.model.to(self.device)
+        if hasattr(self.model, "gene_peaks_mask_"):
+            self.model.gene_peaks_mask_ = self.model.gene_peaks_mask_.to(
+                self.device)
 
         # Prepare data and get node-level and edge-level training and validation
         # splits

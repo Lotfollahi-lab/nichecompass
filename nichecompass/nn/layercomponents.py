@@ -3,6 +3,8 @@ This module contains neural network layer components used by the NicheCompass
 model.
 """
 
+from typing import Optional
+
 import torch
 import torch.nn as nn
 
@@ -34,7 +36,7 @@ class MaskedLinear(nn.Linear):
                  n_input: int,
                  n_output: int,
                  mask: torch.Tensor,
-                 bias=True):
+                 bias=False):
         # Mask should have dim n_input x n_output
         if n_input != mask.shape[0] or n_output != mask.shape[1]:
             raise ValueError("Incorrect shape of the mask. Mask should have dim"
@@ -53,7 +55,9 @@ class MaskedLinear(nn.Linear):
 
         self.weight.data *= self.mask
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self,
+                input: torch.Tensor,
+                dynamic_mask: Optional[torch.Tensor]=None) -> torch.Tensor:
         """
         Forward pass of the masked linear class.
 
@@ -61,6 +65,9 @@ class MaskedLinear(nn.Linear):
         ----------
         input:
             Tensor containing the input features to the masked linear class.
+        dynamic_mask:
+            Additional optional Tensor containing a mask that changes
+            during training.
 
         Returns
         ----------
@@ -69,5 +76,10 @@ class MaskedLinear(nn.Linear):
             transformation of the input by only considering unmasked 
             connections).
         """
-        output = nn.functional.linear(input, self.weight * self.mask, self.bias)
+        if dynamic_mask is not None:
+            self.dynamic_mask = dynamic_mask
+            masked_weights = self.weight * self.mask * self.dynamic_mask
+        else:
+            masked_weights = self.weight * self.mask
+        output = nn.functional.linear(input, masked_weights, self.bias)
         return output

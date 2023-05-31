@@ -330,6 +330,7 @@ class MaskedChromAccessDecoder(nn.Module):
     def forward(self,
                 z: torch.Tensor,
                 log_library_size: torch.Tensor,
+                gene_weight_peak_mask: torch.Tensor,
                 cond_embed: Optional[torch.Tensor]=None
                 ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -341,6 +342,11 @@ class MaskedChromAccessDecoder(nn.Module):
             Tensor containing the latent space features.
         log_library_size:
             Tensor containing the log library size of the nodes.
+        gene_weight_peak_mask:
+            Tensor containing a dynamic peak mask based on gene weights.
+            If a gene is removed by regularization (its weight is 0),
+            the corresponding peaks will be marked as 0 in the
+            `gene_weight_peak_mask`.
         cond_embed:
             Tensor containing the conditional embedding.
 
@@ -353,14 +359,18 @@ class MaskedChromAccessDecoder(nn.Module):
         if cond_embed is not None:
             z = torch.cat((z, cond_embed), dim=-1)
         
-        nb_means_normalized = self.nb_means_normalized_decoder(z)
+        nb_means_normalized = self.nb_means_normalized_decoder(
+            input=z,
+            dynamic_mask=gene_weight_peak_mask)
         
         nb_means = torch.exp(log_library_size) * nb_means_normalized
         nb_means = nb_means[:, self.mask_idx]
         if self.recon_dist == "nb":
             chrom_access_decoder_params = nb_means
         elif self.recon_dist == "zinb":
-            zi_prob_logits = self.zi_prob_logits_decoder(z)
+            zi_prob_logits = self.zi_prob_logits_decoder(
+                z,
+                gene_weight_peak_mask)
             zi_prob_logits = zi_prob_logits[:, self.mask_idx]
             chrom_access_decoder_params = (nb_means, zi_prob_logits)
         return chrom_access_decoder_params
