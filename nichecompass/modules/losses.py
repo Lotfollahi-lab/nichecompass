@@ -266,9 +266,11 @@ def compute_gene_expr_recon_zinb_loss(x: torch.Tensor,
 def compute_group_lasso_reg_loss(model: nn.Module) -> torch.Tensor:
     """
     Compute group lasso regularization loss for the masked decoder layer weights
-    to enforce gene program sparsity (each gene program is a group; the number
-    of weights per group normalization is omitted as each group / gene program
-    has the same number of weights).
+    to enforce gene program sparsity (each gene program is a group; groups are
+    normalized by the number of non-masked weights per group).
+    
+    Check https://leimao.github.io/blog/Group-Lasso/ for more information about
+    group lasso regularization.
 
     Parameters
     ----------
@@ -280,12 +282,19 @@ def compute_group_lasso_reg_loss(model: nn.Module) -> torch.Tensor:
     group_lasso_reg_loss:
         Group lasso regularization loss for the decoder layer weights.    
     """
-    # Compute L2 norm per group / gene program and sum across all gene programs
+    # Compute L2 norm per group / gene program, normalize by number of weights
+    # and sum across all gene programs
     decoder_layerwise_param_gpgroupnorm_sum = torch.stack(
-        [torch.linalg.vector_norm(param, ord=2, dim=0).sum() for param_name,
-         param in model.named_parameters() if
+        [torch.mul(
+            torch.sqrt(torch.count_nonzero(
+                model.gene_expr_decoder.nb_means_normalized_decoder.masked_l.mask,
+                dim=0)),
+            torch.linalg.vector_norm(param, ord=2, dim=0)).sum()
+         for param_name, param in model.named_parameters() if
          "gene_expr_decoder.nb_means_normalized_decoder.masked_l" in param_name],
          dim=0)
+
+    # TO DO #
     # Sum over ´masked_l´ layer and ´addon_l´ layer if addon gene programs exist
     group_lasso_reg_loss = torch.sum(decoder_layerwise_param_gpgroupnorm_sum)
     return group_lasso_reg_loss
