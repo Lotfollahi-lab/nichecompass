@@ -283,7 +283,8 @@ class NicheCompass(BaseModelMixin):
             self.ca_mask_ = None
             self.gene_peaks_mask_ = None
         else:
-            self.gene_peaks_mask_ = adata.varm[gene_peaks_mask_key]
+            self.gene_peaks_mask_ = torch.tensor(adata.varm[gene_peaks_mask_key],
+                                                 dtype=torch.float32)
             if ca_targets_mask_key in adata_atac.varm:
                 ca_targets_mask = adata_atac.varm[ca_targets_mask_key].T.tocoo()
             else:

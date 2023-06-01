@@ -355,8 +355,8 @@ def compute_masked_l1_reg_loss(model: nn.Module,
     masked_l1_reg_loss:
         L1 regularization loss for the masked decoder layer weights.
     """
-    if only_target_genes:
-        param_end_gene_idx = model.n_input_
+    if only_target_genes & (model.node_label_method_ != "self"):
+        param_end_gene_idx = (model.n_output_genes_ / 2)
     else:
         param_end_gene_idx = None
 

@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 import scipy.sparse as sp
-import torch
 from anndata import AnnData
 from scglue import genomics
 
@@ -285,9 +284,9 @@ def add_multimodal_mask_to_adata(
             sorted_peak_list.index(peak) for peak in peaks] 
         for gene, peaks in gene_peak_mapping_dict.items()}
 
-    gene_peak_mask = torch.zeros(
+    gene_peak_mask = np.zeros(
         (len(uppercase_sorted_gene_list), len(sorted_peak_list)),
-        dtype=torch.float32)
+        dtype=np.int32)
     for gene_idx, peak_idx in gene_idx_peak_idx_mapping_dict.items():
         gene_peak_mask[gene_idx, peak_idx] = 1
         
