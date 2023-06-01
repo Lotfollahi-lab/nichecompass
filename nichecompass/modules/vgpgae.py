@@ -473,8 +473,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 # Get dynamic gene weight peak mask to turn off peaks that
                 # correspond to genes that are turned off
                 with torch.no_grad():
+                    # Round to 4 decimals as genes are never completely
+                    # turned off due to L1 being not differentiable at 0
+                    gp_weights = self.get_gp_weights(use_mask_idx=False)[0]
+                    gp_weights = torch.round(gp_weights, decimals=4)
+                    
                     non_zero_gene_weights = torch.ne(
-                            self.gene_expr_decoder.nb_means_normalized_decoder.masked_l.weight, 
+                            gp_weights, 
                             0).float() # dim: (2 x n_genes, n_gps)
                     
                     non_zero_target_gene_weights = non_zero_gene_weights[
@@ -502,7 +507,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     gene_weight_peak_mask = torch.cat(
                         (gene_weight_target_peak_mask,
                          gene_weight_source_peak_mask), dim=1).t()
-                        # dim: (2 x n_peaks, n_gps)
+                        # dim: (2 x n_peaks, n_gps)   
 
                 # Get chromatin accessibility reconstruction distribution
                 # parameters
