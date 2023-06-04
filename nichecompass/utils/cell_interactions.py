@@ -74,15 +74,23 @@ def aggregate_obsp_matrix_per_cell_type(
     # Add cell type labels of observations
     cell_type_agg_df[cell_type_key] = adata.obs[cell_type_key].values
 
+    # If specified, add group label
     if group_key is not None:
         cell_type_agg_df[group_key] = adata.obs[group_key].values
-        cell_type_agg_df = cell_type_agg_df.groupby(
-            [group_key, cell_type_key]).sum()
 
     if agg_rows:
         # In addition, aggregate values across rows to get a
         # (n_cell_types x n_cell_types) df
-        cell_type_agg_df = cell_type_agg_df.groupby(cell_type_key).sum()
+        if group_key is not None:
+            cell_type_agg_df = cell_type_agg_df.groupby(
+                [group_key, cell_type_key]).sum()
+        else:
+            cell_type_agg_df = cell_type_agg_df.groupby(cell_type_key).sum()
+
+        # Sort index to have same order as columns
+        cell_type_agg_df = cell_type_agg_df.loc[
+            sorted(cell_type_agg_df.index.tolist()), :]
+        
     return cell_type_agg_df
 
 
@@ -119,12 +127,14 @@ def create_cell_type_chord_plot_from_df(
 
     sorted_cell_types = sorted(adata.obs[cell_type_key].unique().tolist())
 
-    max_attention_values = df.max(axis=1).values
+    print(sorted_cell_types)
+
+    max_aggregation_values = df.max(axis=1).values
 
     links_list = []
     for i in range(len(sorted_cell_types)):
         for j in range(len(sorted_cell_types)):
-            if df.iloc[i, j] > max_attention_values[i] * link_threshold:
+            if df.iloc[i, j] > max_aggregation_values[i] * link_threshold:
                 link_dict = {}
                 link_dict["source"] = j
                 link_dict["target"] = i
