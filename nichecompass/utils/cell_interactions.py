@@ -97,13 +97,13 @@ def aggregate_obsp_matrix_per_cell_type(
 def create_cell_type_chord_plot_from_df(
         adata: AnnData,
         df: pd.DataFrame,
-        title: str="Cell Interactions",
-        link_threshold: float=0.1,
+        link_threshold: float=0.01,
         cell_type_key: str="cell_type",
+        group_key: Optional[str]=None,
         save_fig: bool=False,
         save_path: Optional[str]=None):
     """
-    Create a cell type chord diagram based on an input DataFrame.
+    Create a cell type chord diagram per group based on an input DataFrame.
 
     Parameters
     ----------
@@ -111,55 +111,83 @@ def create_cell_type_chord_plot_from_df(
         AnnData object which contains outputs of NicheCompass model training.
     df:
         A Pandas DataFrame that contains the connection values for the chord
-        plot (dim: n_cell_types x n_cell_types).
+        plot (dim: (n_groups x n_cell_types) x n_cell_types).
     link_threshold:
-        Ratio of attention that a cell type needs to exceed compared to the cell
-        type with the maximum attention to be considered a link for the chord
-        plot.
+        Ratio of link strength that a cell type pair needs to exceed compared to
+        the cell type pair with the maximum link strength to be considered a
+        link for the chord plot.
     cell_type_key:
         Key in ´adata.obs´ where the cell type labels are stored.
-
-    Returns
-    ----------
+    group_key:
+        Key in ´adata.obs´ where additional group labels are stored.
+    save_fig:
+        If ´True´, save the figure.
+    save_path:
+        Path where to save the figure.
     """
     hv.extension("bokeh")
     hv.output(size=200)
 
     sorted_cell_types = sorted(adata.obs[cell_type_key].unique().tolist())
 
-    print(sorted_cell_types)
+    # Get group labels
+    if group_key is not None:
+        group_labels = df.index.get_level_values(
+            df.index.names.index(group_key)).unique().tolist()
+    else:
+        group_labels = [""]
 
-    max_aggregation_values = df.max(axis=1).values
+    chord_list = []
+    for group_label in group_labels:
+        if group_label == "":
+            group_df = df
+        else:
+            group_df = df[df.index.get_level_values(
+                df.index.names.index(group_key)) == group_label]
+        
+        # Get max value (over rows and columns) of the group for thresholding
+        group_max = group_df.max().max()
 
-    links_list = []
-    for i in range(len(sorted_cell_types)):
-        for j in range(len(sorted_cell_types)):
-            if df.iloc[i, j] > max_aggregation_values[i] * link_threshold:
-                link_dict = {}
-                link_dict["source"] = j
-                link_dict["target"] = i
-                link_dict["value"] = df.iloc[i, j]
-                links_list.append(link_dict)
-    links = pd.DataFrame(links_list)
+        # Create group chord links
+        links_list = []
+        for i in range(len(sorted_cell_types)):
+            for j in range(len(sorted_cell_types)):
+                if group_df.iloc[i, j] > group_max * link_threshold:
+                    link_dict = {}
+                    link_dict["source"] = j
+                    link_dict["target"] = i
+                    link_dict["value"] = group_df.iloc[i, j]
+                    links_list.append(link_dict)
+        links = pd.DataFrame(links_list)
 
-    nodes_list = []
-    for cell_type in sorted_cell_types:
-        nodes_dict = {}
-        nodes_dict["name"] = cell_type
-        nodes_dict["group"] = 1
-        nodes_list.append(nodes_dict)
-    nodes = hv.Dataset(pd.DataFrame(nodes_list), "index")
+        # Create group chord nodes (only where links exist)
+        nodes_list = []
+        nodes_idx = []
+        for i, cell_type in enumerate(sorted_cell_types):
+            if i in (links["source"].values) or i in (links["target"].values):
+                nodes_idx.append(i)
+                nodes_dict = {}
+                nodes_dict["name"] = cell_type
+                nodes_dict["group"] = 1
+                nodes_list.append(nodes_dict)
+        nodes = hv.Dataset(pd.DataFrame(nodes_list, index=nodes_idx), "index")
 
-    chord = hv.Chord((links, nodes)).select(value=(5, None))
-    chord.opts(hv.opts.Chord(cmap="Category20",
-                             edge_cmap="Category20",
-                             edge_color=hv.dim("source").str(),
-                             labels="name",
-                             node_color=hv.dim("index").str(),
-                             title=title))
-    hv.output(chord)
+        # Create group chord plot
+        chord = hv.Chord((links, nodes)).select(value=(5, None))
+        chord.opts(hv.opts.Chord(cmap="Category20",
+                                edge_cmap="Category20",
+                                edge_color=hv.dim("source").str(),
+                                labels="name",
+                                node_color=hv.dim("index").str(),
+                                title=f"Group {group_label}"))
+        chord_list.append(chord)
+    
+    # Display chord plots
+    layout = hv.Layout(chord_list).cols(2)
+    hv.output(layout)
 
+    # Save chord plots
     if save_fig:
-        hv.save(chord,
+        hv.save(layout,
                 save_path,
                 fmt="png")
