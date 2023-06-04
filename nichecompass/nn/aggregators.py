@@ -20,8 +20,7 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
                  features_idx: torch.Tensor,
                  n_heads: int=4,
                  leaky_relu_negative_slope: float=0.2,
-                 dropout_rate: float=0.,
-                 self_loops: bool=True):
+                 dropout_rate: float=0.):
         """
         One-hop Attention Node Label Aggregator class that uses a weighted sum
         of the gene expression of a node's 1-hop neighbors to build an
@@ -49,15 +48,12 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
             Dropout probability of the normalized attention coefficients which
             exposes each node to a stochastically sampled neighborhood during 
             training.
-        self_loops:
-            If ´True´, use self loops to model autocrine communication.
         """
         super().__init__(node_dim=0)
         self.n_input = n_input
         self.features_idx = features_idx
         self.n_heads = n_heads
         self.leaky_relu_negative_slope = leaky_relu_negative_slope
-        self.self_loops = self_loops
         self.linear_l_l = Linear(n_input,
                                  n_input * n_heads,
                                  bias=False,
@@ -73,7 +69,7 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         self.reset_parameters()
 
         print(f"ONE HOP ATTENTION NODE LABEL AGGREGATOR -> n_input: {n_input}, "
-              f"n_heads: {n_heads}, self_loops: {self.self_loops}")
+              f"n_heads: {n_heads}")
 
     def reset_parameters(self):
         """
@@ -86,7 +82,7 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
     def forward(self,
                 x: torch.Tensor,
                 edge_index: torch.Tensor,
-                return_attention_weights: bool=False) -> torch.Tensor:
+                return_agg_weights: bool=False) -> torch.Tensor:
         """
         Forward pass of the One-hop Attention Node Label Aggregator.
         
@@ -100,9 +96,8 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
             Tensor containing the node indices of edges in the current node 
             batch including sampled neighbors.
             (Size: 2 x n_edges_batch_and_sampled_neighbors)
-        return_attention_weights:
-            If ´True´, also return the attention weights with the corresponding
-            edge index.
+        return_agg_weights:
+            If ´True´, also return the aggregation weights (attention weights).
 
         Returns
         ----------
@@ -112,20 +107,12 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
             gene expression reconstruction task.
             (Size: n_nodes_batch x (2 x n_node_features))
         alpha:
-            Attention weights for edges in ´edge_index´.
+            Aggregation weights for edges in ´edge_index´.
         """
         x_l = x_r = x
         g_l = self.linear_l_l(x_l).view(-1, self.n_heads, self.n_input)
         g_r = self.linear_r_l(x_r).view(-1, self.n_heads, self.n_input)
         x_l = x_l.repeat(1, self.n_heads).view(-1, self.n_heads, self.n_input)
-
-        if self.self_loops:
-            # Add self loops to account for autocrine communication
-            n_nodes = x.size(0)
-            edge_index, _ = remove_self_loops(edge_index) # in case there are
-                                                          # already self loops
-            edge_index, _ = add_self_loops(edge_index,
-                                           num_nodes=n_nodes)
 
         output = self.propagate(edge_index, x=(x_l, x_r), g=(g_l, g_r))
         x_neighbors_att = output.mean(dim=1)
@@ -133,7 +120,7 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
             (x, x_neighbors_att), dim=-1)[:, self.features_idx]
         alpha = self._alpha
         self._alpha = None
-        if return_attention_weights:
+        if return_agg_weights:
             return node_labels, alpha
         return node_labels, None
 
@@ -183,27 +170,22 @@ class OneHopGCNNormNodeLabelAggregator(nn.Module):
     reconstruction task.
     """
     def __init__(self,
-                 features_idx: torch.Tensor,
-                 self_loops: bool=True):
+                 features_idx: torch.Tensor):
         """
         Parameters
         ----------
         features_idx:
             Index of omics features that are in the gp and ca masks.
-        self_loops:
-            If ´True´, use self loops to model autocrine communication.
         """
         super().__init__()
         self.features_idx = features_idx
-        self.self_loops = self_loops
 
-        print("ONE HOP GCN NORM NODE LABEL AGGREGATOR -> self_loops: "
-              f"{self_loops}")
+        print("ONE HOP GCN NORM NODE LABEL AGGREGATOR")
 
     def forward(self,
                 x: torch.Tensor,
                 edge_index: torch.Tensor,
-                return_attention_weights: bool=False) -> torch.Tensor:
+                return_agg_weights: bool=False) -> torch.Tensor:
         """
         Forward pass of the One-hop GCN Norm Node Label Aggregator.
         
@@ -217,25 +199,29 @@ class OneHopGCNNormNodeLabelAggregator(nn.Module):
             Tensor containing the node indices of edges in the current node 
             batch including sampled neighbors.
             (Size: 2 x n_edges_batch_and_sampled_neighbors)
-        return_attention_weigts:
-            Placeholder parameter to make API compatible with
-            OneHopAttentionNodeLabelAggregator.
-
+        return_agg_weights:
+            If ´True´, also return the aggregation weights (norm weights).
+            
         Returns
         ----------
         node_labels:
             Tensor containing the node labels of the nodes in the current node 
             batch. These labels are used for the gene expression reconstruction
             task. (Size: n_nodes_batch x (2 x n_node_features))
+        alpha:
+            Neighbor aggregation weights.
         """
         adj = SparseTensor.from_edge_index(edge_index,
                                            sparse_sizes=(x.shape[0],
                                                          x.shape[0]))
-        adj_norm = gcn_norm(adj, add_self_loops=self.self_loops)
+        adj_norm = gcn_norm(adj, add_self_loops=False)
         x_neighbors_norm = adj_norm.t().matmul(x)
         node_labels = torch.cat((x, x_neighbors_norm),
                                 dim=-1)[:, self.features_idx]
-        return node_labels
+        if return_agg_weights:
+            alpha = adj_norm.coo()[2]
+            return node_labels, alpha
+        return node_labels, None
 
 
 class OneHopSumNodeLabelAggregator(nn.Module):

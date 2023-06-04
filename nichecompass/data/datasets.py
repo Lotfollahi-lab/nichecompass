@@ -8,6 +8,7 @@ from typing import Optional
 import scipy.sparse as sp
 import torch
 from anndata import AnnData
+from torch_geometric.utils import add_self_loops, remove_self_loops
 
 from .utils import encode_labels, sparse_mx_to_sparse_tensor
 
@@ -35,6 +36,9 @@ class SpatialAnnTorchDataset():
         ´adata.X´ as counts. 
     adj_key:
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
+    self_loops:
+        If ´True´, add self loops to the adjacency matrix to model autocrine
+        communication.
     condition_key:
         Key under which the condition for the conditional embedding is stored in
         ´adata.obs´.
@@ -45,6 +49,7 @@ class SpatialAnnTorchDataset():
                  adata_atac: Optional[AnnData]=None,
                  counts_key: Optional[str]="counts",
                  adj_key: str="spatial_connectivities",
+                 self_loops: bool=True,
                  condition_key: Optional[str]=None):
         if counts_key is None:
             x = adata.X
@@ -77,6 +82,13 @@ class SpatialAnnTorchDataset():
             raise ImportError("The input adjacency matrix has to be symmetric.")
         
         self.edge_index = self.adj.to_torch_sparse_coo_tensor()._indices()
+
+        if self_loops:
+            # Add self loops to account for autocrine communication
+            # Remove self loops in case there are already before adding new ones
+            self.edge_index, _ = remove_self_loops(self.edge_index)
+            self.edge_index, _ = add_self_loops(self.edge_index,
+                                           num_nodes=self.x.size(0))
 
         if condition_key is not None:
             self.conditions = torch.tensor(

@@ -16,11 +16,12 @@ def aggregate_obsp_matrix_per_cell_type(
         adata: AnnData,
         obsp_key: str,
         cell_type_key: str="cell_type",
+        group_key: Optional[str]=None,
         agg_rows: bool=False):
     """
     Generic function to aggregate adjacency matrices stored in
     ´adata.obsp[obsp_key]´ on cell type level. It can be used to aggregate the
-    node label aggregator attention weights alpha or the reconstructed adjacency
+    node label aggregator aggregation weights alpha or the reconstructed adjacency
     matrix of a trained NicheCompass model by neighbor cell type for downstream
     analysis.
 
@@ -32,6 +33,8 @@ def aggregate_obsp_matrix_per_cell_type(
         Key in ´adata.obsp´ where the matrix to be aggregated is stored.
     cell_type_key:
         Key in ´adata.obs´ where the cell type labels are stored.
+    group_key:
+        Key in ´adata.obs´ where additional grouping labels are stored.    
     agg_rows:
         If ´True´, also aggregate over the observations on cell type level.
 
@@ -49,12 +52,17 @@ def aggregate_obsp_matrix_per_cell_type(
         sorted_cell_types,
         range(n_cell_types))}
 
+    # Retrieve non zero indices and non zero values, and create row-wise
+    # observation cell type index
     nz_obsp_idx = adata.obsp[obsp_key].nonzero()
     neighbor_cell_type_index = adata.obs[cell_type_key][nz_obsp_idx[1]].map(
         cell_type_label_encoder).values
     adata.obsp[obsp_key].eliminate_zeros() # In some sparse reps 0s can appear
     nz_obsp = adata.obsp[obsp_key].data
 
+    # Use non zero indices, non zero values and row-wise observation cell type
+    # index to construct new df with cell types as columns and row-wise
+    # aggregated values per cell type index as values
     cell_type_agg = np.zeros((n_obs, n_cell_types))
     np.add.at(cell_type_agg,
               (nz_obsp_idx[0], neighbor_cell_type_index),
@@ -62,9 +70,18 @@ def aggregate_obsp_matrix_per_cell_type(
     cell_type_agg_df = pd.DataFrame(
         cell_type_agg,
         columns=sorted_cell_types)
+    
+    # Add cell type labels of observations
     cell_type_agg_df[cell_type_key] = adata.obs[cell_type_key].values
 
+    if group_key is not None:
+        cell_type_agg_df[group_key] = adata.obs[group_key].values
+        cell_type_agg_df = cell_type_agg_df.groupby(
+            [group_key, cell_type_key]).sum()
+
     if agg_rows:
+        # In addition, aggregate values across rows to get a
+        # (n_cell_types x n_cell_types) df
         cell_type_agg_df = cell_type_agg_df.groupby(cell_type_key).sum()
     return cell_type_agg_df
 

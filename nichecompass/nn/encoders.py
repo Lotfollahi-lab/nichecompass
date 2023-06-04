@@ -76,33 +76,48 @@ class Encoder(nn.Module):
 
         if conv_layer == "gcnconv":
             if n_layers == 2:
-                self.conv_l1 = GCNConv(n_hidden, n_hidden)
-            self.conv_mu = GCNConv(n_hidden, n_latent)
-            self.conv_logstd = GCNConv(n_hidden, n_latent)
+                self.conv_l1 = GCNConv(n_hidden,
+                                       n_hidden,
+                                       add_self_loops=False)
+            self.conv_mu = GCNConv(n_hidden,
+                                   n_latent,
+                                   add_self_loops=False)
+            self.conv_logstd = GCNConv(n_hidden,
+                                       n_latent,
+                                       add_self_loops=False)
             if n_addon_latent != 0:
-                self.addon_conv_mu = GCNConv(n_hidden, n_addon_latent)
-                self.addon_conv_logstd = GCNConv(n_hidden, n_addon_latent)           
+                self.addon_conv_mu = GCNConv(n_hidden,
+                                             n_addon_latent,
+                                             add_self_loops=False)
+                self.addon_conv_logstd = GCNConv(n_hidden,
+                                                 n_addon_latent,
+                                                 add_self_loops=False)           
         elif conv_layer == "gatv2conv":
             if n_layers == 2:
                 self.conv_l1 = GATv2Conv(n_hidden,
                                          n_hidden,
+                                         add_self_loops=False,
                                          heads=n_attention_heads,
                                          concat=False)
             self.conv_mu = GATv2Conv(n_hidden,
                                      n_latent,
+                                     add_self_loops=False,
                                      heads=n_attention_heads,
                                      concat=False)
             self.conv_logstd = GATv2Conv(n_hidden,
                                          n_latent,
+                                         add_self_loops=False,
                                          heads=n_attention_heads,
                                          concat=False)
             if n_addon_latent != 0:
                 self.addon_conv_mu = GATv2Conv(n_hidden,
                                                n_addon_latent,
+                                               add_self_loops=False,
                                                heads=n_attention_heads,
                                                concat=False)
                 self.addon_conv_logstd = GATv2Conv(n_hidden,
                                                    n_addon_latent,
+                                                   add_self_loops=False,
                                                    heads=n_attention_heads,
                                                    concat=False)
 

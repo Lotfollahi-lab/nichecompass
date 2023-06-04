@@ -317,7 +317,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 data_batch: Data,
                 decoder: Literal["graph", "omics"],
                 use_only_active_gps: bool=False,
-                return_agg_attention_weights: bool=True) -> dict:
+                return_agg_weights: bool=False) -> dict:
         """
         Forward pass of the VGPGAE module.
 
@@ -332,9 +332,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             chromatin accessibility reconstruction.
         use_only_active_gps:
             If ´True´, use only active gene programs as input to decoder.
-        return_agg_attention_weights:
-            If ´True´, also return the attention weights of the gene expression
-            node label aggregator with the corresponding edge index.
+        return_agg_weights:
+            If ´True´, also return the aggregation weights of the node label
+            aggregator.
 
         Returns
         ----------
@@ -363,19 +363,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             batch_idx = torch.tensor(range(data_batch.batch_size))
 
             # Compute aggregated neighborhood omics feature vector to create
-            # concatenated omics reconstruction labels and retrieve attention
-            # weights and attention edge index
+            # concatenated omics reconstruction labels
             node_label_aggregator_output = self.node_label_aggregator(
                     x=x, # (?) no log variational
                     edge_index=edge_index,
-                    return_attention_weights=return_agg_attention_weights)
-            if self.node_label_method_ == "one-hop-attention":
-                output["node_labels"] = node_label_aggregator_output[0][batch_idx]
-                output["alpha"] = node_label_aggregator_output[1][batch_idx]
-                output["alpha_edge_index"] = data_batch.edge_attr.t()[:, batch_idx]
-            elif self.node_label_method_ == "one-hop-norm":
-                output["node_labels"] = node_label_aggregator_output[batch_idx]
-            # ´edge_attr´ stores the global edge index instead of batch index
+                    return_agg_weights=return_agg_weights)
+            output["node_labels"] = node_label_aggregator_output[0][batch_idx]
         elif decoder == "graph":
             # ´data_batch´ will be an edge batch with sampled positive and
             # negative edges of size edge_batch_size respectively. Each edge has

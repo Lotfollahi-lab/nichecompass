@@ -13,10 +13,11 @@ import scipy.sparse as sp
 import torch
 from anndata import AnnData
 from scipy.special import erfc
+from torch_geometric.utils import add_self_loops, remove_self_loops
 
 from nichecompass.data import (initialize_dataloaders,
-                             prepare_data,
-                             SpatialAnnTorchDataset)
+                               prepare_data,
+                               SpatialAnnTorchDataset)
 from nichecompass.modules import VGPGAE
 from nichecompass.train import Trainer
 from .basemodelmixin import BaseModelMixin
@@ -95,9 +96,9 @@ class NicheCompass(BaseModelMixin):
     recon_adj_key:
         Key in ´adata.obsp´ where the reconstructed adjacency matrix edge
         probabilities will be stored.
-    agg_alpha_key:
-        Key in ´adata.obsp´ where the attention weights of the gene expression
-        node label aggregator will be stored.
+    agg_weights_key:
+        Key in ´adata.obsp´ where the aggregation weights of the node label
+        aggregator will be stored.
     include_edge_recon_loss:
         If `True`, includes the edge reconstruction loss in the backpropagation.
     include_gene_expr_recon_loss:
@@ -189,7 +190,7 @@ class NicheCompass(BaseModelMixin):
                  source_peaks_idx_key: str="nichecompass_source_peaks_idx",
                  gene_peaks_mask_key: str="nichecompass_gene_peaks",
                  recon_adj_key: Optional[str]="nichecompass_recon_connectivities",
-                 agg_alpha_key: Optional[str]="nichecompass_agg_alpha",
+                 agg_weights_key: Optional[str]="nichecompass_agg_weights",
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
                  include_chrom_access_recon_loss: Optional[bool]=True,
@@ -235,7 +236,7 @@ class NicheCompass(BaseModelMixin):
         self.source_peaks_idx_key_ = source_peaks_idx_key
         self.gene_peaks_mask_key_ = gene_peaks_mask_key
         self.recon_adj_key_ = recon_adj_key
-        self.agg_alpha_key_ = agg_alpha_key
+        self.agg_weights_key_ = agg_weights_key
         self.include_edge_recon_loss_ = include_edge_recon_loss
         self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
         self.include_chrom_access_recon_loss_ = include_chrom_access_recon_loss
@@ -505,7 +506,7 @@ class NicheCompass(BaseModelMixin):
               mlflow_experiment_id: Optional[str]=None,
               retrieve_cond_embeddings: bool=False,
               retrieve_recon_edge_probs: bool=False,
-              retrieve_att_weights: bool=False,
+              retrieve_agg_weights: bool=False,
               use_cuda_if_available: bool=True,
               **trainer_kwargs):
         """
@@ -591,10 +592,9 @@ class NicheCompass(BaseModelMixin):
         retrieve_recon_edge_probs:
             If ´True´, retrieve the reconstructed edge probabilities after model
             training is finished.
-        retrieve_att_weights:
-            If ´True´, retrieve the node label aggregation attention weights
-            after model training is finished if ´one-hop-attention´ was used
-            for node label aggregation.
+        retrieve_agg_weights:
+            If ´True´, retrieve the node label aggregation weights after model
+            training is finished.
         use_cuda_if_available:
             If `True`, use cuda if available.
         trainer_kwargs:
@@ -655,10 +655,9 @@ class NicheCompass(BaseModelMixin):
         if retrieve_recon_edge_probs:
             self.adata.obsp[self.recon_adj_key_] = self.get_recon_edge_probs()
 
-        if (self.node_label_method_ == "one-hop-attention") & (
-        retrieve_att_weights):
-            self.adata.obsp[self.agg_alpha_key_] = (
-                self.get_gene_expr_agg_att_weights(
+        if retrieve_agg_weights:
+            self.adata.obsp[self.agg_weights_key_] = (
+                self.get_neighbor_importances(
                     node_batch_size=self.node_batch_size_))
 
         if mlflow_experiment_id is not None:
@@ -1532,43 +1531,45 @@ class NicheCompass(BaseModelMixin):
             return adj_recon_probs
 
     @torch.no_grad()
-    def get_gene_expr_agg_att_weights(
+    def get_neighbor_importances(
             self,      
-            node_batch_size: int=64) -> sp.csr_matrix:
+            node_batch_size: Optional[int]=None) -> sp.csr_matrix:
         """
-        Get the mean attention weights (over all heads) of the gene expression
-        node label aggregator. The attention weights indicate how much
-        importance each node / observation has attributed to its neighboring
-        nodes / observations for the gene expression reconstruction task.
+        Get the aggregation weights of the node label aggregator. The
+        aggregation weights indicate how much importance each node / observation
+        has attributed to its neighboring nodes / observations for the omics 
+        reconstruction tasks. If ´one-hop-attention´ is used as node label
+        method, the mean over all attention heads is used as aggregation
+        weights.
 
         Parameters
         ----------
         node_batch_size:
-            Batch size that is used by the dataloader.
+            Batch size that is used by the node-level dataloader. If ´None´,
+            uses the node batch size used during model training.
 
         Returns
         ----------
-        agg_alpha:
-            A sparse scipy matrix containing the mean attention weights over all
-            heads of the gene expression node label aggregator (dim: n_obs x
-            n_obs). Row-wise sums will be 1 for each observation. The matrix is
-            not symmetric.
+        agg_weights:
+            A sparse scipy matrix containing the aggregation weights of the node
+            label aggregator (dim: n_obs x n_obs). Row-wise entries will be
+            neighbor importances for each observation. The matrix is not
+            symmetric.
         """
         self._check_if_trained(warn=False)
         device = next(self.model.parameters()).device
 
-        if self.node_label_method_ != "one-hop-attention":
-            raise ValueError("The node label aggregator attention weights can "
-                             " only be retrieved if 'one-hop-attention' has "
-                             "been used as node label method.")
+        if node_batch_size is None:
+            node_batch_size = self.node_batch_size_
 
-        # Initialize global attention weights matrix
-        agg_alpha = sp.lil_matrix((len(self.adata), len(self.adata)))
+        # Initialize global aggregation weights matrix
+        agg_weights = sp.lil_matrix((len(self.adata), len(self.adata)))
 
         # Create single dataloader containing entire dataset
         data_dict = prepare_data(
             adata=self.adata,
             condition_label_encoder=self.model.condition_label_encoder_,
+            adata_atac=self.adata_atac,
             counts_key=self.counts_key_,
             adj_key=self.adj_key_,
             condition_key=self.condition_key_,
@@ -1586,8 +1587,8 @@ class NicheCompass(BaseModelMixin):
             shuffle=False)
         node_loader = loader_dict["node_train_loader"]
 
-        # Get attention weights for each node batch of the dataloader and put
-        # them into the global attention weights matrix
+        # Get aggregation weights for each node batch of the dataloader and put
+        # them into the global aggregation weights matrix
         for i, node_batch in enumerate(node_loader):
             node_batch = node_batch.to(device)
             n_obs_before_batch = i * node_batch_size
@@ -1596,26 +1597,27 @@ class NicheCompass(BaseModelMixin):
             _, alpha = (self.model.node_label_aggregator(
                 x=node_batch.x,
                 edge_index=node_batch.edge_index,
-                return_attention_weights=True))
+                return_agg_weights=True))
 
-            # Get edge index and attention weights of current node batch only
-            # (exclude sampled neighbors)
-            alpha_edge_index = node_batch.edge_attr[
-                (node_batch.edge_attr[:, 1] >= n_obs_before_batch) &
-                (node_batch.edge_attr[:, 1] < n_obs_after_batch)]
-            alpha = alpha[:alpha_edge_index.shape[0]]
+            # Filter global edge index and aggregation weights for nodes in
+            # current batch (exclude sampled neighbors across dim 1)
+            global_edge_index = node_batch.edge_attr.t()
+            batch_mask = ((global_edge_index[1] >= n_obs_before_batch) & 
+                          (global_edge_index[1] < n_obs_after_batch))
+            global_edge_index = global_edge_index[:, batch_mask]
+            if alpha.ndim > 1:
+                # Compute mean over attention heads
+                alpha = alpha.mean(dim=-1)
+            alpha = alpha[batch_mask]
 
-            # Compute mean over attention heads
-            mean_alpha = alpha.mean(dim=-1)
-
-            # Insert attention weights from current node batch in global
-            # attention weights matrix
-            alpha_edge_index = alpha_edge_index.cpu().numpy()
-            mean_alpha = mean_alpha.cpu().numpy()
-            agg_alpha[alpha_edge_index[:, 1],
-                      alpha_edge_index[:, 0]] = mean_alpha
-        agg_alpha = agg_alpha.tocsr(copy=False)
-        return agg_alpha
+            # Insert aggregation weights from current node batch in global
+            # aggregation weights matrix
+            global_edge_index = global_edge_index.cpu().numpy()
+            alpha = alpha.cpu().numpy()
+            agg_weights[global_edge_index[1, :],
+                        global_edge_index[0, :]] = alpha
+        agg_weights = agg_weights.tocsr(copy=False)
+        return agg_weights
     
 
     def get_gene_expr_dist_params(
