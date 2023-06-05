@@ -1,6 +1,6 @@
 """
-This module contains utilities to analyze cell interactions inferred by the
-NicheCompass model.
+This module contains utilities to analyze niches inferred by the NicheCompass
+model.
 """
 
 from typing import Optional
@@ -100,6 +100,7 @@ def create_cell_type_chord_plot_from_df(
         link_threshold: float=0.01,
         cell_type_key: str="cell_type",
         group_key: Optional[str]=None,
+        groups: str="all",
         save_fig: bool=False,
         save_path: Optional[str]=None):
     """
@@ -120,6 +121,8 @@ def create_cell_type_chord_plot_from_df(
         Key in ´adata.obs´ where the cell type labels are stored.
     group_key:
         Key in ´adata.obs´ where additional group labels are stored.
+    groups:
+        List of groups that will be plotted. If ´all´, plot all groups
     save_fig:
         If ´True´, save the figure.
     save_path:
@@ -131,9 +134,11 @@ def create_cell_type_chord_plot_from_df(
     sorted_cell_types = sorted(adata.obs[cell_type_key].unique().tolist())
 
     # Get group labels
-    if group_key is not None:
+    if (group_key is not None) & (groups == "all"):
         group_labels = df.index.get_level_values(
             df.index.names.index(group_key)).unique().tolist()
+    elif (group_key is not None) & (groups != "all"):
+        group_labels = groups
     else:
         group_labels = [""]
 

@@ -1,5 +1,5 @@
-from .cell_interactions import (aggregate_obsp_matrix_per_cell_type,
-                                create_cell_type_chord_plot_from_df)
+from .niche_analysis import (aggregate_obsp_matrix_per_cell_type,
+                             create_cell_type_chord_plot_from_df)
 from .multimodal_pairing import (add_multimodal_mask_to_adata,
                                  get_gene_annotations,
                                  generate_multimodal_pairing_dict)
