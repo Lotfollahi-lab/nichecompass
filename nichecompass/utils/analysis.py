@@ -6,10 +6,14 @@ model.
 from typing import Optional
 
 import holoviews as hv
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import scanpy as sc
 import scipy.sparse as sp
 from anndata import AnnData
+
+from ..models import NicheCompass
 
 
 def aggregate_obsp_matrix_per_cell_type(
@@ -198,150 +202,159 @@ def create_cell_type_chord_plot_from_df(
                 fmt="png")
 
         
-def generate_gp_info_plots(analysis_label,
-                           differential_gp_test_results_key,
-                           model,
-                           cell_type_key,
-                           cell_type_colors,
-                           latent_cluster_colors,
-                           plot_category,
-                           log_bayes_factor_thresh,
+def generate_gp_info_plots(analysis_label: str,
+                           model: NicheCompass,
+                           sample_key: str,
+                           differential_gp_test_results_key: str,
+                           color_cat_key: str,
+                           palette: list,
                            n_top_enriched_gps=10,
-                           adata=None,
-                           feature_spaces=["latent", "physical_embryo1", "physical_embryo2", "physical_embryo3"],
-                           plot_types=["gene_categories", "top_genes"],
-                           n_top_genes_per_gp=3,
-                           save_figs=False,
-                           figure_folder_path="",
-                           spot_size=30):
+                           feature_spaces=["latent"],
+                           n_top_genes_per_gp: int=3,
+                           n_top_peaks_per_gp: int=0,
+                           log_norm_omics_features: bool=True,
+                           save_figs: bool=False,
+                           figure_folder_path: str="",
+                           spot_size: float=30.):
+    """
+    Generate gene program info plots.
     
-    if adata is None:
-        adata = model.adata.copy()
+    Parameters
+    ----------
+    model:
+        A trained NicheCompass model.
+    differential_gp_test_results_key:
+        Key in ´adata.uns´ where the results of the differential gene program
+        testing are stored.
+    n_top_enriched_gps:
+        Number of top enriched gene programs for which to create info plots.
+    differential_gp_test_results_key:
+        Key in ´adata.uns´ where the results of the differential gene program
+        testing are stored.
+    n_top_genes_per_gp:
+        Number of top genes per gp to be considered in the info plots.
+    """
+    
+    adata = model.adata.copy()
+    if n_top_peaks_per_gp > 0:
+        adata_atac = model.adata_atac.copy()
+    
+    if log_norm_omics_features:
+        sc.pp.normalize_total(adata, target_sum=1e4)
+        sc.pp.log1p(adata)
+        if n_top_peaks_per_gp > 0:
+            sc.pp.normalize_total(adata_atac, target_sum=1e4)
+            sc.pp.log1p(adata_atac)
         
-    cats = adata.uns[differential_gp_test_results_key]["category"][:n_top_enriched_gps]
+    group_cats = adata.uns[differential_gp_test_results_key]["category"][:n_top_enriched_gps]
     gps = adata.uns[differential_gp_test_results_key]["gene_program"][:n_top_enriched_gps]
     
     for gp in gps:
+        # Get source and target genes, gene importances and gene signs
         gp_gene_importances_df = model.compute_gp_gene_importances(selected_gp=gp)
-        
-        if "gene_categories" in plot_types:
-            pos_sign_target_genes = gp_gene_importances_df.loc[
-                (gp_gene_importances_df["gene_weight_sign_corrected"] > 0) &
-                (gp_gene_importances_df["gene_entity"] == "target"), "gene"].tolist()
-            pos_sign_source_genes = gp_gene_importances_df.loc[
-                (gp_gene_importances_df["gene_weight_sign_corrected"] > 0) &
-                (gp_gene_importances_df["gene_entity"] == "source"), "gene"].tolist()
-            neg_sign_target_genes = gp_gene_importances_df.loc[
-                (gp_gene_importances_df["gene_weight_sign_corrected"] < 0) &
-                (gp_gene_importances_df["gene_entity"] == "target"), "gene"].tolist()
-            neg_sign_source_genes = gp_gene_importances_df.loc[
-                (gp_gene_importances_df["gene_weight_sign_corrected"] < 0) &
-                (gp_gene_importances_df["gene_entity"] == "source"), "gene"].tolist()
+        gp_source_genes_gene_importances_df = gp_gene_importances_df[
+            gp_gene_importances_df["gene_entity"] == "source"]
+        gp_target_genes_gene_importances_df = gp_gene_importances_df[
+            gp_gene_importances_df["gene_entity"] == "target"]
+        adata.uns["n_top_source_genes"] = n_top_genes_per_gp
+        adata.uns[f"{gp}_source_genes_top_genes"] = gp_source_genes_gene_importances_df["gene"][:n_top_genes_per_gp].values
+        adata.uns[f"{gp}_source_genes_top_gene_importances"] = gp_source_genes_gene_importances_df["gene_importance"][:n_top_genes_per_gp].values
+        adata.uns[f"{gp}_source_genes_top_gene_signs"] = np.where(gp_source_genes_gene_importances_df["gene_weight_sign_corrected"] > 0, "+", "-")
+        adata.uns["n_top_target_genes"] = n_top_genes_per_gp
+        adata.uns[f"{gp}_target_genes_top_genes"] = gp_target_genes_gene_importances_df["gene"][:n_top_genes_per_gp].values
+        adata.uns[f"{gp}_target_genes_top_gene_importances"] = gp_target_genes_gene_importances_df["gene_importance"][:n_top_genes_per_gp].values
+        adata.uns[f"{gp}_target_genes_top_gene_signs"] = np.where(gp_target_genes_gene_importances_df["gene_weight_sign_corrected"] > 0, "+", "-")
 
-            pos_sign_target_gene_importances = gp_gene_importances_df.loc[
-                (gp_gene_importances_df["gene_weight_sign_corrected"] > 0) &
-                (gp_gene_importances_df["gene_entity"] == "target"), "gene_importance"].values.reshape(1, -1)
-            pos_sign_source_gene_importances = gp_gene_importances_df.loc[
-                (gp_gene_importances_df["gene_weight_sign_corrected"] > 0) &
-                (gp_gene_importances_df["gene_entity"] == "source"), "gene_importance"].values.reshape(1, -1)
-            neg_sign_target_gene_importances = gp_gene_importances_df.loc[
-                (gp_gene_importances_df["gene_weight_sign_corrected"] < 0) &
-                (gp_gene_importances_df["gene_entity"] == "target"), "gene_importance"].values.reshape(1, -1)
-            neg_sign_source_gene_importances = gp_gene_importances_df.loc[
-                (gp_gene_importances_df["gene_weight_sign_corrected"] < 0) &
-                (gp_gene_importances_df["gene_entity"] == "source"), "gene_importance"].values.reshape(1, -1)
-
-            pos_sign_target_gene_expr = adata[:, pos_sign_target_genes].X.toarray()
-            pos_sign_source_gene_expr = adata[:, pos_sign_source_genes].X.toarray()
-            neg_sign_target_gene_expr = adata[:, neg_sign_target_genes].X.toarray()
-            neg_sign_source_gene_expr = adata[:, neg_sign_source_genes].X.toarray()
-
-            adata.obs[f"{gp}_pos_sign_target_gene_weighted_mean_gene_expr"] = (
-                np.mean(pos_sign_target_gene_expr * pos_sign_target_gene_importances, axis=1))
-            adata.obs[f"{gp}_pos_sign_source_gene_weighted_mean_gene_expr"] = (
-                np.mean(pos_sign_source_gene_expr * pos_sign_source_gene_importances, axis=1))
-            adata.obs[f"{gp}_neg_sign_target_gene_weighted_mean_gene_expr"] = (
-                np.mean(neg_sign_target_gene_expr * neg_sign_target_gene_importances, axis=1))
-            adata.obs[f"{gp}_neg_sign_source_gene_weighted_mean_gene_expr"] = (
-                np.mean(neg_sign_source_gene_expr * neg_sign_source_gene_importances, axis=1))
-
-            adata.uns[f"{gp}_gene_category_importances"] = np.array([pos_sign_target_gene_importances.sum(),
-                                                                     pos_sign_source_gene_importances.sum(),
-                                                                     neg_sign_target_gene_importances.sum(),
-                                                                     neg_sign_source_gene_importances.sum()])
-        
-        if "top_genes" in plot_types:
-            gp_source_genes_gene_importances_df = gp_gene_importances_df[
-                gp_gene_importances_df["gene_entity"] == "source"]
+        if n_top_peaks_per_gp > 0:
+            # Get source and target peaks, peak importances and peak signs
+            gp_peak_importances_df = model.compute_gp_peak_importances(selected_gp=gp)
+            gp_source_peaks_peak_importances_df = gp_peak_importances_df[
+                gp_peak_importances_df["peak_entity"] == "source"]
+            gp_target_peaks_peak_importances_df = gp_peak_importances_df[
+                gp_peak_importances_df["peak_entity"] == "target"]
+            adata.uns["n_top_source_peaks"] = n_top_peaks_per_gp
+            adata.uns[f"{gp}_source_peaks_top_peaks"] = gp_source_peaks_peak_importances_df["peak"][:n_top_peaks_per_gp].values
+            adata.uns[f"{gp}_source_peaks_top_peak_importances"] = gp_source_peaks_peak_importances_df["peak_importance"][:n_top_peaks_per_gp].values
+            adata.uns[f"{gp}_source_peaks_top_peak_signs"] = np.where(gp_source_peaks_peak_importances_df["peak_weight_sign_corrected"] > 0, "+", "-")
+            adata.uns["n_top_target_peaks"] = n_top_peaks_per_gp
+            adata.uns[f"{gp}_target_peaks_top_peaks"] = gp_target_peaks_peak_importances_df["peak"][:n_top_peaks_per_gp].values
+            adata.uns[f"{gp}_target_peaks_top_peak_importances"] = gp_target_peaks_peak_importances_df["peak_importance"][:n_top_peaks_per_gp].values
+            adata.uns[f"{gp}_target_peaks_top_peak_signs"] = np.where(gp_target_peaks_peak_importances_df["peak_weight_sign_corrected"] > 0, "+", "-")
             
-            gp_target_genes_gene_importances_df = gp_gene_importances_df[
-                gp_gene_importances_df["gene_entity"] == "target"]
-            
-            adata.uns["n_top_source_genes"] = n_top_genes_per_gp
-            adata.uns[f"{gp}_source_genes_top_genes"] = gp_source_genes_gene_importances_df["gene"][:n_top_genes_per_gp]
-            adata.uns[f"{gp}_source_genes_top_gene_importances"] = gp_source_genes_gene_importances_df["gene_importance"][:n_top_genes_per_gp]
-            adata.uns[f"{gp}_source_genes_top_gene_signs"] = np.where(gp_source_genes_gene_importances_df["gene_weight_sign_corrected"] > 0, "+", "-")
-            adata.uns["n_top_target_genes"] = n_top_genes_per_gp
-            adata.uns[f"{gp}_target_genes_top_genes"] = gp_target_genes_gene_importances_df["gene"][:n_top_genes_per_gp]
-            adata.uns[f"{gp}_target_genes_top_gene_importances"] = gp_target_genes_gene_importances_df["gene_importance"][:n_top_genes_per_gp]
-            adata.uns[f"{gp}_target_genes_top_gene_signs"] = np.where(gp_target_genes_gene_importances_df["gene_weight_sign_corrected"] > 0, "+", "-")
-            
-            #adata.uns["n_top_genes"] = n_top_genes_per_gp
-            #adata.uns[f"{gp}_top_genes"] = gp_gene_importances_df["gene"][:n_top_genes_per_gp]
-            #adata.uns[f"{gp}_top_gene_importances"] = gp_gene_importances_df["gene_importance"][:n_top_genes_per_gp]
-            #adata.uns[f"{gp}_top_gene_signs"] = np.where(gp_gene_importances_df["gene_weight_sign_corrected"] > 0, "+", "-")
-            #adata.uns[f"{gp}_top_gene_entities"] = gp_gene_importances_df["gene_entity"]
-        
+            # Add peaks to adata.obs for plotting
+            adata.obs[[peak for peak in adata.uns[f"{gp}_target_peaks_top_peaks"]]] = (
+                adata_atac.X.toarray()[:, [adata_atac.var_names.tolist().index(peak)
+                                           for peak in adata.uns[f"{gp}_target_peaks_top_peaks"]]])
+            adata.obs[[peak for peak in adata.uns[f"{gp}_source_peaks_top_peaks"]]] = (
+                adata_atac.X.toarray()[:, [adata_atac.var_names.tolist().index(peak)
+                                           for peak in adata.uns[f"{gp}_source_peaks_top_peaks"]]])
+        else:
+            adata.uns["n_top_source_peaks"] = 0
+            adata.uns["n_top_target_peaks"] = 0
+
     for feature_space in feature_spaces:
-        for plot_type in plot_types:
-            plot_gp_info_plots(adata=adata,
-                               cell_type_key=cell_type_key,
-                               cell_type_colors=cell_type_colors,
-                               latent_cluster_colors=latent_cluster_colors,
-                               cats=cats,
-                               gps=gps,
-                               plot_type=plot_type,
-                               plot_category=plot_category,
-                               feature_space=feature_space,
-                               spot_size=spot_size,
-                               suptitle=f"{analysis_label.replace('_', ' ').title()} Top {n_top_enriched_gps} Enriched GPs: "
-                                        f"GP Scores and {'Weighted Mean ' if plot_type == 'gene_categories' else ''}"
-                                        f"Gene Expression of {plot_type.replace('_', ' ').title()} in {feature_space.replace('_', ' ').title()} Feature Space",
-                               cat_title=f"Enriched GP Category in \n {plot_category.replace('_', ' ').title()}",
-                               save_fig=save_figs,
-                               figure_folder_path=figure_folder_path,
-                               fig_name=f"{analysis_label}_log_bayes_factor_{log_bayes_factor_thresh}_enriched_gps_gp_scores_" \
-                                        f"{'weighted_mean_gene_expr' if plot_type == 'gene_categories' else 'top_genes_gene_expr'}_" \
-                                        f"{feature_space}_space")
+        plot_gp_info_plots(adata=adata,
+                           sample_key=sample_key,
+                           gps=gps,
+                           color_cat_key=color_cat_key,
+                           palette=palette,
+                           group_cats=group_cats,
+                           feature_space=feature_space,
+                           spot_size=spot_size,
+                           suptitle=f"{analysis_label.replace('_', ' ').title()} Top {n_top_enriched_gps} Enriched GPs: "
+                                    f"GP Scores and Gene Expression of Top Genes in {feature_space} Feature Space",
+                           save_fig=save_figs,
+                           figure_folder_path=figure_folder_path,
+                           fig_name=f"{analysis_label}_enriched_gps_gp_scores_" \
+                                    f"{'top_genes_gene_expr'}_{feature_space}_space")
             
-def plot_gp_info_plots(adata,
-                       cell_type_key,
-                       cell_type_colors,
-                       latent_cluster_colors,
-                       cats,
-                       gps,
-                       plot_type,
-                       plot_category,
-                       feature_space,
-                       spot_size,
-                       suptitle,
-                       cat_title,
-                       save_fig,
-                       figure_folder_path,
-                       fig_name):
-    if plot_category == cell_type_key:
-        palette = cell_type_colors
-    else:
-        palette = latent_cluster_colors 
+            
+def plot_gp_info_plots(adata: AnnData,
+                       sample_key: str,
+                       gps: list,
+                       color_cat_key: str,
+                       palette: list,
+                       group_cats: list,
+                       feature_space: str,
+                       spot_size: float,
+                       suptitle: str,
+                       save_fig: bool,
+                       figure_folder_path: str,
+                       fig_name: str):
+    """
+    Plot gene program info plots in a specified feature space.
+    
+    Parameters
+    ----------
+    adata:
+        An AnnData object with stored information about enriched gene programs.
+    color_cat_key:
+        Key in ´adata.obs´ where the category for coloring the gp info plots is stored.
+    palette:
+        Palette that is used as colors
+    group_cats:
+        Categories to which the coloring is limited.
+    spot_size:
+        Spot size used for the spatial plots.
+    save_fig:
+        If ´True´, save the figure.
+    figure_folder_path:
+        Path of the folder where the figure will be saved.
+    fig_name:
+        Name of the figure under which it will be saved.
+    """
     # Plot selected gene program latent scores
-    if plot_type == "gene_categories":
-        ncols = 6
-        fig_width = 36
-        wspace = 0.155
-    elif plot_type == "top_genes":
-        ncols = 2 + adata.uns["n_top_genes"]
-        fig_width = 12 + (6 * adata.uns["n_top_genes"])
-        wspace = 0.3
+    ncols = (2 +
+             adata.uns["n_top_source_genes"] +
+             adata.uns["n_top_target_genes"] +
+             adata.uns["n_top_source_peaks"] +
+             adata.uns["n_top_target_peaks"])
+    fig_width = (12 + (6 * (
+        adata.uns["n_top_source_genes"] +
+        adata.uns["n_top_target_genes"] +
+        adata.uns["n_top_source_peaks"] +
+        adata.uns["n_top_target_peaks"])))
+    wspace = 0.3
     fig, axs = plt.subplots(nrows=len(gps), ncols=ncols, figsize=(fig_width, 6*len(gps)))
     if axs.ndim == 1:
         axs = axs.reshape(1, -1)
@@ -353,11 +366,11 @@ def plot_gp_info_plots(adata,
     for i, gp in enumerate(gps):
         if feature_space == "latent":
             sc.pl.umap(adata,
-                       color=plot_category,
+                       color=color_cat_key,
                        palette=palette,
-                       groups=cats[i],
+                       groups=group_cats[i],
                        ax=axs[i, 0],
-                       title=cat_title,
+                       title="Enriched GP Category",
                        legend_loc="on data",
                        na_in_legend=False,
                        show=False)
@@ -366,92 +379,102 @@ def plot_gp_info_plots(adata,
                        color_map="RdBu",
                        ax=axs[i, 1],
                        title=f"{gp[:gp.index('_')]}\n{gp[gp.index('_') + 1: gp.rindex('_')].replace('_', ' ')}\n{gp[gps[i].rindex('_') + 1:]} score",
+                       colorbar_loc="bottom",
                        show=False)
-        elif "physical" in feature_space:
-            sc.pl.spatial(adata=adata[adata.obs["batch"] == feature_space.split("_")[1]],
-                          color=plot_category,
+        else:
+            sc.pl.spatial(adata=adata[adata.obs[sample_key] == feature_space],
+                          color=color_cat_key,
                           palette=palette,
-                          groups=cats[i],
+                          groups=group_cats[i],
                           ax=axs[i, 0],
                           spot_size=spot_size,
-                          title=cat_title,
+                          title="Enriched GP Category",
                           legend_loc="on data",
                           na_in_legend=False,
                           show=False)
-            sc.pl.spatial(adata=adata[adata.obs["batch"] == feature_space.split("_")[1]],
+            sc.pl.spatial(adata=adata[adata.obs[sample_key] == feature_space],
                           color=gps[i],
                           color_map="RdBu",
                           spot_size=spot_size,
                           title=f"{gps[i].split('_', 1)[0]}\n{gps[i].split('_', 1)[1]}",
                           legend_loc=None,
                           ax=axs[i, 1],
+                          colorbar_loc="bottom",
                           show=False) 
         axs[i, 0].xaxis.label.set_visible(False)
         axs[i, 0].yaxis.label.set_visible(False)
         axs[i, 1].xaxis.label.set_visible(False)
         axs[i, 1].yaxis.label.set_visible(False)
-        if plot_type == "gene_categories":
-            for j, gene_category in enumerate(["pos_sign_target_gene",
-                                               "pos_sign_source_gene",
-                                               "neg_sign_target_gene",
-                                               "neg_sign_source_gene"]):
-                if not adata.obs[f"{gp}_{gene_category}_weighted_mean_gene_expr"].isna().any():
-                    if feature_space == "latent":
-                        sc.pl.umap(adata,
-                                   color=f"{gp}_{gene_category}_weighted_mean_gene_expr",
-                                   color_map=("Blues" if "pos_sign" in gene_category else "Reds"),
-                                   ax=axs[i, j+2],
-                                   legend_loc="on data",
-                                   na_in_legend=False,
-                                   title=f"Weighted mean gene expression \n {gene_category.replace('_', ' ')} ({adata.uns[f'{gp}_gene_category_importances'][j]:.2f})",
-                                   show=False)
-                    elif "physical" in feature_space:
-                        sc.pl.spatial(adata=adata[adata.obs["sample"] == feature_space.split("_")[1]],
-                                      color=f"{gp}_{gene_category}_weighted_mean_gene_expr",
-                                      color_map=("Blues" if "pos_sign" in gene_category else "Reds"),
-                                      ax=axs[i, 2+j],
-                                      legend_loc="on data",
-                                      na_in_legend=False,
-                                      groups=cats[i],
-                                      spot_size=spot_size,
-                                      title=f"Weighted mean gene expression \n {gene_category.replace('_', ' ')} ({adata.uns[f'{gp}_gene_category_importances'][j]:.2f})",
-                                      show=False)                        
-                    axs[i, j+2].xaxis.label.set_visible(False)
-                    axs[i, j+2].yaxis.label.set_visible(False)
-                else:
-                    axs[i, j+2].set_visible(False)
-        elif plot_type == "top_genes":
-            for j in range(len(adata.uns[f"{gp}_top_genes"])):
+        modality_entities = []
+        if len(adata.uns[f"{gp}_source_genes_top_genes"]) > 0:
+            modality_entities.append("source_genes")
+        if len(adata.uns[f"{gp}_target_genes_top_genes"]) > 0:
+            modality_entities.append("target_genes")
+        if f"{gp}_source_peaks_top_peaks" in adata.uns.keys():
+            gp_n_source_peaks_top_peaks = (
+                len(adata.uns[f"{gp}_source_peaks_top_peaks"]))
+            if len(adata.uns[f"{gp}_source_peaks_top_peaks"]) > 0:
+                modality_entities.append("source_peaks")
+        else:
+            gp_n_source_peaks_top_peaks = 0
+        if f"{gp}_target_peaks_top_peaks" in adata.uns.keys():
+            gp_n_target_peaks_top_peaks = (
+                len(adata.uns[f"{gp}_target_peaks_top_peaks"]))
+            if len(adata.uns[f"{gp}_target_peaks_top_peaks"]) > 0:
+                modality_entities.append("target_peaks")
+        else:
+            gp_n_target_peaks_top_peaks = 0
+        for modality_entity in modality_entities:
+            # Define k for index iteration
+            if modality_entity == "source_genes":
+                k = 0
+            elif modality_entity == "target_genes":
+                k = len(adata.uns[f"{gp}_source_genes_top_genes"])
+            elif modality_entity == "source_peaks":
+                k = (len(adata.uns[f"{gp}_source_genes_top_genes"]) +
+                     len(adata.uns[f"{gp}_target_genes_top_genes"]))
+            elif modality_entity == "target_peaks":
+                k = (len(adata.uns[f"{gp}_source_genes_top_genes"]) +
+                     len(adata.uns[f"{gp}_target_genes_top_genes"]) +
+                     len(adata.uns[f"{gp}_source_peaks_top_peaks"]))
+            for j in range(len(adata.uns[f"{gp}_{modality_entity}_top_{modality_entity.split('_')[1]}"])):
                 if feature_space == "latent":
                     sc.pl.umap(adata,
-                               color=adata.uns[f"{gp}_top_genes"][j],
-                               color_map=("Blues" if adata.uns[f"{gp}_top_gene_signs"][j] == "+" else "Reds"),
-                               ax=axs[i, 2+j],
+                               color=adata.uns[f"{gp}_{modality_entity}_top_{modality_entity.split('_')[1]}"][j],
+                               color_map=("Blues" if adata.uns[f"{gp}_{modality_entity}_top_{modality_entity.split('_')[1][:-1]}_signs"][j] == "+" else "Reds"),
+                               ax=axs[i, 2+k+j],
                                legend_loc="on data",
                                na_in_legend=False,
-                               title=f"{adata.uns[f'{gp}_top_genes'][j]}: "
-                                     f"{adata.uns[f'{gp}_top_gene_importances'][j]:.2f} "
-                                     f"({adata.uns[f'{gp}_top_gene_entities'][j][0]}; "
-                                     f"{adata.uns[f'{gp}_top_gene_signs'][j]})",
+                               title=f"""{adata.uns[f"{gp}_{modality_entity}_top_{modality_entity.split('_')[1]}"][j]}: """
+                                     f"""{adata.uns[f"{gp}_{modality_entity}_top_{modality_entity.split('_')[1][:-1]}_importances"][j]:.2f} """
+                                     f"({modality_entity[:-1]}; "
+                                     f"""{adata.uns[f"{gp}_{modality_entity}_top_{modality_entity.split('_')[1][:-1]}_signs"][j]})""",
+                               colorbar_loc="bottom",
                                show=False)
-                elif "physical" in feature_space:
-                    sc.pl.spatial(adata=adata[adata.obs["batch"] == feature_space.split("_")[1]],
-                                  color=adata.uns[f"{gp}_top_genes"][j],
-                                  color_map=("Blues" if adata.uns[f"{gp}_top_gene_signs"][j] == "+" else "Reds"),
+                else:
+                    sc.pl.spatial(adata=adata[adata.obs[sample_key] == feature_space],
+                                  color=adata.uns[f"{gp}_{modality_entity}_top_{modality_entity.split('_')[1]}"][j],
+                                  color_map=("Blues" if adata.uns[f"{gp}_{modality_entity}_top_{modality_entity.split('_')[1][:-1]}_signs"][j] == "+" else "Reds"),
                                   legend_loc="on data",
                                   na_in_legend=False,
-                                  ax=axs[i, 2+j],
+                                  ax=axs[i, 2+k+j],
                                   # groups=cats[i],
                                   spot_size=spot_size,
-                                  title=f"{adata.uns[f'{gp}_top_genes'][j]}: "
-                                        f"{adata.uns[f'{gp}_top_gene_importances'][j]:.2f} "
-                                        f"({adata.uns[f'{gp}_top_gene_entities'][j][0]}; "
-                                        f"{adata.uns[f'{gp}_top_gene_signs'][j]})",
+                                  title=f"""{adata.uns[f"{gp}_{modality_entity}_top_{modality_entity.split('_')[1]}"][j]}: """
+                                        f"""{adata.uns[f"{gp}_{modality_entity}_top_{modality_entity.split('_')[1][:-1]}_importances"][j]:.2f} """
+                                        f"({modality_entity[:-1]}; "
+                                        f"""{adata.uns[f"{gp}_{modality_entity}_top_{modality_entity.split('_')[1][:-1]}_signs"][j]})""",
+                                  colorbar_loc="bottom",
                                   show=False)
-                axs[i, 2+j].xaxis.label.set_visible(False)
-                axs[i, 2+j].yaxis.label.set_visible(False)
-            for k in range(len(adata.uns[f"{gp}_top_genes"]), ncols - 2):
-                axs[i, 2+k].set_visible(False)
+                axs[i, 2+k+j].xaxis.label.set_visible(False)
+                axs[i, 2+k+j].yaxis.label.set_visible(False)
+            # Remove unnecessary axes
+            for l in range(2 +
+                           len(adata.uns[f"{gp}_source_genes_top_genes"]) +
+                           len(adata.uns[f"{gp}_target_genes_top_genes"]) +
+                           gp_n_source_peaks_top_peaks +
+                           gp_n_target_peaks_top_peaks, ncols):
+                axs[i, l].set_visible(False)
 
     # Save and display plot
     plt.subplots_adjust(wspace=wspace, hspace=0.275)

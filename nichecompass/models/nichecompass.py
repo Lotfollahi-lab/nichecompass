@@ -1124,6 +1124,8 @@ class NicheCompass(BaseModelMixin):
         gp_peak_importances_df["peak_weight_sign_corrected"] = (
             gp_chrom_access_weights)
         gp_peak_importances_df["peak_importance"] = gp_peak_importances
+        gp_peak_importances_df["peak_importance"] = (
+            gp_peak_importances_df["peak_importance"] .replace(np.nan, 0.))
         gp_peak_importances_df = (gp_peak_importances_df
             [gp_peak_importances_df["peak_importance"] != 0])
         gp_peak_importances_df.sort_values(by="peak_importance",
@@ -1957,5 +1959,9 @@ class NicheCompass(BaseModelMixin):
             gp_summary_df["gp_target_peaks_weights_sign_corrected"] = gp_target_peaks_weights
             gp_summary_df["gp_source_peaks_importances"] = gp_source_peaks_importances
             gp_summary_df["gp_target_peaks_importances"] = gp_target_peaks_importances
+            gp_summary_df["gp_source_peaks_importances"] = (
+                gp_summary_df["gp_source_peaks_importances"].replace(np.nan, 0.))
+            gp_summary_df["gp_target_peaks_importances"] = (
+                gp_summary_df["gp_target_peaks_importances"].replace(np.nan, 0.))
         
         return gp_summary_df
