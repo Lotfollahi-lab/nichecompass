@@ -1746,7 +1746,8 @@ class NicheCompass(BaseModelMixin):
                 (gp_target_genes_mask, addon_gp_target_genes_mask), axis=0)
 
         # Get active gp mask
-        gp_active_status = np.array(self.model.get_active_gp_mask()).tolist()
+        gp_active_status = (self.model.get_active_gp_mask().cpu().detach()
+                            .numpy().tolist())
 
         active_gps = list(self.get_active_gps())
         all_gps = list(self.adata.uns[self.gp_names_key_])

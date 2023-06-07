@@ -106,7 +106,7 @@ def create_cell_type_chord_plot_from_df(
         group_key: Optional[str]=None,
         groups: str="all",
         save_fig: bool=False,
-        save_path: Optional[str]=None):
+        file_path: Optional[str]=None):
     """
     Create a cell type chord diagram per group based on an input DataFrame.
 
@@ -129,7 +129,7 @@ def create_cell_type_chord_plot_from_df(
         List of groups that will be plotted. If ´all´, plot all groups
     save_fig:
         If ´True´, save the figure.
-    save_path:
+    file_path:
         Path where to save the figure.
     """
     hv.extension("bokeh")
@@ -198,7 +198,7 @@ def create_cell_type_chord_plot_from_df(
     # Save chord plots
     if save_fig:
         hv.save(layout,
-                save_path,
+                file_path,
                 fmt="png")
 
         
