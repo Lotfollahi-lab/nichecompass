@@ -105,6 +105,7 @@ def create_cell_type_chord_plot_from_df(
         cell_type_key: str="cell_type",
         group_key: Optional[str]=None,
         groups: str="all",
+        plot_label: str="Niche",
         save_fig: bool=False,
         file_path: Optional[str]=None):
     """
@@ -126,7 +127,9 @@ def create_cell_type_chord_plot_from_df(
     group_key:
         Key in ´adata.obs´ where additional group labels are stored.
     groups:
-        List of groups that will be plotted. If ´all´, plot all groups
+        List of groups that will be plotted. If ´all´, plot all groups.
+    plot_label:
+        Shared label for the plots.
     save_fig:
         If ´True´, save the figure.
     file_path:
@@ -188,7 +191,7 @@ def create_cell_type_chord_plot_from_df(
                                 edge_color=hv.dim("source").str(),
                                 labels="name",
                                 node_color=hv.dim("index").str(),
-                                title=f"Group {group_label}"))
+                                title=f"{plot_label} {group_label}"))
         chord_list.append(chord)
     
     # Display chord plots

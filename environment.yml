@@ -7,6 +7,7 @@ dependencies:
   - pip
   - poetry=1.4.2
   - bedtools=2.30.0
+  - geckodriver=0.33.0
   - pip:
     - ipykernel==6.15.3
     - ipywidgets==8.0.2
