@@ -187,11 +187,11 @@ def create_cell_type_chord_plot_from_df(
         # Create group chord plot
         chord = hv.Chord((links, nodes)).select(value=(5, None))
         chord.opts(hv.opts.Chord(cmap="Category20",
-                                edge_cmap="Category20",
-                                edge_color=hv.dim("source").str(),
-                                labels="name",
-                                node_color=hv.dim("index").str(),
-                                title=f"{plot_label} {group_label}"))
+                                 edge_cmap="Category20",
+                                 edge_color=hv.dim("source").str(),
+                                 labels="name",
+                                 node_color=hv.dim("index").str(),
+                                 title=f"{plot_label} {group_label}"))
         chord_list.append(chord)
     
     # Display chord plots
