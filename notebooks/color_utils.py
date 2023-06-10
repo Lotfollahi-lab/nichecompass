@@ -127,3 +127,43 @@ starmap_plus_mouse_cns_cell_type_colors = {
     "Dentate gyrus granule neurons": "#4ECDC4", # Mint
     "Subcommissural organ hypendymal cells": "#65AADD", # Sky Blue 
 }
+
+spatial_atac_rna_seq_mouse_embryo_and_brain_rna_colors = {
+    "R5" : "#635547",
+    "R0" : "#DABE99",
+    "R3" : "#9e6762",
+    "R1" : "#FACB12",
+    "R4" : "#c19f70",
+    "R7" : "#0F4A9C",
+    "R2" : "#F397C0",
+    "R8" : "#F397C0",
+    "R12" : "#EF5A9D",
+    "R10" : "#EF5A9D",
+    "R9" : "#C594BF",
+    "R11" : "#DFCDE4",
+    "R6" : "#139992",
+    "R13" : "#3F84AA"}
+
+spatial_atac_rna_seq_mouse_embryo_and_brain_atac_colors = {
+    "A0" : "#635547",
+    "A4" : "#DABE99",
+    "A5" : "#9e6762",
+    "A1" : "#FACB12",
+    "A6" : "#c19f70",
+    "A7" : "#0F4A9C",
+    "A2" : "#F397C0",
+    "A3" : "#F397C0",
+    "C6" : "#635547",
+    "C2" : "#DABE99",
+    "C5" : "#9e6762",
+    "C0" : "#FACB12",
+    "C4" : "#c19f70",
+    "C7" : "#0F4A9C",
+    "C10" : "#F397C0",
+    "C3" : "#A5DEE4",
+    "C1" : "#5CA4A9",
+    "C9" : "#6B5B95",
+    "C8" : "#F7DB6A",
+    "C11" : "#D6E4B2",
+    "C12" : "#218380",
+    "C13" : "#ED553B"}
