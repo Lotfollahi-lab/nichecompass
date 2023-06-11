@@ -1,5 +1,5 @@
 # NicheCompass
-Niche Identification based on Cellular grapH Embeddings of COMmunication Programs Aligned across Spatial Samples.
+**N**iche **I**dentification based on **C**ellular grap**H** **E**mbeddings of **COM**munication **P**rograms **A**ligned across **S**patial **S**amples.
 
 ## Installation
 1) Create the nichecompass conda environment:
@@ -11,7 +11,19 @@ Niche Identification based on Cellular grapH Embeddings of COMmunication Program
 4) Install all Python dependencies via Poetry:
 ```poetry install```
 
-## Resources
+## Tutorials
 Tutorial notebooks are available in the notebooks folder.
+
+### Single Sample Tutorial
+In this tutorial, we apply NicheCompass to a single sample (sagittal brain section) of the STARmap PLUS mouse central nervous system dataset / atlas from [Shi, H. et al. Spatial Atlas of the Mouse Central Nervous System at Molecular Resolution. bioRxiv 2022.06.20.496914 (2022)](https://www.biorxiv.org/content/10.1101/2022.06.20.496914v1).
+
+### Oneshot Sample Integration Tutorial
+In this tutorial, we apply NicheCompass to integrate three samples (sagittal brain sections) of the STARmap PLUS mouse central nervous system dataset / atlas from [Shi, H. et al. Spatial Atlas of the Mouse Central Nervous System at Molecular Resolution. bioRxiv 2022.06.20.496914 (2022)](https://www.biorxiv.org/content/10.1101/2022.06.20.496914v1) in a oneshot setting (i.e. the model is trained on all samples at once).
+
+### Reference Query Mapping Tutorial
+In this tutorial, we apply NicheCompass to integrate three samples (sagittal brain sections) of the STARmap PLUS mouse central nervous system dataset / atlas from [Shi, H. et al. Spatial Atlas of the Mouse Central Nervous System at Molecular Resolution. bioRxiv 2022.06.20.496914 (2022)](https://www.biorxiv.org/content/10.1101/2022.06.20.496914v1) in a query to reference mapping setting (i.e. the model is first trained on the reference samples, and the query samples are then mapped onto the pretrained reference model by finetuning it). The first two samples are used as reference samples and the third sample is the query.
+
+### Multimodal Tutorial
+In this tutorial, we apply NicheCompass to a single multimodal sample (postnatal day 22 coronal section) of a spatial ATAC-RNA-seq mouse brain dataset from [Zhang, D. et al. Spatial epigenome–transcriptome co-profiling of mammalian tissues. Nature 1–10 (2023)](https://www.nature.com/articles/s41586-023-05795-1).
 
 ## Reference
