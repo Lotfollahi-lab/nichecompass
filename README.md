@@ -21,8 +21,9 @@ In this tutorial, we apply NicheCompass to a single sample (sagittal brain secti
 In this tutorial, we apply NicheCompass to integrate three samples (sagittal brain sections) of the STARmap PLUS mouse central nervous system dataset / atlas from [Shi, H. et al. Spatial Atlas of the Mouse Central Nervous System at Molecular Resolution. bioRxiv 2022.06.20.496914 (2022)](https://www.biorxiv.org/content/10.1101/2022.06.20.496914v1) in a oneshot setting (i.e. the model is trained on all samples at once).
 
 ### Reference Query Mapping Tutorial
-In this tutorial, we apply NicheCompass to integrate three samples (sagittal brain sections) of the STARmap PLUS mouse central nervous system dataset / atlas from Shi, H. et al. Spatial Atlas of the Mouse Central Nervous System at Molecular Resolution. bioRxiv 2022.06.20.496914 (2022) in a query to reference mapping setting (i.e. the model is first trained on the reference samples, and the query samples are then mapped onto the pretrained reference model by finetuning it).
+In this tutorial, we apply NicheCompass to integrate three samples (sagittal brain sections) of the STARmap PLUS mouse central nervous system dataset / atlas from Shi, H. et al. Spatial Atlas of the Mouse Central Nervous System at Molecular Resolution. bioRxiv 2022.06.20.496914 (2022) in a query to reference mapping setting (i.e. the model is first trained on the reference samples, and the query samples are then mapped onto the pretrained reference model by finetuning it). The first two samples are used as reference samples and the third sample is the query.
 
 ### Multimodal Tutorial
+In this tutorial, we apply NicheCompass to a single multimodal sample (postnatal day 22 coronal section) of a spatial ATAC-RNA-seq mouse brain dataset from Zhang, D. et al. Spatial epigenome–transcriptome co-profiling of mammalian tissues. Nature 1–10 (2023).
 
 ## Reference
