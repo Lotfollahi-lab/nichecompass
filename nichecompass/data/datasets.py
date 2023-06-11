@@ -88,7 +88,7 @@ class SpatialAnnTorchDataset():
             # Remove self loops in case there are already before adding new ones
             self.edge_index, _ = remove_self_loops(self.edge_index)
             self.edge_index, _ = add_self_loops(self.edge_index,
-                                           num_nodes=self.x.size(0))
+                                                num_nodes=self.x.size(0))
 
         if condition_key is not None:
             self.conditions = torch.tensor(

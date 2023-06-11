@@ -349,7 +349,7 @@ def extract_gp_dict_from_omnipath_lr_interactions(
 def extract_gp_dict_from_mebocost_es_interactions(
         dir_path: str="../data/gene_programs/metabolite_enzyme_sensor_gps",
         species: Literal["mouse", "human"]="mouse",
-        genes_uppercase: bool=False,
+        genes_uppercase: bool=True,
         plot_gp_gene_count_distributions: bool=True) -> dict:
     """
     Retrieve metabolite enzyme-sensor interactions from the Human Metabolome

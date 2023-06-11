@@ -8,6 +8,7 @@ import torch
 from anndata import AnnData
 from torch_geometric.data import Data
 from torch_geometric.transforms import RandomNodeSplit, RandomLinkSplit
+from torch_geometric.utils import add_self_loops, remove_self_loops
 
 from .datasets import SpatialAnnTorchDataset
 
@@ -24,6 +25,9 @@ def edge_level_split(data: Data,
     in the test split. However, nodes will not be split and all node features 
     will be accessible from all splits.
 
+    Check https://github.com/pyg-team/pytorch_geometric/issues/3668 for more
+    context how RandomLinkSplit works.
+
     Parameters
     ----------
     data:
@@ -33,8 +37,10 @@ def edge_level_split(data: Data,
     test_ratio:
         Ratio of edges to be included in the test split.
     is_undirected:
-        If ´True´, only include 1 edge index pair per edge in edge_label_index
-        and exclude symmetric edge index pair.
+        If ´True´, the graph is assumed to be undirected, and positive and
+        negative samples will not leak (reverse) edge connectivity across
+        different splits. This is set to ´False´, as there is an issue with
+        replication of self loops.
     neg_sampling_ratio:
         Ratio of negative sampling. This should be set to 0 if negative sampling
         is done by the dataloader.
@@ -47,14 +53,32 @@ def edge_level_split(data: Data,
         Validation PyG Data object.
     test_data:
         Test PyG Data object.
-    """            
-    
+    """
+    # Clone data to not modify in place to not affect node split
+    data_no_self_loops = data.clone()
+
+    # Remove self loops temporarily as we don't want them as edge labels. There
+    # is also an issue with RandomLinkSplit (self loops will be replicated for
+    # message passing). We will add the self loops again after the split
+    data_no_self_loops.edge_index, data_no_self_loops.edge_attr = (
+        remove_self_loops(edge_index=data.edge_index,
+                          edge_attr=data.edge_attr))
+
     random_link_split = RandomLinkSplit(
         num_val=val_ratio,
         num_test=test_ratio,
-        is_undirected=is_undirected, 
+        is_undirected=is_undirected,
         neg_sampling_ratio=neg_sampling_ratio)
-    train_data, val_data, test_data = random_link_split(data)
+    train_data, val_data, test_data = random_link_split(data_no_self_loops)
+
+    # Readd self loops for message passing
+    for split_data in [train_data, val_data, test_data]:
+        split_data.edge_index = add_self_loops(
+            edge_index=split_data.edge_index,
+            num_nodes=split_data.x.shape[0])[0]
+        split_data.edge_attr = add_self_loops(
+            edge_index=split_data.edge_attr.t(),
+            num_nodes=split_data.x.shape[0])[0].t()
     return train_data, val_data, test_data
 
 
@@ -162,7 +186,7 @@ def prepare_data(adata: AnnData,
                     edge_index=dataset.edge_index,
                     edge_attr=dataset.edge_index.t(), # store index of edge
                                                       # nodes as edge attribute
-                                                      # for attention weight
+                                                      # for aggregation weight
                                                       # retrieval in mini
                                                       # batches
                     conditions=dataset.conditions)
@@ -179,7 +203,7 @@ def prepare_data(adata: AnnData,
     data_dict["edge_train_data"] = edge_train_data
     data_dict["edge_val_data"] = edge_val_data
     data_dict["edge_test_data"] = edge_test_data
-    
+
     # Node-level split for gene expression reconstruction
     data_dict["node_masked_data"] = node_level_split_mask(
         data=data,

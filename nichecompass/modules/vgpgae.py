@@ -317,7 +317,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 data_batch: Data,
                 decoder: Literal["graph", "omics"],
                 use_only_active_gps: bool=False,
-                return_agg_weights: bool=False) -> dict:
+                return_agg_weights: bool=False,
+                turn_off_peaks_based_on_genes: bool=True) -> dict:
         """
         Forward pass of the VGPGAE module.
 
@@ -335,6 +336,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         return_agg_weights:
             If ´True´, also return the aggregation weights of the node label
             aggregator.
+        turn_off_peaks_based_on_genes:
+            If ´True´, turn off the mapped peaks (peak gp weights) for genes
+            that have been turned off in a gene program by L1 regularization.
 
         Returns
         ----------
@@ -463,44 +467,47 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 self.log_library_size_atac = torch.log(
                     x_atac.sum(1)).unsqueeze(1)[batch_idx]
                 
-                # Get dynamic gene weight peak mask to turn off peaks that
-                # correspond to genes that are turned off
-                with torch.no_grad():
-                    # Round to 4 decimals as genes are never completely
-                    # turned off due to L1 being not differentiable at 0
-                    gp_weights = self.get_gp_weights(use_mask_idx=False)[0]
-                    gp_weights = torch.round(gp_weights, decimals=4)
-                    
-                    non_zero_gene_weights = torch.ne(
-                            gp_weights, 
-                            0).float() # dim: (2 x n_genes, n_gps)
-                    
-                    non_zero_target_gene_weights = non_zero_gene_weights[
-                        :int(non_zero_gene_weights.size(0) / 2), :]
-                        # dim: (n_genes, n_gps)
-                    non_zero_source_gene_weights = non_zero_gene_weights[
-                        int(non_zero_gene_weights.size(0) / 2):, :]
-                        # dim: (n_genes, n_gps)
-                    
-                    gene_weight_target_peak_mask = torch.matmul(
-                        non_zero_target_gene_weights.t(), # dim: (n_gps, n_genes)
-                        self.gene_peaks_mask_) # dim: (n_genes, n_peaks)
-                        # dim: (n_gps, n_peaks)
-                    gene_weight_target_peak_mask = torch.ne(
-                        gene_weight_target_peak_mask, 
-                        0).float() # dim: (n_gps, n_peaks)
-                    
-                    gene_weight_source_peak_mask = torch.matmul(
-                        non_zero_source_gene_weights.t(),
-                        self.gene_peaks_mask_)
-                    gene_weight_source_peak_mask = torch.ne(
-                        gene_weight_source_peak_mask, 
-                        0).float()
-                    
-                    gene_weight_peak_mask = torch.cat(
-                        (gene_weight_target_peak_mask,
-                         gene_weight_source_peak_mask), dim=1).t()
-                        # dim: (2 x n_peaks, n_gps)   
+                if turn_off_peaks_based_on_genes:
+                    # Get dynamic gene weight peak mask to turn off peaks that
+                    # correspond to genes that are turned off
+                    with torch.no_grad():
+                        # Round to 4 decimals as genes are never completely
+                        # turned off due to L1 being not differentiable at 0
+                        gp_weights = self.get_gp_weights(use_mask_idx=False)[0]
+                        gp_weights = torch.round(gp_weights, decimals=4)
+
+                        non_zero_gene_weights = torch.ne(
+                                gp_weights, 
+                                0).float() # dim: (2 x n_genes, n_gps)
+
+                        non_zero_target_gene_weights = non_zero_gene_weights[
+                            :int(non_zero_gene_weights.size(0) / 2), :]
+                            # dim: (n_genes, n_gps)
+                        non_zero_source_gene_weights = non_zero_gene_weights[
+                            int(non_zero_gene_weights.size(0) / 2):, :]
+                            # dim: (n_genes, n_gps)
+
+                        gene_weight_target_peak_mask = torch.matmul(
+                            non_zero_target_gene_weights.t(), # dim: (n_gps, n_genes)
+                            self.gene_peaks_mask_) # dim: (n_genes, n_peaks)
+                            # dim: (n_gps, n_peaks)
+                        gene_weight_target_peak_mask = torch.ne(
+                            gene_weight_target_peak_mask, 
+                            0).float() # dim: (n_gps, n_peaks)
+
+                        gene_weight_source_peak_mask = torch.matmul(
+                            non_zero_source_gene_weights.t(),
+                            self.gene_peaks_mask_)
+                        gene_weight_source_peak_mask = torch.ne(
+                            gene_weight_source_peak_mask, 
+                            0).float()
+
+                        gene_weight_peak_mask = torch.cat(
+                            (gene_weight_target_peak_mask,
+                             gene_weight_source_peak_mask), dim=1).t()
+                            # dim: (2 x n_peaks, n_gps)
+                else:
+                    gene_weight_peak_mask = None
 
                 # Get chromatin accessibility reconstruction distribution
                 # parameters

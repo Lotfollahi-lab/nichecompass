@@ -214,7 +214,7 @@ class OneHopGCNNormNodeLabelAggregator(nn.Module):
         adj = SparseTensor.from_edge_index(edge_index,
                                            sparse_sizes=(x.shape[0],
                                                          x.shape[0]))
-        adj_norm = gcn_norm(adj, add_self_loops=False)
+        adj_norm = gcn_norm(adj)
         x_neighbors_norm = adj_norm.t().matmul(x)
         node_labels = torch.cat((x, x_neighbors_norm),
                                 dim=-1)[:, self.features_idx]
