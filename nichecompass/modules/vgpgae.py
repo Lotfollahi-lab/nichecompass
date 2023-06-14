@@ -369,7 +369,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             # Compute aggregated neighborhood omics feature vector to create
             # concatenated omics reconstruction labels
             node_label_aggregator_output = self.node_label_aggregator(
-                    x=x, # (?) no log variational
+                    x=x,
                     edge_index=edge_index,
                     return_agg_weights=return_agg_weights)
             output["node_labels"] = node_label_aggregator_output[0][batch_idx]
