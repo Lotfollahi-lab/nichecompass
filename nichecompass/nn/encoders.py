@@ -69,7 +69,7 @@ class Encoder(nn.Module):
         if n_cond_embed_input != 0:
             # n_input += n_cond_embed_input
             self.cond_embed_l = nn.Linear(n_cond_embed_input,
-                                          n_latent,
+                                          n_hidden,
                                           bias=False)
 
         self.fc_l = nn.Linear(n_input, n_hidden)
@@ -140,7 +140,14 @@ class Encoder(nn.Module):
             normal distribution.
         """
         # FC forward pass shared across all nodes
-        hidden = self.dropout(self.activation(self.fc_l(x)))
+        hidden = self.fc_l(x)
+        
+        # Add conditional embedding to hidden vector
+        if cond_embed is not None:
+            hidden += self.cond_embed_l(cond_embed)
+            
+        hidden = self.dropout(self.activation(hidden))
+        
         if self.n_layers == 2:
             # Part of forward pass shared across all nodes
             hidden = self.dropout(self.activation(
@@ -149,11 +156,6 @@ class Encoder(nn.Module):
         # Part of forward pass only for maskable latent nodes
         mu = self.conv_mu(hidden, edge_index)
         logstd = self.conv_logstd(hidden, edge_index)
-
-        # Add conditional embedding to latent feature vector
-        if cond_embed is not None:
-            mu += self.cond_embed_l(cond_embed)
-            logstd += self.cond_embed_l(cond_embed)
         
         # Part of forward pass only for unmaskable add-on latent nodes
         if self.n_addon_latent != 0:

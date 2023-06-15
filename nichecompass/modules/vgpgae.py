@@ -393,7 +393,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         # Get conditional embeddings
         if (self.cond_embed_injection_ is not None) & (self.n_conditions_ > 0):
             self.cond_embed = self.cond_embedder(
-                data_batch.conditions[batch_idx])
+                data_batch.conditions)
         else:
             self.cond_embed = None
 
@@ -420,7 +420,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         if decoder == "graph":
             output["edge_recon_logits"] = self.graph_decoder(
                 z=z,
-                cond_embed=(self.cond_embed if "graph_decoder" in
+                cond_embed=(self.cond_embed[batch_idx] if "graph_decoder" in
                             self.cond_embed_injection_ else None))
         elif decoder == "omics":
             if "chrom_access" in self.modalities_:
@@ -458,7 +458,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             output["gene_expr_dist_params"] = self.gene_expr_decoder(
                 z=z,
                 log_library_size=self.log_library_size,
-                cond_embed=(self.cond_embed if "gene_expr_decoder" in
+                cond_embed=(self.cond_embed[batch_idx] if "gene_expr_decoder" in
                             self.cond_embed_injection_ else None))
             
             if "chrom_access" in self.modalities_:
@@ -515,7 +515,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     z=z,
                     log_library_size=self.log_library_size_atac,
                     gene_weight_peak_mask=gene_weight_peak_mask,
-                    cond_embed=(self.cond_embed if "chrom_access_decoder" in
+                    cond_embed=(self.cond_embed[batch_idx] if "chrom_access_decoder" in
                                 self.cond_embed_injection_ else None))
 
         return output
@@ -798,7 +798,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             _, zi_probs = self.get_gene_expr_dist_params(
                 z=self.mu,
                 log_library_size=self.log_library_size,
-                cond_embed=self.cond_embed)
+                cond_embed=self.cond_embed[batch_idx])
             non_zi_probs = 1 - zi_probs
             non_zi_probs_sum = non_zi_probs.sum(0).unsqueeze(1) # sum over obs
             gp_weights *= non_zi_probs_sum
@@ -896,7 +896,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         # Get conditional embeddings
         if ("encoder" in self.cond_embed_injection_) & (self.n_conditions_ > 0):
             cond_embed = self.cond_embedder(
-                node_batch.conditions[:node_batch.batch_size])
+                node_batch.conditions)
         else:
             cond_embed = None
             
