@@ -494,7 +494,8 @@ class NicheCompass(BaseModelMixin):
               lambda_gene_expr_recon: float=300.,
               lambda_chrom_access_recon: float=100.,
               lambda_cond_contrastive: float=0.,
-              contrastive_logits_ratio: float=0.,
+              contrastive_logits_pos_ratio: float=0.,
+              contrastive_logits_neg_ratio: float=0.,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,
               min_gp_genes_l1_masked: int=4,
@@ -551,13 +552,18 @@ class NicheCompass(BaseModelMixin):
             very similar latent representations to become more similar and 
             observations with different latent representations to become more
             different.
-        contrastive_logits_ratio:
-            Ratio for determining the contrastive logits for the conditional
-            contrastive loss. The top (´contrastive_logits_ratio´ * 100)% logits
-            of sampled negative edges with nodes from different conditions serve
-            as positive labels for the contrastive loss and the bottom
-            (´contrastive_logits_ratio´ * 100)% logits of sampled negative edges
-            with nodes from different conditions serve as negative labels.
+        contrastive_logits_pos_ratio:
+            Ratio for determining the logits threshold of positive contrastive
+            examples of node pairs from different conditions. The top
+            (´contrastive_logits_pos_ratio´ * 100)% logits of node pairs from
+            different conditions serve as positive labels for the contrastive
+            loss.
+        contrastive_logits_neg_ratio:
+            Ratio for determining the logits threshold of negative contrastive
+            examples of node pairs from different conditions. The bottom
+            (´contrastive_logits_neg_ratio´ * 100)% logits of node pairs from
+            different conditions serve as negative labels for the contrastive
+            loss.
         lambda_group_lasso:
             Lambda (weighting factor) for the group lasso regularization loss of
             gene programs. If ´>0´, this will enforce sparsity of gene programs.
@@ -627,7 +633,8 @@ class NicheCompass(BaseModelMixin):
             lambda_gene_expr_recon=lambda_gene_expr_recon,
             lambda_chrom_access_recon=lambda_chrom_access_recon,
             lambda_cond_contrastive=lambda_cond_contrastive,
-            contrastive_logits_ratio=contrastive_logits_ratio,
+            contrastive_logits_pos_ratio=contrastive_logits_pos_ratio,
+            contrastive_logits_neg_ratio=contrastive_logits_neg_ratio,
             lambda_group_lasso=lambda_group_lasso,
             lambda_l1_masked=lambda_l1_masked,
             min_gp_genes_l1_masked=min_gp_genes_l1_masked,

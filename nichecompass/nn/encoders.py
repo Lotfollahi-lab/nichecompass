@@ -65,14 +65,11 @@ class Encoder(nn.Module):
               f"{n_attention_heads if conv_layer == 'gatv2conv' else '0'}, "
               f"dropout_rate: {dropout_rate}")
 
-        # Conditional embedding layer
-        if n_cond_embed_input != 0:
-            # n_input += n_cond_embed_input
-            self.cond_embed_l = nn.Linear(n_cond_embed_input,
-                                          n_hidden,
-                                          bias=False)
-
         self.fc_l = nn.Linear(n_input, n_hidden)
+        
+        # Add cond embed to hidden after fc_l
+        if n_cond_embed_input != 0:
+            n_hidden += n_cond_embed_input
 
         if conv_layer == "gcnconv":
             if n_layers == 2:
@@ -110,7 +107,6 @@ class Encoder(nn.Module):
                                                    n_addon_latent,
                                                    heads=n_attention_heads,
                                                    concat=False)
-
         self.activation = activation
         self.dropout = nn.Dropout(dropout_rate)
 
@@ -140,13 +136,13 @@ class Encoder(nn.Module):
             normal distribution.
         """
         # FC forward pass shared across all nodes
-        hidden = self.fc_l(x)
+        hidden = self.dropout(self.activation(self.fc_l(x)))
         
         # Add conditional embedding to hidden vector
         if cond_embed is not None:
-            hidden += self.cond_embed_l(cond_embed)
-            
-        hidden = self.dropout(self.activation(hidden))
+            hidden = torch.cat((hidden,
+                                cond_embed),
+                                axis=1)
         
         if self.n_layers == 2:
             # Part of forward pass shared across all nodes
@@ -156,6 +152,11 @@ class Encoder(nn.Module):
         # Part of forward pass only for maskable latent nodes
         mu = self.conv_mu(hidden, edge_index)
         logstd = self.conv_logstd(hidden, edge_index)
+        
+        # Add conditional embedding to hidden vector
+        #if cond_embed is not None:
+            #mu += self.cond_embed_l_mu(cond_embed)
+            #logstd += self.cond_embed_l_logstd(cond_embed)
         
         # Part of forward pass only for unmaskable add-on latent nodes
         if self.n_addon_latent != 0:

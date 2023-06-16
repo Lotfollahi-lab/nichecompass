@@ -531,7 +531,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
              lambda_chrom_access_recon: float=0.1,
              lambda_edge_recon: Optional[float]=1.,
              lambda_cond_contrastive: Optional[float]=1.,
-             contrastive_logits_ratio: float=0.1,
+             contrastive_logits_pos_ratio: float=0.1,
+             contrastive_logits_neg_ratio: float=0.1,
              edge_recon_active: bool=True,
              cond_contrastive_active: bool=True) -> dict:
         """
@@ -629,7 +630,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 edge_recon_labels=edge_model_output["edge_recon_labels"],
                 edge_same_condition_labels=edge_model_output[
                     "edge_same_condition_labels"],
-                contrastive_logits_ratio=contrastive_logits_ratio))
+                contrastive_logits_pos_ratio=contrastive_logits_pos_ratio,
+                contrastive_logits_neg_ratio=contrastive_logits_neg_ratio))
 
         # Compute gene expression reconstruction negative binomial or
         # zero-inflated negative binomial loss

@@ -217,7 +217,8 @@ class Trainer(BaseTrainerMixin):
               weight_decay: float=0.,
               lambda_edge_recon: Optional[float]=500000.,
               lambda_cond_contrastive: Optional[float]=0.,
-              contrastive_logits_ratio: Optional[float]=0.125,
+              contrastive_logits_pos_ratio: Optional[float]=0.125,
+              contrastive_logits_neg_ratio: Optional[float]=0.125,
               lambda_gene_expr_recon: float=100.,
               lambda_chrom_access_recon: float=10.,
               lambda_group_lasso: float=0.,
@@ -253,13 +254,18 @@ class Trainer(BaseTrainerMixin):
             very similar latent representations to become more similar and 
             observations with different latent representations to become more
             different.
-        contrastive_logits_ratio:
-            Ratio for determining the contrastive logits for the conditional
-            contrastive loss. The top (´contrastive_logits_ratio´ * 100)% logits
-            of sampled negative edges with nodes from different conditions serve
-            as positive labels for the contrastive loss and the bottom
-            (´contrastive_logits_ratio´ * 100)% logits of sampled negative edges
-            with nodes from different conditions serve as negative labels.
+        contrastive_logits_pos_ratio:
+            Ratio for determining the logits threshold of positive contrastive
+            examples of node pairs from different conditions. The top
+            (´contrastive_logits_pos_ratio´ * 100)% logits of node pairs from
+            different conditions serve as positive labels for the contrastive
+            loss.
+        contrastive_logits_neg_ratio:
+            Ratio for determining the logits threshold of negative contrastive
+            examples of node pairs from different conditions. The bottom
+            (´contrastive_logits_neg_ratio´ * 100)% logits of node pairs from
+            different conditions serve as negative labels for the contrastive
+            loss.
         lambda_gene_expr_recon:
             Lambda (weighting factor) for the gene expression reconstruction
             loss. If ´>0´, this will enforce interpretable gene programs that
@@ -296,7 +302,8 @@ class Trainer(BaseTrainerMixin):
         self.lambda_gene_expr_recon_ = lambda_gene_expr_recon
         self.lambda_chrom_access_recon_ = lambda_chrom_access_recon
         self.lambda_cond_contrastive_ = lambda_cond_contrastive
-        self.contrastive_logits_ratio_ = contrastive_logits_ratio
+        self.contrastive_logits_pos_ratio_ = contrastive_logits_pos_ratio
+        self.contrastive_logits_neg_ratio_ = contrastive_logits_neg_ratio
         self.lambda_group_lasso_ = lambda_group_lasso
         self.lambda_l1_masked_ = lambda_l1_masked
         self.min_gp_genes_l1_masked_ = min_gp_genes_l1_masked
@@ -375,7 +382,8 @@ class Trainer(BaseTrainerMixin):
                     lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
                     lambda_chrom_access_recon=self.lambda_chrom_access_recon_,
                     lambda_cond_contrastive=self.lambda_cond_contrastive_,
-                    contrastive_logits_ratio=self.contrastive_logits_ratio_,
+                    contrastive_logits_pos_ratio=self.contrastive_logits_pos_ratio_,
+                    contrastive_logits_neg_ratio=self.contrastive_logits_neg_ratio_,
                     lambda_group_lasso=self.lambda_group_lasso_,
                     lambda_l1_masked=self.lambda_l1_masked_,
                     l1_masked_gp_idx=self.l1_masked_gp_idx,
@@ -510,7 +518,8 @@ class Trainer(BaseTrainerMixin):
                     lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
                     lambda_chrom_access_recon=self.lambda_chrom_access_recon_,
                     lambda_cond_contrastive=self.lambda_cond_contrastive_,
-                    contrastive_logits_ratio=self.contrastive_logits_ratio_,
+                    contrastive_logits_pos_ratio=self.contrastive_logits_pos_ratio_,
+                    contrastive_logits_neg_ratio=self.contrastive_logits_neg_ratio_,
                     lambda_group_lasso=self.lambda_group_lasso_,
                     lambda_l1_masked=self.lambda_l1_masked_,
                     l1_masked_gp_idx=self.l1_masked_gp_idx,
