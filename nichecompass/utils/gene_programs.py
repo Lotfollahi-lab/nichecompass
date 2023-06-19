@@ -163,8 +163,9 @@ def add_gps_from_gp_dict_to_adata(
 
 
 def extract_gp_dict_from_nichenet_ligand_target_mx(
+        version: Literal["v1", "v2_mouse", "v2_human"]="v2_mouse",
         keep_target_genes_ratio: float=0.,
-        max_n_target_genes_per_gp: int=1000,
+        max_n_target_genes_per_gp: int=250,
         load_from_disk: bool=False,
         save_to_disk: bool=False,
         file_path: Optional[str]="nichenet_ligand_target_matrix.csv",
@@ -178,6 +179,10 @@ def extract_gp_dict_from_nichenet_ligand_target_mx(
 
     Parameters
     ----------
+    version:
+        Version of the NicheNet ligand target gene regulatory potential matrix.
+        ´V2´ is an improved version of ´V1´ and differentiates between mouse
+        and human.
     keep_target_genes_ratio:
         Ratio of target genes that are kept compared to total target genes. This
         ratio is applied over the entire matrix (not on gene program level) and
@@ -187,7 +192,7 @@ def extract_gp_dict_from_nichenet_ligand_target_mx(
         Maximum number of target genes per gene program. If a gene program has
         more target genes than ´max_n_target_genes_per_gp´, only the
         ´max_n_target_genes_per_gp´ gene programs with the highest scores will
-        be kept.
+        be kept. Default value is chosen based on MultiNicheNet specification.
     load_from_disk:
         If ´True´, the NicheNet ligand target matrix will be loaded from disk
         instead of from the web.
@@ -213,11 +218,17 @@ def extract_gp_dict_from_nichenet_ligand_target_mx(
     # Download or load NicheNet ligand target matrix and store in df (optionally
     # also on disk)
     if not load_from_disk:
-        print("Downloading NicheNet ligand target potential matrix from the "
-              "web. This might take a while...")
+        print(f"Downloading NicheNet ligand target potential matrix '{version}'"
+              "from the web. This might take a while...")
+        if version == "v1":
+            url = "https://zenodo.org/record/3260758/files/ligand_target_matrix.rds"
+        elif version == "v2_human":
+            url = "https://zenodo.org/record/7074291/files/ligand_target_matrix_nsga2r_final.rds"
+        elif version == "v2_mouse":
+            url = "https://zenodo.org/record/7074291/files/ligand_target_matrix_nsga2r_final_mouse.rds"
         ligand_target_df = load_R_file_as_df(
             R_file_path="ligand_target_matrix.rds",
-            url="https://zenodo.org/record/3260758/files/ligand_target_matrix.rds",
+            url=url,
             save_df_to_disk=save_to_disk,
             df_save_path=file_path)
     else:
