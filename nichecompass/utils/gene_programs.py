@@ -16,9 +16,13 @@ from .utils import load_R_file_as_df, create_gp_gene_count_distribution_plots
 def add_gps_from_gp_dict_to_adata(
         gp_dict: dict,
         adata: AnnData,
-        genes_uppercase: bool=False,
+        genes_uppercase: bool=True,
         gp_targets_mask_key: str="nichecompass_gp_targets",
+        gp_targets_categories_mask_key: str="nichecompass_gp_targets_categories",
+        targets_categories_label_encoder_key: str="nichecompass_targets_categories_label_encoder",
         gp_sources_mask_key: str="nichecompass_gp_sources",
+        gp_sources_categories_mask_key: str="nichecompass_gp_sources_categories",
+        sources_categories_label_encoder_key: str="nichecompass_sources_categories_label_encoder",
         gp_names_key: str="nichecompass_gp_names",
         source_genes_idx_key: str="nichecompass_source_genes_idx",
         target_genes_idx_key: str="nichecompass_target_genes_idx",
@@ -53,8 +57,8 @@ def add_gps_from_gp_dict_to_adata(
     adata:
         AnnData object to which the gene programs will be added.
     genes_uppercase:
-        If `True`, convert the gene names in adata to uppercase for comparison
-        with the gene program dictionary (e.g. if adata contains mouse data).
+        If `True`, convert the gene names in the adata and in the gene program
+        dictionary to uppercase for comparison.
     gp_targets_mask_key:
         Key in ´adata.varm´ where the binary gene program mask for target genes
         of a gene program will be stored (target genes are used for the 
@@ -107,8 +111,16 @@ def add_gps_from_gp_dict_to_adata(
     # Retrieve probed genes from adata
     adata_genes = (adata.var_names.str.upper() if genes_uppercase
                    else adata.var_names)
+    
+    if genes_uppercase:
+        # Convert gene program genes to uppercase
+        for _, gp_genes_dict in gp_dict.items():
+            gp_genes_dict["sources"] = [
+                source.upper() for source in gp_genes_dict["sources"]]
+            gp_genes_dict["targets"] = [
+                target.upper() for target in gp_genes_dict["targets"]]
 
-    # Create binary gene program masks considering only probed genes
+    # Create binary gene program gene masks considering only probed genes
     gp_targets_mask = [[int(gene in gp_genes_dict["targets"])
                         for _, gp_genes_dict in gp_dict.items()]
                        for gene in adata_genes]
@@ -118,6 +130,48 @@ def add_gps_from_gp_dict_to_adata(
                        for gene in adata_genes]
     gp_sources_mask = np.asarray(gp_sources_mask, dtype="int32")
     gp_mask = np.concatenate((gp_sources_mask, gp_targets_mask), axis=0)
+    
+    # Create gene program gene category masks considering only probed genes
+    # First, get unique categories
+    sources_categories = []
+    targets_categories = []
+    for _, gp_genes_dict in gp_dict.items():
+        sources_categories.extend(gp_genes_dict["sources_categories"])
+        targets_categories.extend(gp_genes_dict["targets_categories"])
+    sources_categories = list(set(sources_categories))
+    targets_categories = list(set(targets_categories))
+    
+    # Second, create and store categories label encoders
+    sources_categories_label_encoder = {
+        k: v for k, v in zip(sources_categories, range(1, len(sources_categories) + 1))}
+    targets_categories_label_encoder = {
+        k: v for k, v in zip(targets_categories, range(1, len(targets_categories) + 1))}
+    adata.uns[sources_categories_label_encoder_key] = sources_categories_label_encoder
+    adata.uns[targets_categories_label_encoder_key] = targets_categories_label_encoder
+
+    # Third, create new gp dict with label encoded categories
+    category_encoded_gp_dict = gp_dict.copy()
+    for _, gp_genes_dict in category_encoded_gp_dict.items():
+        gp_genes_dict["targets_categories"] = [targets_categories_label_encoder.get(target)
+                                               for target in gp_genes_dict["targets_categories"]]
+        gp_genes_dict["sources_categories"] = [sources_categories_label_encoder.get(source)
+                                               for source in gp_genes_dict["sources_categories"]]
+
+    # Fourth, use label encoded gp dict to create category masks
+    # (encode with category 0 if gene is not in mask)
+    gp_targets_categories_mask = [
+        [gp_genes_dict["targets_categories"][gp_genes_dict["targets"].index(gene)]
+         if gene in gp_genes_dict["targets"] else 0
+         for _, gp_genes_dict in category_encoded_gp_dict.items()]
+        for gene in adata_genes]
+    gp_targets_categories_mask = np.asarray(gp_targets_categories_mask, dtype="int32")
+
+    gp_sources_categories_mask = [
+        [gp_genes_dict["sources_categories"][gp_genes_dict["sources"].index(gene)]
+         if gene in gp_genes_dict["sources"] else 0
+         for _, gp_genes_dict in category_encoded_gp_dict.items()]
+        for gene in adata_genes]
+    gp_sources_categories_mask = np.asarray(gp_sources_categories_mask, dtype="int32")
 
     # Filter gene programs for min genes and max genes
     gp_mask_filter = gp_mask.sum(0) >= min_genes_per_gp
@@ -135,10 +189,16 @@ def add_gps_from_gp_dict_to_adata(
     gp_mask_filter &= gp_targets_mask_filter
     gp_targets_mask = gp_targets_mask[:, gp_mask_filter]
     gp_sources_mask = gp_sources_mask[:, gp_mask_filter]
+    gp_targets_categories_mask = gp_targets_categories_mask[:, gp_mask_filter]
+    gp_sources_categories_mask = gp_sources_categories_mask[:, gp_mask_filter]
 
-    # Add binary gene program masks to ´adata.varm´
+    # Add binary gene program gene masks to ´adata.varm´
     adata.varm[gp_sources_mask_key] = gp_sources_mask
     adata.varm[gp_targets_mask_key] = gp_targets_mask
+    
+    # Add gene program gene category masks to ´adata.varm´
+    adata.varm[gp_sources_categories_mask_key] = gp_sources_categories_mask
+    adata.varm[gp_targets_categories_mask_key] = gp_targets_categories_mask
 
     if filter_genes_not_in_masks:
         # Filter out genes not present in any of the masks
