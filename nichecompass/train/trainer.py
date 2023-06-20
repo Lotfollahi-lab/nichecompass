@@ -305,6 +305,7 @@ class Trainer(BaseTrainerMixin):
         self.contrastive_logits_neg_ratio_ = contrastive_logits_neg_ratio
         self.lambda_group_lasso_ = lambda_group_lasso
         self.lambda_l1_masked_ = lambda_l1_masked
+        self.l1_mask = l1_mask
         self.lambda_l1_addon_ = lambda_l1_addon
         self.mlflow_experiment_id = mlflow_experiment_id
 
@@ -375,7 +376,7 @@ class Trainer(BaseTrainerMixin):
                     contrastive_logits_neg_ratio=self.contrastive_logits_neg_ratio_,
                     lambda_group_lasso=self.lambda_group_lasso_,
                     lambda_l1_masked=self.lambda_l1_masked_,
-                    l1_mask=l1_mask,
+                    l1_mask=self.l1_mask,
                     lambda_l1_addon=self.lambda_l1_addon_,
                     edge_recon_active=self.edge_recon_active,
                     cond_contrastive_active=self.cond_contrastive_active)
@@ -511,7 +512,7 @@ class Trainer(BaseTrainerMixin):
                     contrastive_logits_neg_ratio=self.contrastive_logits_neg_ratio_,
                     lambda_group_lasso=self.lambda_group_lasso_,
                     lambda_l1_masked=self.lambda_l1_masked_,
-                    l1_masked_gp_idx=self.l1_masked_gp_idx,
+                    l1_mask=self.l1_mask,
                     lambda_l1_addon=self.lambda_l1_addon_,
                     edge_recon_active=True)
 
