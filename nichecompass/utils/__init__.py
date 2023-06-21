@@ -1,5 +1,6 @@
 from .analysis import (aggregate_obsp_matrix_per_cell_type,
                        create_cell_type_chord_plot_from_df,
+                       create_new_color_dict,
                        generate_enriched_gp_info_plots)
 from .multimodal_pairing import (add_multimodal_mask_to_adata,
                                  get_gene_annotations,

@@ -186,6 +186,7 @@ class NicheCompass(BaseModelMixin):
                  cond_embed_key: Optional[str]="nichecompass_cond_embed",
                  cond_embed_injection: Optional[List]=["gene_expr_decoder",
                                                        "chrom_access_decoder"],
+                 cat_covariates_keys: Optional[List[str]]=None,
                  genes_idx_key: str="nichecompass_genes_idx",
                  target_genes_idx_key: str="nichecompass_target_genes_idx",
                  source_genes_idx_key: str="nichecompass_source_genes_idx",
@@ -213,7 +214,8 @@ class NicheCompass(BaseModelMixin):
                  encoder_n_attention_heads: Optional[int]=4,
                  dropout_rate_encoder: float=0.,
                  dropout_rate_graph_decoder: float=0.,
-                 conditions: Optional[list]=None, 
+                 conditions: Optional[List]=None,
+                 cat_covariates_cats: Optional[List[List]]=None,
                  n_addon_gps: int=0,
                  n_cond_embed: Optional[int]=None,
                  **kwargs):
@@ -236,6 +238,7 @@ class NicheCompass(BaseModelMixin):
         self.condition_key_ = condition_key
         self.cond_embed_key_ = cond_embed_key
         self.cond_embed_injection_ = cond_embed_injection
+        self.cat_covariates_keys_ = cat_covariates_keys
         self.genes_idx_key_ = genes_idx_key
         self.target_genes_idx_key_ = target_genes_idx_key
         self.source_genes_idx_key_ = source_genes_idx_key
@@ -412,6 +415,17 @@ class NicheCompass(BaseModelMixin):
                 self.conditions_ = []
         else:
             self.conditions_ = conditions
+            
+        # Retrieve categorical covariates categories
+        if cat_covariates_cats is None:
+            if cat_covariates_keys is not None:
+                self.cat_covariates_cats_ = [
+                    adata.obs[cat_covariate_key].unique().tolist() 
+                    for cat_covariate_key in cat_covariates_keys]
+            else:
+                self.cat_covariates_cats_ = [[]]
+        else:
+            self.cat_covariates_cats_ = cat_covariates_cats
         
         # Validate counts layer key and counts values
         if counts_key is not None and counts_key not in adata.layers:
@@ -472,6 +486,7 @@ class NicheCompass(BaseModelMixin):
             source_chrom_access_mask_idx=self.source_peaks_idx_,
             gene_peaks_mask=self.gene_peaks_mask_,
             conditions=self.conditions_,
+            cat_covariates_cats=self.cat_covariates_cats_,
             conv_layer_encoder=self.conv_layer_encoder_,
             encoder_n_attention_heads=self.encoder_n_attention_heads_,
             dropout_rate_encoder=self.dropout_rate_encoder_,

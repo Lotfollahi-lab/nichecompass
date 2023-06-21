@@ -46,6 +46,7 @@ class Encoder(nn.Module):
     def __init__(self,
                  n_input: int,
                  n_cond_embed_input: int,
+                 n_cat_covariates_embed_input: int,
                  n_layers: int,
                  n_hidden: int,
                  n_latent: int,
@@ -76,6 +77,9 @@ class Encoder(nn.Module):
         if (cond_embed_mode == "hidden") & (n_cond_embed_input != 0):
             # Add conditional embedding to hidden after fc_l
             n_hidden += n_cond_embed_input
+        
+        if n_cat_covariates_embed_input != 0:
+            n_hidden += n_cat_covariates_embed_input
 
         if conv_layer == "gcnconv":
             if n_layers == 2:
@@ -119,7 +123,8 @@ class Encoder(nn.Module):
     def forward(self,
                 x: torch.Tensor,
                 edge_index: torch.Tensor,
-                cond_embed: Optional[torch.Tensor]=None) -> torch.Tensor:
+                cond_embed: Optional[torch.Tensor]=None,
+                cat_covariates_embed: Optional[torch.Tensor]=None) -> torch.Tensor:
         """
         Forward pass of the GCN encoder.
 
@@ -155,6 +160,11 @@ class Encoder(nn.Module):
             # Add conditional embedding to hidden vector
             hidden = torch.cat((hidden,
                                 cond_embed),
+                               axis=1)
+            
+        if cat_covariates_embed is not None:
+            hidden = torch.cat((hidden,
+                                cat_covariates_embed),
                                axis=1)
         
         if self.n_layers == 2:

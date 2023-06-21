@@ -3,7 +3,7 @@ This module contains the Variational Gene Program Graph Autoencoder class, the
 neural network module that underlies the NicheCompass model.
 """
 
-from typing import Literal, Optional, Tuple, Union
+from typing import List, Literal, Optional, Tuple, Union
 
 import mlflow
 import numpy as np
@@ -149,7 +149,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  target_chrom_access_mask_idx: Optional[torch.Tensor]=None,
                  source_chrom_access_mask_idx: Optional[torch.Tensor]=None,
                  gene_peaks_mask: Optional[torch.Tensor]=None,
-                 conditions: list=[],
+                 conditions: List=[],
+                 cat_covariates_cats: List[List]=[[]],
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=4,
                  dropout_rate_encoder: float=0.,
@@ -191,6 +192,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.n_conditions_ = len(conditions)
         self.condition_label_encoder_ = {
             k: v for k, v in zip(conditions, range(len(conditions)))}
+        self.cat_covariates_cats_ = cat_covariates_cats
+        self.cat_covariates_n_cats_n_list = [len(cat_covariate_cats)
+                                             for cat_covariate_cats in cat_covariates_cats]
         self.conv_layer_encoder_ = conv_layer_encoder
         self.encoder_n_attention_heads_ = encoder_n_attention_heads
         self.dropout_rate_encoder_ = dropout_rate_encoder
@@ -239,6 +243,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         # Initialize conditional embedder module
         if (cond_embed_injection is not None) & (self.n_conditions_ > 0):
             self.cond_embedder = nn.Embedding(self.n_conditions_, n_cond_embed)
+            
+        # Initialize categorical covariates embedder modules
+        # TO DO
+        
 
         # Initialize encoder module
         self.encoder = Encoder(
@@ -246,6 +254,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_cond_embed_input=(n_cond_embed if ("encoder" in
                                 self.cond_embed_injection_) &
                                 (self.n_conditions_ != 0) else 0),
+            n_cat_covariates_embed_input=0,
             n_layers=n_layers_encoder,
             n_hidden=n_hidden_encoder,
             n_latent=n_nonaddon_gps,
@@ -274,6 +283,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_cond_embed_input=(n_cond_embed if ("gene_expr_decoder" in
                                 self.cond_embed_injection_) &
                                 (self.n_conditions_ != 0) else 0),
+            n_cat_covariates_embed_input=0,
             n_output=n_output_genes,
             mask=gene_expr_decoder_mask,
             mask_idx=gene_expr_mask_idx,

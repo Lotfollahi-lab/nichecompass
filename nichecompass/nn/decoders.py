@@ -189,6 +189,7 @@ class MaskedGeneExprDecoder(nn.Module):
     def __init__(self,
                  n_input: int,
                  n_cond_embed_input: int,
+                 n_cat_covariates_embed_input: int,
                  n_addon_input: int,
                  n_output: int,
                  mask: torch.Tensor,
@@ -210,6 +211,7 @@ class MaskedGeneExprDecoder(nn.Module):
             mask=mask,
             n_addon_input=n_addon_input,
             n_cond_embed_input=n_cond_embed_input,
+            n_cat_covariates_embed_input=n_cat_covariates_embed_input,
             activation=nn.Softmax(dim=-1))
 
         if recon_dist == "zinb":
@@ -220,12 +222,14 @@ class MaskedGeneExprDecoder(nn.Module):
                 mask=mask,
                 n_addon_input=n_addon_input,
                 n_cond_embed_input=n_cond_embed_input,
+                n_cat_covariates_embed_input=n_cat_covariates_embed_input,
                 activation=nn.Identity())
 
     def forward(self,
                 z: torch.Tensor,
                 log_library_size: torch.Tensor,
-                cond_embed: Optional[torch.Tensor]=None
+                cond_embed: Optional[torch.Tensor]=None,
+                cat_covariates_embed: Optional[torch.Tensor]=None
                 ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass of the masked gene expression decoder.
@@ -247,6 +251,9 @@ class MaskedGeneExprDecoder(nn.Module):
         # Add conditional embedding to latent feature vector
         if cond_embed is not None:
             z = torch.cat((z, cond_embed), dim=-1)
+        
+        if cat_covariates_embed is not None:
+            z = torch.cat((z, cat_covariates_embed), dim=-1)
         
         nb_means_normalized = self.nb_means_normalized_decoder(z)
         
