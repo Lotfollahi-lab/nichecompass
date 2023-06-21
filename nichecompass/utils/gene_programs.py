@@ -3,6 +3,7 @@ This module contains utilities to add interpretable communication gene programs
 as prior knowledge for use by the NicheCompass model.
 """
 
+import copy
 from typing import Literal, Optional
 
 import numpy as np
@@ -18,7 +19,11 @@ def add_gps_from_gp_dict_to_adata(
         adata: AnnData,
         genes_uppercase: bool=True,
         gp_targets_mask_key: str="nichecompass_gp_targets",
+        gp_targets_categories_mask_key: str="nichecompass_gp_targets_categories",
+        targets_categories_label_encoder_key: str="nichecompass_targets_categories_label_encoder",
         gp_sources_mask_key: str="nichecompass_gp_sources",
+        gp_sources_categories_mask_key: str="nichecompass_gp_sources_categories",
+        sources_categories_label_encoder_key: str="nichecompass_sources_categories_label_encoder",
         gp_names_key: str="nichecompass_gp_names",
         source_genes_idx_key: str="nichecompass_source_genes_idx",
         target_genes_idx_key: str="nichecompass_target_genes_idx",
@@ -53,8 +58,8 @@ def add_gps_from_gp_dict_to_adata(
     adata:
         AnnData object to which the gene programs will be added.
     genes_uppercase:
-        If `True`, convert the gene names in adata to uppercase for comparison
-        with the gene program dictionary (e.g. if adata contains mouse data).
+        If `True`, convert the gene names in the adata and in the gene program
+        dictionary to uppercase for comparison.
     gp_targets_mask_key:
         Key in ´adata.varm´ where the binary gene program mask for target genes
         of a gene program will be stored (target genes are used for the 
@@ -107,8 +112,16 @@ def add_gps_from_gp_dict_to_adata(
     # Retrieve probed genes from adata
     adata_genes = (adata.var_names.str.upper() if genes_uppercase
                    else adata.var_names)
+    
+    if genes_uppercase:
+        # Convert gene program genes to uppercase
+        for _, gp_genes_dict in gp_dict.items():
+            gp_genes_dict["sources"] = [
+                source.upper() for source in gp_genes_dict["sources"]]
+            gp_genes_dict["targets"] = [
+                target.upper() for target in gp_genes_dict["targets"]]
 
-    # Create binary gene program masks considering only probed genes
+    # Create binary gene program gene masks considering only probed genes
     gp_targets_mask = [[int(gene in gp_genes_dict["targets"])
                         for _, gp_genes_dict in gp_dict.items()]
                        for gene in adata_genes]
@@ -118,6 +131,48 @@ def add_gps_from_gp_dict_to_adata(
                        for gene in adata_genes]
     gp_sources_mask = np.asarray(gp_sources_mask, dtype="int32")
     gp_mask = np.concatenate((gp_sources_mask, gp_targets_mask), axis=0)
+    
+    # Create gene program gene category masks considering only probed genes
+    # First, get unique categories
+    sources_categories = []
+    targets_categories = []
+    for _, gp_genes_dict in gp_dict.items():
+        sources_categories.extend(gp_genes_dict["sources_categories"])
+        targets_categories.extend(gp_genes_dict["targets_categories"])
+    sources_categories = list(set(sources_categories))
+    targets_categories = list(set(targets_categories))
+    
+    # Second, create and store categories label encoders
+    sources_categories_label_encoder = {
+        k: v for k, v in zip(sources_categories, range(1, len(sources_categories) + 1))}
+    targets_categories_label_encoder = {
+        k: v for k, v in zip(targets_categories, range(1, len(targets_categories) + 1))}
+    adata.uns[sources_categories_label_encoder_key] = sources_categories_label_encoder
+    adata.uns[targets_categories_label_encoder_key] = targets_categories_label_encoder
+
+    # Third, create new gp dict with label encoded categories
+    category_encoded_gp_dict = copy.deepcopy(gp_dict)
+    for _, gp_genes_dict in category_encoded_gp_dict.items():
+        gp_genes_dict["targets_categories"] = [targets_categories_label_encoder.get(target)
+                                               for target in gp_genes_dict["targets_categories"]]
+        gp_genes_dict["sources_categories"] = [sources_categories_label_encoder.get(source)
+                                               for source in gp_genes_dict["sources_categories"]]
+
+    # Fourth, use label encoded gp dict to create category masks
+    # (encode with category 0 if gene is not in mask)
+    gp_targets_categories_mask = [
+        [gp_genes_dict["targets_categories"][gp_genes_dict["targets"].index(gene)]
+         if gene in gp_genes_dict["targets"] else 0
+         for _, gp_genes_dict in category_encoded_gp_dict.items()]
+        for gene in adata_genes]
+    gp_targets_categories_mask = np.asarray(gp_targets_categories_mask, dtype="int32")
+
+    gp_sources_categories_mask = [
+        [gp_genes_dict["sources_categories"][gp_genes_dict["sources"].index(gene)]
+         if gene in gp_genes_dict["sources"] else 0
+         for _, gp_genes_dict in category_encoded_gp_dict.items()]
+        for gene in adata_genes]
+    gp_sources_categories_mask = np.asarray(gp_sources_categories_mask, dtype="int32")
 
     # Filter gene programs for min genes and max genes
     gp_mask_filter = gp_mask.sum(0) >= min_genes_per_gp
@@ -135,10 +190,16 @@ def add_gps_from_gp_dict_to_adata(
     gp_mask_filter &= gp_targets_mask_filter
     gp_targets_mask = gp_targets_mask[:, gp_mask_filter]
     gp_sources_mask = gp_sources_mask[:, gp_mask_filter]
+    gp_targets_categories_mask = gp_targets_categories_mask[:, gp_mask_filter]
+    gp_sources_categories_mask = gp_sources_categories_mask[:, gp_mask_filter]
 
-    # Add binary gene program masks to ´adata.varm´
+    # Add binary gene program gene masks to ´adata.varm´
     adata.varm[gp_sources_mask_key] = gp_sources_mask
     adata.varm[gp_targets_mask_key] = gp_targets_mask
+    
+    # Add gene program gene category masks to ´adata.varm´
+    adata.varm[gp_sources_categories_mask_key] = gp_sources_categories_mask
+    adata.varm[gp_targets_categories_mask_key] = gp_targets_categories_mask
 
     if filter_genes_not_in_masks:
         # Filter out genes not present in any of the masks
@@ -162,124 +223,238 @@ def add_gps_from_gp_dict_to_adata(
                                         removed_gp_idx])
 
 
-def extract_gp_dict_from_nichenet_ligand_target_mx(
-        version: Literal["v1", "v2_mouse", "v2_human"]="v2_mouse",
-        keep_target_genes_ratio: float=0.,
+def extract_gp_dict_from_nichenet_lrt_interactions(
+        version: Literal["v1", "v2"]="v2",
+        species: Literal["human", "mouse"]="human",
+        keep_target_genes_ratio: float=1.,
         max_n_target_genes_per_gp: int=250,
         load_from_disk: bool=False,
         save_to_disk: bool=False,
-        file_path: Optional[str]="nichenet_ligand_target_matrix.csv",
+        lr_network_file_path: Optional[str]="nichenet_lr_network.csv",
+        ligand_target_matrix_file_path: Optional[str]="nichenet_ligand_target" \
+                                                      "_matrix.csv",
+        gene_orthologs_mapping_file_path: Optional[str]="../data/gene_" \
+                                                        "annotations/human_" \
+                                                        "mouse_gene_orthologs.csv",
         plot_gp_gene_count_distributions: bool=True) -> dict:
     """
-    Retrieve NicheNet ligand target potential matrix as described in Browaeys, 
-    R., Saelens, W. & Saeys, Y. NicheNet: modeling intercellular communication 
-    by linking ligands to target genes. Nat. Methods 17, 159–162 (2020) and 
-    extract a gene program dictionary from the matrix based on 
-    ´keep_target_ratio´.
+    Retrieve the NicheNet ligand receptor network and ligand target gene
+    regulatory potential matrix as described in Browaeys, R., Saelens, W. &
+    Saeys, Y. NicheNet: modeling intercellular communication by linking ligands
+    to target genes. Nat. Methods 17, 159–162 (2020), and extract a gene program
+    dictionary of ligands with their corresponding receptors and top target
+    genes based on NicheNet regulatory potential scores.
 
     Parameters
     ----------
     version:
-        Version of the NicheNet ligand target gene regulatory potential matrix.
-        ´V2´ is an improved version of ´V1´ and differentiates between mouse
-        and human.
+        Version of the NicheNet ligand receptor network and ligand target gene
+        regulatory potential matrix. ´v2´ is an improved version of ´v1´, and
+        has separate files for mouse and human.
+    species:
+        Species for which the gps will be extracted. The default is human and, 
+        if version is 'v1', human genes are mapped to mouse orthologs using a
+        mapping file. NicheCompass contains a default mapping file stored under
+        "<root>/data/gene_annotations/human_mouse_gene_orthologs.csv", which was
+        created with Ensembl BioMart
+        (http://www.ensembl.org/info/data/biomart/index.html).
     keep_target_genes_ratio:
         Ratio of target genes that are kept compared to total target genes. This
-        ratio is applied over the entire matrix (not on gene program level) and
-        determines the ´score_keep_threshold´, which will be used to filter 
-        target genes according to their scores.
+        ratio is applied over the entire matrix (not on gene program level), and
+        determines the ´all_gps_score_keep_threshold´, which will be used to
+        filter target genes according to their regulatory potential scores.
     max_n_target_genes_per_gp:
         Maximum number of target genes per gene program. If a gene program has
         more target genes than ´max_n_target_genes_per_gp´, only the
-        ´max_n_target_genes_per_gp´ gene programs with the highest scores will
-        be kept. Default value is chosen based on MultiNicheNet specification.
+        ´max_n_target_genes_per_gp´ gene programs with the highest regulatory
+        potential scores will be kept. Default value is chosen based on
+        MultiNicheNet specification (s. Browaeys, R. et al. MultiNicheNet: a
+        flexible framework for differential cell-cell communication analysis
+        from multi-sample multi-condition single-cell transcriptomics data.
+        bioRxiv (2023) doi:10.1101/2023.06.13.544751).
     load_from_disk:
-        If ´True´, the NicheNet ligand target matrix will be loaded from disk
-        instead of from the web.
+        If ´True´, the NicheNet files will be loaded from disk instead of the
+        web.
     save_to_disk:
-        If ´True´, the NicheNet ligand target matrix will additionally be stored
-        on disk.
-    file_path:
+        If ´True´, the NicheNet files will additionally be stored on disk.
+    lr_network_file_path:
+        Path of the file where the NicheNet ligand receptor network will be
+        stored (if ´save_to_disk´ is ´True´) or loaded from (if ´load_from_disk´
+        is ´True´).
+    ligand_target_matrix_file_path:
         Path of the file where the NicheNet ligand target matrix will be stored
         (if ´save_to_disk´ is ´True´) or loaded from (if ´load_from_disk´ is
         ´True´).
+    gene_orthologs_mapping_file_path:
+        Path of the file where the gene orthologs mapping is stored if version
+        is ´v1´ and species is ´mouse´.
     plot_gp_gene_count_distributions:
         If ´True´, display the distribution of gene programs per number of
-        target and source genes.
+        sources and targets.
 
     Returns
     ----------
     gp_dict:
-        Nested dictionary containing the NicheNet ligand target genes gene 
+        Nested dictionary containing the NicheNet ligand receptor target gene 
         programs with keys being gene program names and values being 
-        dictionaries with keys ´targets´ and ´sources´, where ´targets´ contains
-        the NicheNet target genes and ´sources´ contains the NicheNet ligands.
+        dictionaries with keys ´sources´, ´targets´, ´sources_categories´, and
+        ´target_categories´, where ´sources´ contains the NicheNet ligands,
+        ´targets´ contains the NicheNet receptors and target genes,
+        ´sources_categories´ contains the categories of the sources, and
+        ´target_categories´ contains the categories of the targets.
     """
-    # Download or load NicheNet ligand target matrix and store in df (optionally
-    # also on disk)
+    # Download (or load) NicheNet ligand receptor network and ligand target
+    # matrix and store in df (optionally also on disk)
     if not load_from_disk:
-        print(f"Downloading NicheNet ligand target potential matrix '{version}'"
-              "from the web. This might take a while...")
         if version == "v1":
-            url = "https://zenodo.org/record/3260758/files/ligand_target_matrix.rds"
-        elif version == "v2_human":
-            url = "https://zenodo.org/record/7074291/files/ligand_target_matrix_nsga2r_final.rds"
-        elif version == "v2_mouse":
-            url = "https://zenodo.org/record/7074291/files/ligand_target_matrix_nsga2r_final_mouse.rds"
-        ligand_target_df = load_R_file_as_df(
-            R_file_path="ligand_target_matrix.rds",
-            url=url,
+            lr_network_url = "https://zenodo.org/record/3260758/files/" \
+                             "lr_network.rds"
+            ligand_target_matrix_url = "https://zenodo.org/record/3260758/" \
+                                       "files/ligand_target_matrix.rds"
+        elif version == "v2" and species == "human":
+            lr_network_url = "https://zenodo.org/record/7074291/files/" \
+                             "lr_network_human_21122021.rds"
+            ligand_target_matrix_url = "https://zenodo.org/record/7074291/" \
+                                       "files/ligand_target_matrix_nsga2r_" \
+                                       "final.rds"
+        elif version == "v2" and species == "human":
+            lr_network_url = "https://zenodo.org/record/7074291/files/" \
+                             "lr_network_mouse_21122021.rds"
+            ligand_target_matrix_url = "https://zenodo.org/record/7074291/" \
+                                       "files/ligand_target_matrix_nsga2r_" \
+                                       "final_mouse.rds"    
+        print(f"Downloading NicheNet ligand receptor network '{version}' from "
+              "the web...")
+        lr_network_df = load_R_file_as_df(
+            R_file_path="lr_network.rds",
+            url=lr_network_url,
             save_df_to_disk=save_to_disk,
-            df_save_path=file_path)
+            df_save_path=lr_network_file_path) # multiple rows per ligand (one
+                                               # for each receptor)
+        print(f"Downloading NicheNet ligand target matrix '{version}' from the "
+              "web. This might take a while...")
+        ligand_target_matrix_df = load_R_file_as_df(
+            R_file_path="ligand_target_matrix.rds",
+            url=ligand_target_matrix_url,
+            save_df_to_disk=save_to_disk,
+            df_save_path=ligand_target_matrix_file_path) # one column per ligand
     else:
-        ligand_target_df = pd.read_csv(file_path, index_col=0)
+        lr_network_df = pd.read_csv(lr_network_file_path,
+                                    index_col=0) # multiple rows per ligand (one
+                                                 # for each receptor)
+        ligand_target_matrix_df = pd.read_csv(ligand_target_matrix_file_path,
+                                              index_col=0) # one column per
+                                                           # ligand
+        
+    # Group receptors by ligands to have one row per ligand
+    grouped_lr_network_df = lr_network_df.groupby("from")["to"].agg(
+        list).reset_index()
 
-    # Filter NicheNet ligand target matrix based on scores and
-    # ´keep_target_genes_ratio´ and ´max_n_target_genes_per_gp´
-    per_gp_target_gene_scores = ligand_target_df.values.copy()
+    # Filter ligand target matrix based on sorted potential / scores, using
+    # ´keep_target_genes_ratio´ (over all gps) and ´max_n_target_genes_per_gp´
+    # (over each gp separately). Each ligand (column) will make up one gp.
+    # Store filter outputs as a mask dict where for each gp it is indicated
+    # which genes are part of it
+    per_gp_target_gene_scores = ligand_target_matrix_df.values.copy()
     all_target_gene_scores = np.squeeze(per_gp_target_gene_scores).flatten()
     per_gp_target_gene_scores_sorted = np.flip(
         np.sort(per_gp_target_gene_scores, axis=0), axis=0)
     per_gp_score_keep_threshold = pd.Series(
         per_gp_target_gene_scores_sorted[max_n_target_genes_per_gp, :],
-        index=ligand_target_df.columns)
+        index=ligand_target_matrix_df.columns)
     all_target_gene_scores.sort()
     all_target_gene_scores_sorted = np.flip(all_target_gene_scores)
     all_gps_score_keep_threshold = all_target_gene_scores_sorted[int(
         (len(all_target_gene_scores_sorted) - 1) * keep_target_genes_ratio)]
     ligand_target_all_gps_score_keep_threshold_mask_df = (
-        ligand_target_df.applymap(lambda x: x > all_gps_score_keep_threshold))
-    ligand_target_per_gp_score_keep_threshold_mask_df = ligand_target_df.apply(
-        lambda col: col > per_gp_score_keep_threshold[col.name], axis=0)
+        ligand_target_matrix_df.applymap(
+        lambda x: x > all_gps_score_keep_threshold))
+    ligand_target_per_gp_score_keep_threshold_mask_df = (
+        ligand_target_matrix_df.apply(
+        lambda col: col > per_gp_score_keep_threshold[col.name], axis=0))
     ligand_target_combined_keep_threshold_mask_df = (
         ligand_target_all_gps_score_keep_threshold_mask_df &
         ligand_target_per_gp_score_keep_threshold_mask_df)
-
-    # Extract gene programs and store in nested dict
     ligand_target_mask_dict = (
         ligand_target_combined_keep_threshold_mask_df.to_dict())
+    
+    # Extract ligands to build gene programs, add receptors and target genes,
+    # and store in nested dict
     gp_dict = {}
     for ligand in ligand_target_mask_dict.keys():
-        gp_dict[ligand + "_ligand_targetgenes_GP"] = {
+        # Retrieve ligand receptors
+        receptors = grouped_lr_network_df[
+            grouped_lr_network_df["from"] == ligand]["to"].values[0]
+        
+        # Build gp dict using ligand in source node and receptors and target
+        # genes in target node
+        gp_dict[ligand + "_ligand_receptor_target_gene_GP"] = {
             "sources": [ligand],
-            "targets": [target for target, include in
-                        ligand_target_mask_dict[ligand].items() if include]}
+            "targets": receptors +
+                       [target for target, include in
+                        ligand_target_mask_dict[ligand].items() if include & 
+                        (target not in receptors)]} # don't duplicate receptors
+        
+        # Add source and target categories
+        gp_dict[ligand + "_ligand_receptor_target_gene_GP"][
+            "sources_categories"] = ["ligand"]
+        gp_dict[ligand + "_ligand_receptor_target_gene_GP"][
+            "targets_categories"] = (["receptor"] * len(receptors) +
+                                     ["target_gene"] * (
+            len(gp_dict[ligand + "_ligand_receptor_target_gene_GP"]["targets"]) -
+            len(receptors)))
+        
+    if version == "v1" and species == "mouse":
+        # Create mapping df to map from human genes to mouse orthologs
+        mapping_df = pd.read_csv(gene_orthologs_mapping_file_path)
+        grouped_mapping_df = mapping_df.groupby(
+            "Gene name")["Mouse gene name"].agg(list).reset_index()
+        
+        # Map all genes in the gp dict to their orthologs from the mapping df
+        # or capitalize them if no orthologs are found
+        for gp_name, gp in gp_dict.items():
+            gp["sources_categories"] = [element for sublist in [[source_category] *
+                                        len(grouped_mapping_df[
+                                            grouped_mapping_df["Gene name"] == source][
+                                            "Mouse gene name"].values[0])
+                                        if source in grouped_mapping_df["Gene name"].values
+                                        else [source_category]
+                                        for source, source_category in zip(gp["sources"], gp["sources_categories"])] for element in sublist]
+            gp["targets_categories"] = [element for sublist in [[target_category] *
+                                        len(grouped_mapping_df[
+                                            grouped_mapping_df["Gene name"] == target][
+                                            "Mouse gene name"].values[0])
+                                        if target in grouped_mapping_df["Gene name"].values
+                                        else [target_category]
+                                        for target, target_category in zip(gp["targets"], gp["targets_categories"])] for element in sublist]   
+            gp["sources"] = [element for sublist in [grouped_mapping_df[grouped_mapping_df[
+                "Gene name"] == source]["Mouse gene name"].values[0]
+                             if source in grouped_mapping_df["Gene name"].values
+                             else [source.capitalize()] for source in gp["sources"]] for element in sublist]
+            gp["targets"] = [element for sublist in [grouped_mapping_df[grouped_mapping_df[
+                "Gene name"] == target]["Mouse gene name"].values[0]
+                             if target in grouped_mapping_df["Gene name"].values
+                             else [target.capitalize()] for target in gp["targets"]] for element in sublist]
         
     if plot_gp_gene_count_distributions:
-        create_gp_gene_count_distribution_plots(gp_dict,
-                                                gp_dict_label="NicheNet")
-
+        create_gp_gene_count_distribution_plots(
+            gp_dict,
+            gp_dict_label=f"NicheNet {version.replace('_', ' ').title()}")
     return gp_dict
 
 
 def extract_gp_dict_from_omnipath_lr_interactions(
+        species: Literal["human", "mouse"]="human",
         min_curation_effort: int=0,
         load_from_disk: bool=False,
         save_to_disk: bool=False,
-        file_path: Optional[str]="omnipath_lr_interactions.csv",
+        lr_network_file_path: Optional[str]="omnipath_lr_network.csv",
+        gene_orthologs_mapping_file_path: Optional[str]="../data/gene_" \
+                                                        "annotations/human_" \
+                                                        "mouse_gene_orthologs.csv",
         plot_gp_gene_count_distributions: bool=True) -> dict:
     """
-    Retrieve ligand-receptor interactions from OmniPath and extract them into a 
+    Retrieve ligand receptor interactions from OmniPath and extract them into a 
     gene program dictionary. OmniPath is a database of molecular biology prior 
     knowledge that combines intercellular communication data from many different
     resources (all resources for intercellular communication included in 
@@ -290,43 +465,56 @@ def extract_gp_dict_from_omnipath_lr_interactions(
 
     Parameters
     ----------
+    species:
+        Species for which the gps will be extracted. The default is human and
+        human genes are mapped to mouse orthologs using a mapping file. NicheCompass
+        contains a default mapping file stored under
+        "<root>/data/gene_annotations/human_mouse_gene_orthologs.csv", which was
+        created with Ensembl BioMart
+        (http://www.ensembl.org/info/data/biomart/index.html).
     min_curation_effort: 
         Indicates how many times an interaction has to be described in a 
         paper and mentioned in a database to be included in the retrieval.
     load_from_disk:
-        If ´True´, the OmniPath ligand-receptor interactions will be loaded from
-        disk instead of from the omnipath library.
+        If ´True´, the OmniPath ligand receptor interactions will be loaded from
+        disk instead of from the OmniPath library.
     save_to_disk:
-        If ´True´, the OmniPath ligand-receptor interactions will additionally 
+        If ´True´, the OmniPath ligand receptor interactions will additionally 
         be stored on disk. Only applies if ´load_from_disk´ is ´False´.
-    file_path:
-        Path of the file where the OmniPath ligand-receptor interactions will be
+    lr_network_file_path:
+        Path of the file where the OmniPath ligand receptor interactions will be
         stored (if ´save_to_disk´ is ´True´) or loaded from (if ´load_from_disk´
         is ´True´).
+    gene_orthologs_mapping_file_path:
+        Path of the file where the gene orthologs mapping is stored if version
+        is ´v1´ and species is ´mouse´.
     plot_gp_gene_count_distributions:
         If ´True´, display the distribution of gene programs per number of
-        target and source genes.
+        source and target genes.
 
     Returns
     ----------
     gp_dict:
-        Nested dictionary containing the OmniPath ligand-receptor interaction
-        gene programs with keys being gene program names and values being 
-        dictionaries with keys ´targets´ and ´sources´, where ´targets´ contains
-        the OmniPath receptors and ´sources´ contains the OmniPath ligands.
+        Nested dictionary containing the OmniPath ligand receptor interaction
+        gene programs with keys being gene program names and values being
+        dictionaries with keys ´sources´, ´targets´, ´sources_categories´, and
+        ´targets_categories´, where ´sources´ contains the OmniPath ligands,
+        ´targets´ contains the OmniPath receptors, ´sources_categories´ contains
+        the categories of the sources, and ´targets_categories´ contains
+        the categories of the targets.
     """
     if not load_from_disk:
         # Define intercell_network categories to be retrieved
         intercell_df = op.interactions.import_intercell_network(
             include=["omnipath", "pathwayextra", "ligrecextra"])
-        # Set transmitters to be ligands and receivers to be receptors
+        # Set transmitters to be ligands and targets to be receptors
         lr_interaction_df = intercell_df[
             (intercell_df["category_intercell_source"] == "ligand")
             & (intercell_df["category_intercell_target"] == "receptor")]
         if save_to_disk:
-            lr_interaction_df.to_csv(file_path, index=False)
+            lr_interaction_df.to_csv(lr_network_file_path, index=False)
     else:
-        lr_interaction_df = pd.read_csv(file_path, index_col=0)
+        lr_interaction_df = pd.read_csv(lr_network_file_path, index_col=0)
 
     # Filter as per ´min_curation_effort´
     lr_interaction_df = lr_interaction_df[
@@ -345,38 +533,67 @@ def extract_gp_dict_from_omnipath_lr_interactions(
 
     # Extract gene programs and store in nested dict
     gp_dict = {}
-    for ligand, receptor in lr_interaction_dict.items():
+    for ligand, receptors in lr_interaction_dict.items():
         gp_dict[ligand + "_ligand_receptor_GP"] = {
             "sources": [ligand],
-            "targets": receptor}
+            "targets": receptors,
+            "sources_categories": ["ligand"],
+            "targets_categories": ["receptor"] * len(receptors)}
+        
+    if species == "mouse":
+        # Create mapping df to map from human genes to mouse orthologs
+        mapping_df = pd.read_csv(gene_orthologs_mapping_file_path)
+        grouped_mapping_df = mapping_df.groupby(
+            "Gene name")["Mouse gene name"].agg(list).reset_index()
+        
+        # Map all genes in the gp dict to their orthologs from the mapping df
+        # or capitalize them if no orthologs are found
+        for gp_name, gp in gp_dict.items():
+            gp["sources_categories"] = [element for sublist in [[source_category] *
+                                        len(grouped_mapping_df[
+                                            grouped_mapping_df["Gene name"] == source][
+                                            "Mouse gene name"].values[0])
+                                        if source in grouped_mapping_df["Gene name"].values
+                                        else [source_category]
+                                        for source, source_category in zip(gp["sources"], gp["sources_categories"])] for element in sublist]
+            gp["targets_categories"] = [element for sublist in [[target_category] *
+                                        len(grouped_mapping_df[
+                                            grouped_mapping_df["Gene name"] == target][
+                                            "Mouse gene name"].values[0])
+                                        if target in grouped_mapping_df["Gene name"].values
+                                        else [target_category]
+                                        for target, target_category in zip(gp["targets"], gp["targets_categories"])] for element in sublist]   
+            gp["sources"] = [element for sublist in [grouped_mapping_df[grouped_mapping_df[
+                "Gene name"] == source]["Mouse gene name"].values[0]
+                             if source in grouped_mapping_df["Gene name"].values
+                             else [source.capitalize()] for source in gp["sources"]] for element in sublist]
+            gp["targets"] = [element for sublist in [grouped_mapping_df[grouped_mapping_df[
+                "Gene name"] == target]["Mouse gene name"].values[0]
+                             if target in grouped_mapping_df["Gene name"].values
+                             else [target.capitalize()] for target in gp["targets"]] for element in sublist]
         
     if plot_gp_gene_count_distributions:
         create_gp_gene_count_distribution_plots(gp_dict,
                                                 gp_dict_label="OmniPath")
-
     return gp_dict
 
 
 def extract_gp_dict_from_mebocost_es_interactions(
         dir_path: str="../data/gene_programs/metabolite_enzyme_sensor_gps",
         species: Literal["mouse", "human"]="mouse",
-        genes_uppercase: bool=True,
         plot_gp_gene_count_distributions: bool=True) -> dict:
     """
-    Retrieve metabolite enzyme-sensor interactions from the Human Metabolome
+    Retrieve metabolite enzyme sensor interactions from the Human Metabolome
     Database (HMDB) data curated in Chen, K. et al. MEBOCOST: 
     Metabolite-mediated cell communication modeling by single cell 
     transcriptome. Research Square (2022) doi:10.21203/rs.3.rs-2092898/v1. 
     This data is available in the NicheCompass package under 
-    ´datasets/gp_data/metabolite_enzyme_sensor_gps´.
+    ´..data/gene_programs/metabolite_enzyme_sensor_gps´.
 
     Parameters
     ----------
     species:
         Species for which to retrieve metabolite enzyme-sensor interactions.
-    genes_uppercase:
-        If `True`, convert the gene names to uppercase (e.g. to align with other
-        gene programs that contain uppercase genes).
     plot_gp_gene_count_distributions:
         If ´True´, display the distribution of gene programs per number of
         target and source genes.
@@ -384,7 +601,7 @@ def extract_gp_dict_from_mebocost_es_interactions(
     Returns
     ----------
     gp_dict:
-        Nested dictionary containing the MEBOCOST enzyme-sensor interaction
+        Nested dictionary containing the MEBOCOST enzyme sensor interaction
         gene programs with keys being gene program names and values being 
         dictionaries with keys ´targets´ and ´sources´, where ´targets´ contains
         the MEBOCOST sensor genes and ´sources´ contains the MEBOCOST enzyme
@@ -421,12 +638,6 @@ def extract_gp_dict_from_mebocost_es_interactions(
     metabolite_enzymes_df = pd.DataFrame(metabolite_enzymes_unrolled)
     metabolite_enzymes_df["gene_name"] = metabolite_enzymes_df["gene"].apply(
         lambda x: x.split("[")[0])
-    metabolite_enzymes_df["gene_name"] = (metabolite_enzymes_df["gene_name"]
-                                          .apply(lambda x: x.upper()
-                                                 if genes_uppercase else x))
-    metabolite_sensors_df["Gene_name"] = (metabolite_sensors_df["Gene_name"]
-                                          .apply(lambda x: x.upper()
-                                                 if genes_uppercase else x))
     metabolite_enzymes_df = (metabolite_enzymes_df.groupby(["HMDB_ID"])
                              .agg({"gene_name": lambda x: sorted(
                                 x.unique().tolist())})
@@ -448,10 +659,13 @@ def extract_gp_dict_from_mebocost_es_interactions(
     gp_dict = {}
     for metabolite, enzyme_genes in met_interaction_dict["enzyme_genes"].items():
         gp_dict[metabolite + "_metabolite_enzyme_sensor_GP"] = {
-            "sources": enzyme_genes}
+            "sources": enzyme_genes,
+            "sources_categories": ["enzyme"] * len(enzyme_genes)}
     for metabolite, sensor_genes in met_interaction_dict["sensor_genes"].items():
         gp_dict[metabolite + "_metabolite_enzyme_sensor_GP"][
             "targets"] = sensor_genes
+        gp_dict[metabolite + "_metabolite_enzyme_sensor_GP"][
+            "targets_categories"] = ["sensor"] * len(sensor_genes)
 
     if plot_gp_gene_count_distributions:
         create_gp_gene_count_distribution_plots(gp_dict,

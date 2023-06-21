@@ -174,7 +174,11 @@ class NicheCompass(BaseModelMixin):
                  gp_names_key: str="nichecompass_gp_names",
                  active_gp_names_key: str="nichecompass_active_gp_names",
                  gp_targets_mask_key: str="nichecompass_gp_targets",
+                 gp_targets_categories_mask_key: str="nichecompass_gp_targets_categories",
+                 targets_categories_label_encoder_key: str="nichecompass_targets_categories_label_encoder",
                  gp_sources_mask_key: str="nichecompass_gp_sources",
+                 gp_sources_categories_mask_key: str="nichecompass_gp_sources_categories",
+                 sources_categories_label_encoder_key: str="nichecompass_sources_categories_label_encoder",
                  ca_targets_mask_key: Optional[str]="nichecompass_ca_targets",
                  ca_sources_mask_key: Optional[str]="nichecompass_ca_sources",
                  latent_key: str="nichecompass_latent",
@@ -221,7 +225,11 @@ class NicheCompass(BaseModelMixin):
         self.gp_names_key_ = gp_names_key
         self.active_gp_names_key_ = active_gp_names_key
         self.gp_targets_mask_key_ = gp_targets_mask_key
+        self.gp_targets_categories_mask_key_ = gp_targets_categories_mask_key
+        self.targets_categories_label_encoder_key_ = targets_categories_label_encoder_key
         self.gp_sources_mask_key_ = gp_sources_mask_key
+        self.gp_sources_categories_mask_key_ = gp_sources_categories_mask_key
+        self.sources_categories_label_encoder_key_ = sources_categories_label_encoder_key
         self.ca_targets_mask_key_ = ca_targets_mask_key
         self.ca_sources_mask_key_ = ca_sources_mask_key
         self.latent_key_ = latent_key
@@ -498,7 +506,8 @@ class NicheCompass(BaseModelMixin):
               contrastive_logits_neg_ratio: float=0.,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,
-              min_gp_genes_l1_masked: int=4,
+              l1_targets_categories: list=["target_gene"],
+              l1_sources_categories: list=["enzyme"],
               lambda_l1_addon: float=0.,
               edge_val_ratio: float=0.1,
               node_val_ratio: float=0.1,
@@ -571,9 +580,12 @@ class NicheCompass(BaseModelMixin):
             Lambda (weighting factor) for the L1 regularization loss of genes in
             masked gene programs. If ´>0´, this will enforce sparsity of genes
             in masked gene programs.
-        min_gp_genes_l1_masked:
-            The minimum number of genes that need to be in a gene program for
-            the L1 regularization loss to be applied to the gene program.
+        l1_targets_categories:
+            Gene program mask targets categories for which l1 regularization loss
+            will be applied.
+        l1_sources_categories:
+            Gene program mask sources categories for which l1 regularization loss
+            will be applied.
         lambda_l1_addon:
             Lambda (weighting factor) for the L1 regularization loss of genes in
             addon gene programs. If ´>0´, this will enforce sparsity of genes in
@@ -605,7 +617,7 @@ class NicheCompass(BaseModelMixin):
             If `True`, use cuda if available.
         trainer_kwargs:
             Kwargs for the model Trainer.
-        """
+        """        
         self.trainer = Trainer(
             adata=self.adata,
             adata_atac=self.adata_atac,
@@ -621,6 +633,27 @@ class NicheCompass(BaseModelMixin):
             node_batch_size=node_batch_size,
             use_cuda_if_available=use_cuda_if_available,
             **trainer_kwargs)
+        
+        if lambda_l1_masked > 0.:
+            # Create mask for l1 regularization loss
+            l1_targets_categories_encoded = [
+                self.adata.uns[
+                    self.targets_categories_label_encoder_key_][category]
+                for category in l1_targets_categories]
+            l1_sources_categories_encoded = [
+                self.adata.uns[
+                    self.sources_categories_label_encoder_key_][category]
+                for category in l1_sources_categories]
+            l1_targets_mask = np.isin(
+                self.adata.varm[self.gp_targets_categories_mask_key_],
+                l1_targets_categories_encoded)
+            l1_sources_mask = np.isin(
+                self.adata.varm[self.gp_sources_categories_mask_key_],
+                l1_sources_categories_encoded)
+            l1_mask = np.concatenate((l1_targets_mask, l1_sources_mask),
+                                     axis=0)
+        else:
+            l1_mask = None
 
         self.trainer.train(
             n_epochs=n_epochs,
@@ -637,7 +670,7 @@ class NicheCompass(BaseModelMixin):
             contrastive_logits_neg_ratio=contrastive_logits_neg_ratio,
             lambda_group_lasso=lambda_group_lasso,
             lambda_l1_masked=lambda_l1_masked,
-            min_gp_genes_l1_masked=min_gp_genes_l1_masked,
+            l1_mask=l1_mask,
             lambda_l1_addon=lambda_l1_addon,
             mlflow_experiment_id=mlflow_experiment_id)
         

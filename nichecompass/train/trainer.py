@@ -223,7 +223,7 @@ class Trainer(BaseTrainerMixin):
               lambda_chrom_access_recon: float=10.,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,
-              min_gp_genes_l1_masked: int=5,
+              l1_mask: Optional[np.array]=None,
               lambda_l1_addon: float=0.,
               mlflow_experiment_id: Optional[str]=None):
         """
@@ -282,9 +282,10 @@ class Trainer(BaseTrainerMixin):
             Lambda (weighting factor) for the L1 regularization loss of genes in
             masked gene programs. If ´>0´, this will enforce sparsity of genes
             in masked gene programs.
-        min_gp_genes_l1_masked:
-            Minimum number of genes in a gene program for it to be considered
-            in the masked l1 reg loss computation.        
+        l1_mask:
+            Boolean gene program gene mask that is True for all gene program genes
+            to which the L1 regularization loss should be applied (dim: 2 x n_genes,
+            n_gps)            
         lambda_l1_addon:
             Lambda (weighting factor) for the L1 regularization loss of genes in
             addon gene programs. If ´>0´, this will enforce sparsity of genes in
@@ -306,7 +307,7 @@ class Trainer(BaseTrainerMixin):
         self.contrastive_logits_neg_ratio_ = contrastive_logits_neg_ratio
         self.lambda_group_lasso_ = lambda_group_lasso
         self.lambda_l1_masked_ = lambda_l1_masked
-        self.min_gp_genes_l1_masked_ = min_gp_genes_l1_masked
+        self.l1_mask = l1_mask
         self.lambda_l1_addon_ = lambda_l1_addon
         self.mlflow_experiment_id = mlflow_experiment_id
 
@@ -325,15 +326,6 @@ class Trainer(BaseTrainerMixin):
         self.optimizer = torch.optim.Adam(params,
                                           lr=lr,
                                           weight_decay=weight_decay)
-        
-        if min_gp_genes_l1_masked == 0:
-            self.l1_masked_gp_idx = torch.arange(
-                self.adata.varm[self.gp_targets_mask_key].shape[1])
-        else:
-            self.l1_masked_gp_idx = torch.tensor(np.where(
-                (self.adata.varm[self.gp_targets_mask_key].sum(axis=0) +
-                 self.adata.varm[self.gp_sources_mask_key].sum(axis=0))
-                >= min_gp_genes_l1_masked)[0])
 
         for self.epoch in range(n_epochs):
             if self.epoch < self.n_epochs_no_edge_recon_:
@@ -386,7 +378,7 @@ class Trainer(BaseTrainerMixin):
                     contrastive_logits_neg_ratio=self.contrastive_logits_neg_ratio_,
                     lambda_group_lasso=self.lambda_group_lasso_,
                     lambda_l1_masked=self.lambda_l1_masked_,
-                    l1_masked_gp_idx=self.l1_masked_gp_idx,
+                    l1_mask=self.l1_mask,
                     lambda_l1_addon=self.lambda_l1_addon_,
                     edge_recon_active=self.edge_recon_active,
                     cond_contrastive_active=self.cond_contrastive_active)
@@ -522,7 +514,7 @@ class Trainer(BaseTrainerMixin):
                     contrastive_logits_neg_ratio=self.contrastive_logits_neg_ratio_,
                     lambda_group_lasso=self.lambda_group_lasso_,
                     lambda_l1_masked=self.lambda_l1_masked_,
-                    l1_masked_gp_idx=self.l1_masked_gp_idx,
+                    l1_mask=self.l1_mask,
                     lambda_l1_addon=self.lambda_l1_addon_,
                     edge_recon_active=True)
 

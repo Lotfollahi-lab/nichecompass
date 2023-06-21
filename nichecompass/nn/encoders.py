@@ -51,12 +51,14 @@ class Encoder(nn.Module):
                  n_latent: int,
                  n_addon_latent: int=0,
                  conv_layer: Literal["gcnconv", "gatv2conv"]="gcnconv",
+                 cond_embed_mode: Literal["input", "hidden"]="hidden",
                  n_attention_heads: int=4,
                  dropout_rate: float=0.,
                  activation: nn.Module=nn.ReLU):
         super().__init__()
         self.n_addon_latent = n_addon_latent
         self.n_layers = n_layers
+        self.cond_embed_mode = cond_embed_mode
 
         print(f"ENCODER -> n_input: {n_input}, n_cond_embed_input: "
               f"{n_cond_embed_input}, n_layers: {n_layers}, n_hidden: "
@@ -64,11 +66,15 @@ class Encoder(nn.Module):
               f"{n_addon_latent}, conv_layer: {conv_layer}, n_attention_heads: "
               f"{n_attention_heads if conv_layer == 'gatv2conv' else '0'}, "
               f"dropout_rate: {dropout_rate}")
-
+        
+        if (cond_embed_mode == "input") & (n_cond_embed_input != 0):
+            # Add conditional embedding to input
+            n_input += n_cond_embed_input
+        
         self.fc_l = nn.Linear(n_input, n_hidden)
         
-        # Add cond embed to hidden after fc_l
-        if n_cond_embed_input != 0:
+        if (cond_embed_mode == "hidden") & (n_cond_embed_input != 0):
+            # Add conditional embedding to hidden after fc_l
             n_hidden += n_cond_embed_input
 
         if conv_layer == "gcnconv":
@@ -135,14 +141,21 @@ class Encoder(nn.Module):
             Tensor containing the log standard deviations of the latent space
             normal distribution.
         """
+        if (self.cond_embed_mode == "input") & (cond_embed is not None):
+            # Add conditional embedding to input vector
+            if cond_embed is not None:
+                x = torch.cat((x,
+                               cond_embed),
+                              axis=1)
+        
         # FC forward pass shared across all nodes
         hidden = self.dropout(self.activation(self.fc_l(x)))
         
-        # Add conditional embedding to hidden vector
-        if cond_embed is not None:
+        if (self.cond_embed_mode == "hidden") & (cond_embed is not None):
+            # Add conditional embedding to hidden vector
             hidden = torch.cat((hidden,
                                 cond_embed),
-                                axis=1)
+                               axis=1)
         
         if self.n_layers == 2:
             # Part of forward pass shared across all nodes
@@ -152,11 +165,6 @@ class Encoder(nn.Module):
         # Part of forward pass only for maskable latent nodes
         mu = self.conv_mu(hidden, edge_index)
         logstd = self.conv_logstd(hidden, edge_index)
-        
-        # Add conditional embedding to hidden vector
-        #if cond_embed is not None:
-            #mu += self.cond_embed_l_mu(cond_embed)
-            #logstd += self.cond_embed_l_logstd(cond_embed)
         
         # Part of forward pass only for unmaskable add-on latent nodes
         if self.n_addon_latent != 0:

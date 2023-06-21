@@ -6,6 +6,7 @@ Graph Autoencoder module.
 from typing import Iterable, Optional, Tuple
 
 import math
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -373,8 +374,7 @@ def compute_kl_reg_loss(mu: torch.Tensor,
 
 
 def compute_masked_l1_reg_loss(model: nn.Module,
-                               l1_masked_gp_idx,
-                               only_target_genes: bool=True) -> torch.Tensor:
+                               l1_mask: np.array) -> torch.Tensor:
     """
     Compute L1 regularization loss for the masked decoder layer weights to 
     encourage gene sparsity of masked gene programs.
@@ -383,9 +383,10 @@ def compute_masked_l1_reg_loss(model: nn.Module,
     ----------
     model:
         The VGPGAE module.
-    only_target_genes:
-        If ´True´, compute regularization loss only for target genes (not for
-        source genes).
+    l1_mask:
+        Boolean gene program gene mask that is True for all gene program genes
+        to which the L1 regularization loss should be applied (dim: 2 x n_genes,
+        n_gps)
     min_genes_per_gp:
         Minimum number of genes that are in the gene program mask for a gene
         program to be included in the l1 reg loss.
@@ -395,15 +396,10 @@ def compute_masked_l1_reg_loss(model: nn.Module,
     masked_l1_reg_loss:
         L1 regularization loss for the masked decoder layer weights.
     """
-    if only_target_genes & (model.node_label_method_ != "self"):
-        param_end_gene_idx = int(model.n_output_genes_ / 2)
-    else:
-        param_end_gene_idx = None
-
     # First compute layer-wise sum of absolute weights over all masked gene
     # expression decoder layers, then sum across layers
     masked_decoder_layerwise_param_sum = torch.stack(
-        [torch.linalg.vector_norm(param[:param_end_gene_idx, l1_masked_gp_idx],
+        [torch.linalg.vector_norm(param[l1_mask],
                                   ord=1) for
          param_name, param in model.named_parameters() if
          "nb_means_normalized_decoder.masked_l" in param_name],
