@@ -2,7 +2,7 @@
 This module contains data processors for the training of an NicheCompass model.
 """
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 from anndata import AnnData
@@ -118,10 +118,12 @@ def node_level_split_mask(data: Data,
 
 def prepare_data(adata: AnnData,
                  condition_label_encoder: dict,
+                 cat_covariates_label_encoders: List[dict],
                  adata_atac: Optional[AnnData]=None,
                  counts_key: Optional[str]="counts",
                  adj_key: str="spatial_connectivities",
                  condition_key: Optional[str]=None,
+                 cat_covariates_keys: Optional[List[str]]=None,
                  edge_val_ratio: float=0.1,
                  edge_test_ratio: float=0.,
                  node_val_ratio: float=0.1,
@@ -143,6 +145,7 @@ def prepare_data(adata: AnnData,
         Condition label encoder from the model (label encoding indeces need to
         be aligned with the ones from the model to get the correct conditional
         embedding).
+    cat_covariates_label_encoders:
     counts_key:
         Key under which the counts are stored in ´adata.layer´. If ´None´, uses
         ´adata.X´ as counts.
@@ -151,6 +154,7 @@ def prepare_data(adata: AnnData,
     condition_key:
         Key under which the condition for the conditional embedding is stored in
         ´adata.obs´.
+    cat_covariates_keys:
     edge_val_ratio:
         Fraction of the data that is used as validation set on edge-level.
     edge_test_ratio:
@@ -177,6 +181,7 @@ def prepare_data(adata: AnnData,
         counts_key=counts_key,
         adj_key=adj_key,
         condition_key=condition_key,
+        cat_covariates_keys=cat_covariates_keys,
         condition_label_encoder=condition_label_encoder)
 
     # PyG Data object (has 2 edge index pairs for one edge because of symmetry;

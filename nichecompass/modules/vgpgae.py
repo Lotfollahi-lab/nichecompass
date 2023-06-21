@@ -51,6 +51,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         Number of add-on nodes in the latent space (de-novo gene programs).
     n_cond_embed:
         Number of conditional embedding nodes.
+    nums_cat_covariates_embed:
     n_output_genes:
         Number of nodes in the output layer.
     n_output_peaks:
@@ -138,6 +139,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  n_nonaddon_gps: int,
                  n_addon_gps: int,
                  n_cond_embed: int,
+                 nums_cat_covariates_embed: List[int],
                  n_output_genes: int,
                  gene_expr_decoder_mask: torch.Tensor,
                  gene_expr_mask_idx: torch.Tensor,
@@ -179,6 +181,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.n_nonaddon_gps_ = n_nonaddon_gps
         self.n_addon_gps_ = n_addon_gps
         self.n_cond_embed_ = n_cond_embed
+        self.nums_cat_covariates_embed_ = nums_cat_covariates_embed
         self.n_output_genes_ = n_output_genes
         self.n_output_peaks_ = n_output_peaks
         self.gene_expr_mask_idx_ = gene_expr_mask_idx
@@ -193,8 +196,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.condition_label_encoder_ = {
             k: v for k, v in zip(conditions, range(len(conditions)))}
         self.cat_covariates_cats_ = cat_covariates_cats
-        self.cat_covariates_n_cats_n_list = [len(cat_covariate_cats)
-                                             for cat_covariate_cats in cat_covariates_cats]
+        self.nums_cat_covariates_cats_ = [
+            len(cat_covariate_cats) for cat_covariate_cats in cat_covariates_cats]
+        self.cat_covariates_label_encoders_ = [
+            {k: v for k, v in zip(cat_covariate_cats,
+                                  range(len(cat_covariate_cats)))}
+                                  for cat_covariate_cats in cat_covariates_cats]
         self.conv_layer_encoder_ = conv_layer_encoder
         self.encoder_n_attention_heads_ = encoder_n_attention_heads
         self.dropout_rate_encoder_ = dropout_rate_encoder
@@ -245,8 +252,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             self.cond_embedder = nn.Embedding(self.n_conditions_, n_cond_embed)
             
         # Initialize categorical covariates embedder modules
-        # TO DO
-        
+        if len(self.cat_covariates_cats_[0]) > 0:
+            self.cat_covariates_embedders = []
+            for i in range(len(self.cat_covariates_cats_)):
+                self.cat_covariates_embedders.append(nn.Embedding(
+                    self.nums_cat_covariates_cats_[i],
+                    nums_cat_covariates_embed[i]))
 
         # Initialize encoder module
         self.encoder = Encoder(
@@ -407,13 +418,21 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         else:
             self.cond_embed = None
 
+        # Get categorical covariate embeddings
+        if len(self.cat_covariates_cats_[0]) > 0:
+             self.cat_covariates_embed = self.cond_embedder(
+                data_batch.conditions)
+        else:
+            self.cat_covariates_embed = None           
+
         # Use encoder and reparameterization trick to get latent distribution
         # parameters and features for current batch
         encoder_outputs = self.encoder(
             x=x_enc,
             edge_index=edge_index,
             cond_embed=(self.cond_embed if "encoder" in
-                        self.cond_embed_injection_ else None))
+                        self.cond_embed_injection_ else None),
+            cat_covariates_embed=self.cat_covariates_embed)
         self.mu = encoder_outputs[0][batch_idx, :]
         self.logstd = encoder_outputs[1][batch_idx, :]
         output["mu"] = self.mu
@@ -469,7 +488,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 z=z,
                 log_library_size=self.log_library_size,
                 cond_embed=(self.cond_embed[batch_idx] if "gene_expr_decoder" in
-                            self.cond_embed_injection_ else None))
+                            self.cond_embed_injection_ else None),
+                cat_covariates_embed=(self.cat_covariates_embed[batch_idx]
+                                      if self.cat_covariates_embed is not None else None))
             
             if "chrom_access" in self.modalities_:
                 # Use observed library size as scaling factor for the negative

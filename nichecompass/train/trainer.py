@@ -8,7 +8,7 @@ import math
 import time
 import warnings
 from collections import defaultdict
-from typing import Optional
+from typing import List, Optional
 
 import mlflow
 import numpy as np
@@ -51,6 +51,7 @@ class Trainer(BaseTrainerMixin):
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
     condition_key:
         Key under which the conditions are stored in ´adata.obs´.
+    cat_covariates_keys:
     gp_targets_mask_key:
         Key under which the gene program targets mask is stored in ´model.adata.varm´. 
         This mask will only be used if no ´gp_targets_mask´ is passed explicitly
@@ -92,6 +93,7 @@ class Trainer(BaseTrainerMixin):
                  counts_key: Optional[str]="counts",
                  adj_key: str="spatial_connectivities",
                  condition_key: Optional[str]=None,
+                 cat_covariates_keys: Optional[List[str]]=None,
                  gp_targets_mask_key: str="nichecompass_gp_targets",
                  gp_sources_mask_key: str="nichecompass_gp_sources",                 
                  edge_val_ratio: float=0.1,
@@ -112,6 +114,7 @@ class Trainer(BaseTrainerMixin):
         self.counts_key = counts_key
         self.adj_key = adj_key
         self.condition_key = condition_key
+        self.cat_covariates_keys = cat_covariates_keys
         self.gp_targets_mask_key = gp_targets_mask_key
         self.gp_sources_mask_key = gp_sources_mask_key
         self.edge_train_ratio_ = 1 - edge_val_ratio
@@ -164,10 +167,12 @@ class Trainer(BaseTrainerMixin):
         data_dict = prepare_data(
             adata=adata,
             condition_label_encoder=self.model.condition_label_encoder_,
+            cat_covariates_label_encoders=self.model.cat_covariates_label_encoders_,
             adata_atac=adata_atac,
             counts_key=self.counts_key,
             adj_key=self.adj_key,
             condition_key=self.condition_key,
+            cat_covariates_keys=self.cat_covariates_keys,
             edge_val_ratio=self.edge_val_ratio_,
             edge_test_ratio=0.,
             node_val_ratio=self.node_val_ratio_,

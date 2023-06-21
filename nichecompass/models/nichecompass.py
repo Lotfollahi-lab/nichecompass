@@ -163,6 +163,8 @@ class NicheCompass(BaseModelMixin):
         in masks but can be learned de novo).
     n_cond_embed:
         Number of conditional embedding nodes.
+    nums_cat_covariates_embed:
+    
     kwargs:
         NicheCompass kwargs (to support legacy versions).
     """
@@ -218,6 +220,7 @@ class NicheCompass(BaseModelMixin):
                  cat_covariates_cats: Optional[List[List]]=None,
                  n_addon_gps: int=0,
                  n_cond_embed: Optional[int]=None,
+                 nums_cat_covariates_embed: Optional[List[int]]=None,
                  **kwargs):
         self.adata = adata
         self.adata_atac = adata_atac
@@ -399,6 +402,8 @@ class NicheCompass(BaseModelMixin):
                 n_cond_embed = len(adata.var)
         self.n_cond_embed_ = n_cond_embed
 
+        self.nums_cat_covariates_embed_ = nums_cat_covariates_embed
+
         # Determine dimensionality of hidden encoder layer if not provided
         if n_hidden_encoder is None:
             if len(adata.var) > self.n_nonaddon_gps_:
@@ -474,6 +479,7 @@ class NicheCompass(BaseModelMixin):
             n_nonaddon_gps=self.n_nonaddon_gps_,
             n_addon_gps=self.n_addon_gps_,
             n_cond_embed=self.n_cond_embed_,
+            nums_cat_covariates_embed=self.nums_cat_covariates_embed_,
             n_output_genes=self.n_output_genes_,
             n_output_peaks=self.n_output_peaks_,
             gene_expr_decoder_mask=self.gp_mask_,

@@ -3,7 +3,7 @@ This module contains the SpatialAnnTorchDataset class to provide a standardized
 dataset format for the training of an NicheCompass model.
 """
 
-from typing import Optional
+from typing import List, Optional
 
 import scipy.sparse as sp
 import torch
@@ -31,6 +31,7 @@ class SpatialAnnTorchDataset():
         Condition label encoder from the model (label encoding indeces need to
         be aligned with the ones from the model to get the correct conditional
         embedding).
+    cat_covariates_label_encoders:
     counts_key:
         Key under which the counts are stored in ´adata.layer´. If ´None´, uses
         ´adata.X´ as counts. 
@@ -42,15 +43,18 @@ class SpatialAnnTorchDataset():
     condition_key:
         Key under which the condition for the conditional embedding is stored in
         ´adata.obs´.
+    categorical_covariates_keys:
     """
     def __init__(self,
                  adata: AnnData,
                  condition_label_encoder: dict,
+                 cat_covariates_label_encoders: List[dict],
                  adata_atac: Optional[AnnData]=None,
                  counts_key: Optional[str]="counts",
                  adj_key: str="spatial_connectivities",
                  self_loops: bool=True,
-                 condition_key: Optional[str]=None):
+                 condition_key: Optional[str]=None,
+                 cat_covariates_keys: Optional[str]=None):
         if counts_key is None:
             x = adata.X
         else:
@@ -95,6 +99,17 @@ class SpatialAnnTorchDataset():
                 encode_labels(adata,
                               condition_label_encoder,
                               condition_key), dtype=torch.long)
+            
+        if cat_covariates_keys is not None:
+            self.cat_covariates_cats = []
+            for cat_covariate_key, cat_covariate_label_encoder in zip(
+                cat_covariates_keys,
+                cat_covariates_label_encoders):
+                cat_covariate_cats = torch.tensor(
+                    encode_labels(adata,
+                                  cat_covariate_label_encoder,
+                                  cat_covariate_key), dtype=torch.long)
+                self.cat_covariates_cats.append(cat_covariate_cats)            
 
         self.n_node_features = self.x.size(1)
         self.size_factors = self.x.sum(1) # fix for ATAC case
