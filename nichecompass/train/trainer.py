@@ -283,7 +283,9 @@ class Trainer(BaseTrainerMixin):
             masked gene programs. If ´>0´, this will enforce sparsity of genes
             in masked gene programs.
         l1_mask:
-            
+            Boolean gene program gene mask that is True for all gene program genes
+            to which the L1 regularization loss should be applied (dim: 2 x n_genes,
+            n_gps)            
         lambda_l1_addon:
             Lambda (weighting factor) for the L1 regularization loss of genes in
             addon gene programs. If ´>0´, this will enforce sparsity of genes in

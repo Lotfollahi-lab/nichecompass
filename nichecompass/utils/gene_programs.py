@@ -3,6 +3,7 @@ This module contains utilities to add interpretable communication gene programs
 as prior knowledge for use by the NicheCompass model.
 """
 
+import copy
 from typing import Literal, Optional
 
 import numpy as np
@@ -150,7 +151,7 @@ def add_gps_from_gp_dict_to_adata(
     adata.uns[targets_categories_label_encoder_key] = targets_categories_label_encoder
 
     # Third, create new gp dict with label encoded categories
-    category_encoded_gp_dict = gp_dict.copy()
+    category_encoded_gp_dict = copy.deepcopy(gp_dict)
     for _, gp_genes_dict in category_encoded_gp_dict.items():
         gp_genes_dict["targets_categories"] = [targets_categories_label_encoder.get(target)
                                                for target in gp_genes_dict["targets_categories"]]

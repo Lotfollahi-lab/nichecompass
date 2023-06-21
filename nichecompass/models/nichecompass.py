@@ -634,20 +634,26 @@ class NicheCompass(BaseModelMixin):
             use_cuda_if_available=use_cuda_if_available,
             **trainer_kwargs)
         
-        # Create mask for l1 regularization loss
-        l1_targets_categories_encoded = [
-            self.adata.uns[self.targets_categories_label_encoder_key_][category]
-            for category in l1_targets_categories]
-        l1_sources_categories_encoded = [
-            self.adata.uns[self.sources_categories_label_encoder_key_][category]
-            for category in l1_sources_categories]
-        l1_targets_mask = np.isin(
-            self.adata.varm[self.gp_targets_categories_mask_key_],
-            l1_targets_categories_encoded)
-        l1_sources_mask = np.isin(
-            self.adata.varm[self.gp_sources_categories_mask_key_],
-            l1_sources_categories_encoded)
-        l1_mask = np.concatenate((l1_targets_mask, l1_sources_mask), axis=0)
+        if lambda_l1_masked > 0.:
+            # Create mask for l1 regularization loss
+            l1_targets_categories_encoded = [
+                self.adata.uns[
+                    self.targets_categories_label_encoder_key_][category]
+                for category in l1_targets_categories]
+            l1_sources_categories_encoded = [
+                self.adata.uns[
+                    self.sources_categories_label_encoder_key_][category]
+                for category in l1_sources_categories]
+            l1_targets_mask = np.isin(
+                self.adata.varm[self.gp_targets_categories_mask_key_],
+                l1_targets_categories_encoded)
+            l1_sources_mask = np.isin(
+                self.adata.varm[self.gp_sources_categories_mask_key_],
+                l1_sources_categories_encoded)
+            l1_mask = np.concatenate((l1_targets_mask, l1_sources_mask),
+                                     axis=0)
+        else:
+            l1_mask = None
 
         self.trainer.train(
             n_epochs=n_epochs,
