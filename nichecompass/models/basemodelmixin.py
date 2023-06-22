@@ -232,6 +232,21 @@ class BaseModelMixin():
             for condition in new_conditions:
                 conditions.append(condition)
         attr_dict["init_params_"]["conditions"] = conditions
+        
+        # Add new categorical covariates categories from query data
+        cat_covariates_cats = attr_dict["cat_covariates_cats_"]
+        cat_covariates_keys = attr_dict["init_params_"]["cat_covariates_keys"]
+        new_cat_covariates_cats = []
+        if cat_covariates_keys is not None:
+            for i, cat_covariate_key in enumerate(cat_covariates_keys):
+                new_cat_covariate_cats = []
+                adata_cat_covariate_cats = adata.obs[cat_covariate_key].unique().tolist()
+                for cat_covariate_cat in adata_cat_covariate_cats:
+                    if cat_covariate_cat not in cat_covariates_cats[i]:
+                        new_cat_covariate_cats.append(cat_covariate_cat)
+                for cat_covariate_cat in new_cat_covariate_cats:
+                    cat_covariates_cats[i].append(cat_covariate_cat)
+        attr_dict["init_params_"]["cat_covariates_cats"] = cat_covariates_cats
 
         if n_addon_gps != 0:
             attr_dict["n_addon_gps_"] += n_addon_gps

@@ -198,8 +198,9 @@ class MaskedGeneExprDecoder(nn.Module):
         super().__init__()
 
         print(f"MASKED GENE EXPRESSION DECODER -> n_input: {n_input}, "
-              f"n_cond_embed_input: {n_cond_embed_input}, n_addon_input: "
-              f"{n_addon_input}, n_output: {n_output}")
+              f"n_cond_embed_input: {n_cond_embed_input}, "
+              f"n_cat_covariates_embed_input: {n_cat_covariates_embed_input}, "
+              f"n_addon_input: {n_addon_input}, n_output: {n_output}")
 
         self.mask_idx = mask_idx
         self.recon_dist = recon_dist

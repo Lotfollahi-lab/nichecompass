@@ -705,6 +705,7 @@ class NicheCompass(BaseModelMixin):
            counts_key=self.counts_key_,
            adj_key=self.adj_key_,
            condition_key=self.condition_key_,
+           cat_covariates_keys=self.cat_covariates_keys_,
            only_active_gps=True,
            return_mu_std=True,
            node_batch_size=self.node_batch_size_)
@@ -837,6 +838,7 @@ class NicheCompass(BaseModelMixin):
             counts_key=self.counts_key_,
             adj_key=self.adj_key_,
             condition_key=self.condition_key_,
+            cat_covariates_keys=self.cat_covariates_keys_,
             only_active_gps=False,
             return_mu_std=True,
             node_batch_size=self.node_batch_size_)
@@ -1341,6 +1343,7 @@ class NicheCompass(BaseModelMixin):
             counts_key: Optional[str]="counts",
             adj_key: str="spatial_connectivities",
             condition_key: Optional[str]=None,
+            cat_covariates_keys: Optional[List[str]]=None,
             only_active_gps: bool=True,
             return_mu_std: bool=False,
             node_batch_size: int=64,
@@ -1362,7 +1365,8 @@ class NicheCompass(BaseModelMixin):
         condition_key:
             Key under which the conditions are stored in ´adata.obs´.              
             only_active_gps:
-            If ´True´, return only the latent representation of active gps.            
+            If ´True´, return only the latent representation of active gps.
+        cat_covariates_keys:
         return_mu_std:
             If `True`, return ´mu´ and ´std´ instead of latent features ´z´.
 
@@ -1390,10 +1394,12 @@ class NicheCompass(BaseModelMixin):
         data_dict = prepare_data(
             adata=adata,
             condition_label_encoder=self.model.condition_label_encoder_,
+            cat_covariates_label_encoders=self.model.cat_covariates_label_encoders_,
             adata_atac=adata_atac,
             counts_key=counts_key,
             adj_key=adj_key,
             condition_key=condition_key,
+            cat_covariates_keys=cat_covariates_keys,
             edge_val_ratio=0.,
             edge_test_ratio=0.,
             node_val_ratio=0.,

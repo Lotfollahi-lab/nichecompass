@@ -426,15 +426,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
         # Get categorical covariate embeddings
         if len(self.cat_covariates_cats_[0]) > 0:
-             cat_covariates_embeds = []
-             for i in range(len(self.cat_covariates_embedders)):
+            cat_covariates_embeds = []
+            for i in range(len(self.cat_covariates_embedders)):
                 cat_covariates_embeds.append(self.cat_covariates_embedders[i](
-                    data_batch.cat_covariates_cats[:, i]))
-                print(cat_covariates_embeds[0].shape)
+                     data_batch.cat_covariates_cats[:, i]))
                 self.cat_covariates_embed = torch.cat(
                     cat_covariates_embeds,
                     dim=1)
-                print(self.cat_covariates_embed.shape)
         else:
             self.cat_covariates_embed = None         
 
@@ -845,7 +843,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             _, zi_probs = self.get_gene_expr_dist_params(
                 z=self.mu,
                 log_library_size=self.log_library_size,
-                cond_embed=self.cond_embed[batch_idx])
+                cond_embed=self.cond_embed[batch_idx],
+                cat_covariates_embed=self.cat_covariates_embed[batch_idx])
             non_zi_probs = 1 - zi_probs
             non_zi_probs_sum = non_zi_probs.sum(0).unsqueeze(1) # sum over obs
             gp_weights *= non_zi_probs_sum
@@ -947,10 +946,23 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         else:
             cond_embed = None
             
+        # Get categorical covariate embeddings
+        if len(self.cat_covariates_cats_[0]) > 0:
+            cat_covariates_embeds = []
+            for i in range(len(self.cat_covariates_embedders)):
+                cat_covariates_embeds.append(self.cat_covariates_embedders[i](
+                    node_batch.cat_covariates_cats[:, i]))
+                cat_covariates_embed = torch.cat(
+                    cat_covariates_embeds,
+                    dim=1)
+        else:
+            cat_covariates_embed = None
+            
         # Get latent distribution parameters
         encoder_outputs = self.encoder(x=x_enc,
                                        edge_index=node_batch.edge_index,
-                                       cond_embed=cond_embed)
+                                       cond_embed=cond_embed,
+                                       cat_covariates_embed=cat_covariates_embed)
         mu = encoder_outputs[0][:node_batch.batch_size, :]
         logstd = encoder_outputs[1][:node_batch.batch_size, :]
 
@@ -973,7 +985,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             self,
             z: torch.Tensor,
             log_library_size: torch.Tensor,
-            cond_embed: torch.Tensor,
+            cond_embed: Optional[torch.Tensor]=None,
+            cat_covariates_embed: Optional[torch.Tensor]=None,
             ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Decode latent features ´z´ to return the parameters of the distribution
@@ -1005,12 +1018,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             nb_means = self.gene_expr_decoder(
                 z=z,
                 log_library_size=log_library_size,
-                cond_embed=cond_embed)
+                cond_embed=cond_embed,
+                cat_covariates_embed=cat_covariates_embed)
             return nb_means
         if self.gene_expr_recon_dist_ == "zinb":
             nb_means, zi_prob_logits = self.gene_expr_decoder(
                 z=z,
                 log_library_size=log_library_size,
-                cond_embed=cond_embed)
+                cond_embed=cond_embed,
+                cat_covariates_embed=cat_covariates_embed)
             zi_probs = torch.sigmoid(zi_prob_logits)
             return nb_means, zi_probs

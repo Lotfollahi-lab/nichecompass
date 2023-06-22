@@ -62,8 +62,9 @@ class Encoder(nn.Module):
         self.cond_embed_mode = cond_embed_mode
 
         print(f"ENCODER -> n_input: {n_input}, n_cond_embed_input: "
-              f"{n_cond_embed_input}, n_layers: {n_layers}, n_hidden: "
-              f"{n_hidden}, n_latent: {n_latent}, n_addon_latent: "
+              f"{n_cond_embed_input}, n_cat_covariates_embed_input: "
+              f"{n_cat_covariates_embed_input}, n_layers: {n_layers}, "
+              f"n_hidden: {n_hidden}, n_latent: {n_latent}, n_addon_latent: "
               f"{n_addon_latent}, conv_layer: {conv_layer}, n_attention_heads: "
               f"{n_attention_heads if conv_layer == 'gatv2conv' else '0'}, "
               f"dropout_rate: {dropout_rate}")

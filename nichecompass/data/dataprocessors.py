@@ -184,11 +184,6 @@ def prepare_data(adata: AnnData,
         cat_covariates_keys=cat_covariates_keys,
         condition_label_encoder=condition_label_encoder,
         cat_covariates_label_encoders=cat_covariates_label_encoders)
-    
-    print(cat_covariates_keys)
-    print(cat_covariates_label_encoders)
-    print(dataset.conditions)
-    print(dataset.cat_covariates_cats)
 
     # PyG Data object (has 2 edge index pairs for one edge because of symmetry;
     # one edge index pair will be removed in the edge-level split).
