@@ -271,7 +271,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_cond_embed_input=(n_cond_embed if ("encoder" in
                                 self.cond_embed_injection_) &
                                 (self.n_conditions_ != 0) else 0),
-            n_cat_covariates_embed_input=sum(nums_cat_covariates_embed),
+            n_cat_covariates_embed_input=(sum(nums_cat_covariates_embed)
+                                          if nums_cat_covariates_embed is not None
+                                          else 0),
             n_layers=n_layers_encoder,
             n_hidden=n_hidden_encoder,
             n_latent=n_nonaddon_gps,
@@ -300,7 +302,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_cond_embed_input=(n_cond_embed if ("gene_expr_decoder" in
                                 self.cond_embed_injection_) &
                                 (self.n_conditions_ != 0) else 0),
-            n_cat_covariates_embed_input=sum(nums_cat_covariates_embed),
+            n_cat_covariates_embed_input=(sum(nums_cat_covariates_embed)
+                                          if nums_cat_covariates_embed is not None
+                                          else 0),
             n_output=n_output_genes,
             mask=gene_expr_decoder_mask,
             mask_idx=gene_expr_mask_idx,
@@ -887,7 +891,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                  "target_chrom_access_mask_idx_",
                                  "source_chrom_access_mask_idx_",
                                  "features_idx_",
-                                 "gene_peaks_mask_"]):
+                                 "gene_peaks_mask_",
+                                 "conditions_",
+                                 "condition_label_encoder_",
+                                 "cat_covariates_cats_",
+                                 "cat_covariates_label_encoders_"]):
         """
         Log module hyperparameters to Mlflow.
         
