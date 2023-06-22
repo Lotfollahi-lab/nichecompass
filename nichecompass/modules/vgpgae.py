@@ -262,7 +262,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 # Set attribute so PyTorch recognizes the layer and moves it
                 # to GPU
                 setattr(self,
-                        "cat_covariate{i}_embedder",
+                        f"cat_covariate{i}_embedder",
                         cat_covariate_embedder)
 
         # Initialize encoder module
