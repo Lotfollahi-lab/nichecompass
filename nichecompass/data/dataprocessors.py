@@ -182,23 +182,28 @@ def prepare_data(adata: AnnData,
         adj_key=adj_key,
         condition_key=condition_key,
         cat_covariates_keys=cat_covariates_keys,
-        condition_label_encoder=condition_label_encoder)
+        condition_label_encoder=condition_label_encoder,
+        cat_covariates_label_encoders=cat_covariates_label_encoders)
+    
+    print(cat_covariates_keys)
+    print(cat_covariates_label_encoders)
+    print(dataset.conditions)
+    print(dataset.cat_covariates_cats)
 
     # PyG Data object (has 2 edge index pairs for one edge because of symmetry;
     # one edge index pair will be removed in the edge-level split).
+    data = Data(x=dataset.x,
+                edge_index=dataset.edge_index,
+                edge_attr=dataset.edge_index.t()) # store index of edge nodes as
+                                                  # edge attribute for
+                                                  # aggregation weight retrieval
+                                                  # in mini batches
+
     if condition_key is not None:
-        data = Data(x=dataset.x,
-                    edge_index=dataset.edge_index,
-                    edge_attr=dataset.edge_index.t(), # store index of edge
-                                                      # nodes as edge attribute
-                                                      # for aggregation weight
-                                                      # retrieval in mini
-                                                      # batches
-                    conditions=dataset.conditions)
-    else:
-        data = Data(x=dataset.x,
-                    edge_index=dataset.edge_index,
-                    edge_attr=dataset.edge_index.t())
+        data.conditions = dataset.conditions
+
+    if cat_covariates_keys is not None:
+        data.cat_covariates_cats = dataset.cat_covariates_cats
 
     # Edge-level split for edge reconstruction
     edge_train_data, edge_val_data, edge_test_data = edge_level_split(

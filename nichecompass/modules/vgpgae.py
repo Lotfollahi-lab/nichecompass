@@ -255,9 +255,15 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         if len(self.cat_covariates_cats_[0]) > 0:
             self.cat_covariates_embedders = []
             for i in range(len(self.cat_covariates_cats_)):
-                self.cat_covariates_embedders.append(nn.Embedding(
+                cat_covariate_embedder = nn.Embedding(
                     self.nums_cat_covariates_cats_[i],
-                    nums_cat_covariates_embed[i]))
+                    nums_cat_covariates_embed[i])
+                self.cat_covariates_embedders.append(cat_covariate_embedder)
+                # Set attribute so PyTorch recognizes the layer and moves it
+                # to GPU
+                setattr(self,
+                        "cat_covariate{i}_embedder",
+                        cat_covariate_embedder)
 
         # Initialize encoder module
         self.encoder = Encoder(
@@ -265,7 +271,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_cond_embed_input=(n_cond_embed if ("encoder" in
                                 self.cond_embed_injection_) &
                                 (self.n_conditions_ != 0) else 0),
-            n_cat_covariates_embed_input=0,
+            n_cat_covariates_embed_input=sum(nums_cat_covariates_embed),
             n_layers=n_layers_encoder,
             n_hidden=n_hidden_encoder,
             n_latent=n_nonaddon_gps,
@@ -294,7 +300,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_cond_embed_input=(n_cond_embed if ("gene_expr_decoder" in
                                 self.cond_embed_injection_) &
                                 (self.n_conditions_ != 0) else 0),
-            n_cat_covariates_embed_input=0,
+            n_cat_covariates_embed_input=sum(nums_cat_covariates_embed),
             n_output=n_output_genes,
             mask=gene_expr_decoder_mask,
             mask_idx=gene_expr_mask_idx,
@@ -420,10 +426,17 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
         # Get categorical covariate embeddings
         if len(self.cat_covariates_cats_[0]) > 0:
-             self.cat_covariates_embed = self.cond_embedder(
-                data_batch.conditions)
+             cat_covariates_embeds = []
+             for i in range(len(self.cat_covariates_embedders)):
+                cat_covariates_embeds.append(self.cat_covariates_embedders[i](
+                    data_batch.cat_covariates_cats[:, i]))
+                print(cat_covariates_embeds[0].shape)
+                self.cat_covariates_embed = torch.cat(
+                    cat_covariates_embeds,
+                    dim=1)
+                print(self.cat_covariates_embed.shape)
         else:
-            self.cat_covariates_embed = None           
+            self.cat_covariates_embed = None         
 
         # Use encoder and reparameterization trick to get latent distribution
         # parameters and features for current batch

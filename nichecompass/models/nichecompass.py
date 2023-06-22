@@ -164,7 +164,7 @@ class NicheCompass(BaseModelMixin):
     n_cond_embed:
         Number of conditional embedding nodes.
     nums_cat_covariates_embed:
-    
+
     kwargs:
         NicheCompass kwargs (to support legacy versions).
     """
@@ -648,6 +648,7 @@ class NicheCompass(BaseModelMixin):
             gp_targets_mask_key=self.gp_targets_mask_key_,
             gp_sources_mask_key=self.gp_sources_mask_key_,
             condition_key=self.condition_key_,
+            cat_covariates_keys=self.cat_covariates_keys_,
             edge_val_ratio=edge_val_ratio,
             node_val_ratio=node_val_ratio,
             edge_batch_size=edge_batch_size,

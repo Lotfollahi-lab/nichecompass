@@ -109,7 +109,9 @@ class SpatialAnnTorchDataset():
                     encode_labels(adata,
                                   cat_covariate_label_encoder,
                                   cat_covariate_key), dtype=torch.long)
-                self.cat_covariates_cats.append(cat_covariate_cats)            
+                self.cat_covariates_cats.append(cat_covariate_cats)
+            self.cat_covariates_cats = torch.stack(self.cat_covariates_cats,
+                                                   dim=1)            
 
         self.n_node_features = self.x.size(1)
         self.size_factors = self.x.sum(1) # fix for ATAC case
