@@ -3,7 +3,7 @@ This module contains all loss functions used by the Variational Gene Program
 Graph Autoencoder module.
 """
 
-from typing import Optional
+from typing import List, Optional
 
 import math
 import numpy as np
@@ -173,7 +173,8 @@ def compute_edge_recon_loss(
         backpropagation).
     """
     if edge_incl is not None:
-        # Remove examples that have nodes from different conditions
+        # Remove edges whose node pair has different categories in categorical
+        # covariates for which no cross-category edges are present
         edge_recon_logits = edge_recon_logits[edge_incl]
         edge_recon_labels = edge_recon_labels[edge_incl]
 

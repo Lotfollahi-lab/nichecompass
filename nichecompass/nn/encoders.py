@@ -22,8 +22,9 @@ class Encoder(nn.Module):
     ----------
     n_input:
         Number of input nodes to the GCN encoder.
-    n_cond_embed_input:
-        Number of conditional embedding input nodes to the GCN encoder.
+    n_cat_covariates_embed_input:
+        Number of categorical covariates embedding input nodes to the GCN
+        encoder.
     n_layers:
         Number of layers.
     n_hidden:
@@ -45,41 +46,38 @@ class Encoder(nn.Module):
     """
     def __init__(self,
                  n_input: int,
-                 n_cond_embed_input: int,
                  n_cat_covariates_embed_input: int,
                  n_layers: int,
                  n_hidden: int,
                  n_latent: int,
                  n_addon_latent: int=0,
                  conv_layer: Literal["gcnconv", "gatv2conv"]="gcnconv",
-                 cond_embed_mode: Literal["input", "hidden"]="hidden",
+                 cat_covariates_embed_mode: Literal["input", "hidden"]="hidden",
                  n_attention_heads: int=4,
                  dropout_rate: float=0.,
                  activation: nn.Module=nn.ReLU):
         super().__init__()
         self.n_addon_latent = n_addon_latent
         self.n_layers = n_layers
-        self.cond_embed_mode = cond_embed_mode
+        self.cat_covariates_embed_mode = cat_covariates_embed_mode
 
-        print(f"ENCODER -> n_input: {n_input}, n_cond_embed_input: "
-              f"{n_cond_embed_input}, n_cat_covariates_embed_input: "
+        print(f"ENCODER -> n_input: {n_input}, n_cat_covariates_embed_input: "
               f"{n_cat_covariates_embed_input}, n_layers: {n_layers}, "
               f"n_hidden: {n_hidden}, n_latent: {n_latent}, n_addon_latent: "
               f"{n_addon_latent}, conv_layer: {conv_layer}, n_attention_heads: "
               f"{n_attention_heads if conv_layer == 'gatv2conv' else '0'}, "
               f"dropout_rate: {dropout_rate}")
         
-        if (cond_embed_mode == "input") & (n_cond_embed_input != 0):
-            # Add conditional embedding to input
-            n_input += n_cond_embed_input
+        if ((cat_covariates_embed_mode == "input") &
+            (n_cat_covariates_embed_input != 0)):
+            # Add categorical covariates embedding to input
+            n_input += n_cat_covariates_embed_input
         
         self.fc_l = nn.Linear(n_input, n_hidden)
         
-        if (cond_embed_mode == "hidden") & (n_cond_embed_input != 0):
-            # Add conditional embedding to hidden after fc_l
-            n_hidden += n_cond_embed_input
-        
-        if n_cat_covariates_embed_input != 0:
+        if ((cat_covariates_embed_mode == "hidden") &
+            (n_cat_covariates_embed_input != 0)):
+            # Add categorical covariates embedding to hidden after fc_l
             n_hidden += n_cat_covariates_embed_input
 
         if conv_layer == "gcnconv":
@@ -124,8 +122,8 @@ class Encoder(nn.Module):
     def forward(self,
                 x: torch.Tensor,
                 edge_index: torch.Tensor,
-                cond_embed: Optional[torch.Tensor]=None,
-                cat_covariates_embed: Optional[torch.Tensor]=None) -> torch.Tensor:
+                cat_covariates_embed: Optional[torch.Tensor]=None
+                ) -> torch.Tensor:
         """
         Forward pass of the GCN encoder.
 
@@ -135,8 +133,9 @@ class Encoder(nn.Module):
             Tensor containing the gene expression input features.
         edge_index:
             Tensor containing the edge indices for message passing.
-        cond_embed:
-            Tensor containing the conditional embedding.
+        cat_covariates_embed:
+            Tensor containing the categorical covariates embedding (all
+            categorical covariates embeddings concatenated into one embedding).
         
         Returns
         ----------
@@ -147,23 +146,20 @@ class Encoder(nn.Module):
             Tensor containing the log standard deviations of the latent space
             normal distribution.
         """
-        if (self.cond_embed_mode == "input") & (cond_embed is not None):
-            # Add conditional embedding to input vector
-            if cond_embed is not None:
+        if ((self.cat_covariates_embed_mode == "input") &
+            (cat_covariates_embed is not None)):
+            # Add categorical covariates embedding to input vector
+            if cat_covariates_embed is not None:
                 x = torch.cat((x,
-                               cond_embed),
+                               cat_covariates_embed),
                               axis=1)
         
         # FC forward pass shared across all nodes
         hidden = self.dropout(self.activation(self.fc_l(x)))
         
-        if (self.cond_embed_mode == "hidden") & (cond_embed is not None):
-            # Add conditional embedding to hidden vector
-            hidden = torch.cat((hidden,
-                                cond_embed),
-                               axis=1)
-            
-        if cat_covariates_embed is not None:
+        if ((self.cat_covariates_embed_mode == "hidden") &
+            (cat_covariates_embed is not None)):
+            # Add categorical covariates embedding to hidden vector
             hidden = torch.cat((hidden,
                                 cat_covariates_embed),
                                axis=1)

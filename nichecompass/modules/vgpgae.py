@@ -266,7 +266,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                           if ("encoder" in self.cat_covariates_embeds_injection_)
                                           & (self.n_cat_covariates___ > 0)
                                           else 0),
-            n_cat_covariates_embed_input=0,
             n_layers=n_layers_encoder,
             n_hidden=n_hidden_encoder,
             n_latent=n_nonaddon_gps,
@@ -658,9 +657,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             logstd=node_model_output["logstd"])
 
         # Determine edges to be included in edge reconstruction loss
-        print(self.cat_covariates_no_edges_)
-        print(edge_model_output["edge_same_cat_covariates_cat"])
-
         cat_covariates_cat_edge_incl = []
         for cat_covariate_no_edge, edge_same_cat_covariate_cat in zip(
             self.cat_covariates_no_edges_,

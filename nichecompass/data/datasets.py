@@ -27,11 +27,10 @@ class SpatialAnnTorchDataset():
         in ´adata.obsp[adj_key]´.
     adata_atac:
         Additional optional AnnData object with paired spatial ATAC data.
-    condition_label_encoder:
-        Condition label encoder from the model (label encoding indeces need to
-        be aligned with the ones from the model to get the correct conditional
-        embedding).
     cat_covariates_label_encoders:
+        List of categorical covariates label encoders from the model (label
+        encoding indeces need to be aligned with the ones from the model to get
+        the correct categorical covariates embeddings).
     counts_key:
         Key under which the counts are stored in ´adata.layer´. If ´None´, uses
         ´adata.X´ as counts. 
@@ -40,20 +39,16 @@ class SpatialAnnTorchDataset():
     self_loops:
         If ´True´, add self loops to the adjacency matrix to model autocrine
         communication.
-    condition_key:
-        Key under which the condition for the conditional embedding is stored in
-        ´adata.obs´.
-    categorical_covariates_keys:
+    cat_covariates_keys:
+        Keys under which the categorical covariates are stored in ´adata.obs´.
     """
     def __init__(self,
                  adata: AnnData,
-                 condition_label_encoder: dict,
                  cat_covariates_label_encoders: List[dict],
                  adata_atac: Optional[AnnData]=None,
                  counts_key: Optional[str]="counts",
                  adj_key: str="spatial_connectivities",
                  self_loops: bool=True,
-                 condition_key: Optional[str]=None,
                  cat_covariates_keys: Optional[str]=None):
         if counts_key is None:
             x = adata.X
@@ -93,12 +88,6 @@ class SpatialAnnTorchDataset():
             self.edge_index, _ = remove_self_loops(self.edge_index)
             self.edge_index, _ = add_self_loops(self.edge_index,
                                                 num_nodes=self.x.size(0))
-
-        if condition_key is not None:
-            self.conditions = torch.tensor(
-                encode_labels(adata,
-                              condition_label_encoder,
-                              condition_key), dtype=torch.long)
             
         if cat_covariates_keys is not None:
             self.cat_covariates_cats = []

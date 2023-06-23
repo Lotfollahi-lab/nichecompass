@@ -93,7 +93,6 @@ class MaskedGeneExprDecoder(nn.Module):
     """
     def __init__(self,
                  n_input: int,
-                 n_cond_embed_input: int,
                  n_cat_covariates_embed_input: int,
                  n_addon_input: int,
                  n_output: int,
@@ -103,7 +102,6 @@ class MaskedGeneExprDecoder(nn.Module):
         super().__init__()
 
         print(f"MASKED GENE EXPRESSION DECODER -> n_input: {n_input}, "
-              f"n_cond_embed_input: {n_cond_embed_input}, "
               f"n_cat_covariates_embed_input: {n_cat_covariates_embed_input}, "
               f"n_addon_input: {n_addon_input}, n_output: {n_output}")
 
@@ -116,7 +114,6 @@ class MaskedGeneExprDecoder(nn.Module):
             bias=False,
             mask=mask,
             n_addon_input=n_addon_input,
-            n_cond_embed_input=n_cond_embed_input,
             n_cat_covariates_embed_input=n_cat_covariates_embed_input,
             activation=nn.Softmax(dim=-1))
 
@@ -127,7 +124,6 @@ class MaskedGeneExprDecoder(nn.Module):
                 bias=False,
                 mask=mask,
                 n_addon_input=n_addon_input,
-                n_cond_embed_input=n_cond_embed_input,
                 n_cat_covariates_embed_input=n_cat_covariates_embed_input,
                 activation=nn.Identity())
 
@@ -204,7 +200,6 @@ class MaskedChromAccessDecoder(nn.Module):
     def __init__(self,
                  n_input: int,
                  n_addon_input: int,
-                 n_cond_embed_input: int,
                  n_cat_covariates_embed_input: int,
                  n_output: int,
                  mask: torch.Tensor,
@@ -213,9 +208,9 @@ class MaskedChromAccessDecoder(nn.Module):
         super().__init__()
 
         print("MASKED CHROMATIN ACCESSIBILITY DECODER -> n_input: "
-                f"{n_input}, n_cond_embed_input: {n_cond_embed_input}, "
-                f"n_cat_covariates_embed_input: {n_cat_covariates_embed_input},"
-                f" n_addon_input: {n_addon_input}, n_output: {n_output}")
+                f"{n_input}, n_cat_covariates_embed_input: "
+                f"{n_cat_covariates_embed_input}, n_addon_input: "
+                f"{n_addon_input}, n_output: {n_output}")
 
         self.mask_idx = mask_idx
         self.recon_dist = recon_dist
@@ -226,7 +221,6 @@ class MaskedChromAccessDecoder(nn.Module):
             bias=False,
             mask=mask,
             n_addon_input=n_addon_input,
-            n_cond_embed_input=n_cond_embed_input,
             n_cat_covariates_embed_input=n_cat_covariates_embed_input,
             activation=nn.Softmax(dim=-1))
 
@@ -237,7 +231,6 @@ class MaskedChromAccessDecoder(nn.Module):
                 bias=False,
                 mask=mask,
                 n_addon_input=n_addon_input,
-                n_cond_embed_input=n_cond_embed_input,
                 n_cat_covariates_embed_input=n_cat_covariates_embed_input,
                 activation=nn.Identity())
 
@@ -245,7 +238,6 @@ class MaskedChromAccessDecoder(nn.Module):
                 z: torch.Tensor,
                 log_library_size: torch.Tensor,
                 gene_weight_peak_mask: torch.Tensor,
-                cond_embed: Optional[torch.Tensor]=None,
                 cat_covariates_embed: Optional[torch.Tensor]=None
                 ) -> Tuple[torch.Tensor, torch.Tensor]:
         """

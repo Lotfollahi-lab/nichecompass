@@ -402,13 +402,24 @@ class NicheCompass(BaseModelMixin):
         self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
         self.n_nonaddon_gps_ = len(self.gp_mask_)
         self.n_addon_gps_ = n_addon_gps
+
+        # Retrieve categorical covariates categories
+        if cat_covariates_cats is None:
+            if cat_covariates_keys is not None:
+                self.cat_covariates_cats_ = [
+                    adata.obs[cat_covariate_key].unique().tolist() 
+                    for cat_covariate_key in cat_covariates_keys]
+            else:
+                self.cat_covariates_cats_ = []
+        else:
+            self.cat_covariates_cats_ = cat_covariates_cats
         
         # Define dimensionality of categorical covariates embeddings as
         # number of categories of each categorical covariate respectively
         # if not provided explicitly
         if cat_covariates_embeds_nums is None:
             cat_covariates_embeds_nums = []
-            for cat_covariate_cats in cat_covariates_cats:
+            for cat_covariate_cats in self.cat_covariates_cats_:
                 cat_covariates_embeds_nums.append(len(cat_covariate_cats))
         self.cat_covariates_embeds_nums_ = cat_covariates_embeds_nums
 
@@ -420,22 +431,13 @@ class NicheCompass(BaseModelMixin):
                 n_hidden_encoder = len(adata.var)
         self.n_hidden_encoder_ = n_hidden_encoder
             
-        # Retrieve categorical covariates categories
-        if cat_covariates_cats is None:
-            if cat_covariates_keys is not None:
-                self.cat_covariates_cats_ = [
-                    adata.obs[cat_covariate_key].unique().tolist() 
-                    for cat_covariate_key in cat_covariates_keys]
-            else:
-                self.cat_covariates_cats_ = []
-        else:
-            self.cat_covariates_cats_ = cat_covariates_cats
-
         # Define categorical covariates no edges as all 'True' if not
         # explicitly provided, so that they are excluded from the edge
         # reconstruction loss
-        if cat_covariates_no_edges is None & len(cat_covariates_cats) > 0:
-            self.cat_covariates_no_edges_ = [True] * len(cat_covariates_cats)
+        if ((cat_covariates_no_edges is None) &
+            (len(self.cat_covariates_cats_) > 0)):
+            self.cat_covariates_no_edges_ = (
+                [True] * len(self.cat_covariates_cats_))
         else:
             self.cat_covariates_no_edges_ = cat_covariates_no_edges
         
@@ -718,7 +720,8 @@ class NicheCompass(BaseModelMixin):
         
         self.adata.uns[self.active_gp_names_key_] = self.get_active_gps()
 
-        if (len(self.cat_covariates_cats) > 0) & retrieve_cat_covariates_embeds:
+        if ((len(self.cat_covariates_cats_) > 0) &
+            retrieve_cat_covariates_embeds):
             for cat_covariates_embed_key, cat_covariate_embed in zip(
                 self.cat_covariates_embeds_keys_,
                 self.get_cat_covariates_embeddings()):
