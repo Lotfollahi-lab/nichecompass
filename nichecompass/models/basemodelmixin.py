@@ -154,7 +154,8 @@ class BaseModelMixin():
              genes_idx_key: Optional[str]=None,
              unfreeze_all_weights: bool=False,
              unfreeze_addon_gp_weights: bool=False,
-             unfreeze_cond_embed_weights: bool=False) -> torch.nn.Module:
+             unfreeze_cat_covariates_embedder_weights: bool=False
+             ) -> torch.nn.Module:
         """
         Instantiate a model from saved output. Can be used for transfer learning
         scenarios and to learn de-novo gene programs by adding add-on gene 
@@ -182,9 +183,12 @@ class BaseModelMixin():
             architecture.
         gp_names_key:
             Key under which the gene program names are stored in ´adata.uns´.         
-        freeze_non_addon_weights:
-            If `True`, freeze non-addon weights to constrain training to add-on
-            gene programs.
+        unfreeze_all_weights:
+            If `True`, unfreeze all weights.
+        unfreeze_addon_gp_weights:
+            If `True`, unfreeze addon gp weights.
+        unfreeze_cat_covariates_embedder_weights:
+            If `True`, unfreeze categorical covariates embedder weights.
         
         Returns
         -------
@@ -219,19 +223,6 @@ class BaseModelMixin():
                                  "'n_addon_gps' > 0, so that all genes can be "
                                  "included in the genes idx.")
             adata.uns[genes_idx_key] = np.arange(adata.n_vars * 2)
-
-        # Add new conditions from query data
-        conditions = attr_dict["conditions_"]
-        condition_key = attr_dict["init_params_"]["condition_key"]
-        new_conditions = []
-        if condition_key is not None:
-            adata_conditions = adata.obs[condition_key].unique().tolist()
-            for condition in adata_conditions:
-                if condition not in conditions:
-                    new_conditions.append(condition)
-            for condition in new_conditions:
-                conditions.append(condition)
-        attr_dict["init_params_"]["conditions"] = conditions
         
         # Add new categorical covariates categories from query data
         cat_covariates_cats = attr_dict["cat_covariates_cats_"]
@@ -245,6 +236,7 @@ class BaseModelMixin():
                     if cat_covariate_cat not in cat_covariates_cats[i]:
                         new_cat_covariate_cats.append(cat_covariate_cat)
                 for cat_covariate_cat in new_cat_covariate_cats:
+                    new_cat_covariates_cats.append(cat_covariate_cat)
                     cat_covariates_cats[i].append(cat_covariate_cat)
         attr_dict["init_params_"]["cat_covariates_cats"] = cat_covariates_cats
 
@@ -273,7 +265,7 @@ class BaseModelMixin():
         for attr, val in attr_dict.items():
             setattr(model, attr, val)
 
-        if n_addon_gps != 0 or len(new_conditions) > 0:
+        if n_addon_gps != 0 or len(new_cat_covariates_cats) > 0:
             model.model.load_and_expand_state_dict(model_state_dict)
         else:
             model.model.load_state_dict(model_state_dict)
@@ -298,10 +290,10 @@ class BaseModelMixin():
                 "theta" in param_name or \
                 "aggregator" in param_name:
                     param.requires_grad = True
-        if unfreeze_cond_embed_weights:
-             # allow updates of cond embedder and linear cond layers
+        if unfreeze_cat_covariates_embedder_weights:
+            # Allow updates of categorical covariates embedder weights
             for param_name, param in model.model.named_parameters():
-                if "cond_embedder" in param_name:
+                if ("cat_covariate") in param_name & ("embedder") in param_name:
                     param.requires_grad = True
         
         if model.freeze_ and not model.is_trained_:

@@ -3,7 +3,7 @@ This module contains all loss functions used by the Variational Gene Program
 Graph Autoencoder module.
 """
 
-from typing import Iterable, Optional, Tuple
+from typing import Optional
 
 import math
 import numpy as np
@@ -36,130 +36,21 @@ def compute_addon_l1_reg_loss(model: nn.Module) -> torch.Tensor:
     return addon_l1_reg_loss
 
 
-def compute_cond_contrastive_loss(
-        edge_recon_logits: torch.Tensor,
-        edge_recon_labels: torch.Tensor,
-        edge_same_condition_labels: Optional[torch.Tensor]=None,
-        contrastive_logits_pos_ratio: float=0.,
-        contrastive_logits_neg_ratio: float=0.,
-        include_same_cond_neg_edges_as_neg_examples: bool=False) -> torch.Tensor:
-    """
-    Compute conditional contrastive weighted binary cross entropy loss with
-    logits. Sampled negative edges with nodes from different conditions whose
-    edge reconstruction logits are among the top (´contrastive_logits_ratio´ *
-    100)% logits are considered positive examples. Sampled negative edges with
-    nodes from different conditions whose edge reconstruction logits are among
-    the bottom (´contrastive_logits_ratio´ * 100)% logits are considered
-    negative examples.
-
-    Parameters
-    ----------
-    edge_recon_logits:
-        Predicted edge reconstruction logits for both positive and negative
-        sampled edges (dim: 2 * edge_batch_size).
-    edge_recon_labels:
-        Edge ground truth labels for both positive and negative sampled edges
-        (dim: 2 * edge_batch_size).
-    edge_same_condition_labels:
-        Edge same condition labels for both positive and negative sampled edges
-        (dim: 2 * edge_batch_size).
-    contrastive_logits_pos_ratio:
-        Ratio for determining the logits threshold of positive contrastive
-        examples of node pairs from different conditions. The top
-        (´contrastive_logits_pos_ratio´ * 100)% logits of node pairs from
-        different conditions serve as positive labels for the contrastive
-        loss.
-    contrastive_logits_neg_ratio:
-        Ratio for determining the logits threshold of negative contrastive
-        examples of node pairs from different conditions. The bottom
-        (´contrastive_logits_neg_ratio´ * 100)% logits of node pairs from
-        different conditions serve as negative labels for the contrastive
-        loss.
-    include_same_cond_neg_edges_as_neg_examples:
-        If ´True´, in addition include negative edges of node pairs from
-        the same condition as negative contrastive examples.
-
-    Returns
-    ----------
-    cond_contrastive_loss:
-        Conditional contrastive binary cross entropy loss (calculated from
-        logits for numerical stability in backpropagation).
-    """
-    if edge_same_condition_labels is None or (
-        (contrastive_logits_pos_ratio == 0) & (contrastive_logits_neg_ratio == 0)):
-        return torch.tensor(0.)
-                
-    # Determine logit thresholds for positive and negative contrastive examples
-    # of node pairs from different conditions
-    edge_recon_logits_same_condition = edge_recon_logits[
-        ~edge_same_condition_labels]
-    edge_recon_labels_same_condition = edge_recon_labels[
-        ~edge_same_condition_labels]
-    pos_n_top = math.ceil(contrastive_logits_pos_ratio *
-                          len(edge_recon_logits_same_condition))
-    if pos_n_top == 0:
-        pos_thresh = torch.tensor(float("inf")).to(
-            edge_recon_logits_same_condition.device)
-    else:
-        pos_thresh = torch.topk(
-            edge_recon_logits_same_condition.detach().clone(),
-            pos_n_top).values[-1]            
-    neg_n_top = math.ceil(contrastive_logits_neg_ratio *
-                          len(edge_recon_logits_same_condition))
-    if neg_n_top == 0:
-        neg_thresh = torch.tensor(float("-inf")).to(
-            edge_recon_logits_same_condition.device)
-    else:
-        neg_thresh = torch.topk(
-            edge_recon_logits_same_condition.detach().clone(),
-            neg_n_top,
-            largest=False).values[-1]
-
-    # Set labels of different condition node pairs with logits above ´pos_thresh´
-    # to 1, labels of different condition node pairs with logits below ´neg_thresh´
-    # to 0, labels of same condition node pairs with neg edges to 0 (if specified),
-    # and exclude other examples from the loss
-    diff_cond_pos_examples = (
-        (~edge_same_condition_labels) & (edge_recon_logits >= pos_thresh))
-    diff_cond_neg_examples = (
-        (~edge_same_condition_labels) & (edge_recon_logits <= neg_thresh))
-    if include_same_cond_neg_edges_as_neg_examples:
-        same_cond_neg_examples = (
-            edge_same_condition_labels & (edge_recon_labels == 0))
-    else:
-        same_cond_neg_examples = torch.full((edge_recon_labels.size(0),),
-                                            False,
-                                            dtype=torch.bool).to(
-            edge_recon_labels.device)
-    
-    edge_recon_labels[diff_cond_pos_examples] = 1
-    edge_recon_labels[diff_cond_neg_examples] = 0
-    edge_recon_labels[same_cond_neg_examples] = 0
-    edge_recon_logits = edge_recon_logits[
-        diff_cond_pos_examples | diff_cond_neg_examples | same_cond_neg_examples]
-    edge_recon_labels = edge_recon_labels[
-        diff_cond_pos_examples | diff_cond_neg_examples | same_cond_neg_examples]
-
-    # Compute bce loss from logits for numerical stability
-    cond_contrastive_loss = F.binary_cross_entropy_with_logits(
-        edge_recon_logits,
-        edge_recon_labels)
-    return cond_contrastive_loss
-
-
 def compute_cat_covariates_contrastive_loss(
         edge_recon_logits: torch.Tensor,
         edge_recon_labels: torch.Tensor,
-        edge_same_cat_covariates_cat: Optional[torch.Tensor]=None,
+        edge_same_cat_covariates_cat: Optional[List[torch.Tensor]]=None,
         contrastive_logits_pos_ratio: float=0.,
         contrastive_logits_neg_ratio: float=0.) -> torch.Tensor:
     """
-    Compute conditional contrastive weighted binary cross entropy loss with
-    logits. Sampled negative edges with nodes from different conditions whose
-    edge reconstruction logits are among the top (´contrastive_logits_ratio´ *
-    100)% logits are considered positive examples. Sampled negative edges with
-    nodes from different conditions whose edge reconstruction logits are among
-    the bottom (´contrastive_logits_ratio´ * 100)% logits are considered
+    Compute categorical covariates contrastive weighted binary cross entropy
+    loss with logits. The loss is computed for each categorical covariate
+    separately and added up. Sampled edges with nodes from different categories
+    whose edge reconstruction logits are among the top
+    (´contrastive_logits_pos_ratio´ * 100)% logits are considered positive
+    examples for a specific categorical covariate. Sampled edges with
+    nodes from different categories whose edge reconstruction logits are among
+    the bottom (´contrastive_logits_neg_ratio´ * 100)% logits are considered
     negative examples.
 
     Parameters
@@ -170,40 +61,45 @@ def compute_cat_covariates_contrastive_loss(
     edge_recon_labels:
         Edge ground truth labels for both positive and negative sampled edges
         (dim: 2 * edge_batch_size).
-    edge_same_condition_labels:
-        Edge same condition labels for both positive and negative sampled edges
-        (dim: 2 * edge_batch_size).
+    edge_same_cat_covariates_cat:
+        List of boolean tensors indicating whether the edge node pair has the
+        same categorical covariate category for each categorical covariate
+        respectively, and for both positive and negative sampled edges (dim of
+        tensors: 2 * edge_batch_size).
     contrastive_logits_pos_ratio:
         Ratio for determining the logits threshold of positive contrastive
-        examples of node pairs from different conditions. The top
+        examples of node pairs from different categories. The top
         (´contrastive_logits_pos_ratio´ * 100)% logits of node pairs from
-        different conditions serve as positive labels for the contrastive
+        different categories serve as positive labels for the contrastive
         loss.
     contrastive_logits_neg_ratio:
         Ratio for determining the logits threshold of negative contrastive
-        examples of node pairs from different conditions. The bottom
+        examples of node pairs from different categories. The bottom
         (´contrastive_logits_neg_ratio´ * 100)% logits of node pairs from
-        different conditions serve as negative labels for the contrastive
+        different categories serve as negative labels for the contrastive
         loss.
 
     Returns
     ----------
-    cond_contrastive_loss:
-        Conditional contrastive binary cross entropy loss (calculated from
-        logits for numerical stability in backpropagation).
+    cat_covariates_contrastive_loss:
+        Categorical covariates contrastive binary cross entropy loss (calculated
+        from logits for numerical stability in backpropagation, and summed up
+        over all categorical covariates).
     """
     if edge_same_cat_covariates_cat is None or (
-        (contrastive_logits_pos_ratio == 0) & (contrastive_logits_neg_ratio == 0)):
+        (contrastive_logits_pos_ratio == 0) &
+        (contrastive_logits_neg_ratio == 0)):
         return torch.tensor(0.)
     
     cat_covariates_contrastive_loss = torch.tensor(0.).to(
                 edge_recon_logits.device)
+    
+    # Compute categorical covariate contrastive loss for each categorical
+    # covariate and add to accumulated loss
     for edge_same_cat_covariate_cat in edge_same_cat_covariates_cat:
-        # Determine logit thresholds for positive and negative contrastive examples
-        # of node pairs from different categorical covariate categories
+        # Determine logit thresholds for positive and negative contrastive
+        # examples of node pairs from different categorical covariate categories
         edge_recon_logits_diff_cat_covariate_cat = edge_recon_logits[
-            ~edge_same_cat_covariate_cat]
-        edge_recon_labels_diff_cat_covariate_cat = edge_recon_labels[
             ~edge_same_cat_covariate_cat]
         pos_n_top = math.ceil(contrastive_logits_pos_ratio *
                               len(edge_recon_logits_diff_cat_covariate_cat))
@@ -225,10 +121,9 @@ def compute_cat_covariates_contrastive_loss(
                 neg_n_top,
                 largest=False).values[-1]
 
-        # Set labels of different condition node pairs with logits above ´pos_thresh´
-        # to 1, labels of different condition node pairs with logits below ´neg_thresh´
-        # to 0, labels of same condition node pairs with neg edges to 0 (if specified),
-        # and exclude other examples from the loss
+        # Set labels of different category node pairs with logits above
+        # ´pos_thresh´ to 1, labels of different category node pairs with logits
+        # below ´neg_thresh´ to 0, and exclude other examples from the loss
         diff_cat_covariate_pos_examples = (
             (~edge_same_cat_covariate_cat) & (edge_recon_logits >= pos_thresh))
         diff_cat_covariate_neg_examples = (
@@ -252,7 +147,7 @@ def compute_cat_covariates_contrastive_loss(
 def compute_edge_recon_loss(
         edge_recon_logits: torch.Tensor,
         edge_recon_labels: torch.Tensor,
-        edge_same_condition_labels: Optional[torch.Tensor]=None
+        edge_incl: Optional[torch.Tensor]=None
         ) -> torch.Tensor:
     """
     Compute edge reconstruction weighted binary cross entropy loss with logits 
@@ -266,8 +161,8 @@ def compute_edge_recon_loss(
     edge_recon_labels:
         Edge ground truth labels for both positive and negative sampled edges
         (dim: 2 * edge_batch_size).
-    edge_same_condition_labels:
-        Edge same condition labels for both positive and negative sampled edges
+    edge_incl:
+        Boolean mask which indicates edges to be included in the edge recon loss
         (dim: 2 * edge_batch_size).
 
     Returns
@@ -277,10 +172,10 @@ def compute_edge_recon_loss(
         edge probabilities (calculated from logits for numerical stability in
         backpropagation).
     """
-    if edge_same_condition_labels is not None:
+    if edge_incl is not None:
         # Remove examples that have nodes from different conditions
-        edge_recon_logits = edge_recon_logits[edge_same_condition_labels]
-        edge_recon_labels = edge_recon_labels[edge_same_condition_labels]
+        edge_recon_logits = edge_recon_logits[edge_incl]
+        edge_recon_labels = edge_recon_labels[edge_incl]
 
     # Determine weighting of positive examples
     pos_labels = (edge_recon_labels == 1.).sum(dim=0)

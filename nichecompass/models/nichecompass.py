@@ -13,7 +13,6 @@ import scipy.sparse as sp
 import torch
 from anndata import AnnData
 from scipy.special import erfc
-from torch_geometric.utils import add_self_loops, remove_self_loops
 
 from nichecompass.data import (initialize_dataloaders,
                                prepare_data,
@@ -65,13 +64,19 @@ class NicheCompass(BaseModelMixin):
     latent_key:
         Key under which the latent / gene program representation of active gene
         programs will be stored in ´adata.obsm´ after model training.
-    condition_key:
-        Key under which the conditions are stored in ´adata.obs´.
-    cond_embed_key:
-        Key under which the conditional embeddings will be stored in
+    cat_covariates_keys:
+        Keys under which the categorical covariates are stored in ´adata.obs´.
+    cat_covariates_no_edges:
+        List of booleans that indicate whether there can be edges between
+        different categories of the categorical covariates. If this is ´True´
+        for a specific categorical covariate, this covariate will be excluded
+        from the edge reconstruction loss.
+    cat_covariates_embeds_keys:
+        Keys under which the categorical covariates embeddings will be stored in
         ´adata.uns´.
-    cond_embed_injection:
-        List of VGPGAE modules in which the conditional embedding is injected.
+    cat_covariates_embeds_injection:
+        List of VGPGAE modules in which the categorical covariates embeddings
+        are injected.
     genes_idx_key:
         Key in ´adata.uns´ where the index of a concatenated vector of target
         and source genes that are in the gene program masks are stored.    
@@ -107,8 +112,8 @@ class NicheCompass(BaseModelMixin):
     include_chrom_access_recon_loss:
         If `True`, includes the chromatin accessibility reconstruction loss in
         the backpropagation.
-    include_cond_contrastive_loss:
-        If `True`, includes the conditional contrastive loss in the
+    include_cat_covariates_contrastive_loss:
+        If `True`, includes the categorical covariates contrastive loss in the
         backpropagation.
     gene_expr_recon_dist:
         The distribution used for gene expression reconstruction. If `nb`, uses
@@ -156,14 +161,14 @@ class NicheCompass(BaseModelMixin):
     dropout_rate_graph_decoder:
         Probability that nodes will be dropped in the graph decoder during 
         training.
-    conditions:
-        Condition names to get the right encoding when used after reloading.
+    cat_covariates_cats:
+        List of category lists for each categorical covariate to get the right
+        encoding when used after reloading.
     n_addon_gps:
         Number of addon gene programs (i.e. gene programs that are not included
         in masks but can be learned de novo).
-    n_cond_embed:
-        Number of conditional embedding nodes.
-    nums_cat_covariates_embed:
+    cat_covariates_embeds_nums:
+        List of number of embedding nodes for all categorical covariates.
 
     kwargs:
         NicheCompass kwargs (to support legacy versions).
@@ -184,11 +189,14 @@ class NicheCompass(BaseModelMixin):
                  ca_targets_mask_key: Optional[str]="nichecompass_ca_targets",
                  ca_sources_mask_key: Optional[str]="nichecompass_ca_sources",
                  latent_key: str="nichecompass_latent",
-                 condition_key: Optional[str]=None,
-                 cond_embed_key: Optional[str]="nichecompass_cond_embed",
-                 cond_embed_injection: Optional[List]=["gene_expr_decoder",
-                                                       "chrom_access_decoder"],
+                 cat_covariates_embeds_keys: Optional[List[str]]=None,
+                 cat_covariates_embeds_injection: Optional[List[
+                     Literal["encoder",
+                             "gene_expr_decoder",
+                             "chrom_access_decoder"]]]=["gene_expr_decoder",
+                                                        "chrom_access_decoder"],
                  cat_covariates_keys: Optional[List[str]]=None,
+                 cat_covariates_no_edges: Optional[List[bool]]=None,
                  genes_idx_key: str="nichecompass_genes_idx",
                  target_genes_idx_key: str="nichecompass_target_genes_idx",
                  source_genes_idx_key: str="nichecompass_source_genes_idx",
@@ -201,7 +209,7 @@ class NicheCompass(BaseModelMixin):
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
                  include_chrom_access_recon_loss: Optional[bool]=True,
-                 include_cond_contrastive_loss: bool=True,
+                 include_cat_covariates_contrastive_loss: bool=True,
                  gene_expr_recon_dist: Literal["nb", "zinb"]="nb",
                  log_variational: bool=True,
                  node_label_method: Literal[
@@ -216,11 +224,9 @@ class NicheCompass(BaseModelMixin):
                  encoder_n_attention_heads: Optional[int]=4,
                  dropout_rate_encoder: float=0.,
                  dropout_rate_graph_decoder: float=0.,
-                 conditions: Optional[List]=None,
                  cat_covariates_cats: Optional[List[List]]=None,
                  n_addon_gps: int=0,
-                 n_cond_embed: Optional[int]=None,
-                 nums_cat_covariates_embed: Optional[List[int]]=None,
+                 cat_covariates_embeds_nums: Optional[List[int]]=None,
                  **kwargs):
         self.adata = adata
         self.adata_atac = adata_atac
@@ -231,17 +237,19 @@ class NicheCompass(BaseModelMixin):
         self.active_gp_names_key_ = active_gp_names_key
         self.gp_targets_mask_key_ = gp_targets_mask_key
         self.gp_targets_categories_mask_key_ = gp_targets_categories_mask_key
-        self.targets_categories_label_encoder_key_ = targets_categories_label_encoder_key
+        self.targets_categories_label_encoder_key_ = (
+            targets_categories_label_encoder_key)
         self.gp_sources_mask_key_ = gp_sources_mask_key
         self.gp_sources_categories_mask_key_ = gp_sources_categories_mask_key
-        self.sources_categories_label_encoder_key_ = sources_categories_label_encoder_key
+        self.sources_categories_label_encoder_key_ = (
+            sources_categories_label_encoder_key)
         self.ca_targets_mask_key_ = ca_targets_mask_key
         self.ca_sources_mask_key_ = ca_sources_mask_key
         self.latent_key_ = latent_key
-        self.condition_key_ = condition_key
-        self.cond_embed_key_ = cond_embed_key
-        self.cond_embed_injection_ = cond_embed_injection
+        self.cat_covariates_embeds_keys_ = cat_covariates_embeds_keys
+        self.cat_covariates_embeds_injection_ = cat_covariates_embeds_injection
         self.cat_covariates_keys_ = cat_covariates_keys
+        self.cat_covariates_embeds_keys_ = cat_covariates_embeds_keys
         self.genes_idx_key_ = genes_idx_key
         self.target_genes_idx_key_ = target_genes_idx_key
         self.source_genes_idx_key_ = source_genes_idx_key
@@ -254,7 +262,8 @@ class NicheCompass(BaseModelMixin):
         self.include_edge_recon_loss_ = include_edge_recon_loss
         self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
         self.include_chrom_access_recon_loss_ = include_chrom_access_recon_loss
-        self.include_cond_contrastive_loss_ = include_cond_contrastive_loss
+        self.include_cat_covariates_contrastive_loss_ = (
+            include_cat_covariates_contrastive_loss)
         self.gene_expr_recon_dist_ = gene_expr_recon_dist
         self.log_variational_ = log_variational
         self.node_label_method_ = node_label_method
@@ -393,16 +402,15 @@ class NicheCompass(BaseModelMixin):
         self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
         self.n_nonaddon_gps_ = len(self.gp_mask_)
         self.n_addon_gps_ = n_addon_gps
-
-        # Determine dimensionality of conditional embedding if not provided
-        if n_cond_embed is None:
-            if len(adata.var) > self.n_nonaddon_gps_:            
-                n_cond_embed = self.n_nonaddon_gps_
-            else:
-                n_cond_embed = len(adata.var)
-        self.n_cond_embed_ = n_cond_embed
-
-        self.nums_cat_covariates_embed_ = nums_cat_covariates_embed
+        
+        # Define dimensionality of categorical covariates embeddings as
+        # number of categories of each categorical covariate respectively
+        # if not provided explicitly
+        if cat_covariates_embeds_nums is None:
+            cat_covariates_embeds_nums = []
+            for cat_covariate_cats in cat_covariates_cats:
+                cat_covariates_embeds_nums.append(len(cat_covariate_cats))
+        self.cat_covariates_embeds_nums_ = cat_covariates_embeds_nums
 
         # Determine dimensionality of hidden encoder layer if not provided
         if n_hidden_encoder is None:
@@ -411,15 +419,6 @@ class NicheCompass(BaseModelMixin):
             else:
                 n_hidden_encoder = len(adata.var)
         self.n_hidden_encoder_ = n_hidden_encoder
-
-        # Retrieve conditions
-        if conditions is None:
-            if condition_key is not None:
-                self.conditions_ = adata.obs[condition_key].unique().tolist()
-            else:
-                self.conditions_ = []
-        else:
-            self.conditions_ = conditions
             
         # Retrieve categorical covariates categories
         if cat_covariates_cats is None:
@@ -431,6 +430,14 @@ class NicheCompass(BaseModelMixin):
                 self.cat_covariates_cats_ = []
         else:
             self.cat_covariates_cats_ = cat_covariates_cats
+
+        # Define categorical covariates no edges as all 'True' if not
+        # explicitly provided, so that they are excluded from the edge
+        # reconstruction loss
+        if cat_covariates_no_edges is None & len(cat_covariates_cats) > 0:
+            self.cat_covariates_no_edges_ = [True] * len(cat_covariates_cats)
+        else:
+            self.cat_covariates_no_edges_ = cat_covariates_no_edges
         
         # Validate counts layer key and counts values
         if counts_key is not None and counts_key not in adata.layers:
@@ -464,11 +471,13 @@ class NicheCompass(BaseModelMixin):
                              "By default the gene program names are assumed to "
                              "be stored in adata.uns['nichecompass_gp_names'].")
 
-        # Validate condition key
-        if condition_key is not None and condition_key not in adata.obs:
-            raise ValueError("Please specify an adequate ´condition_key´. "
-                             "The conditions need to be stored in "
-                             "adata.obs[condition_key].")
+        # Validate categorical covariates keys
+        if cat_covariates_keys is not None:
+            for cat_covariate_key in cat_covariates_keys:
+                if cat_covariate_key not in adata.obs:
+                    raise ValueError(
+                        "Please specify adequate ´cat_covariates_keys´. "
+                        f"The key {cat_covariate_key} was not found in adata.")
         
         # Initialize model with Variational Gene Program Graph Autoencoder 
         # neural network module
@@ -478,8 +487,7 @@ class NicheCompass(BaseModelMixin):
             n_hidden_encoder=self.n_hidden_encoder_,
             n_nonaddon_gps=self.n_nonaddon_gps_,
             n_addon_gps=self.n_addon_gps_,
-            n_cond_embed=self.n_cond_embed_,
-            nums_cat_covariates_embed=self.nums_cat_covariates_embed_,
+            cat_covariates_embeds_nums=self.cat_covariates_embeds_nums_,
             n_output_genes=self.n_output_genes_,
             n_output_peaks=self.n_output_peaks_,
             gene_expr_decoder_mask=self.gp_mask_,
@@ -491,8 +499,8 @@ class NicheCompass(BaseModelMixin):
             target_chrom_access_mask_idx=self.target_peaks_idx_,
             source_chrom_access_mask_idx=self.source_peaks_idx_,
             gene_peaks_mask=self.gene_peaks_mask_,
-            conditions=self.conditions_,
             cat_covariates_cats=self.cat_covariates_cats_,
+            cat_covariates_no_edges=self.cat_covariates_no_edges_,
             conv_layer_encoder=self.conv_layer_encoder_,
             encoder_n_attention_heads=self.encoder_n_attention_heads_,
             dropout_rate_encoder=self.dropout_rate_encoder_,
@@ -500,12 +508,12 @@ class NicheCompass(BaseModelMixin):
             include_edge_recon_loss=self.include_edge_recon_loss_,
             include_gene_expr_recon_loss=self.include_gene_expr_recon_loss_,
             include_chrom_access_recon_loss=self.include_chrom_access_recon_loss_,
-            include_cond_contrastive_loss=self.include_cond_contrastive_loss_,
+            include_cat_covariates_contrastive_loss=self.include_cat_covariates_contrastive_loss_,
             gene_expr_recon_dist=self.gene_expr_recon_dist_,
             node_label_method=self.node_label_method_,
             active_gp_thresh_ratio=self.active_gp_thresh_ratio_,
             log_variational=self.log_variational_,
-            cond_embed_injection=self.cond_embed_injection_)
+            cat_covariates_embeds_injection=self.cat_covariates_embeds_injection_)
 
         self.is_trained_ = False
 
@@ -516,13 +524,12 @@ class NicheCompass(BaseModelMixin):
               n_epochs: int=100,
               n_epochs_all_gps: int=25,
               n_epochs_no_edge_recon: int=0,
-              n_epochs_no_cond_contrastive: int=5,
+              n_epochs_no_cat_covariates_contrastive: int=5,
               lr: float=0.001,
               weight_decay: float=0.,
               lambda_edge_recon: Optional[float]=500000.,
               lambda_gene_expr_recon: float=300.,
               lambda_chrom_access_recon: float=100.,
-              lambda_cond_contrastive: float=0.,
               lambda_cat_covariates_contrastive: float=0.,
               contrastive_logits_pos_ratio: float=0.,
               contrastive_logits_neg_ratio: float=0.,
@@ -536,7 +543,7 @@ class NicheCompass(BaseModelMixin):
               edge_batch_size: int=256,
               node_batch_size: Optional[int]=None,
               mlflow_experiment_id: Optional[str]=None,
-              retrieve_cond_embeddings: bool=False,
+              retrieve_cat_covariates_embeds: bool=False,
               retrieve_recon_edge_probs: bool=False,
               retrieve_agg_weights: bool=False,
               use_cuda_if_available: bool=True,
@@ -555,9 +562,9 @@ class NicheCompass(BaseModelMixin):
             Number of epochs during which the edge reconstruction loss is
             excluded from backpropagation for pretraining using the other loss
             components.
-        n_epochs_no_cond_contrastive:
-            Number of epochs during which the conditional contrastive loss is
-            excluded from backpropagation for pretraining using the other
+        n_epochs_no_cat_covariates_contrastive:
+            Number of epochs during which the categorical covariates contrastive loss
+            is excluded from backpropagation for pretraining using the other
             loss components.
         lr:
             Learning rate.
@@ -577,25 +584,24 @@ class NicheCompass(BaseModelMixin):
             reconstruction loss. If ´>0´, this will enforce interpretable gene
             programs that can be combined in a linear way to reconstruct
             chromatin accessibility.
-        lambda_cond_contrastive:
-            Lambda (weighting factor) for the conditional contrastive loss. If
-            ´>0´, this will enforce observations from different conditions with
-            very similar latent representations to become more similar and 
-            observations with different latent representations to become more
-            different.
         lambda_cat_covariates_contrastive:
+            Lambda (weighting factor) for the categorical covariates contrastive
+            loss. If ´>0´, this will enforce observations with different
+            categorical covariates categories with very similar latent
+            representations to become more similar, and observations with
+            different latent representations to become more different.
         contrastive_logits_pos_ratio:
             Ratio for determining the logits threshold of positive contrastive
-            examples of node pairs from different conditions. The top
-            (´contrastive_logits_pos_ratio´ * 100)% logits of node pairs from
-            different conditions serve as positive labels for the contrastive
-            loss.
+            examples of node pairs from different categorical covariates
+            categories. The top (´contrastive_logits_pos_ratio´ * 100)% logits
+            of node pairs from different categorical covariates categories serve
+            as positive labels for the contrastive loss.
         contrastive_logits_neg_ratio:
             Ratio for determining the logits threshold of negative contrastive
-            examples of node pairs from different conditions. The bottom
-            (´contrastive_logits_neg_ratio´ * 100)% logits of node pairs from
-            different conditions serve as negative labels for the contrastive
-            loss.
+            examples of node pairs from different categorical covariates
+            categories. The bottom (´contrastive_logits_neg_ratio´ * 100)%
+            logits of node pairs from different categorical covariates
+            categories serve as negative labels for the contrastive loss.
         lambda_group_lasso:
             Lambda (weighting factor) for the group lasso regularization loss of
             gene programs. If ´>0´, this will enforce sparsity of gene programs.
@@ -627,9 +633,9 @@ class NicheCompass(BaseModelMixin):
         mlflow_experiment_id:
             ID of the Mlflow experiment used for tracking training parameters
             and metrics.
-        retrieve_cond_embeddings:
-            If ´True´, retrieve the conditional embeddings after model training
-            is finished if multiple conditions are present.
+        retrieve_cat_covariates_embeds:
+            If ´True´, retrieve the categorical covariates embeddings after model training
+            is finished if multiple categorical covariates categories are present.
         retrieve_recon_edge_probs:
             If ´True´, retrieve the reconstructed edge probabilities after model
             training is finished.
@@ -649,7 +655,6 @@ class NicheCompass(BaseModelMixin):
             adj_key=self.adj_key_,
             gp_targets_mask_key=self.gp_targets_mask_key_,
             gp_sources_mask_key=self.gp_sources_mask_key_,
-            condition_key=self.condition_key_,
             cat_covariates_keys=self.cat_covariates_keys_,
             edge_val_ratio=edge_val_ratio,
             node_val_ratio=node_val_ratio,
@@ -682,14 +687,13 @@ class NicheCompass(BaseModelMixin):
         self.trainer.train(
             n_epochs=n_epochs,
             n_epochs_no_edge_recon=n_epochs_no_edge_recon,
-            n_epochs_no_cond_contrastive=n_epochs_no_cond_contrastive,
+            n_epochs_no_cat_covariates_contrastive=n_epochs_no_cat_covariates_contrastive,
             n_epochs_all_gps=n_epochs_all_gps,
             lr=lr,
             weight_decay=weight_decay,
             lambda_edge_recon=lambda_edge_recon,
             lambda_gene_expr_recon=lambda_gene_expr_recon,
             lambda_chrom_access_recon=lambda_chrom_access_recon,
-            lambda_cond_contrastive=lambda_cond_contrastive,
             lambda_cat_covariates_contrastive=lambda_cat_covariates_contrastive,
             contrastive_logits_pos_ratio=contrastive_logits_pos_ratio,
             contrastive_logits_neg_ratio=contrastive_logits_neg_ratio,
@@ -707,7 +711,6 @@ class NicheCompass(BaseModelMixin):
            adata=self.adata,
            counts_key=self.counts_key_,
            adj_key=self.adj_key_,
-           condition_key=self.condition_key_,
            cat_covariates_keys=self.cat_covariates_keys_,
            only_active_gps=True,
            return_mu_std=True,
@@ -715,8 +718,11 @@ class NicheCompass(BaseModelMixin):
         
         self.adata.uns[self.active_gp_names_key_] = self.get_active_gps()
 
-        if (len(self.conditions_) > 0) & retrieve_cond_embeddings:
-            self.adata.uns[self.cond_embed_key_] = self.get_cond_embeddings()
+        if (len(self.cat_covariates_cats) > 0) & retrieve_cat_covariates_embeds:
+            for cat_covariates_embed_key, cat_covariate_embed in zip(
+                self.cat_covariates_embeds_keys_,
+                self.get_cat_covariates_embeddings()):
+                self.adata.uns[cat_covariates_embed_key] = cat_covariate_embed
 
         if retrieve_recon_edge_probs:
             self.adata.obsp[self.recon_adj_key_] = self.get_recon_edge_probs()
@@ -840,7 +846,6 @@ class NicheCompass(BaseModelMixin):
             adata=adata,
             counts_key=self.counts_key_,
             adj_key=self.adj_key_,
-            condition_key=self.condition_key_,
             cat_covariates_keys=self.cat_covariates_keys_,
             only_active_gps=False,
             return_mu_std=True,
@@ -1298,19 +1303,22 @@ class NicheCompass(BaseModelMixin):
                 selected_gps_gene_expr_weights,
                 selected_gps_chrom_access_weights)
 
-    def get_cond_embeddings(self) -> np.ndarray:
+    def get_cat_covariates_embeds(self) -> np.ndarray:
         """
-        Get the conditional embeddings.
+        Get the categorical covariates embeddings.
 
         Returns:
         ----------
-        cond_embed:
-            Conditional embeddings.
+        cat_covariates_embeds:
+            Categorical covariates embeddings.
         """
         self._check_if_trained(warn=True)
         
-        cond_embed = self.model.cond_embedder.weight.cpu().detach().numpy()
-        return cond_embed
+        cat_covariates_embeds = []
+        for cat_covariate_embedder in self.model.cat_covariates_embedders:
+            cat_covariates_embeds.append(
+                cat_covariate_embedder.weight.cpu().detach().numpy())
+        return cat_covariates_embeds
 
     def get_active_gps(self) -> np.ndarray:
         """
@@ -1345,7 +1353,6 @@ class NicheCompass(BaseModelMixin):
             adata_atac: Optional[AnnData]=None,
             counts_key: Optional[str]="counts",
             adj_key: str="spatial_connectivities",
-            condition_key: Optional[str]=None,
             cat_covariates_keys: Optional[List[str]]=None,
             only_active_gps: bool=True,
             return_mu_std: bool=False,
@@ -1365,11 +1372,10 @@ class NicheCompass(BaseModelMixin):
         adj_key:
             Key under which the sparse adjacency matrix is stored in 
             ´adata.obsp´.
-        condition_key:
-            Key under which the conditions are stored in ´adata.obs´.              
-            only_active_gps:
-            If ´True´, return only the latent representation of active gps.
         cat_covariates_keys:
+            Keys under which the categorical covariates are stored in ´adata.obs´.
+        only_active_gps:
+            If ´True´, return only the latent representation of active gps.              
         return_mu_std:
             If `True`, return ´mu´ and ´std´ instead of latent features ´z´.
 
@@ -1396,12 +1402,10 @@ class NicheCompass(BaseModelMixin):
         # Create single dataloader containing entire dataset
         data_dict = prepare_data(
             adata=adata,
-            condition_label_encoder=self.model.condition_label_encoder_,
             cat_covariates_label_encoders=self.model.cat_covariates_label_encoders_,
             adata_atac=adata_atac,
             counts_key=counts_key,
             adj_key=adj_key,
-            condition_key=condition_key,
             cat_covariates_keys=cat_covariates_keys,
             edge_val_ratio=0.,
             edge_test_ratio=0.,
@@ -1513,23 +1517,6 @@ class NicheCompass(BaseModelMixin):
 
         if edge_thresh is None:
             compute_edge_thresh = True
-
-        # Get conditional embeddings for each observation
-        if (len(self.conditions_) > 0) & \
-        ("graph_decoder" in self.cond_embed_injection_):
-            if self.cond_embed_key_ not in self.adata.uns:
-                raise ValueError("Please first store the conditional embeddings"
-                                f" in adata.uns['{self.cond_embed_key_}']. They"
-                                " can be retrieved via "
-                                "'model.get_cond_embeddings()'.")
-            cond_labels = self.adata.obs[self.condition_key_]
-            cond_label_encodings = cond_labels.map(
-                self.model.condition_label_encoder_).values
-            cond_embed = torch.tensor(
-                self.adata.uns[self.cond_embed_key_][cond_label_encodings],
-                device=device)
-        else:
-            cond_embed = None
         
         # Get the latent representation for each observation
         if self.latent_key_ not in self.adata.obsm:
@@ -1557,7 +1544,6 @@ class NicheCompass(BaseModelMixin):
                 # Get edge probabilities for current batch
                 adj_recon_logits = self.model.graph_decoder(
                     z=z_with_inactive,
-                    cond_embed=cond_embed,
                     reduced_obs_start_idx=i,
                     reduced_obs_end_idx=i+node_batch_size)
                 adj_recon_probs_batch = torch.sigmoid(adj_recon_logits)
@@ -1586,8 +1572,7 @@ class NicheCompass(BaseModelMixin):
                 adj_recon[i:i+node_batch_size, :] = adj_recon_batch
         else:
             adj_recon_logits = self.model.graph_decoder(
-                z=z_with_inactive,
-                cond_embed=cond_embed)
+                z=z_with_inactive)
             adj_recon_probs = torch.sigmoid(adj_recon_logits)
 
         if device is not None:
@@ -1641,11 +1626,11 @@ class NicheCompass(BaseModelMixin):
         # Create single dataloader containing entire dataset
         data_dict = prepare_data(
             adata=self.adata,
-            condition_label_encoder=self.model.condition_label_encoder_,
+            cat_covariates_label_encoders=self.model.cat_covariates_label_encoders_,
             adata_atac=self.adata_atac,
             counts_key=self.counts_key_,
             adj_key=self.adj_key_,
-            condition_key=self.condition_key_,
+            cat_covariates_keys=self.cat_covariates_keys_,
             edge_val_ratio=0.,
             edge_test_ratio=0.,
             node_val_ratio=0.,

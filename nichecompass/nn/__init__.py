@@ -3,7 +3,6 @@ from .aggregators import (OneHopAttentionNodeLabelAggregator,
                           SelfNodeLabelNoneAggregator,
                           OneHopSumNodeLabelAggregator)
 from .decoders import (CosineSimGraphDecoder,
-                       DotProductGraphDecoder,
                        MaskedGeneExprDecoder,
                        MaskedChromAccessDecoder)
 from .encoders import Encoder
@@ -15,7 +14,6 @@ __all__ = ["OneHopAttentionNodeLabelAggregator",
            "SelfNodeLabelNoneAggregator",
            "OneHopSumNodeLabelAggregator",
            "CosineSimGraphDecoder",
-           "DotProductGraphDecoder",
            "MaskedGeneExprDecoder",
            "MaskedChromAccessDecoder",
            "Encoder",
