@@ -197,6 +197,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.condition_label_encoder_ = {
             k: v for k, v in zip(conditions, range(len(conditions)))}
         self.cat_covariates_cats_ = cat_covariates_cats
+        self.n_cat_covariates = len(cat_covariates_cats)
         self.nums_cat_covariates_cats_ = [
             len(cat_covariate_cats) for cat_covariate_cats in cat_covariates_cats]
         self.cat_covariates_label_encoders_ = [
@@ -272,9 +273,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_cond_embed_input=(n_cond_embed if ("encoder" in
                                 self.cond_embed_injection_) &
                                 (self.n_conditions_ != 0) else 0),
-            #n_cat_covariates_embed_input=(sum(nums_cat_covariates_embed)
-            #                              if nums_cat_covariates_embed is not None
-            #                              else 0),
+            n_cat_covariates_embed_input=(sum(nums_cat_covariates_embed)
+                                          if ("encoder" in self.cond_embed_injection_)
+                                          & (self.n_cat_covariates > 0)
+                                          else 0),
             n_cat_covariates_embed_input=0,
             n_layers=n_layers_encoder,
             n_hidden=n_hidden_encoder,
@@ -305,7 +307,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                 self.cond_embed_injection_) &
                                 (self.n_conditions_ != 0) else 0),
             n_cat_covariates_embed_input=(sum(nums_cat_covariates_embed)
-                                          if nums_cat_covariates_embed is not None
+                                          if ("gene_expr_decoder" in self.cond_embed_injection_)
+                                          & (self.n_cat_covariates > 0)
                                           else 0),
             n_output=n_output_genes,
             mask=gene_expr_decoder_mask,
