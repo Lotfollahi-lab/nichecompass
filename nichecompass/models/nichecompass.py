@@ -428,7 +428,7 @@ class NicheCompass(BaseModelMixin):
                     adata.obs[cat_covariate_key].unique().tolist() 
                     for cat_covariate_key in cat_covariates_keys]
             else:
-                self.cat_covariates_cats_ = [[]]
+                self.cat_covariates_cats_ = []
         else:
             self.cat_covariates_cats_ = cat_covariates_cats
         
@@ -523,6 +523,7 @@ class NicheCompass(BaseModelMixin):
               lambda_gene_expr_recon: float=300.,
               lambda_chrom_access_recon: float=100.,
               lambda_cond_contrastive: float=0.,
+              lambda_cat_covariates_contrastive: float=0.,
               contrastive_logits_pos_ratio: float=0.,
               contrastive_logits_neg_ratio: float=0.,
               lambda_group_lasso: float=0.,
@@ -582,6 +583,7 @@ class NicheCompass(BaseModelMixin):
             very similar latent representations to become more similar and 
             observations with different latent representations to become more
             different.
+        lambda_cat_covariates_contrastive:
         contrastive_logits_pos_ratio:
             Ratio for determining the logits threshold of positive contrastive
             examples of node pairs from different conditions. The top
@@ -688,6 +690,7 @@ class NicheCompass(BaseModelMixin):
             lambda_gene_expr_recon=lambda_gene_expr_recon,
             lambda_chrom_access_recon=lambda_chrom_access_recon,
             lambda_cond_contrastive=lambda_cond_contrastive,
+            lambda_cat_covariates_contrastive=lambda_cat_covariates_contrastive,
             contrastive_logits_pos_ratio=contrastive_logits_pos_ratio,
             contrastive_logits_neg_ratio=contrastive_logits_neg_ratio,
             lambda_group_lasso=lambda_group_lasso,

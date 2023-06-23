@@ -222,6 +222,7 @@ class Trainer(BaseTrainerMixin):
               weight_decay: float=0.,
               lambda_edge_recon: Optional[float]=500000.,
               lambda_cond_contrastive: Optional[float]=0.,
+              lambda_cat_covariates_contrastive: Optional[float]=0.,
               contrastive_logits_pos_ratio: Optional[float]=0.125,
               contrastive_logits_neg_ratio: Optional[float]=0.125,
               lambda_gene_expr_recon: float=100.,
@@ -259,6 +260,7 @@ class Trainer(BaseTrainerMixin):
             very similar latent representations to become more similar and 
             observations with different latent representations to become more
             different.
+        lambda_cat_covariates_contrastive:
         contrastive_logits_pos_ratio:
             Ratio for determining the logits threshold of positive contrastive
             examples of node pairs from different conditions. The top
@@ -308,6 +310,7 @@ class Trainer(BaseTrainerMixin):
         self.lambda_gene_expr_recon_ = lambda_gene_expr_recon
         self.lambda_chrom_access_recon_ = lambda_chrom_access_recon
         self.lambda_cond_contrastive_ = lambda_cond_contrastive
+        self.lambda_cat_covariates_contrastive_ = lambda_cat_covariates_contrastive
         self.contrastive_logits_pos_ratio_ = contrastive_logits_pos_ratio
         self.contrastive_logits_neg_ratio_ = contrastive_logits_neg_ratio
         self.lambda_group_lasso_ = lambda_group_lasso
@@ -379,6 +382,7 @@ class Trainer(BaseTrainerMixin):
                     lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
                     lambda_chrom_access_recon=self.lambda_chrom_access_recon_,
                     lambda_cond_contrastive=self.lambda_cond_contrastive_,
+                    lambda_cat_covariates_contrastive=self.lambda_cat_covariates_contrastive_,
                     contrastive_logits_pos_ratio=self.contrastive_logits_pos_ratio_,
                     contrastive_logits_neg_ratio=self.contrastive_logits_neg_ratio_,
                     lambda_group_lasso=self.lambda_group_lasso_,
@@ -515,6 +519,7 @@ class Trainer(BaseTrainerMixin):
                     lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
                     lambda_chrom_access_recon=self.lambda_chrom_access_recon_,
                     lambda_cond_contrastive=self.lambda_cond_contrastive_,
+                    lambda_cat_covariates_contrastive=self.lambda_cat_covariates_contrastive_,
                     contrastive_logits_pos_ratio=self.contrastive_logits_pos_ratio_,
                     contrastive_logits_neg_ratio=self.contrastive_logits_neg_ratio_,
                     lambda_group_lasso=self.lambda_group_lasso_,

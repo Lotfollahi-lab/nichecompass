@@ -252,7 +252,8 @@ class MaskedGeneExprDecoder(nn.Module):
         # Add conditional embedding to latent feature vector
         if cond_embed is not None:
             z = torch.cat((z, cond_embed), dim=-1)
-        
+            
+        # Add categorical covariates embedding to latent feature vector
         if cat_covariates_embed is not None:
             z = torch.cat((z, cat_covariates_embed), dim=-1)
         
@@ -287,6 +288,7 @@ class MaskedChromAccessDecoder(nn.Module):
     n_cond_embed_input:
         Number of conditional embedding input nodes to the decoder (conditional
         embedding dimensionality).
+    n_cat_covariates_embed_input:
     n_output:
         Number of output nodes from the decoder (number of genes).
     mask:
@@ -303,6 +305,7 @@ class MaskedChromAccessDecoder(nn.Module):
                  n_input: int,
                  n_addon_input: int,
                  n_cond_embed_input: int,
+                 n_cat_covariates_embed_input: int,
                  n_output: int,
                  mask: torch.Tensor,
                  mask_idx: torch.Tensor,
@@ -311,7 +314,8 @@ class MaskedChromAccessDecoder(nn.Module):
 
         print("MASKED CHROMATIN ACCESSIBILITY DECODER -> n_input: "
                 f"{n_input}, n_cond_embed_input: {n_cond_embed_input}, "
-                f"n_addon_input: {n_addon_input}, n_output: {n_output}")
+                f"n_cat_covariates_embed_input: {n_cat_covariates_embed_input},"
+                f" n_addon_input: {n_addon_input}, n_output: {n_output}")
 
         self.mask_idx = mask_idx
         self.recon_dist = recon_dist
@@ -323,6 +327,7 @@ class MaskedChromAccessDecoder(nn.Module):
             mask=mask,
             n_addon_input=n_addon_input,
             n_cond_embed_input=n_cond_embed_input,
+            n_cat_covariates_embed_input=n_cat_covariates_embed_input,
             activation=nn.Softmax(dim=-1))
 
         if recon_dist == "zinb":
@@ -333,13 +338,15 @@ class MaskedChromAccessDecoder(nn.Module):
                 mask=mask,
                 n_addon_input=n_addon_input,
                 n_cond_embed_input=n_cond_embed_input,
+                n_cat_covariates_embed_input=n_cat_covariates_embed_input,
                 activation=nn.Identity())
 
     def forward(self,
                 z: torch.Tensor,
                 log_library_size: torch.Tensor,
                 gene_weight_peak_mask: torch.Tensor,
-                cond_embed: Optional[torch.Tensor]=None
+                cond_embed: Optional[torch.Tensor]=None,
+                cat_covariates_embed: Optional[torch.Tensor]=None
                 ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass of the masked chromatin accessibility decoder.
@@ -357,6 +364,7 @@ class MaskedChromAccessDecoder(nn.Module):
             `gene_weight_peak_mask`.
         cond_embed:
             Tensor containing the conditional embedding.
+        cat_covariates_embed:
 
         Returns
         ----------
@@ -366,6 +374,10 @@ class MaskedChromAccessDecoder(nn.Module):
         # Add conditional embedding to latent feature vector
         if cond_embed is not None:
             z = torch.cat((z, cond_embed), dim=-1)
+            
+        # Add categorical covariates embedding to latent feature vector
+        if cat_covariates_embed is not None:
+            z = torch.cat((z, cat_covariates_embed), dim=-1)
         
         nb_means_normalized = self.nb_means_normalized_decoder(
             input=z,
