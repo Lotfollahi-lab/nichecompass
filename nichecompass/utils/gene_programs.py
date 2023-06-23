@@ -317,7 +317,7 @@ def extract_gp_dict_from_nichenet_lrt_interactions(
             ligand_target_matrix_url = "https://zenodo.org/record/7074291/" \
                                        "files/ligand_target_matrix_nsga2r_" \
                                        "final.rds"
-        elif version == "v2" and species == "human":
+        elif version == "v2" and species == "mouse":
             lr_network_url = "https://zenodo.org/record/7074291/files/" \
                              "lr_network_mouse_21122021.rds"
             ligand_target_matrix_url = "https://zenodo.org/record/7074291/" \

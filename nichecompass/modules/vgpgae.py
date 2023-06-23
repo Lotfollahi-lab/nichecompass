@@ -3,7 +3,7 @@ This module contains the Variational Gene Program Graph Autoencoder class, the
 neural network module that underlies the NicheCompass model.
 """
 
-from typing import Literal, Optional, Tuple, Union
+from typing import List, Literal, Optional, Tuple, Union
 
 import mlflow
 import numpy as np
@@ -23,6 +23,7 @@ from nichecompass.nn import (CosineSimGraphDecoder,
 from .basemodulemixin import BaseModuleMixin
 from .losses import (compute_addon_l1_reg_loss,
                      compute_cond_contrastive_loss,
+                     compute_cat_covariates_contrastive_loss,
                      compute_edge_recon_loss,
                      compute_omics_recon_nb_loss,
                      compute_gene_expr_recon_zinb_loss,
@@ -51,6 +52,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         Number of add-on nodes in the latent space (de-novo gene programs).
     n_cond_embed:
         Number of conditional embedding nodes.
+    nums_cat_covariates_embed:
     n_output_genes:
         Number of nodes in the output layer.
     n_output_peaks:
@@ -138,6 +140,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  n_nonaddon_gps: int,
                  n_addon_gps: int,
                  n_cond_embed: int,
+                 nums_cat_covariates_embed: List[int],
                  n_output_genes: int,
                  gene_expr_decoder_mask: torch.Tensor,
                  gene_expr_mask_idx: torch.Tensor,
@@ -149,7 +152,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  target_chrom_access_mask_idx: Optional[torch.Tensor]=None,
                  source_chrom_access_mask_idx: Optional[torch.Tensor]=None,
                  gene_peaks_mask: Optional[torch.Tensor]=None,
-                 conditions: list=[],
+                 conditions: List=[],
+                 cat_covariates_cats: List[List]=[],
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=4,
                  dropout_rate_encoder: float=0.,
@@ -178,6 +182,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.n_nonaddon_gps_ = n_nonaddon_gps
         self.n_addon_gps_ = n_addon_gps
         self.n_cond_embed_ = n_cond_embed
+        self.nums_cat_covariates_embed_ = nums_cat_covariates_embed
         self.n_output_genes_ = n_output_genes
         self.n_output_peaks_ = n_output_peaks
         self.gene_expr_mask_idx_ = gene_expr_mask_idx
@@ -191,6 +196,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.n_conditions_ = len(conditions)
         self.condition_label_encoder_ = {
             k: v for k, v in zip(conditions, range(len(conditions)))}
+        self.cat_covariates_cats_ = cat_covariates_cats
+        self.nums_cat_covariates_cats_ = [
+            len(cat_covariate_cats) for cat_covariate_cats in cat_covariates_cats]
+        self.cat_covariates_label_encoders_ = [
+            {k: v for k, v in zip(cat_covariate_cats,
+                                  range(len(cat_covariate_cats)))}
+                                  for cat_covariate_cats in cat_covariates_cats]
         self.conv_layer_encoder_ = conv_layer_encoder
         self.encoder_n_attention_heads_ = encoder_n_attention_heads
         self.dropout_rate_encoder_ = dropout_rate_encoder
@@ -239,6 +251,20 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         # Initialize conditional embedder module
         if (cond_embed_injection is not None) & (self.n_conditions_ > 0):
             self.cond_embedder = nn.Embedding(self.n_conditions_, n_cond_embed)
+            
+        # Initialize categorical covariates embedder modules
+        if len(self.cat_covariates_cats_) > 0:
+            self.cat_covariates_embedders = []
+            for i in range(len(self.cat_covariates_cats_)):
+                cat_covariate_embedder = nn.Embedding(
+                    self.nums_cat_covariates_cats_[i],
+                    nums_cat_covariates_embed[i])
+                self.cat_covariates_embedders.append(cat_covariate_embedder)
+                # Set attribute so PyTorch recognizes the layer and moves it
+                # to GPU
+                setattr(self,
+                        f"cat_covariate{i}_embedder",
+                        cat_covariate_embedder)
 
         # Initialize encoder module
         self.encoder = Encoder(
@@ -246,6 +272,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_cond_embed_input=(n_cond_embed if ("encoder" in
                                 self.cond_embed_injection_) &
                                 (self.n_conditions_ != 0) else 0),
+            #n_cat_covariates_embed_input=(sum(nums_cat_covariates_embed)
+            #                              if nums_cat_covariates_embed is not None
+            #                              else 0),
+            n_cat_covariates_embed_input=0,
             n_layers=n_layers_encoder,
             n_hidden=n_hidden_encoder,
             n_latent=n_nonaddon_gps,
@@ -274,6 +304,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_cond_embed_input=(n_cond_embed if ("gene_expr_decoder" in
                                 self.cond_embed_injection_) &
                                 (self.n_conditions_ != 0) else 0),
+            n_cat_covariates_embed_input=(sum(nums_cat_covariates_embed)
+                                          if nums_cat_covariates_embed is not None
+                                          else 0),
             n_output=n_output_genes,
             mask=gene_expr_decoder_mask,
             mask_idx=gene_expr_mask_idx,
@@ -287,6 +320,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 n_cond_embed_input=(n_cond_embed if ("chrom_access_decoder" in
                                     self.cond_embed_injection_) &
                                     (self.n_conditions_ != 0) else 0),
+                n_cat_covariates_embed_input=(sum(nums_cat_covariates_embed)
+                                              if nums_cat_covariates_embed is not None
+                                              else 0),
                 n_output=n_output_peaks,
                 mask=chrom_access_decoder_mask,
                 mask_idx=chrom_access_mask_idx,
@@ -381,14 +417,32 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             batch_idx = torch.cat((data_batch.edge_label_index[0],
                                    data_batch.edge_label_index[1]), 0)
             
-            # Store edge labels and edge conditions for loss computation
+            # Store edge labels for loss computation
             output["edge_recon_labels"] = data_batch.edge_label
+            
+            # Store edge conditions for loss computation
             if (len(self.conditions_) != 0) & self.cond_edge_neg_sampling_:
                 output["edge_same_condition_labels"] = (
                     data_batch.conditions[data_batch.edge_label_index[0]] ==
                     data_batch.conditions[data_batch.edge_label_index[1]])
             else:
                 output["edge_same_condition_labels"] = None
+                
+            # Store edge categorical covariates for loss computation
+            if len(self.cat_covariates_cats_) > 0:
+                output["edge_same_cat_covariates_cat"] = []
+                for cat_covariate_idx in range(len(self.cat_covariates_cats_)):
+                    edge_same_cat_covariate_cat = (
+                        data_batch.cat_covariates_cats[
+                            data_batch.edge_label_index[0],
+                            cat_covariate_idx] ==
+                        data_batch.cat_covariates_cats[
+                            data_batch.edge_label_index[1],
+                            cat_covariate_idx])
+                    output["edge_same_cat_covariates_cat"].append(
+                        edge_same_cat_covariate_cat)
+            else:
+                output["edge_same_cat_covariates_cat"] = None
 
         # Get conditional embeddings
         if (self.cond_embed_injection_ is not None) & (self.n_conditions_ > 0):
@@ -397,13 +451,27 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         else:
             self.cond_embed = None
 
+        # Get categorical covariate embeddings
+        if len(self.cat_covariates_cats_) > 0:
+            cat_covariates_embeds = []
+            for i in range(len(self.cat_covariates_embedders)):
+                cat_covariates_embeds.append(self.cat_covariates_embedders[i](
+                     data_batch.cat_covariates_cats[:, i]))
+                self.cat_covariates_embed = torch.cat(
+                    cat_covariates_embeds,
+                    dim=1)
+        else:
+            self.cat_covariates_embed = None         
+
         # Use encoder and reparameterization trick to get latent distribution
         # parameters and features for current batch
         encoder_outputs = self.encoder(
             x=x_enc,
             edge_index=edge_index,
             cond_embed=(self.cond_embed if "encoder" in
-                        self.cond_embed_injection_ else None))
+                        self.cond_embed_injection_ else None),
+            #cat_covariates_embed=self.cat_covariates_embed)
+            cat_covariates_embed=None)
         self.mu = encoder_outputs[0][batch_idx, :]
         self.logstd = encoder_outputs[1][batch_idx, :]
         output["mu"] = self.mu
@@ -459,7 +527,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 z=z,
                 log_library_size=self.log_library_size,
                 cond_embed=(self.cond_embed[batch_idx] if "gene_expr_decoder" in
-                            self.cond_embed_injection_ else None))
+                            self.cond_embed_injection_ else None),
+                cat_covariates_embed=(self.cat_covariates_embed[batch_idx]
+                                      if self.cat_covariates_embed is not None else None))
             
             if "chrom_access" in self.modalities_:
                 # Use observed library size as scaling factor for the negative
@@ -516,7 +586,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     log_library_size=self.log_library_size_atac,
                     gene_weight_peak_mask=gene_weight_peak_mask,
                     cond_embed=(self.cond_embed[batch_idx] if "chrom_access_decoder" in
-                                self.cond_embed_injection_ else None))
+                                self.cond_embed_injection_ else None),
+                    cat_covariates_embed=(self.cat_covariates_embed[batch_idx]
+                                          if self.cat_covariates_embed is not None else None))
 
         return output
 
@@ -531,6 +603,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
              lambda_chrom_access_recon: float=0.1,
              lambda_edge_recon: Optional[float]=1.,
              lambda_cond_contrastive: Optional[float]=1.,
+             lambda_cat_covariates_contrastive: Optional[float]=100000.,
              contrastive_logits_pos_ratio: float=0.1,
              contrastive_logits_neg_ratio: float=0.1,
              edge_recon_active: bool=True,
@@ -582,6 +655,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             very similar latent representations to become more similar and 
             observations with different latent representations to become more
             different.
+        lambda_cat_covariates_contrastive
         contrastive_logits_ratio:
             Ratio for determining the contrastive logits for the conditional
             contrastive loss. The top (´contrastive_logits_ratio´ * 100)% logits
@@ -631,6 +705,17 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 edge_recon_labels=edge_model_output["edge_recon_labels"],
                 edge_same_condition_labels=edge_model_output[
                     "edge_same_condition_labels"],
+                contrastive_logits_pos_ratio=contrastive_logits_pos_ratio,
+                contrastive_logits_neg_ratio=contrastive_logits_neg_ratio))
+            
+        if (edge_model_output["edge_same_cat_covariates_cat"] is not None) & (
+        lambda_cat_covariates_contrastive > 0):
+            loss_dict["cat_covariates_contrastive_loss"] = (
+                lambda_cat_covariates_contrastive * compute_cat_covariates_contrastive_loss(
+                edge_recon_logits=edge_model_output["edge_recon_logits"],
+                edge_recon_labels=edge_model_output["edge_recon_labels"],
+                edge_same_cat_covariates_cat=edge_model_output[
+                    "edge_same_cat_covariates_cat"],
                 contrastive_logits_pos_ratio=contrastive_logits_pos_ratio,
                 contrastive_logits_neg_ratio=contrastive_logits_neg_ratio))
 
@@ -693,7 +778,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         "cond_contrastive_loss" in loss_dict.keys()):
             loss_dict["global_loss"] += loss_dict["cond_contrastive_loss"]
             if cond_contrastive_active:
-                loss_dict["optim_loss"] += loss_dict["cond_contrastive_loss"]            
+                loss_dict["optim_loss"] += loss_dict["cond_contrastive_loss"]
+            loss_dict["global_loss"] += loss_dict["cat_covariates_contrastive_loss"]
+            if cond_contrastive_active:
+                loss_dict["optim_loss"] += loss_dict["cat_covariates_contrastive_loss"] 
         if self.include_gene_expr_recon_loss_:
             loss_dict["global_loss"] += loss_dict["gene_expr_recon_loss"]
             loss_dict["optim_loss"] += loss_dict["gene_expr_recon_loss"]
@@ -801,7 +889,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             _, zi_probs = self.get_gene_expr_dist_params(
                 z=self.mu,
                 log_library_size=self.log_library_size,
-                cond_embed=self.cond_embed[batch_idx])
+                cond_embed=self.cond_embed[batch_idx],
+                cat_covariates_embed=self.cat_covariates_embed[batch_idx])
             non_zi_probs = 1 - zi_probs
             non_zi_probs_sum = non_zi_probs.sum(0).unsqueeze(1) # sum over obs
             gp_weights *= non_zi_probs_sum
@@ -844,7 +933,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                  "target_chrom_access_mask_idx_",
                                  "source_chrom_access_mask_idx_",
                                  "features_idx_",
-                                 "gene_peaks_mask_"]):
+                                 "gene_peaks_mask_",
+                                 "conditions_",
+                                 "condition_label_encoder_",
+                                 "cat_covariates_cats_",
+                                 "cat_covariates_label_encoders_"]):
         """
         Log module hyperparameters to Mlflow.
         
@@ -903,10 +996,24 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         else:
             cond_embed = None
             
+        # Get categorical covariate embeddings
+        if len(self.cat_covariates_cats_) > 0:
+            cat_covariates_embeds = []
+            for i in range(len(self.cat_covariates_embedders)):
+                cat_covariates_embeds.append(self.cat_covariates_embedders[i](
+                    node_batch.cat_covariates_cats[:, i]))
+                cat_covariates_embed = torch.cat(
+                    cat_covariates_embeds,
+                    dim=1)
+        else:
+            cat_covariates_embed = None
+            
         # Get latent distribution parameters
         encoder_outputs = self.encoder(x=x_enc,
                                        edge_index=node_batch.edge_index,
-                                       cond_embed=cond_embed)
+                                       cond_embed=cond_embed,
+                                       #cat_covariates_embed=cat_covariates_embed)
+                                       cat_covariates_embed=None)
         mu = encoder_outputs[0][:node_batch.batch_size, :]
         logstd = encoder_outputs[1][:node_batch.batch_size, :]
 
@@ -929,7 +1036,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             self,
             z: torch.Tensor,
             log_library_size: torch.Tensor,
-            cond_embed: torch.Tensor,
+            cond_embed: Optional[torch.Tensor]=None,
+            cat_covariates_embed: Optional[torch.Tensor]=None,
             ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Decode latent features ´z´ to return the parameters of the distribution
@@ -961,12 +1069,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             nb_means = self.gene_expr_decoder(
                 z=z,
                 log_library_size=log_library_size,
-                cond_embed=cond_embed)
+                cond_embed=cond_embed,
+                cat_covariates_embed=cat_covariates_embed)
             return nb_means
         if self.gene_expr_recon_dist_ == "zinb":
             nb_means, zi_prob_logits = self.gene_expr_decoder(
                 z=z,
                 log_library_size=log_library_size,
-                cond_embed=cond_embed)
+                cond_embed=cond_embed,
+                cat_covariates_embed=cat_covariates_embed)
             zi_probs = torch.sigmoid(zi_prob_logits)
             return nb_means, zi_probs
