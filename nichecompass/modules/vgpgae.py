@@ -907,9 +907,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                  "target_chrom_access_mask_idx_",
                                  "source_chrom_access_mask_idx_",
                                  "features_idx_",
-                                 "gene_peaks_mask_",
-                                 "cat_covariates_cats_",
-                                 "cat_covariates_label_encoders_"]):
+                                 "gene_peaks_mask_"]):
         """
         Log module hyperparameters to Mlflow.
         
@@ -921,7 +919,16 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         """
         for attr, attr_value in self._get_public_attributes().items():
             if attr not in excluded_attr:
-                mlflow.log_param(attr, attr_value)
+                if attr == "cat_covariates_cats_":
+                    for i in range(len(attr_value)):
+                        mlflow.log_param(f"cat_covariate{i}_cats",
+                                         attr_value[0])
+                elif attr == "cat_covariates_label_encoders_":
+                    for i in range(len(attr_value)):
+                        mlflow.log_param(f"cat_covariate{i}_label_encoder",
+                                         attr_value[0])
+                else:                   
+                    mlflow.log_param(attr, attr_value)
 
     def get_latent_representation(
             self,
