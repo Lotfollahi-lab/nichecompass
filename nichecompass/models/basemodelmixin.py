@@ -293,7 +293,7 @@ class BaseModelMixin():
         if unfreeze_cat_covariates_embedder_weights:
             # Allow updates of categorical covariates embedder weights
             for param_name, param in model.model.named_parameters():
-                if ("cat_covariate") in param_name & ("embedder") in param_name:
+                if ("cat_covariate" in param_name) & ("embedder" in param_name):
                     param.requires_grad = True
         
         if model.freeze_ and not model.is_trained_:

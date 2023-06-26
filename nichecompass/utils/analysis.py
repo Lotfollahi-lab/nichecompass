@@ -605,9 +605,9 @@ def plot_enriched_gp_info_plots_(adata: AnnData,
     
 
 default_color_dict = {
-    "0": "#FFD8B8",  # Peach
-    "1": "#FFAA80",  # Light Coral
-    "2": "#FF4D4D",  # Light Red
+    "0": "#FF0000",  # Red
+    "1": "#00CED1",  # Dark Turquoise
+    "2": "#6B5B95",  # Purple
     "3": "#FF8C8C",  # Salmon Pink
     "4": "#FFD966",  # Yellow
     "5": "#FFB83F",  # Light Orange
@@ -621,7 +621,7 @@ default_color_dict = {
     "13": "#DAB6C4", # Pink
     "14": "#C38D9E", # Mauve-Pink
     "15": "#9D88A2", # Mauve
-    "16": "#6B5B95", # Purple
+    "16": "#FF4D4D", # Light Red
     "17": "#9B4DCA", # Lavender-Purple
     "18": "#FF9CDA", # Bright Pink
     "19": "#FF69B4", # Hot Pink
@@ -633,7 +633,7 @@ default_color_dict = {
     "25": "#7B68EE", # Medium Slate Blue
     "26": "#4169E1", # Royal Blue
     "27": "#4682B4", # Steel Blue
-    "28": "#00CED1", # Dark Turquoise
+    "28": "#FFAA80", # Light Coral
     "29": "#48D1CC", # Medium Turquoise
     "30": "#40E0D0", # Turquoise
     "31": "#00FF00", # Lime
@@ -641,7 +641,7 @@ default_color_dict = {
     "33": "#ADFF2F", # Green Yellow
     "34": "#32CD32", # Lime Green
     "35": "#228B22", # Forest Green
-    "36": "#006400", # Dark Green
+    "36": "#FFD8B8", # Peach
     "37": "#008080", # Teal
     "38": "#20B2AA", # Light Sea Green
     "39": "#00FFFF", # Cyan
@@ -652,7 +652,7 @@ default_color_dict = {
     "44": "#8B008B", # Dark Magenta
     "45": "#FF1493", # Deep Pink
     "46": "#FF4500", # Orange Red
-    "47": "#FF0000", # Red
+    "47": "#006400", # Dark Green
     "48": "#FF6347", # Tomato
     "49": "#FF7F50", # Coral
     "50": "#CD5C5C", # Indian Red
