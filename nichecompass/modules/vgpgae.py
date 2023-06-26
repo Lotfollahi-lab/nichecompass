@@ -486,8 +486,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 z=z,
                 log_library_size=self.log_library_size,
                 cat_covariates_embed=(self.cat_covariates_embed[batch_idx] if
-                                      "gene_expr_decoder" in
-                                      self.cat_covariates_embeds_injection_ else
+                                      (self.cat_covariates_embed is not None) &
+                                      ("gene_expr_decoder" in
+                                       self.cat_covariates_embeds_injection_) else
                                       None))
             
             if "chrom_access" in self.modalities_:
@@ -544,11 +545,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     z=z,
                     log_library_size=self.log_library_size_atac,
                     gene_weight_peak_mask=gene_weight_peak_mask,
-                    cat_covariates_embed=(self.cat_covariates_embed[batch_idx]
-                                          if "chrom_access_decoder" in
-                                          self.cat_covariates_embeds_injection_
+                    cat_covariates_embed=(self.cat_covariates_embed[batch_idx] if
+                                          (self.cat_covariates_embed is not None) &
+                                          ("chrom_access_decoder" in
+                                           self.cat_covariates_embeds_injection_)
                                           else None))
-
         return output
 
     def loss(self,
@@ -657,20 +658,23 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             logstd=node_model_output["logstd"])
 
         # Determine edges to be included in edge reconstruction loss
-        cat_covariates_cat_edge_incl = []
-        for cat_covariate_no_edge, edge_same_cat_covariate_cat in zip(
-            self.cat_covariates_no_edges_,
-            edge_model_output["edge_same_cat_covariates_cat"]):
-            if not cat_covariate_no_edge:
-                cat_covariates_cat_edge_incl.append(
-                    torch.ones_like(edge_same_cat_covariate_cat,
-                                    dtype=torch.bool))
+        if edge_model_output["edge_same_cat_covariates_cat"] is not None:
+            cat_covariates_cat_edge_incl = []
+            for cat_covariate_no_edge, edge_same_cat_covariate_cat in zip(
+                self.cat_covariates_no_edges_,
+                edge_model_output["edge_same_cat_covariates_cat"]):
+                if not cat_covariate_no_edge:
+                    cat_covariates_cat_edge_incl.append(
+                        torch.ones_like(edge_same_cat_covariate_cat,
+                                        dtype=torch.bool))
+                else:
+                    cat_covariates_cat_edge_incl.append(edge_same_cat_covariate_cat)
+            if len(cat_covariates_cat_edge_incl) > 0:
+                edge_incl = torch.all(
+                    torch.stack(cat_covariates_cat_edge_incl),
+                                dim=0)
             else:
-                cat_covariates_cat_edge_incl.append(edge_same_cat_covariate_cat)
-        if len(cat_covariates_cat_edge_incl) > 0:
-            edge_incl = torch.all(
-                torch.stack(cat_covariates_cat_edge_incl),
-                            dim=0)
+                edge_incl = None
         else:
             edge_incl = None
 
@@ -860,7 +864,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             _, zi_probs = self.get_gene_expr_dist_params(
                 z=self.mu,
                 log_library_size=self.log_library_size,
-                cat_covariates_embed=self.cat_covariates_embed[batch_idx])
+                cat_covariates_embed=(self.cat_covariates_embed[batch_idx] if
+                                      self.cat_covariates_embed is not None else
+                                      None))
             non_zi_probs = 1 - zi_probs
             non_zi_probs_sum = non_zi_probs.sum(0).unsqueeze(1) # sum over obs
             gp_weights *= non_zi_probs_sum

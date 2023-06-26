@@ -131,15 +131,15 @@ def compute_cat_covariates_contrastive_loss(
 
         edge_recon_labels[diff_cat_covariate_pos_examples] = 1
         edge_recon_labels[diff_cat_covariate_neg_examples] = 0
-        edge_recon_logits = edge_recon_logits[
+        edge_recon_logits_contrastive_examples = edge_recon_logits[
             diff_cat_covariate_pos_examples | diff_cat_covariate_neg_examples]
-        edge_recon_labels = edge_recon_labels[
+        edge_recon_labels_contrastive_examples = edge_recon_labels[
             diff_cat_covariate_pos_examples | diff_cat_covariate_neg_examples]
 
         # Compute bce loss from logits for numerical stability
         cat_covariate_contrastive_loss = F.binary_cross_entropy_with_logits(
-            edge_recon_logits,
-            edge_recon_labels)
+            edge_recon_logits_contrastive_examples,
+            edge_recon_labels_contrastive_examples)
         cat_covariates_contrastive_loss += cat_covariate_contrastive_loss
     return cat_covariates_contrastive_loss
 
@@ -163,7 +163,7 @@ def compute_edge_recon_loss(
         (dim: 2 * edge_batch_size).
     edge_incl:
         Boolean mask which indicates edges to be included in the edge recon loss
-        (dim: 2 * edge_batch_size).
+        (dim: 2 * edge_batch_size). If ´None´, includes all edges.
 
     Returns
     ----------

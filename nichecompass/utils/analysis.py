@@ -215,7 +215,7 @@ def generate_enriched_gp_info_plots(plot_label: str,
                                     feature_spaces: list=["latent"],
                                     n_top_genes_per_gp: int=3,
                                     n_top_peaks_per_gp: int=0,
-                                    log_norm_omics_features: bool=True,
+                                    log_norm_omics_features: bool=False,
                                     save_figs: bool=False,
                                     figure_folder_path: str="",
                                     spot_size: float=30.):
