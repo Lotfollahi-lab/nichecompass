@@ -924,11 +924,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 if attr == "cat_covariates_cats_":
                     for i in range(len(attr_value)):
                         mlflow.log_param(f"cat_covariate{i}_cats",
-                                         attr_value[0])
+                                         attr_value[i])
                 elif attr == "cat_covariates_label_encoders_":
                     for i in range(len(attr_value)):
                         mlflow.log_param(f"cat_covariate{i}_label_encoder",
-                                         attr_value[0])
+                                         attr_value[i])
                 else:                   
                     mlflow.log_param(attr, attr_value)
 
