@@ -62,8 +62,6 @@ def eval_metrics(
         gene_expr_preds = gene_expr_preds.detach().cpu().numpy()
     if isinstance(gene_expr, torch.Tensor):
         gene_expr = gene_expr.detach().cpu().numpy()
-        
-    edge_incl = edge_incl.astype(bool)
 
     if gene_expr_preds is not None and gene_expr is not None:
         # Calculate the gene expression mean squared error
@@ -78,6 +76,7 @@ def eval_metrics(
             chrom_access_preds)
         
     if edge_incl is not None:
+        edge_incl = edge_incl.astype(bool)
         # Remove edges whose node pair has different categories in categorical
         # covariates for which no cross-category edges are present
         edge_recon_probs = edge_recon_probs[edge_incl]

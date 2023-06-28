@@ -543,9 +543,12 @@ class Trainer(BaseTrainerMixin):
             edge_recon_labels_val_accumulated = np.append(
                 edge_recon_labels_val_accumulated,
                 edge_recon_labels_val.detach().cpu().numpy())
-            edge_incl_val_accumulated = np.append(
-                edge_incl_val_accumulated,
-                edge_incl_val.detach().cpu().numpy())
+            if edge_incl_val is not None:
+                edge_incl_val_accumulated = np.append(
+                    edge_incl_val_accumulated,
+                    edge_incl_val.detach().cpu().numpy())
+            else:
+                edge_incl_val_accumulated = None
         val_eval_dict = eval_metrics(
             edge_recon_probs=edge_recon_probs_val_accumulated,
             edge_labels=edge_recon_labels_val_accumulated,
@@ -592,9 +595,12 @@ class Trainer(BaseTrainerMixin):
             edge_recon_labels_val_accumulated = np.append(
                 edge_recon_labels_val_accumulated,
                 edge_recon_labels_val.detach().cpu().numpy())
-            edge_incl_val_accumulated = np.append(
-                edge_incl_val_accumulated,
-                edge_incl_val.detach().cpu().numpy())
+            if edge_incl_val is not None:
+                edge_incl_val_accumulated = np.append(
+                    edge_incl_val_accumulated,
+                    edge_incl_val.detach().cpu().numpy())
+            else:
+                edge_incl_val_accumulated = None
 
         # Get node-level ground truth and predictions
         gene_expr_preds_val_accumulated = np.array([])
