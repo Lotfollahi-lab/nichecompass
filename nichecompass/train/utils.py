@@ -39,9 +39,9 @@ class EarlyStopping:
     def __init__(self,
                  early_stopping_metric: str="val_global_loss",
                  metric_improvement_threshold: float=0.,
-                 patience: int=10,
+                 patience: int=8,
                  reduce_lr_on_plateau: bool=True,
-                 lr_patience: int=5,
+                 lr_patience: int=4,
                  lr_factor: float=0.1):
         self.early_stopping_metric = early_stopping_metric
         self.metric_improvement_threshold = metric_improvement_threshold
