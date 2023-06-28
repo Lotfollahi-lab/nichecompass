@@ -88,8 +88,9 @@ class AddOnMaskedLayer(nn.Module):
         the output layer.
     n_addon_input:
         Number of non-maskable add-on input nodes to the masked layer.
-    n_cond_embed_input:
-        Number of conditional embedding input nodes to the masked layer.
+    n_cat_covariates_embed_input:
+        Number of categorical covariates embedding input nodes to the masked
+        layer.
     activation:
         Activation function used at the end of the masked layer.
     """
@@ -99,12 +100,12 @@ class AddOnMaskedLayer(nn.Module):
                  bias: bool=False,
                  mask: Optional[torch.Tensor]=None,
                  n_addon_input: int=0,
-                 n_cond_embed_input: int=0,
+                 n_cat_covariates_embed_input: int=0,
                  activation: nn.Module=nn.ReLU):
         super().__init__()
         self.n_input = n_input
         self.n_addon_input = n_addon_input
-        self.n_cond_embed_input = n_cond_embed_input
+        self.n_cat_covariates_embed_input = n_cat_covariates_embed_input
 
         # Masked layer
         if mask is None:
@@ -115,12 +116,13 @@ class AddOnMaskedLayer(nn.Module):
         # Add-on layer
         if n_addon_input != 0:
             self.addon_l = nn.Linear(n_addon_input, n_output, bias=False)
-
-        # Conditional embedding layer
-        if n_cond_embed_input != 0:
-            self.cond_embed_l = nn.Linear(n_cond_embed_input,
-                                          n_output,
-                                          bias=False)
+        
+        # Categorical covariates embedding layer
+        if n_cat_covariates_embed_input != 0:
+            self.cat_covariates_embed_l = nn.Linear(
+                n_cat_covariates_embed_input,
+                n_output,
+                bias=False)
 
         self.activation = activation
 
@@ -134,7 +136,7 @@ class AddOnMaskedLayer(nn.Module):
         ----------
         input:
             Input features to the add-on masked layer. Includes add-on input
-            nodes and conditional embedding input nodes if specified.
+            nodes and categorical covariates embedding input nodes if specified.
         dynamic_mask:
             Additional optional dynamic mask for the masked layer.
 
@@ -143,29 +145,32 @@ class AddOnMaskedLayer(nn.Module):
         output:
             Output of the add-on masked layer.
         """
-        if (self.n_addon_input == 0) & (self.n_cond_embed_input == 0):
+        if (self.n_addon_input == 0) & (self.n_cat_covariates_embed_input == 0):
             maskable_input = input
-        elif (self.n_addon_input != 0) & (self.n_cond_embed_input == 0):
+        elif ((self.n_addon_input != 0) &
+              (self.n_cat_covariates_embed_input == 0)):
             maskable_input, addon_input = torch.split(
                 input,
                 [self.n_input, self.n_addon_input],
                 dim=1)
-        elif (self.n_addon_input == 0) & (self.n_cond_embed_input != 0):
-            maskable_input, cond_embed_input = torch.split(
+        elif ((self.n_addon_input == 0) &
+              (self.n_cat_covariates_embed_input != 0)):
+            maskable_input, cat_covariates_embed_input = torch.split(
                 input,
-                [self.n_input, self.n_cond_embed_input],
+                [self.n_input, self.n_cat_covariates_embed_input],
                 dim=1)          
-        elif (self.n_addon_input != 0) & (self.n_cond_embed_input != 0):
-            maskable_input, addon_input, cond_embed_input = torch.split(
+        elif ((self.n_addon_input != 0) &
+              (self.n_cat_covariates_embed_input != 0)):
+            maskable_input, addon_input, cat_covariates_embed_input = torch.split(
                 input,
-                [self.n_input, self.n_addon_input, self.n_cond_embed_input],
+                [self.n_input, self.n_addon_input, self.n_cat_covariates_embed_input],
                 dim=1)
 
         output = self.masked_l(input=maskable_input,
                                dynamic_mask=dynamic_mask)
         if self.n_addon_input != 0:
             output += self.addon_l(addon_input)
-        if self.n_cond_embed_input != 0:
-            output += self.cond_embed_l(cond_embed_input)
+        if self.n_cat_covariates_embed_input != 0:
+            output += self.cat_covariates_embed_l(cat_covariates_embed_input)
         output = self.activation(output)
         return output

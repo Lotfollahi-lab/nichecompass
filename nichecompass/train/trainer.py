@@ -8,7 +8,7 @@ import math
 import time
 import warnings
 from collections import defaultdict
-from typing import Optional
+from typing import List, Optional
 
 import mlflow
 import numpy as np
@@ -49,8 +49,8 @@ class Trainer(BaseTrainerMixin):
         ´adata.X´ as counts.
     adj_key:
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
-    condition_key:
-        Key under which the conditions are stored in ´adata.obs´.
+    cat_covariates_keys:
+        Keys under which the categorical covariates are stored in ´adata.obs´.
     gp_targets_mask_key:
         Key under which the gene program targets mask is stored in ´model.adata.varm´. 
         This mask will only be used if no ´gp_targets_mask´ is passed explicitly
@@ -91,7 +91,7 @@ class Trainer(BaseTrainerMixin):
                  adata_atac: Optional[AnnData]=None,
                  counts_key: Optional[str]="counts",
                  adj_key: str="spatial_connectivities",
-                 condition_key: Optional[str]=None,
+                 cat_covariates_keys: Optional[List[str]]=None,
                  gp_targets_mask_key: str="nichecompass_gp_targets",
                  gp_sources_mask_key: str="nichecompass_gp_sources",                 
                  edge_val_ratio: float=0.1,
@@ -111,7 +111,7 @@ class Trainer(BaseTrainerMixin):
         self.model = model
         self.counts_key = counts_key
         self.adj_key = adj_key
-        self.condition_key = condition_key
+        self.cat_covariates_keys = cat_covariates_keys
         self.gp_targets_mask_key = gp_targets_mask_key
         self.gp_sources_mask_key = gp_sources_mask_key
         self.edge_train_ratio_ = 1 - edge_val_ratio
@@ -163,11 +163,11 @@ class Trainer(BaseTrainerMixin):
         # splits
         data_dict = prepare_data(
             adata=adata,
-            condition_label_encoder=self.model.condition_label_encoder_,
+            cat_covariates_label_encoders=self.model.cat_covariates_label_encoders_,
             adata_atac=adata_atac,
             counts_key=self.counts_key,
             adj_key=self.adj_key,
-            condition_key=self.condition_key,
+            cat_covariates_keys=self.cat_covariates_keys,
             edge_val_ratio=self.edge_val_ratio_,
             edge_test_ratio=0.,
             node_val_ratio=self.node_val_ratio_,
@@ -212,11 +212,11 @@ class Trainer(BaseTrainerMixin):
               n_epochs: int=100,
               n_epochs_all_gps: int=25,
               n_epochs_no_edge_recon: int=0,
-              n_epochs_no_cond_contrastive: int=5,
+              n_epochs_no_cat_covariates_contrastive: int=5,
               lr: float=0.001,
               weight_decay: float=0.,
               lambda_edge_recon: Optional[float]=500000.,
-              lambda_cond_contrastive: Optional[float]=0.,
+              lambda_cat_covariates_contrastive: Optional[float]=0.,
               contrastive_logits_pos_ratio: Optional[float]=0.125,
               contrastive_logits_neg_ratio: Optional[float]=0.125,
               lambda_gene_expr_recon: float=100.,
@@ -248,24 +248,24 @@ class Trainer(BaseTrainerMixin):
             this will enforce gene programs to be meaningful for edge
             reconstruction and, hence, to preserve spatial colocalization
             information.
-        lambda_cond_contrastive:
-            Lambda (weighting factor) for the conditional contrastive loss. If
-            ´>0´, this will enforce observations from different conditions with
-            very similar latent representations to become more similar and 
-            observations with different latent representations to become more
-            different.
+        lambda_cat_covariates_contrastive:
+            Lambda (weighting factor) for the categorical covariates contrastive
+            loss. If ´>0´, this will enforce observations with different
+            categorical covariates categories with very similar latent
+            representations to become more similar, and observations with
+            different latent representations to become more different.
         contrastive_logits_pos_ratio:
             Ratio for determining the logits threshold of positive contrastive
-            examples of node pairs from different conditions. The top
-            (´contrastive_logits_pos_ratio´ * 100)% logits of node pairs from
-            different conditions serve as positive labels for the contrastive
-            loss.
+            examples of node pairs from different categorical covariates
+            categories. The top (´contrastive_logits_pos_ratio´ * 100)% logits
+            of node pairs from different categorical covariates categories serve
+            as positive labels for the contrastive loss.
         contrastive_logits_neg_ratio:
             Ratio for determining the logits threshold of negative contrastive
-            examples of node pairs from different conditions. The bottom
-            (´contrastive_logits_neg_ratio´ * 100)% logits of node pairs from
-            different conditions serve as negative labels for the contrastive
-            loss.
+            examples of node pairs from different categorical covariates
+            categories. The bottom (´contrastive_logits_neg_ratio´ * 100)%
+            logits of node pairs from different categorical covariates
+            categories serve as negative labels for the contrastive loss.
         lambda_gene_expr_recon:
             Lambda (weighting factor) for the gene expression reconstruction
             loss. If ´>0´, this will enforce interpretable gene programs that
@@ -296,13 +296,15 @@ class Trainer(BaseTrainerMixin):
         self.n_epochs_ = n_epochs
         self.n_epochs_all_gps_ = n_epochs_all_gps
         self.n_epochs_no_edge_recon_ = n_epochs_no_edge_recon
-        self.n_epochs_no_cond_contrastive_ = n_epochs_no_cond_contrastive
+        self.n_epochs_no_cat_covariates_contrastive_ = (
+            n_epochs_no_cat_covariates_contrastive)
         self.lr_ = lr
         self.weight_decay_ = weight_decay
         self.lambda_edge_recon_ = lambda_edge_recon
         self.lambda_gene_expr_recon_ = lambda_gene_expr_recon
         self.lambda_chrom_access_recon_ = lambda_chrom_access_recon
-        self.lambda_cond_contrastive_ = lambda_cond_contrastive
+        self.lambda_cat_covariates_contrastive_ = (
+            lambda_cat_covariates_contrastive)
         self.contrastive_logits_pos_ratio_ = contrastive_logits_pos_ratio
         self.contrastive_logits_neg_ratio_ = contrastive_logits_neg_ratio
         self.lambda_group_lasso_ = lambda_group_lasso
@@ -336,10 +338,10 @@ class Trainer(BaseTrainerMixin):
                 self.use_only_active_gps = False
             else:
                 self.use_only_active_gps = True
-            if self.epoch < self.n_epochs_no_cond_contrastive_:
-                self.cond_contrastive_active = False
+            if self.epoch < self.n_epochs_no_cat_covariates_contrastive_:
+                self.cat_covariates_contrastive_active = False
             else:
-                self.cond_contrastive_active = True
+                self.cat_covariates_contrastive_active = True
 
             self.iter_logs = defaultdict(list)
             self.iter_logs["n_train_iter"] = 0
@@ -373,7 +375,7 @@ class Trainer(BaseTrainerMixin):
                     lambda_edge_recon=self.lambda_edge_recon_,
                     lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
                     lambda_chrom_access_recon=self.lambda_chrom_access_recon_,
-                    lambda_cond_contrastive=self.lambda_cond_contrastive_,
+                    lambda_cat_covariates_contrastive=self.lambda_cat_covariates_contrastive_,
                     contrastive_logits_pos_ratio=self.contrastive_logits_pos_ratio_,
                     contrastive_logits_neg_ratio=self.contrastive_logits_neg_ratio_,
                     lambda_group_lasso=self.lambda_group_lasso_,
@@ -381,7 +383,7 @@ class Trainer(BaseTrainerMixin):
                     l1_mask=self.l1_mask,
                     lambda_l1_addon=self.lambda_l1_addon_,
                     edge_recon_active=self.edge_recon_active,
-                    cond_contrastive_active=self.cond_contrastive_active)
+                    cat_covariates_contrastive_active=self.cat_covariates_contrastive_active)
                 
                 train_global_loss = train_loss_dict["global_loss"]
                 train_optim_loss = train_loss_dict["optim_loss"]
@@ -408,6 +410,7 @@ class Trainer(BaseTrainerMixin):
             # Validate model
             if (self.edge_val_loader is not None and 
                 self.node_val_loader is not None):
+                    print("heaps")
                     self.eval_epoch()
             elif (self.edge_val_loader is None and 
             self.node_val_loader is not None):
@@ -450,6 +453,7 @@ class Trainer(BaseTrainerMixin):
 
         self.model.eval()
 
+        """
         # Track losses and eval metrics
         losses = {"train_global_loss": self.epoch_logs["train_global_loss"],
                   "train_optim_loss": self.epoch_logs["train_optim_loss"],
@@ -461,7 +465,6 @@ class Trainer(BaseTrainerMixin):
             "best_acc": self.epoch_logs["val_best_acc_score"],
             "best_f1": self.epoch_logs["val_best_f1_score"]}
 
-        """
         fig = plot_loss_curves(losses)
         if self.mlflow_experiment_id is not None:
             mlflow.log_figure(fig, "loss_curves.png")
@@ -483,6 +486,7 @@ class Trainer(BaseTrainerMixin):
 
         edge_recon_probs_val_accumulated = np.array([])
         edge_recon_labels_val_accumulated = np.array([])
+        edge_incl_val_accumulated = np.array([])
 
         # Jointly loop through edge- and node-level batches, repeating node-
         # level batches until edge-level batches are complete
@@ -509,7 +513,7 @@ class Trainer(BaseTrainerMixin):
                     lambda_edge_recon=self.lambda_edge_recon_,
                     lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
                     lambda_chrom_access_recon=self.lambda_chrom_access_recon_,
-                    lambda_cond_contrastive=self.lambda_cond_contrastive_,
+                    lambda_cat_covariates_contrastive=self.lambda_cat_covariates_contrastive_,
                     contrastive_logits_pos_ratio=self.contrastive_logits_pos_ratio_,
                     contrastive_logits_neg_ratio=self.contrastive_logits_neg_ratio_,
                     lambda_group_lasso=self.lambda_group_lasso_,
@@ -532,21 +536,23 @@ class Trainer(BaseTrainerMixin):
             edge_recon_probs_val = torch.sigmoid(
                 edge_val_model_output["edge_recon_logits"])
             edge_recon_labels_val = edge_val_model_output["edge_recon_labels"]
-            if edge_val_model_output["edge_same_condition_labels"] is not None:
-                # only keep edge labels from same condition for eval
-                edge_recon_probs_val = edge_recon_probs_val[
-                    edge_val_model_output["edge_same_condition_labels"]]
-                edge_recon_labels_val = edge_recon_labels_val[
-                    edge_val_model_output["edge_same_condition_labels"]]
+            edge_incl_val = edge_val_model_output["edge_incl"]
             edge_recon_probs_val_accumulated = np.append(
                 edge_recon_probs_val_accumulated,
                 edge_recon_probs_val.detach().cpu().numpy())
             edge_recon_labels_val_accumulated = np.append(
                 edge_recon_labels_val_accumulated,
                 edge_recon_labels_val.detach().cpu().numpy())
+            if edge_incl_val is not None:
+                edge_incl_val_accumulated = np.append(
+                    edge_incl_val_accumulated,
+                    edge_incl_val.detach().cpu().numpy())
+            else:
+                edge_incl_val_accumulated = None
         val_eval_dict = eval_metrics(
             edge_recon_probs=edge_recon_probs_val_accumulated,
-            edge_labels=edge_recon_labels_val_accumulated)
+            edge_labels=edge_recon_labels_val_accumulated,
+            edge_incl=edge_incl_val_accumulated)
         if self.verbose_:
             self.epoch_logs["val_auroc_score"].append(
                 val_eval_dict["auroc_score"])
@@ -569,6 +575,7 @@ class Trainer(BaseTrainerMixin):
         # Get edge-level ground truth and predictions
         edge_recon_probs_val_accumulated = np.array([])
         edge_recon_labels_val_accumulated = np.array([])
+        edge_incl_val_accumulated = np.array([])
         for edge_val_data_batch in self.edge_val_loader:
             edge_val_data_batch = edge_val_data_batch.to(self.device)
 
@@ -581,18 +588,19 @@ class Trainer(BaseTrainerMixin):
             edge_recon_probs_val = torch.sigmoid(
                 edge_val_model_output["edge_recon_logits"])
             edge_recon_labels_val = edge_val_model_output["edge_recon_labels"]
-            if edge_val_model_output["edge_same_condition_labels"] is not None:
-                # only keep edge labels from same condition for eval
-                edge_recon_probs_val = edge_recon_probs_val[
-                    edge_val_model_output["edge_same_condition_labels"]]
-                edge_recon_labels_val = edge_recon_labels_val[
-                    edge_val_model_output["edge_same_condition_labels"]]
+            edge_incl_val = edge_val_model_output["edge_incl"]
             edge_recon_probs_val_accumulated = np.append(
                 edge_recon_probs_val_accumulated,
                 edge_recon_probs_val.detach().cpu().numpy())
             edge_recon_labels_val_accumulated = np.append(
                 edge_recon_labels_val_accumulated,
                 edge_recon_labels_val.detach().cpu().numpy())
+            if edge_incl_val is not None:
+                edge_incl_val_accumulated = np.append(
+                    edge_incl_val_accumulated,
+                    edge_incl_val.detach().cpu().numpy())
+            else:
+                edge_incl_val_accumulated = None
 
         # Get node-level ground truth and predictions
         gene_expr_preds_val_accumulated = np.array([])
@@ -644,6 +652,7 @@ class Trainer(BaseTrainerMixin):
         val_eval_dict = eval_metrics(
             edge_recon_probs=edge_recon_probs_val_accumulated,
             edge_labels=edge_recon_labels_val_accumulated,
+            edge_incl=edge_incl_val_accumulated,
             gene_expr_preds=gene_expr_preds_val_accumulated,
             gene_expr=gene_expr_val_accumulated,
             chrom_access_preds=chrom_access_preds_val_accumulated,

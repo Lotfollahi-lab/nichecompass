@@ -2,7 +2,7 @@
 This module contains data processors for the training of an NicheCompass model.
 """
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 from anndata import AnnData
@@ -117,11 +117,11 @@ def node_level_split_mask(data: Data,
 
 
 def prepare_data(adata: AnnData,
-                 condition_label_encoder: dict,
+                 cat_covariates_label_encoders: List[dict],
                  adata_atac: Optional[AnnData]=None,
                  counts_key: Optional[str]="counts",
                  adj_key: str="spatial_connectivities",
-                 condition_key: Optional[str]=None,
+                 cat_covariates_keys: Optional[List[str]]=None,
                  edge_val_ratio: float=0.1,
                  edge_test_ratio: float=0.,
                  node_val_ratio: float=0.1,
@@ -139,18 +139,17 @@ def prepare_data(adata: AnnData,
         in ´adata.obsp[adj_key]´.
     adata_atac:
         Additional optional AnnData object with paired spatial ATAC data.
-    condition_label_encoder:
-        Condition label encoder from the model (label encoding indeces need to
-        be aligned with the ones from the model to get the correct conditional
-        embedding).
+    cat_covariates_label_encoders:
+        List of categorical covariates label encoders from the model (label
+        encoding indeces need to be aligned with the ones from the model to get
+        the correct categorical covariates embeddings).
     counts_key:
         Key under which the counts are stored in ´adata.layer´. If ´None´, uses
         ´adata.X´ as counts.
     adj_key:
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
-    condition_key:
-        Key under which the condition for the conditional embedding is stored in
-        ´adata.obs´.
+    cat_covariates_keys:
+        Keys under which the categorical covariates are stored in ´adata.obs´.
     edge_val_ratio:
         Fraction of the data that is used as validation set on edge-level.
     edge_test_ratio:
@@ -176,24 +175,20 @@ def prepare_data(adata: AnnData,
         adata_atac=adata_atac,
         counts_key=counts_key,
         adj_key=adj_key,
-        condition_key=condition_key,
-        condition_label_encoder=condition_label_encoder)
+        cat_covariates_keys=cat_covariates_keys,
+        cat_covariates_label_encoders=cat_covariates_label_encoders)
 
     # PyG Data object (has 2 edge index pairs for one edge because of symmetry;
     # one edge index pair will be removed in the edge-level split).
-    if condition_key is not None:
-        data = Data(x=dataset.x,
-                    edge_index=dataset.edge_index,
-                    edge_attr=dataset.edge_index.t(), # store index of edge
-                                                      # nodes as edge attribute
-                                                      # for aggregation weight
-                                                      # retrieval in mini
-                                                      # batches
-                    conditions=dataset.conditions)
-    else:
-        data = Data(x=dataset.x,
-                    edge_index=dataset.edge_index,
-                    edge_attr=dataset.edge_index.t())
+    data = Data(x=dataset.x,
+                edge_index=dataset.edge_index,
+                edge_attr=dataset.edge_index.t()) # store index of edge nodes as
+                                                  # edge attribute for
+                                                  # aggregation weight retrieval
+                                                  # in mini batches
+
+    if cat_covariates_keys is not None:
+        data.cat_covariates_cats = dataset.cat_covariates_cats
 
     # Edge-level split for edge reconstruction
     edge_train_data, edge_val_data, edge_test_data = edge_level_split(
