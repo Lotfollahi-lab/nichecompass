@@ -34,7 +34,8 @@ def add_gps_from_gp_dict_to_adata(
         max_genes_per_gp: Optional[int]=None,
         max_source_genes_per_gp: Optional[int]=None,
         max_target_genes_per_gp: Optional[int]=None,
-        filter_genes_not_in_masks: bool=False):
+        filter_genes_not_in_masks: bool=False,
+        add_fc_gps_instead_of_gp_dict_gps=False):
     """
     Add gene programs defined in a gene program dictionary to an AnnData object
     by converting the gene program lists of gene program target and source genes
@@ -108,10 +109,57 @@ def add_gps_from_gp_dict_to_adata(
     filter_genes_not_in_masks:
         If ´True´, remove the genes that are not in the gp masks from the adata
         object.
+    add_fc_gps_instead_of_gp_dict_gps:
+        Note: this parameter is just used for ablation studies. If ´True´,
+        ignores the gene programs from the gp dict and instead creates a mask
+        of fully-connected gene programs (same amount as gps in the gp dict).
     """
     # Retrieve probed genes from adata
     adata_genes = (adata.var_names.str.upper() if genes_uppercase
                    else adata.var_names)
+    
+    # Just for ablation studies, create fully-connected mask
+    if add_fc_gps_instead_of_gp_dict_gps:
+        gp_targets_mask = [[1 for _, _ in gp_dict.items()]
+                           for gene in adata_genes]
+        gp_targets_mask = np.asarray(gp_targets_mask, dtype="int32")
+        gp_sources_mask = [[1 for _, _ in gp_dict.items()]
+                           for gene in adata_genes]
+        gp_sources_mask = np.asarray(gp_sources_mask, dtype="int32")
+        
+        gp_targets_categories_mask = [[0 for _, _ in gp_dict.items()]
+                                      for gene in adata_genes]
+        gp_targets_categories_mask = np.asarray(gp_targets_categories_mask,
+                                                dtype="int32")
+        gp_sources_categories_mask = [[0 for _, _ in gp_dict.items()]
+                                      for gene in adata_genes]
+        gp_sources_categories_mask = np.asarray(gp_sources_categories_mask,
+                                                dtype="int32")
+        
+        categories_label_encoder = {"fc": 0}
+
+        adata.varm[gp_sources_mask_key] = gp_sources_mask
+        adata.varm[gp_targets_mask_key] = gp_targets_mask
+        adata.varm[gp_sources_categories_mask_key] = gp_sources_categories_mask
+        adata.varm[gp_targets_categories_mask_key] = gp_targets_categories_mask
+        adata.uns[sources_categories_label_encoder_key] = (
+            categories_label_encoder)
+        adata.uns[targets_categories_label_encoder_key] = (
+            categories_label_encoder)
+        
+        # Get index of genes present in the sources and targets mask respectively
+        adata.uns[source_genes_idx_key] = np.arange(
+            len(adata.varm[gp_sources_mask_key]))
+        adata.uns[target_genes_idx_key] = np.arange(
+            len(adata.varm[gp_targets_mask_key]))
+        adata.uns[genes_idx_key] = np.concatenate(
+            (adata.uns[target_genes_idx_key],
+             adata.uns[source_genes_idx_key] + adata.n_vars), axis=0)
+
+        # Add gene program names
+        adata.uns[gp_names_key] = np.array([f"FC_{i}_GP" for i, (_, _) in 
+                                            enumerate(gp_dict.items())])
+        return
     
     if genes_uppercase:
         # Convert gene program genes to uppercase

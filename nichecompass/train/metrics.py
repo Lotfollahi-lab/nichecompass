@@ -14,6 +14,7 @@ from matplotlib.ticker import MaxNLocator
 def eval_metrics(
         edge_recon_probs: Union[torch.Tensor, np.ndarray],
         edge_labels: Union[torch.Tensor, np.ndarray],
+        edge_incl: Union[torch.Tensor, np.ndarray],
         gene_expr_preds: Optional[Union[torch.Tensor, np.ndarray]]=None,
         gene_expr: Optional[Union[torch.Tensor, np.ndarray]]=None,
         chrom_access_preds: Optional[Union[torch.Tensor, np.ndarray]]=None,
@@ -28,6 +29,9 @@ def eval_metrics(
         Tensor or array containing reconstructed edge probabilities.
     edge_labels:
         Tensor or array containing ground truth labels of edges.
+    edge_incl:
+        Boolean tensor or array indicating whether the edge should be included
+        in the evaluation.
     gene_expr_preds:
         Tensor or array containing the predicted gene expression.
     gene_expr:
@@ -52,10 +56,14 @@ def eval_metrics(
         edge_recon_probs = edge_recon_probs.detach().cpu().numpy()
     if isinstance(edge_labels, torch.Tensor):
         edge_labels = edge_labels.detach().cpu().numpy()
+    if isinstance(edge_incl, torch.Tensor):
+        edge_incl = edge_incl.detach().cpu().numpy()
     if isinstance(gene_expr_preds, torch.Tensor):
         gene_expr_preds = gene_expr_preds.detach().cpu().numpy()
     if isinstance(gene_expr, torch.Tensor):
         gene_expr = gene_expr.detach().cpu().numpy()
+        
+    edge_incl = edge_incl.astype(bool)
 
     if gene_expr_preds is not None and gene_expr is not None:
         # Calculate the gene expression mean squared error
@@ -68,6 +76,12 @@ def eval_metrics(
         eval_dict["chrom_access_mse_score"] = skm.mean_squared_error(
             chrom_access,
             chrom_access_preds)
+        
+    if edge_incl is not None:
+        # Remove edges whose node pair has different categories in categorical
+        # covariates for which no cross-category edges are present
+        edge_recon_probs = edge_recon_probs[edge_incl]
+        edge_labels = edge_labels[edge_incl]    
 
     # Calculate threshold independent metrics
     eval_dict["auroc_score"] = skm.roc_auc_score(edge_labels, edge_recon_probs)

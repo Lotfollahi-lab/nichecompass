@@ -9,6 +9,7 @@ import mlflow
 import numpy as np
 import torch
 import torch.nn as nn
+from mlflow.exceptions import MlflowException
 from torch_geometric.data import Data
 
 from nichecompass.nn import (CosineSimGraphDecoder,
@@ -397,7 +398,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             # Store edge labels for loss computation
             output["edge_recon_labels"] = data_batch.edge_label
                 
-            # Store edge categorical covariates label for loss computation
+            # For each categorical covariate, create a boolean tensor to indicate
+            # for each sampled edge (negative & positive edges) whether the edge nodes
+            # have the same category and store in a list
             if len(self.cat_covariates_cats_) > 0:
                 output["edge_same_cat_covariates_cat"] = []
                 for cat_covariate_idx in range(len(self.cat_covariates_cats_)):
@@ -410,8 +413,29 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                             cat_covariate_idx])
                     output["edge_same_cat_covariates_cat"].append(
                         edge_same_cat_covariate_cat)
+                
+                # Based on the categorical covariate and its possibility for edges
+                # to exist for different categories (this might only be the case for
+                # certain categorical covariates, others might only use disconnected
+                # neighbor graphs for different categories), create a boolean mask
+                # for edges whether they should be included in the edge reconstruction
+                # loss and edge reconstruction performance evaluation
+                cat_covariates_cat_edge_incl = []
+                for cat_covariate_no_edge, edge_same_cat_covariate_cat in zip(
+                    self.cat_covariates_no_edges_,
+                    output["edge_same_cat_covariates_cat"]):
+                    if not cat_covariate_no_edge:
+                        cat_covariates_cat_edge_incl.append(
+                            torch.ones_like(edge_same_cat_covariate_cat,
+                                            dtype=torch.bool))
+                    else:
+                        cat_covariates_cat_edge_incl.append(edge_same_cat_covariate_cat)
+                output["edge_incl"] = torch.all(
+                    torch.stack(cat_covariates_cat_edge_incl),
+                                dim=0)
             else:
                 output["edge_same_cat_covariates_cat"] = None
+                output["edge_incl"] = None
 
         # Get categorical covariate embeddings
         if len(self.cat_covariates_cats_) > 0:
@@ -657,33 +681,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             mu=node_model_output["mu"],
             logstd=node_model_output["logstd"])
 
-        # Determine edges to be included in edge reconstruction loss
-        if edge_model_output["edge_same_cat_covariates_cat"] is not None:
-            cat_covariates_cat_edge_incl = []
-            for cat_covariate_no_edge, edge_same_cat_covariate_cat in zip(
-                self.cat_covariates_no_edges_,
-                edge_model_output["edge_same_cat_covariates_cat"]):
-                if not cat_covariate_no_edge:
-                    cat_covariates_cat_edge_incl.append(
-                        torch.ones_like(edge_same_cat_covariate_cat,
-                                        dtype=torch.bool))
-                else:
-                    cat_covariates_cat_edge_incl.append(edge_same_cat_covariate_cat)
-            if len(cat_covariates_cat_edge_incl) > 0:
-                edge_incl = torch.all(
-                    torch.stack(cat_covariates_cat_edge_incl),
-                                dim=0)
-            else:
-                edge_incl = None
-        else:
-            edge_incl = None
-
         # Compute edge reconstruction binary cross entropy loss
         loss_dict["edge_recon_loss"] = (
             lambda_edge_recon * compute_edge_recon_loss(
                 edge_recon_logits=edge_model_output["edge_recon_logits"],
                 edge_recon_labels=edge_model_output["edge_recon_labels"],
-                edge_incl=edge_incl))
+                edge_incl=edge_model_output["edge_incl"]))
             
         # Compute categorical covariates contrastive loss
         if (edge_model_output["edge_same_cat_covariates_cat"] is not None) & (
@@ -923,12 +926,18 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             if attr not in excluded_attr:
                 if attr == "cat_covariates_cats_":
                     for i in range(len(attr_value)):
-                        mlflow.log_param(f"cat_covariate{i}_cats",
-                                         attr_value[i])
+                        try:
+                            mlflow.log_param(f"cat_covariate{i}_cats",
+                                             attr_value[i])
+                        except MlflowException:
+                            continue
                 elif attr == "cat_covariates_label_encoders_":
                     for i in range(len(attr_value)):
-                        mlflow.log_param(f"cat_covariate{i}_label_encoder",
-                                         attr_value[i])
+                        try:
+                            mlflow.log_param(f"cat_covariate{i}_label_encoder",
+                                             attr_value[i])
+                        except MlflowException:
+                            continue
                 else:                   
                     mlflow.log_param(attr, attr_value)
 
