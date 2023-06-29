@@ -79,21 +79,28 @@ def compute_mlami(
     latent_knng_connectivities_key = latent_knng_key + "_connectivities"
 
     if spatial_knng_connectivities_key not in adata.obsp:
+        print("Computing spatial nearest neighbor graph...")
         # Compute spatial (ground truth) connectivities
         sc.pp.neighbors(adata=adata,
                         use_rep=spatial_key,
                         n_neighbors=n_neighbors,
                         random_state=seed,
                         key_added=spatial_knng_key)
-
+    else:
+        print("Using precomputed spatial nearest neighbor graph...")
+        
     if latent_knng_connectivities_key not in adata.obsp:
+        print("Computing latent nearest neighbor graph...")
         # Compute latent connectivities
         sc.pp.neighbors(adata=adata,
                         use_rep=latent_key,
                         n_neighbors=n_neighbors,
                         random_state=seed,
                         key_added=latent_knng_key)
+    else:
+        print("Using precomputed latent nearest neighbor graph...")
 
+    print("Computing MLAMI...")
     # Define search space of clustering resolutions
     clustering_resolutions = np.linspace(start=0.1,
                                          stop=1.0,

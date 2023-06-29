@@ -88,39 +88,39 @@ def compute_benchmarking_metrics(
 
     # Compute benchmarking metrics
     benchmark_dict = {}
-    print("Computing GCS...")
+    print("Computing GCS Metric...")
     benchmark_dict["gcs"] = compute_gcs(
         adata=adata,
         spatial_knng_key=spatial_knng_key,
         latent_knng_key=latent_knng_key,
         seed=seed)
-    print("Computing MLAMI...")
+    print("Computing MLAMI Metric...")
     benchmark_dict["mlami"] = compute_mlami(
         adata=adata,
         spatial_knng_key=spatial_knng_key,
         latent_knng_key=latent_knng_key,
         seed=seed)
-    print("Computing CAS...")
+    print("Computing CAS Metric...")
     benchmark_dict["cas"] = compute_cas(
         adata=adata,
         cell_type_key=cell_type_key,
         spatial_knng_key=spatial_knng_key,
         latent_knng_key=latent_knng_key,
         seed=seed)
-    print("Computing CLISIS...")
+    print("Computing CLISIS Metric...")
     benchmark_dict["clisis"] = compute_clisis(
         adata=adata,
         cell_type_key=cell_type_key,
         spatial_knng_key=spatial_knng_key,
         latent_knng_key=latent_knng_key,
         seed=seed)
-    print("Computing GERR2...")
+    print("Computing GERR2 Metric...")
     benchmark_dict["gerr2"] = compute_gerr2(
         adata=adata,
         latent_key=latent_key,
         regressor="mlp",
         selected_genes=ger_genes)
-    print("Computing CCA...")
+    print("Computing CCA Metric...")
     benchmark_dict["cca"] = compute_cca(
         adata=adata,
         cell_cat_key=cell_type_key,
