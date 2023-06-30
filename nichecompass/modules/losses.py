@@ -371,8 +371,9 @@ def compute_kl_reg_loss(mu: torch.Tensor,
     return kl_reg_loss
 
 
-def compute_masked_l1_reg_loss(model: nn.Module,
-                               l1_mask: np.array) -> torch.Tensor:
+def compute_masked_l1_reg_loss(
+        model: nn.Module,
+        l1_mask: np.array) -> torch.Tensor:
     """
     Compute L1 regularization loss for the masked decoder layer weights to 
     encourage gene sparsity of masked gene programs.
@@ -385,9 +386,6 @@ def compute_masked_l1_reg_loss(model: nn.Module,
         Boolean gene program gene mask that is True for all gene program genes
         to which the L1 regularization loss should be applied (dim: 2 x n_genes,
         n_gps)
-    min_genes_per_gp:
-        Minimum number of genes that are in the gene program mask for a gene
-        program to be included in the l1 reg loss.
 
     Returns
     ----------
@@ -400,7 +398,7 @@ def compute_masked_l1_reg_loss(model: nn.Module,
         [torch.linalg.vector_norm(param[l1_mask],
                                   ord=1) for
          param_name, param in model.named_parameters() if
-         "nb_means_normalized_decoder.masked_l" in param_name],
+         "gene_expr_decoder.nb_means_normalized_decoder.masked_l" in param_name],
         dim=0)
     masked_l1_reg_loss = torch.sum(masked_decoder_layerwise_param_sum)
     return masked_l1_reg_loss

@@ -479,27 +479,33 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 x_atac = x[:, int(self.n_output_genes_ / 2):]
                 x = x[:, :int(self.n_output_genes_ / 2)]
                 assert x_atac.size(1) == int(self.n_output_peaks_ / 2)
-                target_node_labels_atac_start_idx = len(self.target_gene_expr_mask_idx_)
-                source_node_labels_atac_start_idx = (
+                self.target_node_labels_atac_start_idx = (
+                    len(self.target_gene_expr_mask_idx_))
+                self.source_node_labels_atac_start_idx = (
                     len(self.target_gene_expr_mask_idx_) + 
                     len(self.target_chrom_access_mask_idx_) +
                     len(self.source_gene_expr_mask_idx_))
-                source_node_labels_rna_start_idx = (
+                self.source_node_labels_rna_start_idx = (
                     len(self.target_gene_expr_mask_idx_) + 
                     len(self.target_chrom_access_mask_idx_))
 
                 output["node_labels_atac"] = torch.cat((
-                    output["node_labels"][:, target_node_labels_atac_start_idx:
-                                          source_node_labels_rna_start_idx],
-                    output["node_labels"][:, source_node_labels_atac_start_idx:
+                    output["node_labels"][:, self.target_node_labels_atac_start_idx:
+                                          self.source_node_labels_rna_start_idx],
+                    output["node_labels"][:, self.source_node_labels_atac_start_idx:
                                           ]), dim=1)
                 output["node_labels"] = torch.cat((
-                    output["node_labels"][:, :target_node_labels_atac_start_idx],
-                    output["node_labels"][:, source_node_labels_rna_start_idx: 
-                                          source_node_labels_atac_start_idx]),
+                    output["node_labels"][:, :self.target_node_labels_atac_start_idx],
+                    output["node_labels"][:, self.source_node_labels_rna_start_idx: 
+                                          self.source_node_labels_atac_start_idx]),
                                           dim=1)
                 assert output["node_labels_atac"].size(1) == len(self.chrom_access_mask_idx_)
                 assert output["node_labels"].size(1) == len(self.gene_expr_mask_idx_)
+            else:
+                self.target_node_labels_atac_start_idx = None
+                self.source_node_labels_atac_start_idx = None
+                self.source_node_labels_rna_start_idx = (
+                    len(self.target_gene_expr_mask_idx_))
 
             # Use observed library size as scaling factor for the negative
             # binomial means of the gene expression distribution
