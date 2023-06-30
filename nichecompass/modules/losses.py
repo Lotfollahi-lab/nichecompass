@@ -386,15 +386,6 @@ def compute_masked_l1_reg_loss(
         Boolean gene program gene mask that is True for all gene program genes
         to which the L1 regularization loss should be applied (dim: 2 x n_genes,
         n_gps)
-    target_node_labels_atac_start_idx:
-        Index where in the param vector the atac features of the target node
-        start.
-    source_node_labels_atac_start_idx:
-        Index where in the param vector the atac features of the source node
-        start.
-    source_node_labels_rna_start_idx:
-        Index where in the param vector the rna features of the source node
-        start.
 
     Returns
     ----------
