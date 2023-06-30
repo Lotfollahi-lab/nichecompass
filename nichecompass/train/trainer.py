@@ -410,7 +410,6 @@ class Trainer(BaseTrainerMixin):
             # Validate model
             if (self.edge_val_loader is not None and 
                 self.node_val_loader is not None):
-                    print("heaps")
                     self.eval_epoch()
             elif (self.edge_val_loader is None and 
             self.node_val_loader is not None):
