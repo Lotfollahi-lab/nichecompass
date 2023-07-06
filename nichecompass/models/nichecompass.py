@@ -2025,3 +2025,19 @@ class NicheCompass(BaseModelMixin):
                 gp_summary_df["gp_target_peaks_importances"].replace(np.nan, 0.))
         
         return gp_summary_df
+    
+
+    def add_active_gp_expr_to_obs(self) -> None:
+        """
+        Add the expression of all active gene programs to ´adata.obs´.      
+        """
+        # Get active gene program names
+        active_gp_names = self.get_active_gps()
+        
+        # Create active gene program df
+        active_gp_df = pd.DataFrame(self.adata.obsm[self.latent_key_],
+                                    columns=active_gp_names)
+        active_gp_df = active_gp_df.set_index(self.adata.obs.index)
+
+        # Concatenate active gene program df horizontally to 'adata.obs'
+        self.adata.obs = pd.concat([self.adata.obs, active_gp_df], axis=1)
