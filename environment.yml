@@ -2,8 +2,12 @@ name: nichecompass
 channels:
   - bioconda
   - conda-forge
+  - nvidia
 dependencies:
   - python=3.9
+  - jaxlib=*=*cuda*
+  - jax
+  - cuda-nvcc
   - pip
   - poetry=1.4.2
   - bedtools=2.30.0
@@ -12,3 +16,4 @@ dependencies:
     - ipykernel==6.15.3
     - ipywidgets==8.0.2
     - jupyterlab==3.4.7
+    - scib_metrics==0.3.3
