@@ -10,7 +10,7 @@ repository = "https://github.com/sebastianbirk/nichecompass"
 documentation = "https://github.com/sebastianbirk/nichecompass"
 packages = [{ include = "nichecompass" }]
 classifiers = [
-    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.9",
 ]
 
 [tool.poetry.dependencies]
