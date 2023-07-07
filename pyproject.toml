@@ -14,7 +14,7 @@ classifiers = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.09"
 bokeh = { version = "2.4.3", source = "pypi" }
 holoviews = { version = "1.15.4", source = "pypi" }
 mlflow = { version = "1.28.0", source = "pypi" }
