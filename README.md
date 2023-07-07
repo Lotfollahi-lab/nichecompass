@@ -9,7 +9,7 @@
 ```conda activate nichecompass```
 
 4) Install all Python dependencies via Poetry:
-```poetry install``` (You might have to run ```export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring``` in your shell before)
+```poetry install``` (you might have to run ```export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring``` in your shell before)
 
 ## Tutorials
 Tutorial notebooks are available in the notebooks folder.
