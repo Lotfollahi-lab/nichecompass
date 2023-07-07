@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "nichecompass"
 version = "0.1.0"
-description = " Interpretable Niche Identification from Spatial Omics Data."
+description = " Interpretable Niche Identification from Multi-Sample Spatial Omics Data."
 authors = ["sebastianbirk <sebastian.birk@outlook.com>"]
 license = "Apache2.0"
 readme = "README.md"
@@ -10,12 +10,11 @@ repository = "https://github.com/sebastianbirk/nichecompass"
 documentation = "https://github.com/sebastianbirk/nichecompass"
 packages = [{ include = "nichecompass" }]
 classifiers = [
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.11",
 ]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.11"
 bokeh = { version = "2.4.3", source = "pypi" }
 holoviews = { version = "1.15.4", source = "pypi" }
 mlflow = { version = "1.28.0", source = "pypi" }
@@ -23,7 +22,7 @@ pyreadr = { version = "0.4.6", source = "pypi" }
 selenium = { version = "4.8.2", source = "pypi" }
 scib = { version = "1.1.1", source = "pypi" }
 scib_metrics = { version = "0.3.3", source = "pypi" }
-scikit-misc = { version = "0.1.4", source = "pypi" }
+scikit-misc = { version = "0.3.0", source = "pypi" }
 scglue = { version = "0.3.2", source = "pypi" }
 squidpy = { version = "1.2.2", source = "pypi" }
 torch-geometric = { version = "2.1.0post1", source = "pypi" }

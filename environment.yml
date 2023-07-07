@@ -3,8 +3,9 @@ channels:
   - bioconda
   - conda-forge
 dependencies:
-  - python=3.9
+  - python=3.11
   - pip
+  - jax=0.4.13
   - poetry=1.4.2
   - bedtools=2.30.0
   - geckodriver=0.33.0
