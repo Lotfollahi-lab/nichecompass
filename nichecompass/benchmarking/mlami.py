@@ -16,6 +16,7 @@ from sklearn.metrics import adjusted_mutual_info_score
 
 def compute_mlami(
         adata: AnnData,
+        condition_key: Optional[str]=None,
         spatial_knng_key: str="nichecompass_spatial_knng",
         latent_knng_key: str="nichecompass_latent_knng",
         spatial_key: Optional[str]="spatial",
