@@ -549,6 +549,7 @@ class NicheCompass(BaseModelMixin):
               retrieve_recon_edge_probs: bool=False,
               retrieve_agg_weights: bool=False,
               use_cuda_if_available: bool=True,
+              n_sampled_neighbors: int=-1,
               **trainer_kwargs):
         """
         Train the NicheCompass model.
@@ -646,6 +647,9 @@ class NicheCompass(BaseModelMixin):
             training is finished.
         use_cuda_if_available:
             If `True`, use cuda if available.
+        n_sampled_neighbors:
+            Number of neighbors that are sampled during model training from the spatial
+            neighborhood graph.
         trainer_kwargs:
             Kwargs for the model Trainer.
         """        
@@ -663,6 +667,7 @@ class NicheCompass(BaseModelMixin):
             edge_batch_size=edge_batch_size,
             node_batch_size=node_batch_size,
             use_cuda_if_available=use_cuda_if_available,
+            n_sampled_neighbors=n_sampled_neighbors,
             **trainer_kwargs)
         
         if lambda_l1_masked > 0.:

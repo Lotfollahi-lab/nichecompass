@@ -69,6 +69,9 @@ class Trainer(BaseTrainerMixin):
         Batch size for the edge-level dataloaders.
     node_batch_size:
         Batch size for the node-level dataloaders.
+    n_sampled_neighbors:
+        Number of neighbors that are sampled during model training from the spatial
+        neighborhood graph.
     use_early_stopping:
         If `True`, the EarlyStopping class is used to prevent overfitting.
     reload_best_model:
@@ -98,6 +101,7 @@ class Trainer(BaseTrainerMixin):
                  node_val_ratio: float=0.1,
                  edge_batch_size: int=512,
                  node_batch_size: Optional[int]=None,
+                 n_sampled_neighbors: int=-1,
                  use_early_stopping: bool=True,
                  reload_best_model: bool=True,
                  early_stopping_kwargs: Optional[dict]=None,
@@ -120,6 +124,7 @@ class Trainer(BaseTrainerMixin):
         self.node_val_ratio_ = node_val_ratio
         self.edge_batch_size_ = edge_batch_size
         self.node_batch_size_ = node_batch_size
+        self.n_sampled_neighbors_ = n_sampled_neighbors
         self.use_early_stopping_ = use_early_stopping
         self.reload_best_model_ = reload_best_model
         self.early_stopping_kwargs_ = (early_stopping_kwargs if 
@@ -199,7 +204,7 @@ class Trainer(BaseTrainerMixin):
             edge_val_data=self.edge_val_data,
             edge_batch_size=self.edge_batch_size_,
             node_batch_size=self.node_batch_size_,
-            n_direct_neighbors=self.loaders_n_direct_neighbors_,
+            n_direct_neighbors=self.n_sampled_neighbors_,
             n_hops=self.loaders_n_hops_,
             edges_directed=False,
             neg_edge_sampling_ratio=1.)
