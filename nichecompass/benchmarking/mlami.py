@@ -1,13 +1,12 @@
 """
 This module contains the Maximum Leiden Adjusted Mutual Info (MLAMI) benchmark
 for testing how accurately the latent feature space preserves global spatial
-organization from the physical (spatial) feature space by comparing clustering
+organization from the spatial (physical) feature space by comparing clustering
 overlaps.
 """
 
 from typing import Optional
 
-import matplotlib.pyplot as plt
 import numpy as np
 import scanpy as sc
 from anndata import AnnData
@@ -16,14 +15,16 @@ from sklearn.metrics import adjusted_mutual_info_score
 
 def compute_mlami(
         adata: AnnData,
-        condition_key: Optional[str]=None,
-        spatial_knng_key: str="nichecompass_spatial_knng",
+        batch_key: Optional[str]=None,
+        spatial_knng_key: str="spatial_knng",
         latent_knng_key: str="nichecompass_latent_knng",
         spatial_key: Optional[str]="spatial",
         latent_key: Optional[str]="nichecompass_latent",
         n_neighbors: Optional[int]=15,
-        seed: int=0,
-        visualize_leiden_clustering: bool=False) -> float:
+        min_res: float=0.1,
+        max_res: float=1.0,
+        res_num: int=3,
+        seed: int=0) -> float:
     """
     Compute the Maximum Leiden Adjusted Mutual Info (MLAMI) between the latent
     nearest neighbor graph and the spatial nearest neighbor graph. The MLAMI
@@ -34,6 +35,11 @@ def compute_mlami(
     neighbor graphs. The Adjusted Mutual Info (AMI) between all clustering
     resolution pairs is computed to quantify cluster overlap and the maximum
     value is returned as metric for spatial organization preservation.
+
+    If a ´batch_key´ is provided, the MLAMI will be computed on each batch
+    separately (with latent Leiden clusters computed on the integrated latent
+    space), and the average across all batches is returned.
+
     If existent, uses precomputed nearest neighbor graphs stored in
     ´adata.obsp[spatial_knng_key + '_connectivities']´ and
     ´adata.obsp[latent_knng_key + '_connectivities']´.
@@ -50,6 +56,8 @@ def compute_mlami(
         ´adata.obsp[latent_knng_key + '_connectivities']´ or spatial coordinates
         stored in ´adata.obsm[spatial_key]´ and the latent representation from a
         model stored in ´adata.obsm[latent_key]´.
+    batch_key:
+        Key under which the batches are stored in ´adata.obs´.
     spatial_knng_key:
         Key under which the spatial nearest neighbor graph is / will be stored
         in ´adata.obsp´ with the suffix '_connectivities'.
@@ -64,11 +72,16 @@ def compute_mlami(
     n_neighbors:
         Number of neighbors used for the construction of the nearest neighbor
         graphs from the spatial coordinates and the latent representation from
-        a model.
+        a model in case it is constructed.
+    min_res:
+        Minimum resolution for Leiden clustering.
+    max_res:
+        Maximum resolution for Leiden clustering.
+    res_num:
+        Number of linearly spaced Leiden resolutions between ´min_res´ and
+        ´max_res´ for which Leiden clusterings will be computed.
     seed:
         Random seed for reproducibility.
-    visualize_leiden_clustering:
-        If ´True´, visualize the spatial and latent Leiden clusterings.
 
     Returns
     ----------
@@ -79,53 +92,74 @@ def compute_mlami(
     spatial_knng_connectivities_key = spatial_knng_key + "_connectivities"
     latent_knng_connectivities_key = latent_knng_key + "_connectivities"
 
-    if spatial_knng_connectivities_key not in adata.obsp:
-        print("Computing spatial nearest neighbor graph...")
-        # Compute spatial (ground truth) connectivities
+    if batch_key is not None:
+        adata_batch_list = []
+        unique_batches = adata.obs[batch_key].unique().tolist()
+        for batch in unique_batches:
+            adata_batch = adata[adata.obs[batch_key] == batch]
+            adata_batch_list.append(adata_batch)       
+
+    if spatial_knng_connectivities_key in adata.obsp:
+        print("Using precomputed spatial nearest neighbor graph...")
+    elif batch_key is None:
+        print("Computing spatial nearest neighbor graph for entire dataset...")
         sc.pp.neighbors(adata=adata,
                         use_rep=spatial_key,
                         n_neighbors=n_neighbors,
                         random_state=seed,
                         key_added=spatial_knng_key)
-    else:
-        print("Using precomputed spatial nearest neighbor graph...")
+    elif batch_key is not None:
+        # Compute spatial nearest neighbor graph for each batch separately
+        for i, batch in enumerate(unique_batches):
+            print("Computing spatial nearest neighbor graph for "
+                  f"{batch_key} {batch}...")
+            sc.pp.neighbors(
+                adata=adata_batch_list[i],
+                use_rep=spatial_key,
+                n_neighbors=n_neighbors,
+                random_state=seed,
+                key_added=spatial_knng_key)
         
-    if latent_knng_connectivities_key not in adata.obsp:
+    if latent_knng_connectivities_key in adata.obsp:
+        print("Using precomputed latent nearest neighbor graph...")
+    else:
         print("Computing latent nearest neighbor graph...")
-        # Compute latent connectivities
         sc.pp.neighbors(adata=adata,
                         use_rep=latent_key,
                         n_neighbors=n_neighbors,
                         random_state=seed,
                         key_added=latent_knng_key)
-    else:
-        print("Using precomputed latent nearest neighbor graph...")
 
-    print("Computing MLAMI...")
     # Define search space of clustering resolutions
-    clustering_resolutions = np.linspace(start=0.1,
-                                         stop=1.0,
-                                         num=10,
+    clustering_resolutions = np.linspace(start=min_res,
+                                         stop=max_res,
+                                         num=res_num,
                                          dtype=np.float32)
 
-    # Calculate spatial Leiden clustering for different resolutions
-    for resolution in clustering_resolutions:
-        sc.tl.leiden(adata=adata,
-                     resolution=resolution,
-                     random_state=seed,
-                     key_added=f"leiden_spatial_{str(resolution)}",
-                     adjacency=adata.obsp[spatial_knng_connectivities_key])
+    if batch_key is None:
+        print("Computing spatial Leiden clusterings for entire dataset...")
+        # Calculate spatial Leiden clustering for different resolutions
+        for resolution in clustering_resolutions:
+            sc.tl.leiden(adata=adata,
+                        resolution=resolution,
+                        random_state=seed,
+                        key_added=f"leiden_spatial_{str(resolution)}",
+                        adjacency=adata.obsp[spatial_knng_connectivities_key])
+    elif batch_key is not None:
+        # Compute spatial Leiden clustering for each batch separately
+        for i, batch in enumerate(unique_batches):
+            print("Computing spatial Leiden clusterings for "
+                  f"{batch_key} {batch}...")
+            # Calculate spatial Leiden clustering for different resolutions
+            for resolution in clustering_resolutions:
+                sc.tl.leiden(
+                    adata=adata_batch_list[i],
+                    resolution=resolution,
+                    random_state=seed,
+                    key_added=f"leiden_spatial_{str(resolution)}",
+                    adjacency=adata_batch_list[i].obsp[spatial_knng_connectivities_key])        
 
-    # Plot Leiden clustering
-    if visualize_leiden_clustering:
-        with plt.rc_context({"figure.figsize": (5, 5)}):
-            sc.pl.spatial(adata=adata,
-                          color=[f"leiden_spatial_{str(resolution)}" for
-                                 resolution in clustering_resolutions],
-                          ncols=5,
-                          spot_size=0.03,
-                          legend_loc=None)
-
+    print("Computing latent Leiden clusterings...")
     # Calculate latent Leiden clustering for different resolutions
     for resolution in clustering_resolutions:
         sc.tl.leiden(adata,
@@ -133,26 +167,34 @@ def compute_mlami(
                      random_state=seed,
                      key_added=f"leiden_latent_{str(resolution)}",
                      adjacency=adata.obsp[latent_knng_connectivities_key])
-            
-    # Plot Leiden clustering
-    if visualize_leiden_clustering:
-        with plt.rc_context({"figure.figsize": (5, 5)}):
-            sc.pl.spatial(adata,
-                          color=[f"leiden_latent_{str(resolution)}" for
-                                 resolution in clustering_resolutions],
-                          ncols=5,
-                          spot_size=0.03,
-                          legend_loc=None)
+        if batch_key is not None:
+            for i, batch in enumerate(unique_batches):
+                adata_batch_list[i].obs[f"leiden_latent_{str(resolution)}"] = (
+                    adata.obs[f"leiden_latent_{str(resolution)}"])
 
-    # Calculate max LAMI over all clustering resolutions
-    lami_list = []
-    for spatial_resolution in clustering_resolutions:
-        for latent_resolution in clustering_resolutions:
-            lami_list.append(_compute_ami(
-                adata=adata,
-                cluster_group1_key=f"leiden_spatial_{str(spatial_resolution)}",
-                cluster_group2_key=f"leiden_latent_{str(latent_resolution)}"))
-    mlami = np.max(lami_list)
+    if batch_key is None:
+        print("Computing MLAMI for entire dataset...")
+        # Calculate max LAMI over all clustering resolutions
+        lami_list = []
+        for spatial_resolution in clustering_resolutions:
+            for latent_resolution in clustering_resolutions:
+                lami_list.append(_compute_ami(
+                    adata=adata,
+                    cluster_group1_key=f"leiden_spatial_{str(spatial_resolution)}",
+                    cluster_group2_key=f"leiden_latent_{str(latent_resolution)}"))
+        mlami = np.max(lami_list)
+    elif batch_key is not None:
+        for i, batch in enumerate(unique_batches):
+            print(f"Computing MLAMI for {batch_key} {batch}...")
+            batch_lami_list = []
+            for spatial_resolution in clustering_resolutions:
+                for latent_resolution in clustering_resolutions:
+                    batch_lami_list.append(_compute_ami(
+                        adata=adata_batch_list[i],
+                        cluster_group1_key=f"leiden_spatial_{str(spatial_resolution)}",
+                        cluster_group2_key=f"leiden_latent_{str(latent_resolution)}"))
+            batch_mlami = np.max(batch_lami_list)
+        mlami = np.mean(batch_mlami)
     return mlami
 
 
