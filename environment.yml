@@ -6,7 +6,7 @@ channels:
 dependencies:
   - python=3.9
   - jaxlib=*=*cuda*
-  - jax
+  - jax=0.4.13
   - cuda-nvcc
   - pip
   - poetry=1.4.2
