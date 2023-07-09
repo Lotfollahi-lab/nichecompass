@@ -11,8 +11,7 @@ from .gene_programs import (add_gps_from_gp_dict_to_adata,
                             extract_gp_dict_from_omnipath_lr_interactions,
                             filter_and_combine_gp_dict_gps,
                             get_unique_genes_from_gp_dict)
-from .graphs import (compute_graph_connectivities,
-                     compute_graph_indices_and_distances)
+from .graphs import compute_knn_graph_connectivities_and_distances
 
 __all__ = ["add_gps_from_gp_dict_to_adata",
            "add_multimodal_mask_to_adata",
@@ -25,5 +24,4 @@ __all__ = ["add_gps_from_gp_dict_to_adata",
            "get_gene_annotations",
            "generate_multimodal_pairing_dict",
            "get_unique_genes_from_gp_dict",
-           "compute_graph_connectivities",
-           "compute_graph_indices_and_distances"]
+           "compute_knn_graph_connectivities_and_distances"]

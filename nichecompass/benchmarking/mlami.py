@@ -12,6 +12,8 @@ import scanpy as sc
 from anndata import AnnData
 from sklearn.metrics import adjusted_mutual_info_score
 
+from ..utils import compute_knn_graph_connectivities_and_distances
+
 
 def compute_mlami(
         adata: AnnData,
@@ -24,6 +26,7 @@ def compute_mlami(
         min_res: float=0.1,
         max_res: float=1.0,
         res_num: int=3,
+        n_jobs: int=1,
         seed: int=0) -> float:
     """
     Compute the Maximum Leiden Adjusted Mutual Info (MLAMI) between the latent
@@ -57,7 +60,8 @@ def compute_mlami(
         stored in ´adata.obsm[spatial_key]´ and the latent representation from a
         model stored in ´adata.obsm[latent_key]´.
     batch_key:
-        Key under which the batches are stored in ´adata.obs´.
+        Key under which the batches are stored in ´adata.obs´. If ´None´, the
+        adata is assumed to only have one unique batch.
     spatial_knng_key:
         Key under which the spatial nearest neighbor graph is / will be stored
         in ´adata.obsp´ with the suffix '_connectivities'.
@@ -80,6 +84,8 @@ def compute_mlami(
     res_num:
         Number of linearly spaced Leiden resolutions between ´min_res´ and
         ´max_res´ for which Leiden clusterings will be computed.
+    n_jobs:
+        Number of jobs to use for parallelization of neighbor search.
     seed:
         Random seed for reproducibility.
 
@@ -88,7 +94,8 @@ def compute_mlami(
     mlami:
         MLAMI between all clustering resolution pairs.
     """
-    # Adding '_connectivities' as automatically added by sc.pp.neighbors
+    # Adding '_connectivities' as expected / added by 
+    # 'compute_knn_graph_connectivities_and_distances'
     spatial_knng_connectivities_key = spatial_knng_key + "_connectivities"
     latent_knng_connectivities_key = latent_knng_key + "_connectivities"
 
@@ -103,32 +110,37 @@ def compute_mlami(
         print("Using precomputed spatial nearest neighbor graph...")
     elif batch_key is None:
         print("Computing spatial nearest neighbor graph for entire dataset...")
-        sc.pp.neighbors(adata=adata,
-                        use_rep=spatial_key,
-                        n_neighbors=n_neighbors,
-                        random_state=seed,
-                        key_added=spatial_knng_key)
+        compute_knn_graph_connectivities_and_distances(
+                adata=adata,
+                feature_key=spatial_key,
+                knng_key=spatial_knng_key,
+                n_neighbors=n_neighbors,
+                random_state=seed,
+                n_jobs=n_jobs)
     elif batch_key is not None:
         # Compute spatial nearest neighbor graph for each batch separately
         for i, batch in enumerate(unique_batches):
             print("Computing spatial nearest neighbor graph for "
                   f"{batch_key} {batch}...")
-            sc.pp.neighbors(
-                adata=adata_batch_list[i],
-                use_rep=spatial_key,
-                n_neighbors=n_neighbors,
-                random_state=seed,
-                key_added=spatial_knng_key)
+            compute_knn_graph_connectivities_and_distances(
+                    adata=adata_batch_list[i],
+                    feature_key=spatial_key,
+                    knng_key=spatial_knng_key,
+                    n_neighbors=n_neighbors,
+                    random_state=seed,
+                    n_jobs=n_jobs)
         
     if latent_knng_connectivities_key in adata.obsp:
         print("Using precomputed latent nearest neighbor graph...")
     else:
         print("Computing latent nearest neighbor graph...")
-        sc.pp.neighbors(adata=adata,
-                        use_rep=latent_key,
-                        n_neighbors=n_neighbors,
-                        random_state=seed,
-                        key_added=latent_knng_key)
+        compute_knn_graph_connectivities_and_distances(
+                adata=adata,
+                feature_key=latent_key,
+                knng_key=latent_knng_key,
+                n_neighbors=n_neighbors,
+                random_state=seed,
+                n_jobs=n_jobs)
 
     # Define search space of clustering resolutions
     clustering_resolutions = np.linspace(start=min_res,

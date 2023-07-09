@@ -1,29 +1,30 @@
 """
 This module contains the Cell Type Local Inverse Simpson's Index Similarity
 (CLISIS) benchmark for testing how accurately the latent nearest neighbor graph
-preserves local neighborhood cell type heterogeneity from the spatial (ground
-truth) nearest neighbor graph. It is a measure for local cell type neighborhood
+preserves local neighborhood cell type heterogeneity from the spatial (physical)
+nearest neighbor graph. It is a measure for local cell type neighborhood
 preservation.
 """
 
 from typing import Optional
 
 import numpy as np
-import scanpy as sc
 from anndata import AnnData
-from scib.metrics.lisi import lisi_graph_py
+from scib_metrics import lisi_knn
+
+from ..utils import compute_knn_graph_connectivities_and_distances
 
 
 def compute_clisis(
         adata: AnnData,
         cell_type_key: str="cell_type",
-        condition_key: Optional[str]=None,
+        batch_key: Optional[str]=None,
         spatial_knng_key: str="spatial_knng",
-        latent_knng_key: str="latent_knng",
+        latent_knng_key: str="nichecompass_latent_knng",
         spatial_key: Optional[str]="spatial",
-        latent_key: Optional[str]="latent",
-        n_neighbors: Optional[int]=15,
-        lisi_graph_n_neighbors: int=90,
+        latent_key: Optional[str]="nichecompass_latent",
+        n_neighbors: Optional[int]=90,
+        n_jobs: int=1,
         seed: int=0) -> float:
     """
     Compute the Cell Type Local Inverse Simpson's Index Similarity (CLISIS). The
@@ -47,7 +48,7 @@ def compute_clisis(
     the median of the absolute normalized scores and subtract it from 1 so that
     values closer to '1' indicate better local neighborhood cell type
     heterogeneity preservation. The metric also works for multiple (unaligned)
-    conditions.
+    batches.
     If existent, uses precomputed nearest neighbor graphs stored in
     ´adata.obsp[spatial_knng_key + '_connectivities']´ and
     ´adata.obsp[latent_knng_key + '_connectivities']´.
@@ -96,8 +97,8 @@ def compute_clisis(
         Number of neighbors used for the construction of the nearest neighbor
         graphs from the spatial coordinates and the latent representation from
         a model.
-    lisi_graph_n_neighbors:
-        Number of neighbors used for the LISI computation.
+    n_jobs:
+        Number of jobs to use for parallelization of neighbor search.
     seed:
         Random seed for reproducibility.
 
@@ -106,126 +107,82 @@ def compute_clisis(
     clisis:
         The Cell Type Local Inverse Simpson's Index Similarity.
     """
-    # Adding '_connectivities' as automatically added by sc.pp.neighbors
+    # Adding '_connectivities' as expected / added by 
+    # 'compute_knn_graph_connectivities_and_distances'
     spatial_knng_connectivities_key = spatial_knng_key + "_connectivities"
     latent_knng_connectivities_key = latent_knng_key + "_connectivities"
 
     if spatial_knng_connectivities_key in adata.obsp:
         print("Using precomputed spatial nearest neighbor graph...")
-        # Create tmp adata as scib does not allow to pass custom keys for
-        # connectivities and neighbors
-        adata_tmp = adata.copy()
-        adata_tmp.obsp["connectivities"] = (
-            adata.obsp[spatial_knng_connectivities_key])
-        adata_tmp.uns["neighbors"] = (
-            adata.uns[spatial_knng_key])
 
         print("Computing spatial cell CLISI scores for entire dataset...")
-        spatial_cell_clisi_scores = lisi_graph_py(
-            adata=adata_tmp,
-            obs_key=cell_type_key,
-            n_neighbors=lisi_graph_n_neighbors,
-            perplexity=None,
-            subsample=None,
-            n_cores=1,
-            verbose=False)
+        spatial_cell_clisi_scores = lisi_knn(
+            X=adata.obsp[f"{spatial_knng_key}_distances"],
+            labels=adata.obs[cell_type_key])
         
-    elif condition_key is None:
+    elif batch_key is None:
         print("Computing spatial nearest neighbor graph for entire dataset...")  
-        # Compute spatial (ground truth) connectivities
-        sc.pp.neighbors(adata=adata,
-                        use_rep=spatial_key,
-                        n_neighbors=n_neighbors,
-                        random_state=seed,
-                        key_added=spatial_knng_key)
-        
-        print("Computing spatial cell CLISI scores for entire dataset...")
-        # Create tmp adata as scib does not allow to pass custom keys for
-        # connectivities and neighbors
-        adata_tmp = adata.copy()
-        adata_tmp.obsp["connectivities"] = (
-            adata.obsp[spatial_knng_connectivities_key])
-        adata_tmp.uns["neighbors"] = (
-            adata.uns[spatial_knng_key])
-
-        spatial_cell_clisi_scores = lisi_graph_py(
-            adata=adata_tmp,
-            obs_key=cell_type_key,
-            n_neighbors=lisi_graph_n_neighbors,
-            perplexity=None,
-            subsample=None,
-            n_cores=1,
-            verbose=False)
-        
-    elif condition_key is not None:
-        # Compute cell CLISI scores for spatial nearest neighbor graph
-        # of each condition separately and store in one array
-        unique_conditions = adata.obs[condition_key].unique().tolist()
-        spatial_cell_clisi_scores = np.zeros(len(adata))
-        adata.obs["index"] = np.arange(len(adata))
-        for condition in unique_conditions:
-            adata_condition = adata[adata.obs[condition_key] == condition]
-            
-            print("Computing spatial nearest neighbor graph for "
-                  f"{condition_key} {condition}...")
-            # Compute condition-specific spatial (ground truth) nearest
-            # neighbor graph
-            sc.pp.neighbors(
-                adata=adata_condition,
-                use_rep=spatial_key,
+        compute_knn_graph_connectivities_and_distances(
+                adata=adata,
+                feature_key=spatial_key,
+                knng_key=spatial_knng_key,
                 n_neighbors=n_neighbors,
                 random_state=seed,
-                key_added=spatial_knng_key)
+                n_jobs=n_jobs)
+        
+        print("Computing spatial cell CLISI scores for entire dataset...")
+        spatial_cell_clisi_scores = lisi_knn(
+            X=adata.obsp[f"{spatial_knng_key}_distances"],
+            labels=adata.obs[cell_type_key])
+
+    elif batch_key is not None:
+        # Compute cell CLISI scores for spatial nearest neighbor graph
+        # of each batch separately and add to array
+        unique_batches = adata.obs[batch_key].unique().tolist()
+        spatial_cell_clisi_scores = np.zeros(len(adata))
+        adata.obs["index"] = np.arange(len(adata))
+        for batch in unique_batches:
+            adata_batch = adata[adata.obs[batch_key] == batch]
             
-            # Create tmp adata as scib does not allow to pass custom keys for
-            # connectivities and neighbors
-            adata_tmp = adata_condition.copy()
-            adata_tmp.obsp["connectivities"] = (
-                adata_condition.obsp[spatial_knng_connectivities_key])
-            adata_tmp.uns["neighbors"] = (
-                adata_condition.uns[spatial_knng_key])
-                
-            condition_spatial_cell_clisi_scores = lisi_graph_py(
-                adata=adata_tmp,
-                obs_key=cell_type_key,
-                n_neighbors=lisi_graph_n_neighbors,
-                perplexity=None,
-                subsample=None,
-                n_cores=1,
-                verbose=False)
+            print("Computing spatial nearest neighbor graph for "
+                  f"{batch_key} {batch}...")
+            # Compute batch-specific spatial (ground truth) nearest
+            # neighbor graph
+            compute_knn_graph_connectivities_and_distances(
+                    adata=adata_batch,
+                    feature_key=spatial_key,
+                    knng_key=spatial_knng_key,
+                    n_neighbors=n_neighbors,
+                    random_state=seed,
+                    n_jobs=n_jobs)
+            
+            print("Computing spatial cell CLISI scores for "
+                  f"{batch_key} {batch}...")
+            batch_spatial_cell_clisi_scores = lisi_knn(
+                X=adata_batch.obsp[f"{spatial_knng_key}_distances"],
+                labels=adata_batch.obs[cell_type_key])
             
             # Save results
-            spatial_cell_clisi_scores[adata_condition.obs["index"].values] = (
-                condition_spatial_cell_clisi_scores)  
+            spatial_cell_clisi_scores[adata_batch.obs["index"].values] = (
+                batch_spatial_cell_clisi_scores)  
 
     if latent_knng_connectivities_key in adata.obsp:
         print("Using precomputed latent nearest neighbor graph...")
     else:
         print("Computing latent nearest neighbor graph...")
         # Compute latent connectivities
-        sc.pp.neighbors(adata=adata,
-                        use_rep=latent_key,
-                        n_neighbors=n_neighbors,
-                        random_state=seed,
-                        key_added=latent_knng_key)
+        compute_knn_graph_connectivities_and_distances(
+                adata=adata,
+                feature_key=latent_key,
+                knng_key=latent_knng_key,
+                n_neighbors=n_neighbors,
+                random_state=seed,
+                n_jobs=n_jobs)
 
     print("Computing latent cell CLISI scores...")
-    # Create tmp adata as scib does not allow to pass custom keys for
-    # connectivities and neighbors
-    adata_tmp = adata.copy()
-    adata_tmp.obsp["connectivities"] = (
-        adata.obsp[latent_knng_connectivities_key])
-    adata_tmp.uns["neighbors"] = (
-        adata.uns[latent_knng_key])
-
-    latent_cell_clisi_scores = lisi_graph_py(
-        adata=adata_tmp,
-        obs_key=cell_type_key,
-        n_neighbors=lisi_graph_n_neighbors,
-        perplexity=None,
-        subsample=None,
-        n_cores=1,
-        verbose=False)
+    latent_cell_clisi_scores = lisi_knn(
+        X=adata.obsp[f"{latent_knng_key}_distances"],
+        labels=adata.obs[cell_type_key])
 
     print("Computing CLISIS...")
     cell_rclisi_scores = latent_cell_clisi_scores / spatial_cell_clisi_scores
@@ -237,4 +194,3 @@ def compute_clisis(
 
     clisis = (1 - np.median(abs(norm_cell_log_rclisi_scores)))
     return clisis
-

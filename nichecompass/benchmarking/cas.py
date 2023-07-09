@@ -1,7 +1,7 @@
 """
 This module contains the Cell Type Affinity Similiarity (CAS) benchmark for
 testing how accurately the latent nearest neighbor graph preserves
-cell-type-pair edges from the spatial (ground truth) nearest neighbor graph.
+cell-type-pair edges from the spatial (physical) nearest neighbor graph.
 It is a measure for global cell type neighborhood preservation.
 """
 
@@ -9,22 +9,24 @@ import math
 from typing import Optional
 
 import numpy as np
-import scanpy as sc
 import scipy.sparse as sp
 import squidpy as sq
 from anndata import AnnData
+
+from ..utils import compute_knn_graph_connectivities_and_distances
 
 
 def compute_cas(
         adata: AnnData,
         cell_type_key: str="cell_type",
-        condition_key: Optional[str]=None,
+        batch_key: Optional[str]=None,
         spatial_knng_key: str="spatial_knng",
-        latent_knng_key: str="latent_knng",
+        latent_knng_key: str="nichecompass_latent_knng",
         spatial_key: Optional[str]="spatial",
-        latent_key: Optional[str]="latent",
+        latent_key: Optional[str]="nichecompass_latent",
         n_neighbors: Optional[int]=15,
         n_perms: int=1000,
+        n_jobs: int=1,
         seed: int=0) -> float:
     """
     Compute the Cell Type Affinity Similarity (CAS) between the latent nearest
@@ -35,11 +37,12 @@ def compute_cas(
     cell-type-pair similarity at all. The CAS is a variation of the Cell Type
     Affinity Distance which was first introduced by Lohoff, T. et al.
     Integration of spatial and single-cell transcriptomic data elucidates mouse
-    organogenesis. Nat. Biotechnol. 40, 74–85 (2022). It has also been adjusted
-    to work with multiple (unaligned) conditions. If multiple conditions are
-    present in the adata and the respective ´condition_key´ is passed, separate
-    spatial nearest neighbor graphs per condition will be computed and are then
-    combined as disconnected components by padding with 0s.
+    organogenesis. Nat. Biotechnol. 40, 74–85 (2022).
+    
+    If a ´batch_key´ is provided, separate spatial nearest neighbor graphs per
+    batch will be computed and are then combined as disconnected components by
+    padding with 0s.
+    
     If existent, uses precomputed nearest neighbor graphs stored in
     ´adata.obsp[spatial_knng_key + '_connectivities']´ and
     ´adata.obsp[latent_knng_key + '_connectivities']´.
@@ -65,9 +68,9 @@ def compute_cas(
         model stored in ´adata.obsm[latent_key]´.
     cell_type_key:
         Key under which the cell type annotations are stored in ´adata.obs´.
-    condition_key:
-        Key under which the conditions are stored in ´adata.obs´. If ´None´,
-        the adata is assumed to only have one unique condition.
+    batch_key:
+        Key under which the batches are stored in ´adata.obs´. If ´None´, the
+        adata is assumed to only have one unique batch.
     spatial_knng_key:
         Key under which the spatial nearest neighbor graph is / will be stored
         in ´adata.obsp´ with the suffix '_connectivities'.
@@ -86,6 +89,8 @@ def compute_cas(
     n_perms:
         Number of permutations used for the neighborhood enrichment score
         calculation.
+    n_jobs:
+        Number of jobs to use for parallelization of neighbor search.
     seed:
         Random seed for reproducibility.
 
@@ -94,97 +99,101 @@ def compute_cas(
     cas:
         Matrix similarity between the latent cell type affinity matrix and the
         spatial (ground truth) cell type affinity matrix (or
-        condition-aggregated spatial cell type affinity matrices) as measured by
+        batch-aggregated spatial cell type affinity matrices) as measured by
         one minus the size-normalied Frobenius norm of the element-wise matrix
         differences.
     """
-    # Adding '_connectivities' as automatically added by sc.pp.neighbors()
+    # Adding '_connectivities' as expected / added by 
+    # 'compute_knn_graph_connectivities_and_distances'
     spatial_knng_connectivities_key = spatial_knng_key + "_connectivities"
     latent_knng_connectivities_key = latent_knng_key + "_connectivities"
 
     if spatial_knng_connectivities_key in adata.obsp:
         print("Using precomputed spatial nearest neighbor graph...")
-    elif condition_key is None:
+    elif batch_key is None:
         print("Computing spatial nearest neighbor graph for entire dataset...")
-        # sc.pp.neighbors() returns weighted symmetric knn graph but
-        # nhood_enrichment will ignore the weights and treat it as an unweighted
-        # knn graph)
-        sc.pp.neighbors(adata=adata,
-                        use_rep=spatial_key,
-                        n_neighbors=n_neighbors,
-                        random_state=seed,
-                        key_added=spatial_knng_key)
-    elif condition_key is not None:
-        # Compute spatial nearest neighbor graph for each condition separately,
-        # then combine them as disconnected components by padding with 0s
-        adata_condition_list = []
-        unique_conditions = adata.obs[condition_key].unique().tolist()
-        for condition in unique_conditions:
-            print("Computing spatial nearest neighbor graph for "
-                  f"{condition_key} {condition}...")
-            adata_condition = adata[adata.obs[condition_key] == condition]
-
-            # sc.pp.neighbors() returns weighted symmetric knn graph but
-            # nhood_enrichment will ignore the weights and treat it as an
-            # unweighted knn graph)
-            sc.pp.neighbors(
-                adata=adata_condition,
-                use_rep=spatial_key,
+        # 'compute_knn_graph_connectivities_and_distances' returns weighted
+        # symmetric knn graph but nhood_enrichment will ignore the weights and
+        # treat it as an unweighted knn graph)
+        compute_knn_graph_connectivities_and_distances(
+                adata=adata,
+                feature_key=spatial_key,
+                knng_key=spatial_knng_key,
                 n_neighbors=n_neighbors,
                 random_state=seed,
-                key_added=spatial_knng_key)
+                n_jobs=n_jobs)
+    elif batch_key is not None:
+        # Compute spatial nearest neighbor graph for each batch separately,
+        # then combine them as disconnected components by padding with 0s
+        adata_batch_list = []
+        unique_batches = adata.obs[batch_key].unique().tolist()
+        for batch in unique_batches:
+            print("Computing spatial nearest neighbor graph for "
+                  f"{batch_key} {batch}...")
+            adata_batch = adata[adata.obs[batch_key] == batch]
 
-            adata_condition_list.append(adata_condition)
+            # 'compute_knn_graph_connectivities_and_distances' returns weighted
+            # symmetric knn graph but nhood_enrichment will ignore the weights and
+            # treat it as an unweighted knn graph)
+            compute_knn_graph_connectivities_and_distances(
+                    adata=adata_batch,
+                    feature_key=spatial_key,
+                    knng_key=spatial_knng_key,
+                    n_neighbors=n_neighbors,
+                    random_state=seed,
+                    n_jobs=n_jobs)
+
+            adata_batch_list.append(adata_batch)
 
         print("Combining spatial nearest neighbor graphs...")
-        condition_connectivities = []
-        len_before_condition = 0
-        for i in range(len(adata_condition_list)):
-            if i == 0: # first condition
-                after_condition_connectivities_extension = sp.csr_matrix(
-                    (adata_condition_list[0].shape[0],
+        batch_connectivities = []
+        len_before_batch = 0
+        for i in range(len(adata_batch_list)):
+            if i == 0: # first batch
+                after_batch_connectivities_extension = sp.csr_matrix(
+                    (adata_batch_list[0].shape[0],
                     (adata.shape[0] -
-                    adata_condition_list[0].shape[0])))
-                condition_connectivities.append(sp.hstack(
-                    (adata_condition_list[0].obsp[
+                    adata_batch_list[0].shape[0])))
+                batch_connectivities.append(sp.hstack(
+                    (adata_batch_list[0].obsp[
                         spatial_knng_connectivities_key],
-                    after_condition_connectivities_extension)))
-            elif i == (len(adata_condition_list) - 1): # last condition
-                before_condition_connectivities_extension = sp.csr_matrix(
-                    (adata_condition_list[i].shape[0],
+                    after_batch_connectivities_extension)))
+            elif i == (len(adata_batch_list) - 1): # last batch
+                before_batch_connectivities_extension = sp.csr_matrix(
+                    (adata_batch_list[i].shape[0],
                     (adata.shape[0] -
-                    adata_condition_list[i].shape[0])))
-                condition_connectivities.append(sp.hstack(
-                    (before_condition_connectivities_extension,
-                    adata_condition_list[i].obsp[
+                    adata_batch_list[i].shape[0])))
+                batch_connectivities.append(sp.hstack(
+                    (before_batch_connectivities_extension,
+                    adata_batch_list[i].obsp[
                         spatial_knng_connectivities_key])))
-            else: # middle conditiones
-                before_condition_connectivities_extension = sp.csr_matrix(
-                    (adata_condition_list[i].shape[0], len_before_condition))
-                after_condition_connectivities_extension = sp.csr_matrix(
-                    (adata_condition_list[i].shape[0],
+            else: # middle batches
+                before_batch_connectivities_extension = sp.csr_matrix(
+                    (adata_batch_list[i].shape[0], len_before_batch))
+                after_batch_connectivities_extension = sp.csr_matrix(
+                    (adata_batch_list[i].shape[0],
                     (adata.shape[0] -
-                    adata_condition_list[i].shape[0] -
-                    len_before_condition)))
-                condition_connectivities.append(sp.hstack(
-                    (before_condition_connectivities_extension,
-                    adata_condition_list[i].obsp[
+                    adata_batch_list[i].shape[0] -
+                    len_before_batch)))
+                batch_connectivities.append(sp.hstack(
+                    (before_batch_connectivities_extension,
+                    adata_batch_list[i].obsp[
                         spatial_knng_connectivities_key],
-                    after_condition_connectivities_extension)))
-            len_before_condition += adata_condition_list[i].shape[0]
-        connectivities = sp.vstack(condition_connectivities)
+                    after_batch_connectivities_extension)))
+            len_before_batch += adata_batch_list[i].shape[0]
+        connectivities = sp.vstack(batch_connectivities)
         adata.obsp[spatial_knng_connectivities_key] = connectivities
-        adata.uns[spatial_knng_key] = adata_condition_list[0].uns[
+        adata.uns[spatial_knng_key] = adata_batch_list[0].uns[
             spatial_knng_key]
 
     print("Computing spatial neighborhood enrichment scores...")
     # Compute cell type affinity matrix for spatial nearest neighbor graph
     sq.gr.nhood_enrichment(adata=adata,
-                            cluster_key=cell_type_key,
-                            connectivity_key=spatial_knng_key,
-                            n_perms=n_perms,
-                            seed=seed,
-                            show_progress_bar=False)
+                           cluster_key=cell_type_key,
+                           connectivity_key=spatial_knng_key,
+                           n_perms=n_perms,
+                           seed=seed,
+                           show_progress_bar=False)
     
     # Save results in adata (no ´key_added´ functionality in squidpy)
     adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"] = {}
@@ -196,14 +205,16 @@ def compute_cas(
         print("Using precomputed latent nearest neighbor graph...")
     else:
         print("Computing latent nearest neighbor graph...")
-        # sc.pp.neighbors() returns weighted symmetric knn graph but
-        # nhood_enrichment will ignore the weights and treat it as an unweighted
-        # knn graph)
-        sc.pp.neighbors(adata=adata,
-                        use_rep=latent_key,
-                        n_neighbors=n_neighbors,
-                        random_state=seed,
-                        key_added=latent_knng_key)
+        # 'compute_knn_graph_connectivities_and_distances' returns weighted
+        # symmetric knn graph but nhood_enrichment will ignore the weights and
+        # treat it as an unweighted knn graph)
+        compute_knn_graph_connectivities_and_distances(
+                adata=adata,
+                feature_key=latent_key,
+                knng_key=latent_knng_key,
+                n_neighbors=n_neighbors,
+                random_state=seed,
+                n_jobs=n_jobs)
 
     print("Computing latent neighborhood enrichment scores...")
     # Compute cell type affinity matrix for latent nearest neighbor graph
@@ -235,7 +246,8 @@ def compute_cas(
     cad = np.linalg.norm(nhood_enrichment_zscores_diff)
 
     # Normalize CAD to be between 0 and 1 and convert to CAS by subtracting
-    # from 1
+    # from 1. First, normalize by the number of cell types, then apply scaling
+    # function
     cad_norm = (math.atan(cad / nhood_enrichment_zscores_diff.shape[0]) /
                 (math.pi / 2))
     cas = 1 - cad_norm
@@ -246,7 +258,7 @@ def compute_avg_cas(
         adata: AnnData,
         cell_type_key: str="cell_type",
         spatial_key: str="spatial",
-        latent_key: str="latent",
+        latent_key: str="nichecompass_latent",
         min_n_neighbors: int=1,
         max_n_neighbors: int=15,
         seed: int=0) -> float:
@@ -294,12 +306,11 @@ def compute_avg_cas(
         cas_list.append(compute_cas(
             adata=adata,
             cell_type_key=cell_type_key,
-            spatial_knng_key=f"nichecompass_spatial_{n_neighbors}nng",
-            latent_knng_key=f"nichecompass_latent_{n_neighbors}nng",
+            spatial_knng_key=f"{spatial_key}_{n_neighbors}nng",
+            latent_knng_key=f"{latent_key}_{n_neighbors}nng",
             spatial_key=spatial_key,
             latent_key=latent_key,
             n_neighbors=n_neighbors,
-            seed=seed,
-            visualize_ccc_maps=visualize_ccc_maps))
+            seed=seed))
     avg_cas = np.mean(cas_list)
     return avg_cas
