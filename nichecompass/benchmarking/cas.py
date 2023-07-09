@@ -142,7 +142,6 @@ def compute_cas(
                     n_neighbors=n_neighbors,
                     random_state=seed,
                     n_jobs=n_jobs)
-
             adata_batch_list.append(adata_batch)
 
         print("Combining spatial nearest neighbor graphs...")
@@ -183,8 +182,8 @@ def compute_cas(
             len_before_batch += adata_batch_list[i].shape[0]
         connectivities = sp.vstack(batch_connectivities)
         adata.obsp[spatial_knng_connectivities_key] = connectivities
-        adata.uns[spatial_knng_key] = adata_batch_list[0].uns[
-            spatial_knng_key]
+        adata.uns[f"{spatial_knng_key}_n_neighbors"] = adata_batch_list[0].uns[
+            f"{spatial_knng_key}_n_neighbors"]
 
     print("Computing spatial neighborhood enrichment scores...")
     # Compute cell type affinity matrix for spatial nearest neighbor graph

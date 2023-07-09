@@ -93,6 +93,7 @@ def compute_gcs(
 
     if spatial_knng_connectivities_key in adata.obsp:
         print("Using precomputed spatial nearest neighbor graph...")
+
     elif batch_key is None:
         print("Computing spatial nearest neighbor graph for entire dataset...")
         compute_knn_graph_connectivities_and_distances(
@@ -102,6 +103,7 @@ def compute_gcs(
                 n_neighbors=n_neighbors,
                 random_state=seed,
                 n_jobs=n_jobs)
+        
     elif batch_key is not None:
         # Compute spatial nearest neighbor graph for each batch separately
         for i, batch in enumerate(unique_batches):
