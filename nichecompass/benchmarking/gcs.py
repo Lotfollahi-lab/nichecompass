@@ -66,7 +66,7 @@ def compute_gcs(
     n_neighbors:
         Number of neighbors used for the construction of the nearest neighbor
         graphs from the spatial coordinates and the latent representation from
-        a model in case it is constructed.
+        a model in case they are constructed.
     n_jobs:
         Number of jobs to use for parallelization of neighbor search.
     seed:

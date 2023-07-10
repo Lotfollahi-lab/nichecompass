@@ -50,6 +50,7 @@ def compute_cas(
     and ´n_neighbors´, , and stores them in
     ´adata.obsp[spatial_knng_key + '_connectivities']´ and
     ´adata.obsp[latent_knng_key + '_connectivities']´ respectively.
+    
     Note that the used neighborhood enrichment implementation from squidpy
     slightly deviates from the original method and we construct nearest neighbor
     graphs using the original spatial coordinates and the latent representation
@@ -85,7 +86,7 @@ def compute_cas(
     n_neighbors:
         Number of neighbors used for the construction of the nearest neighbor
         graphs from the spatial coordinates and the latent representation from
-        a model.
+        a model in case they are constructed.
     n_perms:
         Number of permutations used for the neighborhood enrichment score
         calculation.
@@ -238,7 +239,7 @@ def compute_cas(
         adata.uns[f"{cell_type_key}_spatial_nhood_enrichment"]["zscore"])
 
     # Remove np.nan ´z_scores´ which can happen as a result of
-    # ´sq.pl.nhood_enrichment´ permutation if std is 0
+    # ´sq.gr.nhood_enrichment´ permutation if std is 0
     nhood_enrichment_zscores_diff = (
         nhood_enrichment_zscores_diff[~np.isnan(nhood_enrichment_zscores_diff)])
     

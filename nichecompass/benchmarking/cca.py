@@ -22,7 +22,7 @@ def compute_cca(
         verbose: bool=False) -> float:
     """
     Use the latent representation / active gene program scores of a trained
-    deep generative model for cell category (e.g. cell-type) classification 
+    deep generative model for cell category (e.g. cell type) classification 
     using a benchmark classifier. Compute the accuracy between the predicted 
     cell categories and the ground truth cell categories for the entire dataset.
     A higher value indicates that the latent space can more accurately predict

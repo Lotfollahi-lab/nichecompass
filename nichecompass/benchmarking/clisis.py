@@ -47,8 +47,12 @@ def compute_clisis(
     preservation to scale our metric between '0' and '1'. Finally, we compute
     the median of the absolute normalized scores and subtract it from 1 so that
     values closer to '1' indicate better local neighborhood cell type
-    heterogeneity preservation. The metric also works for multiple (unaligned)
-    batches.
+    heterogeneity preservation.
+    
+    If a ´batch_key´ is provided, separate spatial nearest neighbor graphs per
+    batch will be computed and the spatial clisi scores are computed for each
+    batch separately.
+    
     If existent, uses precomputed nearest neighbor graphs stored in
     ´adata.obsp[spatial_knng_key + '_connectivities']´ and
     ´adata.obsp[latent_knng_key + '_connectivities']´.
@@ -82,6 +86,9 @@ def compute_clisis(
         model stored in ´adata.obsm[latent_key]´.
     cell_type_key:
         Key under which the cell type annotations are stored in ´adata.obs´.
+    batch_key:
+        Key under which the batches are stored in ´adata.obs´. If ´None´, the
+        adata is assumed to only have one unique batch.
     spatial_knng_key:
         Key under which the spatial nearest neighbor graph is / will be stored
         in ´adata.obsp´ with the suffix '_connectivities'.
@@ -96,7 +103,7 @@ def compute_clisis(
     n_neighbors:
         Number of neighbors used for the construction of the nearest neighbor
         graphs from the spatial coordinates and the latent representation from
-        a model.
+        a model in case they are constructed.
     n_jobs:
         Number of jobs to use for parallelization of neighbor search.
     seed:

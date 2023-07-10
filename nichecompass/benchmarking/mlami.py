@@ -76,7 +76,7 @@ def compute_mlami(
     n_neighbors:
         Number of neighbors used for the construction of the nearest neighbor
         graphs from the spatial coordinates and the latent representation from
-        a model in case it is constructed.
+        a model in case they are constructed.
     min_res:
         Minimum resolution for Leiden clustering.
     max_res:

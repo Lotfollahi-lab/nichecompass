@@ -25,22 +25,18 @@ from .mlami import compute_mlami
 def compute_benchmarking_metrics(
         adata: AnnData,
         metrics: list=["gcs",
-                       "mlami",
                        "cas",
                        "clisis",
-                       "cari",
                        "cnmi",
                        "casw",
                        "clisi",
-                       "cca",
                        "basw",
                        "bgc",
-                       "bilisi",
-                       "kbet"],
+                       "bilisi"],
         cell_type_key: str="cell_type",
         batch_key: Optional[str]=None, 
-        spatial_key: Optional[str]="spatial",
-        latent_key: Optional[str]="nichecompass_latent",
+        spatial_key: str="spatial",
+        latent_key: str="nichecompass_latent",
         ger_genes: Optional[Union[str, list]]=None,
         n_jobs: int=1,
         seed: int=0,
@@ -50,14 +46,10 @@ def compute_benchmarking_metrics(
     ----------
     adata:
         AnnData object to run the benchmarks for.
+    metrics:
+        List of metrics which will be computed.
     cell_type_key:
         Key under which the cell type annotations are stored in ´adata.obs´.
-    spatial_knng_key:
-        Key under which the spatial nearest neighbor graph will be stored in
-        ´adata.obsp´ with the suffix '_connectivities'.
-    latent_knng_key:
-        Key under which the latent nearest neighbor graph will be stored in
-        ´adata.obsp´ with the suffix '_connectivities'.
     spatial_key:
         Key under which the spatial coordinates are stored in ´adata.obsm´.
     latent_key:
@@ -76,32 +68,53 @@ def compute_benchmarking_metrics(
     Returns
     ----------
     benchmark_dict:
-        Dictionary containing the calculated benchmarking metrics under keys
-        ´gcs´, ´mlami´, ´cas´, ´clisis´, ´gerr2´ and ´cca´.
+        Dictionary containing the calculated benchmarking metrics.
     """
     start_time = time.time()
+
+    # Metrics use different k's for the knn graph
+    # Based on specified metrics, determine which knn graphs to compute
+    n_neighbors_list = [15] # default k for most metrics
+    if "kbet" in metrics:
+        n_neighbors_list.append(50)
+    if any(metric in ["clisis", "clisi", "blisi"] for metric in metrics):
+        n_neighbors_list.append(90)
     
     # Compute nearest neighbor graphs
     if batch_key is None:
-        print("Computing spatial nearest neighbor graphs for entire dataset...")
-        for n_neighbors in [15, 50, 90]:
-            compute_knn_graph_connectivities_and_distances(
-                    adata=adata,
-                    feature_key=spatial_key,
-                    knng_key=f"nichecompass_spatial_{n_neighbors}knng",
-                    n_neighbors=n_neighbors,
-                    random_state=seed,
-                    n_jobs=n_jobs)
+        # Compute spatial nearest neighbor graphs
+        for n_neighbors in n_neighbors_list:
+            if (f"nichecompass_spatial_{n_neighbors}knng_connectivities"
+                not in adata.obsp):
+                print("Computing spatial nearest neighbor graph with "
+                      f"{n_neighbors} neighbors for entire dataset...")
+                compute_knn_graph_connectivities_and_distances(
+                        adata=adata,
+                        feature_key=spatial_key,
+                        knng_key=f"nichecompass_spatial_{n_neighbors}knng",
+                        n_neighbors=n_neighbors,
+                        random_state=seed,
+                        n_jobs=n_jobs)
+            else:
+                print(f"Using precomputed spatial nearest neighbor graph with "
+                      f"{n_neighbors} neighbors...")
         
-        print("Computing latent nearest neighbor graphs for entire dataset...")
-        for n_neighbors in [15, 50, 90]:
-            compute_knn_graph_connectivities_and_distances(
-                    adata=adata,
-                    feature_key=latent_key,
-                    knng_key=f"nichecompass_latent_{n_neighbors}knng",
-                    n_neighbors=n_neighbors,
-                    random_state=seed,
-                    n_jobs=n_jobs)
+        # Compute latent nearest neighbor graphs
+        for n_neighbors in n_neighbors_list:
+            if (f"nichecompass_latent_{n_neighbors}knng_connectivities"
+                not in adata.obsp):
+                print("Computing latent nearest neighbor graph with "
+                      f"{n_neighbors} neighbors for entire dataset...")
+                compute_knn_graph_connectivities_and_distances(
+                        adata=adata,
+                        feature_key=latent_key,
+                        knng_key=f"nichecompass_latent_{n_neighbors}knng",
+                        n_neighbors=n_neighbors,
+                        random_state=seed,
+                        n_jobs=n_jobs)
+            else:
+                print(f"Using precomputed latent nearest neighbor graph with "
+                      f"{n_neighbors} neighbors...")                
 
     elapsed_time = time.time() - start_time
     minutes = int(elapsed_time // 60)

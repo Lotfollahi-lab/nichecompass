@@ -8,7 +8,7 @@ import numpy as np
 
 
 def convert_to_one_hot(vector: np.ndarray,
-                       n_classes: Optional[int]):
+                       n_classes: Optional[int]) -> np.array:
     """
     Converts an input 1-D vector of integer labels into a 2-D array of one-hot
     vectors, where for an i'th input value of j, a '1' will be inserted in the
