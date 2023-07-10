@@ -14,16 +14,16 @@ classifiers = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.09"
+python = "^3.9"
 bokeh = { version = "2.4.3", source = "pypi" }
 holoviews = { version = "1.15.4", source = "pypi" }
 mlflow = { version = "1.28.0", source = "pypi" }
 pyreadr = { version = "0.4.6", source = "pypi" }
 selenium = { version = "4.8.2", source = "pypi" }
-scib = { version = "1.1.1", source = "pypi" }
+scib-metrics = { version = "0.3.3", source = "pypi" }
 scikit-misc = { version = "0.3.0", source = "pypi" }
-scglue = { version = "0.3.2", source = "pypi" }
 squidpy = { version = "1.2.2", source = "pypi" }
+scglue = { version = "0.3.2", source = "pypi" }
 torch-geometric = { version = "2.1.0post1", source = "pypi" }
 torch = { version = "2.0.0", source = "torch" }
 torch-scatter = { version = "2.1.1", source = "torch-scatter" }

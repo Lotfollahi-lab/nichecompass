@@ -1,10 +1,3 @@
-# This is a trick to make jax use the right cudnn version (needs to be executed
-# before importing scanpy)
-import jax.numpy as jnp
-temp_array = jnp.array([1, 2, 3])
-temp_idx = jnp.array([1])
-temp_array[temp_idx]
-
 from .analysis import (aggregate_obsp_matrix_per_cell_type,
                        create_cell_type_chord_plot_from_df,
                        create_new_color_dict,

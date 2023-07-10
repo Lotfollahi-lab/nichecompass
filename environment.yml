@@ -16,4 +16,3 @@ dependencies:
     - ipykernel==6.15.3
     - ipywidgets==8.0.2
     - jupyterlab==3.4.7
-    - scib_metrics==0.3.3
