@@ -14,7 +14,8 @@ from matplotlib.ticker import MaxNLocator
 def eval_metrics(
         edge_recon_probs: Union[torch.Tensor, np.ndarray],
         edge_labels: Union[torch.Tensor, np.ndarray],
-        edge_incl: Union[torch.Tensor, np.ndarray],
+        edge_same_cat_covariates_cat: Optional[Union[torch.Tensor, np.ndarray]]=None,
+        edge_incl: Optional[Union[torch.Tensor, np.ndarray]]=None,
         gene_expr_preds: Optional[Union[torch.Tensor, np.ndarray]]=None,
         gene_expr: Optional[Union[torch.Tensor, np.ndarray]]=None,
         chrom_access_preds: Optional[Union[torch.Tensor, np.ndarray]]=None,
@@ -74,6 +75,9 @@ def eval_metrics(
         eval_dict["chrom_access_mse_score"] = skm.mean_squared_error(
             chrom_access,
             chrom_access_preds)
+        
+    if edge_same_cat_covariates_cat is not None:
+        print(edge_same_cat_covariates_cat)
         
     if edge_incl is not None:
         edge_incl = edge_incl.astype(bool)
