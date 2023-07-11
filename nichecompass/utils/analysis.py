@@ -282,6 +282,8 @@ def generate_enriched_gp_info_plots(plot_label: str,
         :n_top_enriched_gps]
     gps = adata.uns[differential_gp_test_results_key]["gene_program"][
         :n_top_enriched_gps]
+    log_bayes_factors = adata.uns[differential_gp_test_results_key]["log_bayes_factor"][
+        :n_top_enriched_gps]
     
     for gp in gps:
         # Get source and target genes, gene importances and gene signs and store
@@ -363,6 +365,7 @@ def generate_enriched_gp_info_plots(plot_label: str,
             adata=adata,
             sample_key=sample_key,
             gps=gps,
+            log_bayes_factors=log_bayes_factors,
             cat_key=cat_key,
             cat_palette=cat_palette,
             cats=cats,
@@ -382,6 +385,7 @@ def generate_enriched_gp_info_plots(plot_label: str,
 def plot_enriched_gp_info_plots_(adata: AnnData,
                                  sample_key: str,
                                  gps: list,
+                                 log_bayes_factors: list,
                                  cat_key: str,
                                  cat_palette: dict,
                                  cats: list,
@@ -403,7 +407,9 @@ def plot_enriched_gp_info_plots_(adata: AnnData,
     sample_key:
         Key in ´adata.obs´ where the samples are stored.
     gps:
-        List of gene programs for which info plots will be created.        
+        List of gene programs for which info plots will be created.
+    log_bayes_factors:
+        List of log bayes factors corresponding to gene programs
     cat_key:
         Key in ´adata.obs´ where the categories that are used as colors for the
         enriched category plot are stored.
@@ -448,7 +454,7 @@ def plot_enriched_gp_info_plots_(adata: AnnData,
         axs = axs.reshape(1, -1)
     title = fig.suptitle(t=suptitle,
                          x=0.55,
-                         y=(1.1 if len(gps) == 1 else 0.93),
+                         y=(1.1 if len(gps) == 1 else 0.97),
                          fontsize=20)
     
     # Plot enriched gp category and gene program latent scores
@@ -471,7 +477,7 @@ def plot_enriched_gp_info_plots_(adata: AnnData,
                 ax=axs[i, 1],
                 title=f"{gp[:gp.index('_')]}\n"
                       f"{gp[gp.index('_') + 1: gp.rindex('_')].replace('_', ' ')}"
-                      f"\n{gp[gps[i].rindex('_') + 1:]} score",
+                      f"\n{gp[gps[i].rindex('_') + 1:]} score (LBF: {round(log_bayes_factors[i])})",
                 colorbar_loc="bottom",
                 show=False)
         else:
@@ -491,7 +497,8 @@ def plot_enriched_gp_info_plots_(adata: AnnData,
                 color=gps[i],
                 color_map="RdBu",
                 spot_size=spot_size,
-                title=f"{gps[i].split('_', 1)[0]}\n{gps[i].split('_', 1)[1]}",
+                title=f"{gps[i].split('_', 1)[0]}\n{gps[i].split('_', 1)[1]} "
+                      f"(LBF: {round(log_bayes_factors[i])})",
                 legend_loc=None,
                 ax=axs[i, 1],
                 colorbar_loc="bottom",
@@ -608,9 +615,9 @@ default_color_dict = {
     "0": "#FF0000",  # Red
     "1": "#00CED1",  # Dark Turquoise
     "2": "#6B5B95",  # Purple
-    "3": "#FF8C8C",  # Salmon Pink
+    "3": "#4682B4", # Steel Blue
     "4": "#FFD966",  # Yellow
-    "5": "#FFB83F",  # Light Orange
+    "5": "#A52A2A",  # Brown
     "6": "#FF9326",  # Orange
     "7": "#FFED80",  # Soft Yellow
     "8": "#FFFEA3",  # Pale Canary
@@ -632,7 +639,7 @@ default_color_dict = {
     "24": "#9370DB", # Medium Purple
     "25": "#7B68EE", # Medium Slate Blue
     "26": "#4169E1", # Royal Blue
-    "27": "#4682B4", # Steel Blue
+    "27": "#FF8C8C", # Salmon Pink
     "28": "#FFAA80", # Light Coral
     "29": "#48D1CC", # Medium Turquoise
     "30": "#40E0D0", # Turquoise
@@ -657,7 +664,7 @@ default_color_dict = {
     "49": "#FF7F50", # Coral
     "50": "#CD5C5C", # Indian Red
     "51": "#B22222", # Fire Brick
-    "52": "#A52A2A", # Brown
+    "52": "#FFB83F",  # Light Orange
     "53": "#8B0000", # Dark Red
     "54": "#D2691E", # Chocolate
     "55": "#A0522D", # Sienna
@@ -665,7 +672,7 @@ default_color_dict = {
     "57": "#808080", # Gray
     "58": "#A9A9A9", # Dark Gray
     "59": "#C0C0C0", # Silver
-    "60": "#D3D3D3", # Light Gray
+    "60": "#9DD84A",
     "61": "#F5F5F5", # White Smoke
     "62": "#F17171", # Light Red
     "63": "#000000", # Black
@@ -700,13 +707,17 @@ default_color_dict = {
     "92": "#C3525A", # Dark Red
     "93": "#B85D8E", # Berry
     "94": "#7D5295", # Deep Purple
-    "-1" : "#9DD84A",
-    "None" : "#D3D3D3"
+    "-1" : "#E1D9D1",
+    "None" : "#E1D9D1"
 }
 
 def create_new_color_dict(
         adata,
-        cat_key):
+        cat_key,
+        cats="None",
+        overwrite_color_dict={"-1" : "#E1D9D1"}):
     new_categories = adata.obs[cat_key].unique().tolist()
     new_color_dict = {key: value for key, value in zip(new_categories, default_color_dict.values())}
+    for key, val in overwrite_color_dict.items():
+        new_color_dict[key] = val
     return new_color_dict
