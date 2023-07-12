@@ -178,21 +178,26 @@ def compute_benchmarking_metrics(
               f"{seconds} seconds.\n")
               
     if "clisis" in metrics:
-        print("Computing CLISIS metric...")
-        benchmark_dict["clisis"] = compute_clisis(
-            adata=adata,
-            cell_type_key=cell_type_key,
-            batch_key=batch_key,
-            spatial_knng_key="nichecompass_spatial_90knng",
-            latent_knng_key="nichecompass_latent_90knng",
-            seed=seed)
-              
-        elapsed_time = time.time() - start_time
-        minutes = int(elapsed_time // 60)
-        seconds = int(elapsed_time % 60)
-        print("CLISIS metric computed. "
-              f"Elapsed time: {minutes} minutes "
-              f"{seconds} seconds.\n")
+        try:
+            print("Computing CLISIS metric...")
+            benchmark_dict["clisis"] = compute_clisis(
+                adata=adata,
+                cell_type_key=cell_type_key,
+                batch_key=batch_key,
+                spatial_knng_key="nichecompass_spatial_90knng",
+                latent_knng_key="nichecompass_latent_90knng",
+                seed=seed)
+
+            elapsed_time = time.time() - start_time
+            minutes = int(elapsed_time // 60)
+            seconds = int(elapsed_time % 60)
+            print("CLISIS metric computed. "
+                  f"Elapsed time: {minutes} minutes "
+                  f"{seconds} seconds.\n")
+        except IndexError:
+            print("Could not compute CLISIS metric.")
+            benchmark_dict["clisis"] = 0.
+            
     
     # Biological conservation metrics
     if "cnmi" in metrics or "cari" in metrics:
@@ -227,17 +232,21 @@ def compute_benchmarking_metrics(
               f"{seconds} seconds.\n")
               
     if "clisi" in metrics:
-        print("Computing CLISI metric...")
-        benchmark_dict["clisi"] = scib_metrics.clisi_knn(
-            X=adata.obsp["nichecompass_latent_90knng_distances"],
-            labels=adata.obs[cell_type_key])
-              
-        elapsed_time = time.time() - start_time
-        minutes = int(elapsed_time // 60)
-        seconds = int(elapsed_time % 60)
-        print("CLISI metric computed. "
-              f"Elapsed time: {minutes} minutes "
-              f"{seconds} seconds.\n")
+        try:
+            print("Computing CLISI metric...")
+            benchmark_dict["clisi"] = scib_metrics.clisi_knn(
+                X=adata.obsp["nichecompass_latent_90knng_distances"],
+                labels=adata.obs[cell_type_key])
+
+            elapsed_time = time.time() - start_time
+            minutes = int(elapsed_time // 60)
+            seconds = int(elapsed_time % 60)
+            print("CLISI metric computed. "
+                  f"Elapsed time: {minutes} minutes "
+                  f"{seconds} seconds.\n")
+        except IndexError:
+            print("Could not compute CLISI metric.")
+            benchmark_dict["clisi"] = 0.
               
     if "gerr2" in metrics:
         print("Computing GERR2 Metric...")
