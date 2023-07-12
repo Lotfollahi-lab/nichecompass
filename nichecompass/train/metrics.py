@@ -77,7 +77,16 @@ def eval_metrics(
             chrom_access_preds)
         
     if edge_same_cat_covariates_cat is not None:
-        print(edge_same_cat_covariates_cat)
+        for i, edge_same_cat_covariate_cat in enumerate(edge_same_cat_covariates_cat):
+            # Only include negative sampled edges (edge label is 0)
+            edge_same_cat_covariate_cat_incl = edge_labels == 0
+            edge_same_cat_covariate_cat_recon_probs = edge_recon_probs[edge_same_cat_covariate_cat_incl]
+            edge_same_cat_covariate_cat_labels = edge_same_cat_covariate_cat[edge_same_cat_covariate_cat_incl]
+            same_cat_mask = edge_same_cat_covariate_cat_labels == 1
+            diff_cat_mask = edge_same_cat_covariate_cat_labels == 0
+            same_cat_mean = np.mean(edge_same_cat_covariate_cat_recon_probs[same_cat_mask])
+            diff_cat_mean = np.mean(edge_same_cat_covariate_cat_recon_probs[diff_cat_mask])
+            eval_dict[f"cat_covariate{i}_mean_sim_diff"] = diff_cat_mean - same_cat_mean
         
     if edge_incl is not None:
         edge_incl = edge_incl.astype(bool)

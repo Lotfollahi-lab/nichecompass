@@ -694,7 +694,11 @@ class Trainer(BaseTrainerMixin):
               f"{val_eval_dict['gene_expr_mse_score']:.4f}")
         if "chrom_access_mse_score" in val_eval_dict.keys():
             print("Val chrom access MSE score: "
-                f"{val_eval_dict['chrom_access_mse_score']:.4f}")            
+                f"{val_eval_dict['chrom_access_mse_score']:.4f}")
+        for i in range(self.n_cat_covariates):
+            if f"cat_covariate{i}_mean_sim_diff" in val_eval_dict.keys():
+                print(f"Val cat covariate{i} mean sim diff: "
+                      f"{val_eval_dict[f'cat_covariate{i}_mean_sim_diff']:.4f}")
             
         # Log evaluation metrics
         if self.mlflow_experiment_id is not None:
