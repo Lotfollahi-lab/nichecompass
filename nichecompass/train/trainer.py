@@ -116,6 +116,10 @@ class Trainer(BaseTrainerMixin):
         self.counts_key = counts_key
         self.adj_key = adj_key
         self.cat_covariates_keys = cat_covariates_keys
+        if self.cat_covariates_keys is None:
+            self.n_cat_covariates = 0
+        else:
+            self.n_cat_covariates = len(self.cat_covariates_keys)
         self.gp_targets_mask_key = gp_targets_mask_key
         self.gp_sources_mask_key = gp_sources_mask_key
         self.edge_train_ratio_ = 1 - edge_val_ratio
@@ -490,6 +494,8 @@ class Trainer(BaseTrainerMixin):
 
         edge_recon_probs_val_accumulated = np.array([])
         edge_recon_labels_val_accumulated = np.array([])
+        edge_same_cat_covariates_cat_val_accumulated = [
+            np.array([]) for _ in range(self.n_cat_covariates)]
         edge_incl_val_accumulated = np.array([])
 
         # Jointly loop through edge- and node-level batches, repeating node-
@@ -549,19 +555,21 @@ class Trainer(BaseTrainerMixin):
                 edge_recon_labels_val_accumulated,
                 edge_recon_labels_val.detach().cpu().numpy())
             if edge_same_cat_covariates_cat_val is not None:
-                edge_same_cat_covariates_cat_accumulated = np.append(
-                    edge_same_cat_covariates_cat_accumulated,
-                    edge_same_cat_covariates_cat_val.detach().cpu().numpy())            
+                for i, edge_same_cat_covariate_cat_val in enumerate(edge_same_cat_covariates_cat_val):
+                    edge_same_cat_covariates_cat_val_accumulated[i] = np.append(
+                        edge_same_cat_covariates_cat_val_accumulated[i],
+                        edge_same_cat_covariate_cat_val.detach().cpu().numpy())
             if edge_incl_val is not None:
                 edge_incl_val_accumulated = np.append(
                     edge_incl_val_accumulated,
                     edge_incl_val.detach().cpu().numpy())
             else:
+                edge_same_cat_covariates_cat_val_accumulated = None
                 edge_incl_val_accumulated = None
         val_eval_dict = eval_metrics(
             edge_recon_probs=edge_recon_probs_val_accumulated,
             edge_labels=edge_recon_labels_val_accumulated,
-            edge_same_cat_covariates_cat=edge_same_cat_covariates_cat_accumulated,
+            edge_same_cat_covariates_cat=edge_same_cat_covariates_cat_val_accumulated,
             edge_incl=edge_incl_val_accumulated)
         if self.verbose_:
             self.epoch_logs["val_auroc_score"].append(
@@ -585,6 +593,8 @@ class Trainer(BaseTrainerMixin):
         # Get edge-level ground truth and predictions
         edge_recon_probs_val_accumulated = np.array([])
         edge_recon_labels_val_accumulated = np.array([])
+        edge_same_cat_covariates_cat_val_accumulated = [
+            np.array([]) for _ in range(self.n_cat_covariates)]
         edge_incl_val_accumulated = np.array([])
         for edge_val_data_batch in self.edge_val_loader:
             edge_val_data_batch = edge_val_data_batch.to(self.device)
@@ -607,14 +617,16 @@ class Trainer(BaseTrainerMixin):
                 edge_recon_labels_val_accumulated,
                 edge_recon_labels_val.detach().cpu().numpy())
             if edge_same_cat_covariates_cat_val is not None:
-                edge_same_cat_covariates_cat_val_accumulated = np.append(
-                    edge_same_cat_covariates_cat_val_accumulated,
-                    edge_same_cat_covariates_cat_val.detach().cpu().numpy())
+                for i, edge_same_cat_covariate_cat_val in enumerate(edge_same_cat_covariates_cat_val):
+                    edge_same_cat_covariates_cat_val_accumulated[i] = np.append(
+                        edge_same_cat_covariates_cat_val_accumulated[i],
+                        edge_same_cat_covariate_cat_val.detach().cpu().numpy())
             if edge_incl_val is not None:
                 edge_incl_val_accumulated = np.append(
                     edge_incl_val_accumulated,
                     edge_incl_val.detach().cpu().numpy())
             else:
+                edge_same_cat_covariates_cat_val_accumulated = None
                 edge_incl_val_accumulated = None
 
         # Get node-level ground truth and predictions
@@ -667,7 +679,7 @@ class Trainer(BaseTrainerMixin):
         val_eval_dict = eval_metrics(
             edge_recon_probs=edge_recon_probs_val_accumulated,
             edge_labels=edge_recon_labels_val_accumulated,
-            edge_same_cat_covariates_cat_val_accumulated=edge_same_cat_covariates_cat_val_accumulated,
+            edge_same_cat_covariates_cat=edge_same_cat_covariates_cat_val_accumulated,
             edge_incl=edge_incl_val_accumulated,
             gene_expr_preds=gene_expr_preds_val_accumulated,
             gene_expr=gene_expr_val_accumulated,
