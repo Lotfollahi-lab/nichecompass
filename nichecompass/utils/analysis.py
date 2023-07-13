@@ -612,18 +612,18 @@ def plot_enriched_gp_info_plots_(adata: AnnData,
     
 
 default_color_dict = {
-    "0": "#FF0000",  # Red
-    "1": "#00CED1",  # Dark Turquoise
-    "2": "#6B5B95",  # Purple
-    "3": "#4682B4", # Steel Blue
-    "4": "#FFD966",  # Yellow
-    "5": "#A52A2A",  # Brown
-    "6": "#FF9326",  # Orange
-    "7": "#FFED80",  # Soft Yellow
-    "8": "#FFFEA3",  # Pale Canary
-    "9": "#A5DEE4",  # Pale Blue
-    "10": "#77B1BD", # Sky Blue
-    "11": "#4E8CA7", # Light Blue
+    "0": "#66C5CC",
+    "1": "#F6CF71",
+    "2": "#F89C74",
+    "3": "#DCB0F2",
+    "4": "#87C55F",
+    "5": "#9EB9F3",
+    "6": "#FE88B1",
+    "7": "#C9DB74",
+    "8": "#8BE0A4",
+    "9": "#B497E7",
+    "10": "#D3B484",
+    "11": "#B3B3B3",
     "12": "#276A8C", # Royal Blue
     "13": "#DAB6C4", # Pink
     "14": "#C38D9E", # Mauve-Pink
