@@ -272,7 +272,7 @@ def add_gps_from_gp_dict_to_adata(
                                         removed_gp_idx])
 
 
-def extract_gp_dict_from_CollecTRI_tf_network(
+def extract_gp_dict_from_collectri_tf_network(
         species: Literal["human", "mouse"]="human",
         tf_network_file_path: Optional[str]="collectri_tf_network.csv",
         load_from_disk: bool=False,
@@ -985,7 +985,8 @@ def filter_and_combine_gp_dict_gps(
 
 def get_unique_genes_from_gp_dict(
         gp_dict: dict,
-        retrieved_gene_entities: list=["sources", "targets"]) -> list:
+        retrieved_gene_entities: list=["sources", "targets"],
+        retrieved_gene_categories: Optional[list]=None) -> list:
     """
     Return all unique genes of a gene program dictionary.
 
@@ -997,6 +998,10 @@ def get_unique_genes_from_gp_dict(
         A list that contains all gene entities ("sources", "targets")
         for which unique genes of the gene program dictionary should be
         retrieved.
+    retrieved_gene_categories:
+        A list that contains all gene categories for which unique genes of the
+        gene program dictionary should be retrieved. If `None`, all gene
+        categories are included.
 
     Returns
     ----------
@@ -1006,9 +1011,13 @@ def get_unique_genes_from_gp_dict(
     gene_list = []
 
     for _, gp in gp_dict.items():
-        for gene_entity, genes in gp.items():
-            if gene_entity in retrieved_gene_entities:
-                gene_list.extend(genes)
+        for gene_entity in retrieved_gene_entities:
+            genes = gp[gene_entity]
+            gene_categories = gp[f"{gene_entity}_categories"]
+            if retrieved_gene_categories is not None:
+                genes = [gene for gene, gene_category in zip(genes, gene_categories) if
+                         gene_category in retrieved_gene_categories]
+            gene_list.extend(genes)
     unique_genes = list(set(gene_list))
     unique_genes.sort()
     return unique_genes
