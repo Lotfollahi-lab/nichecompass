@@ -272,6 +272,72 @@ def add_gps_from_gp_dict_to_adata(
                                         removed_gp_idx])
 
 
+def extract_gp_dict_from_CollecTRI_tf_network(
+        species: Literal["human", "mouse"]="human",
+        tf_network_file_path: Optional[str]="collectri_tf_network.csv",
+        load_from_disk: bool=False,
+        save_to_disk: bool=False,
+        plot_gp_gene_count_distributions: bool=True) -> dict:
+    """
+    Retrieve transcription factor (TF) transcriptional target genes gene
+    programs from CollecTRI via decoupler and extract them into a 
+    gene program dictionary. CollecTRI is a comprehensive resource containing a
+    curated collection of TFs and their transcriptional targets compiled from
+    12 different resources. This collection provides an increased coverage of
+    transcription factors and a superior performance in identifying perturbed
+    TFs compared to the DoRothEA network and other literature based GRNs (see
+    https://decoupler-py.readthedocs.io/en/latest/notebooks/dorothea.html).
+
+    Parameters
+    ----------
+    species:
+        Species for which the gps will be extracted.
+    load_from_disk:
+        If ´True´, the CollecTRI TF network will be loaded from disk instead of
+        from the decoupler library.
+    save_to_disk:
+        If ´True´, the CollecTRI TF network will additionally be stored on disk.
+        Only applies if ´load_from_disk´ is ´False´.
+    plot_gp_gene_count_distributions:
+        If ´True´, display the distribution of gene programs per number of
+        source and target genes.
+
+    Returns
+    ----------
+    gp_dict:
+        Nested dictionary containing the CollecTRI TF target genes gene programs
+        with keys being gene program names and values being dictionaries with
+        keys ´sources´, ´targets´, ´sources_categories´, and
+        ´targets_categories´, where ´sources´ and ´targets´ contain the
+        CollecTRI TFs and target genes, and ´sources_categories´ and
+        ´targets_categories´ contain the categories of all genes ('tf' or
+        'target_gene').
+    """
+    if not load_from_disk:
+        net = dc.get_collectri(organism=species, split_complexes=False)
+        if save_to_disk:
+            net.to_csv(tf_network_file_path, index=False)
+    else:
+        net = pd.read_csv(tf_network_file_path, index_col=0)
+
+    tf_target_genes_df = net[["source", "target"]].groupby(
+        "source")["target"].agg(list).reset_index()
+    
+    gp_dict = {}
+    for tf, target_genes in zip(tf_target_genes_df["source"],
+                                tf_target_genes_df["target"]):
+        gp_dict[tf + "_TF_target_genes_GP"] = {
+            "sources": [tf] + target_genes,
+            "targets": [tf] + target_genes,
+            "sources_categories": ["tf"] + ["target_gene"] * len(target_genes),
+            "targets_categories": ["tf"] + ["target_gene"] * len(target_genes)}
+        
+    if plot_gp_gene_count_distributions:
+        create_gp_gene_count_distribution_plots(gp_dict,
+                                                gp_dict_label="CollecTRI")
+    return gp_dict
+
+
 def extract_gp_dict_from_nichenet_lrt_interactions(
         version: Literal["v1", "v2"]="v2",
         species: Literal["human", "mouse"]="human",
@@ -946,69 +1012,3 @@ def get_unique_genes_from_gp_dict(
     unique_genes = list(set(gene_list))
     unique_genes.sort()
     return unique_genes
-
-
-def extract_gp_dict_from_CollecTRI_tf_network(
-        species: Literal["human", "mouse"]="human",
-        tf_network_file_path: Optional[str]="collectri_tf_network.csv",
-        load_from_disk: bool=False,
-        save_to_disk: bool=False,
-        plot_gp_gene_count_distributions: bool=True) -> dict:
-    """
-    Retrieve transcription factor (TF) transcriptional target genes gene
-    programs from CollecTRI via decoupler and extract them into a 
-    gene program dictionary. CollecTRI is a comprehensive resource containing a
-    curated collection of TFs and their transcriptional targets compiled from
-    12 different resources. This collection provides an increased coverage of
-    transcription factors and a superior performance in identifying perturbed
-    TFs compared to the DoRothEA network and other literature based GRNs (see
-    https://decoupler-py.readthedocs.io/en/latest/notebooks/dorothea.html).
-
-    Parameters
-    ----------
-    species:
-        Species for which the gps will be extracted.
-    load_from_disk:
-        If ´True´, the CollecTRI TF network will be loaded from disk instead of
-        from the decoupler library.
-    save_to_disk:
-        If ´True´, the CollecTRI TF network will additionally be stored on disk.
-        Only applies if ´load_from_disk´ is ´False´.
-    plot_gp_gene_count_distributions:
-        If ´True´, display the distribution of gene programs per number of
-        source and target genes.
-
-    Returns
-    ----------
-    gp_dict:
-        Nested dictionary containing the CollecTRI TF target genes gene programs
-        with keys being gene program names and values being dictionaries with
-        keys ´sources´, ´targets´, ´sources_categories´, and
-        ´targets_categories´, where ´sources´ and ´targets´ contain the
-        CollecTRI TFs and target genes, and ´sources_categories´ and
-        ´targets_categories´ contain the categories of all genes ('tf' or
-        'target_gene').
-    """
-    if not load_from_disk:
-        net = dc.get_collectri(organism=species, split_complexes=False)
-        if save_to_disk:
-            net.to_csv(tf_network_file_path, index=False)
-    else:
-        net = pd.read_csv(tf_network_file_path, index_col=0)
-
-    tf_target_genes_df = net[["source", "target"]].groupby(
-        "source")["target"].agg(list).reset_index()
-    
-    gp_dict = {}
-    for tf, target_genes in zip(tf_target_genes_df["source"],
-                                tf_target_genes_df["target"]):
-        gp_dict[tf + "_TF_target_genes_GP"] = {
-            "sources": [tf] + target_genes,
-            "targets": [tf] + target_genes,
-            "sources_categories": ["tf"] + ["target_gene"] * len(target_genes),
-            "targets_categories": ["tf"] + ["target_gene"] * len(target_genes)}
-        
-    if plot_gp_gene_count_distributions:
-        create_gp_gene_count_distribution_plots(gp_dict,
-                                                gp_dict_label="CollecTRI")
-    return gp_dict
