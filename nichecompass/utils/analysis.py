@@ -498,7 +498,7 @@ def plot_enriched_gp_info_plots_(adata: AnnData,
                 color_map="RdBu",
                 spot_size=spot_size,
                 title=f"{gps[i].split('_', 1)[0]}\n{gps[i].split('_', 1)[1]} "
-                      f"(LBF: {round(log_bayes_factors[i])})",
+                      f"(LBF: {round(log_bayes_factors[i], 2)})",
                 legend_loc=None,
                 ax=axs[i, 1],
                 colorbar_loc="bottom",
