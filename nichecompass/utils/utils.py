@@ -82,13 +82,17 @@ def create_gp_gene_count_distribution_plots(gp_dict: dict,
     max_n_targets = max(n_targets_list)
     max_n_sources = max(n_sources_list)
     if max_n_targets > 200:
-        targets_x_ticks_range = 100    
+        targets_x_ticks_range = 100
+        xticklabels_rotation = 45  
     elif max_n_targets > 100:
         targets_x_ticks_range = 20
+        xticklabels_rotation = 0
     elif max_n_targets > 10:
         targets_x_ticks_range = 10
+        xticklabels_rotation = 0
     else:
         targets_x_ticks_range = 1
+        xticklabels_rotation = 0
     if max_n_sources > 200:
         sources_x_ticks_range = 100   
     elif max_n_sources > 100:
@@ -114,7 +118,8 @@ def create_gp_gene_count_distribution_plots(gp_dict: dict,
     ax1.set_xticklabels(
         np.arange(0,
                   max_n_targets + targets_x_ticks_range,
-                  targets_x_ticks_range))
+                  targets_x_ticks_range),
+        rotation=xticklabels_rotation)
     sns.histplot(x="values", data=sources_df, ax=ax2)
     ax2.set_title("Gene Program Sources Distribution",
                   fontsize=10)
@@ -127,6 +132,7 @@ def create_gp_gene_count_distribution_plots(gp_dict: dict,
     ax2.set_xticklabels(
         np.arange(0,
                   max_n_sources + sources_x_ticks_range,
-                  sources_x_ticks_range))
+                  sources_x_ticks_range),
+        rotation=xticklabels_rotation)
     plt.subplots_adjust(wspace=0.35)
     plt.show()

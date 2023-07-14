@@ -197,7 +197,7 @@ def compute_benchmarking_metrics(
             print("CLISIS metric computed. "
                   f"Elapsed time: {minutes} minutes "
                   f"{seconds} seconds.\n")
-        except IndexError:
+        except:
             print("Could not compute CLISIS metric.")
             benchmark_dict["clisis"] = 0.
             
@@ -247,7 +247,7 @@ def compute_benchmarking_metrics(
             print("CLISI metric computed. "
                   f"Elapsed time: {minutes} minutes "
                   f"{seconds} seconds.\n")
-        except IndexError:
+        except:
             print("Could not compute CLISI metric.")
             benchmark_dict["clisi"] = 0.
               
@@ -326,17 +326,21 @@ def compute_benchmarking_metrics(
                   f"{seconds} seconds.\n")
               
         if "bilisi" in metrics:
-            print("Computing BILISI Metric...")
-            benchmark_dict["bilisi"] = scib_metrics.ilisi_knn(
-                X=adata.obsp["nichecompass_latent_90knng_distances"],
-                batches=adata.obs[batch_key])
-              
-            elapsed_time = time.time() - start_time
-            minutes = int(elapsed_time // 60)
-            seconds = int(elapsed_time % 60)
-            print("BILISI metric computed. "
-                  f"Elapsed time: {minutes} minutes "
-                  f"{seconds} seconds.\n")
+            try:
+                print("Computing BILISI Metric...")
+                benchmark_dict["bilisi"] = scib_metrics.ilisi_knn(
+                    X=adata.obsp["nichecompass_latent_90knng_distances"],
+                    batches=adata.obs[batch_key])
+
+                elapsed_time = time.time() - start_time
+                minutes = int(elapsed_time // 60)
+                seconds = int(elapsed_time % 60)
+                print("BILISI metric computed. "
+                      f"Elapsed time: {minutes} minutes "
+                      f"{seconds} seconds.\n")
+            except:
+                print("Could not compute BILISI metric.")
+                benchmark_dict["bilisi"] = 0.
               
         if "kbet" in metrics:
             benchmark_dict["kbet"] = scib_metrics.kbet_per_label(
