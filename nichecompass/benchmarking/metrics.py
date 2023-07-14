@@ -2,7 +2,8 @@
 This module contains the functionality to compute all benchmarking metrics based
 on the spatial (physical) feature space and the learned latent feature space of
 a deep generative model. The benchmark consists of metrics for spatial
-conservation, biological conservation and batch correction.
+conservation, biological conservation, niche identifiability and batch
+correction.
 """
 
 import time
@@ -20,6 +21,7 @@ from .clisis import compute_clisis
 from .gcs import compute_gcs
 from .gerr2 import compute_gerr2
 from .mlami import compute_mlami
+from .nasw import compute_nasw
     
 
 def compute_benchmarking_metrics(
@@ -30,6 +32,7 @@ def compute_benchmarking_metrics(
                        "cnmi",
                        "casw",
                        "clisi",
+                       "nasw",
                        "basw",
                        "bgc",
                        "bilisi"],
@@ -276,6 +279,21 @@ def compute_benchmarking_metrics(
         minutes = int(elapsed_time // 60)
         seconds = int(elapsed_time % 60)
         print("CCA metric computed. "
+              f"Elapsed time: {minutes} minutes "
+              f"{seconds} seconds.\n")
+        
+    # Niche identifiability metrics
+    if "nasw" in metrics:
+        print("Computing NASW Metric...")
+        benchmark_dict["nasw"] = compute_nasw(
+                adata=adata,
+                latent_knng_key="nichecompass_latent_15knng",
+                seed=seed)
+        
+        elapsed_time = time.time() - start_time
+        minutes = int(elapsed_time // 60)
+        seconds = int(elapsed_time % 60)
+        print("NASW metric computed. "
               f"Elapsed time: {minutes} minutes "
               f"{seconds} seconds.\n")
 

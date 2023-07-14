@@ -11,6 +11,7 @@ from .cca import compute_cca
 from .gerr2 import compute_gerr2
 from .metrics import compute_benchmarking_metrics
 from .mlami import compute_mlami
+from .nasw import compute_nasw
 from .clisis import compute_clisis
 
 __all__ = ["compute_avg_cas",
@@ -21,4 +22,5 @@ __all__ = ["compute_avg_cas",
            "compute_gcs",
            "compute_gerr2",
            "compute_mlami",
+           "compute_nasw",
            "compute_clisis"]
