@@ -1,7 +1,8 @@
 from .analysis import (aggregate_obsp_matrix_per_cell_type,
                        create_cell_type_chord_plot_from_df,
                        create_new_color_dict,
-                       generate_enriched_gp_info_plots)
+                       generate_enriched_gp_info_plots,
+                       plot_non_zero_gene_count_means_dist)
 from .multimodal_pairing import (add_multimodal_mask_to_adata,
                                  get_gene_annotations,
                                  generate_multimodal_pairing_dict)
@@ -26,6 +27,7 @@ __all__ = ["add_gps_from_gp_dict_to_adata",
            "filter_and_combine_gp_dict_gps",
            "get_gene_annotations",
            "generate_enriched_gp_info_plots",
+           "plot_non_zero_gene_count_means_dist",
            "generate_multimodal_pairing_dict",
            "get_unique_genes_from_gp_dict",
            "compute_knn_graph_connectivities_and_distances"]

@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scanpy as sc
-import scipy.sparse as sp
+import seaborn as sns
 from anndata import AnnData
 
 from ..models import NicheCompass
@@ -721,3 +721,23 @@ def create_new_color_dict(
     for key, val in overwrite_color_dict.items():
         new_color_dict[key] = val
     return new_color_dict
+
+
+def plot_non_zero_gene_count_means_dist(
+        adata: AnnData,
+        genes: list,
+        gene_label: str):
+    """
+    Plot distribution of non zero gene count means in the adata over all 
+    specified genes.
+    """
+    gene_counts = adata[
+        :, [gene for gene in adata.var_names if gene in genes]].layers["counts"]
+    nz_gene_means = np.mean(
+        np.ma.masked_equal(gene_counts.toarray(), 0), axis=0).data
+    
+    sns.kdeplot(nz_gene_means)
+    plt.title(f"{gene_label} Genes Average Non-Zero Gene Counts per Gene")
+    plt.xlabel("Average Non-zero Gene Counts")
+    plt.ylabel("Gene Density")
+    plt.show()
