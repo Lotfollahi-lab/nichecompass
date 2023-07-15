@@ -36,7 +36,8 @@ def add_gps_from_gp_dict_to_adata(
         max_source_genes_per_gp: Optional[int]=None,
         max_target_genes_per_gp: Optional[int]=None,
         filter_genes_not_in_masks: bool=False,
-        add_fc_gps_instead_of_gp_dict_gps=False):
+        add_fc_gps_instead_of_gp_dict_gps: bool=False,
+        plot_gp_gene_count_distributions: bool=False):
     """
     Add gene programs defined in a gene program dictionary to an AnnData object
     by converting the gene program lists of gene program target and source genes
@@ -114,6 +115,9 @@ def add_gps_from_gp_dict_to_adata(
         Note: this parameter is just used for ablation studies. If ´True´,
         ignores the gene programs from the gp dict and instead creates a mask
         of fully-connected gene programs (same amount as gps in the gp dict).
+    plot_gp_gene_count_distributions:
+        If ´True´, display the distribution of gene programs per number of
+        source and target genes.
     """
     # Retrieve probed genes from adata
     adata_genes = (adata.var_names.str.upper() if genes_uppercase
@@ -202,10 +206,12 @@ def add_gps_from_gp_dict_to_adata(
     # Third, create new gp dict with label encoded categories
     category_encoded_gp_dict = copy.deepcopy(gp_dict)
     for _, gp_genes_dict in category_encoded_gp_dict.items():
-        gp_genes_dict["targets_categories"] = [targets_categories_label_encoder.get(target)
-                                               for target in gp_genes_dict["targets_categories"]]
-        gp_genes_dict["sources_categories"] = [sources_categories_label_encoder.get(source)
-                                               for source in gp_genes_dict["sources_categories"]]
+        gp_genes_dict["targets_categories"] = [
+            targets_categories_label_encoder.get(target) for target in
+            gp_genes_dict["targets_categories"]]
+        gp_genes_dict["sources_categories"] = [
+            sources_categories_label_encoder.get(source) for source in
+            gp_genes_dict["sources_categories"]]
 
     # Fourth, use label encoded gp dict to create category masks
     # (encode with category 0 if gene is not in mask)
@@ -221,7 +227,8 @@ def add_gps_from_gp_dict_to_adata(
          if gene in gp_genes_dict["sources"] else 0
          for _, gp_genes_dict in category_encoded_gp_dict.items()]
         for gene in adata_genes]
-    gp_sources_categories_mask = np.asarray(gp_sources_categories_mask, dtype="int32")
+    gp_sources_categories_mask = np.asarray(gp_sources_categories_mask,
+                                            dtype="int32")
 
     # Filter gene programs for min genes and max genes
     gp_mask_filter = gp_mask.sum(0) >= min_genes_per_gp
@@ -270,6 +277,10 @@ def add_gps_from_gp_dict_to_adata(
     adata.uns[gp_names_key] = np.array([gp_name for i, (gp_name, _) in 
                                         enumerate(gp_dict.items()) if i not in 
                                         removed_gp_idx])
+    
+    if plot_gp_gene_count_distributions:
+        create_gp_gene_count_distribution_plots(adata=adata,
+                                                gp_plot_label="AnnData")
 
 
 def extract_gp_dict_from_collectri_tf_network(
@@ -318,7 +329,7 @@ def extract_gp_dict_from_collectri_tf_network(
         if save_to_disk:
             net.to_csv(tf_network_file_path, index=False)
     else:
-        net = pd.read_csv(tf_network_file_path, index_col=0)
+        net = pd.read_csv(tf_network_file_path)
 
     tf_target_genes_df = net[["source", "target"]].groupby(
         "source")["target"].agg(list).reset_index()
@@ -333,8 +344,8 @@ def extract_gp_dict_from_collectri_tf_network(
             "targets_categories": ["tf"] + ["target_gene"] * len(target_genes)}
         
     if plot_gp_gene_count_distributions:
-        create_gp_gene_count_distribution_plots(gp_dict,
-                                                gp_dict_label="CollecTRI")
+        create_gp_gene_count_distribution_plots(gp_dict=gp_dict,
+                                                gp_plot_label="CollecTRI")
     return gp_dict
 
 
@@ -553,8 +564,8 @@ def extract_gp_dict_from_nichenet_lrt_interactions(
         
     if plot_gp_gene_count_distributions:
         create_gp_gene_count_distribution_plots(
-            gp_dict,
-            gp_dict_label=f"NicheNet {version.replace('_', ' ').title()}")
+            gp_dict=gp_dict,
+            gp_plot_label=f"NicheNet {version.replace('_', ' ').title()}")
     return gp_dict
 
 
@@ -688,8 +699,8 @@ def extract_gp_dict_from_omnipath_lr_interactions(
                              else [target.capitalize()] for target in gp["targets"]] for element in sublist]
         
     if plot_gp_gene_count_distributions:
-        create_gp_gene_count_distribution_plots(gp_dict,
-                                                gp_dict_label="OmniPath")
+        create_gp_gene_count_distribution_plots(go_dict=gp_dict,
+                                                gp_plot_label="OmniPath")
     return gp_dict
 
 
@@ -783,8 +794,8 @@ def extract_gp_dict_from_mebocost_es_interactions(
             "targets_categories"] = ["sensor"] * len(sensor_genes)
 
     if plot_gp_gene_count_distributions:
-        create_gp_gene_count_distribution_plots(gp_dict,
-                                                gp_dict_label="MEBOCOST")
+        create_gp_gene_count_distribution_plots(g_dict=gp_dict,
+                                                gp_plot_label="MEBOCOST")
 
     return gp_dict
 

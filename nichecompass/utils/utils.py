@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import pyreadr
 import seaborn as sns
+from anndata import AnnData
 
 
 def load_R_file_as_df(R_file_path: str,
@@ -54,25 +55,36 @@ def load_R_file_as_df(R_file_path: str,
     return df
 
 
-def create_gp_gene_count_distribution_plots(gp_dict: dict,
-                                            gp_dict_label: str):
+def create_gp_gene_count_distribution_plots(
+        gp_dict: Optional[dict]=None,
+        adata: Optional[AnnData]=None,
+        gp_targets_mask_key: Optional[str]="nichecompass_gp_targets",
+        gp_sources_mask_key: Optional[str]="nichecompass_gp_sources",
+        gp_plot_label: str=""):
     """
     Create distribution plots of the gene counts for sources and targets
-    of all gene programs in the gp dict.
+    of all gene programs in either a gp dict or an adata object.
 
     Parameters
     ----------
     gp_dict:
         A gene program dictionary.
-    gp_dict_label:
-        Label of the gene program dictionary for plot title.
+    adata:
+        An anndata object
+    gp_plot_label:
+        Label of the gene program plot for title.
     """
     # Get number of source and target genes for each gene program
-    n_sources_list = []
-    n_targets_list = []
-    for _, gp_sources_targets_dict in gp_dict.items():
-        n_sources_list.append(len(gp_sources_targets_dict["sources"]))
-        n_targets_list.append(len(gp_sources_targets_dict["targets"]))
+    if gp_dict is not None:
+        n_sources_list = []
+        n_targets_list = []
+        for _, gp_sources_targets_dict in gp_dict.items():
+            n_sources_list.append(len(gp_sources_targets_dict["sources"]))
+            n_targets_list.append(len(gp_sources_targets_dict["targets"]))
+    elif adata is not None:
+        n_targets_list = adata.varm[gp_targets_mask_key].sum(axis=0)
+        n_sources_list = adata.varm[gp_sources_mask_key].sum(axis=0)
+
     
     # Convert the arrays to a pandas DataFrame
     targets_df = pd.DataFrame({"values": n_targets_list})
@@ -105,7 +117,7 @@ def create_gp_gene_count_distribution_plots(gp_dict: dict,
     # Create subplot
     fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(10, 5))
     plt.suptitle(
-        f"{gp_dict_label} Gene Programs – Gene Count Distribution Plots")
+        f"{gp_plot_label} Gene Programs – Gene Count Distribution Plots")
     sns.histplot(x="values", data=targets_df, ax=ax1)
     ax1.set_title("Gene Program Targets Distribution",
                   fontsize=10)
