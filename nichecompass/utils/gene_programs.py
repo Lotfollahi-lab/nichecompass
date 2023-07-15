@@ -699,7 +699,7 @@ def extract_gp_dict_from_omnipath_lr_interactions(
                              else [target.capitalize()] for target in gp["targets"]] for element in sublist]
         
     if plot_gp_gene_count_distributions:
-        create_gp_gene_count_distribution_plots(go_dict=gp_dict,
+        create_gp_gene_count_distribution_plots(gp_dict=gp_dict,
                                                 gp_plot_label="OmniPath")
     return gp_dict
 
@@ -794,7 +794,7 @@ def extract_gp_dict_from_mebocost_es_interactions(
             "targets_categories"] = ["sensor"] * len(sensor_genes)
 
     if plot_gp_gene_count_distributions:
-        create_gp_gene_count_distribution_plots(g_dict=gp_dict,
+        create_gp_gene_count_distribution_plots(gp_dict=gp_dict,
                                                 gp_plot_label="MEBOCOST")
 
     return gp_dict
