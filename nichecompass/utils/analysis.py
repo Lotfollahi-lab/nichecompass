@@ -218,6 +218,7 @@ def generate_enriched_gp_info_plots(plot_label: str,
                                     log_norm_omics_features: bool=False,
                                     save_figs: bool=False,
                                     figure_folder_path: str="",
+                                    file_format: str="png",
                                     spot_size: float=30.):
     """
     Generate info plots of enriched gene programs, showing the enriched
@@ -259,6 +260,8 @@ def generate_enriched_gp_info_plots(plot_label: str,
         If ´True´, save the figures.
     figure_folder_path:
         Folder path where the figures will be saved.
+    file_format:
+        Format with which the figures will be saved.
     spot_size:
         Spot size used for the spatial plots.
     """
@@ -380,7 +383,7 @@ def generate_enriched_gp_info_plots(plot_label: str,
             figure_folder_path=figure_folder_path,
             fig_name=f"{plot_label}_top_enriched_gps_gp_scores_"
                      f"omics_feature_counts_in_{feature_space}_"
-                     "feature_space")
+                     f"feature_space.{file_format}")
             
             
 def plot_enriched_gp_info_plots_(adata: AnnData,
@@ -606,7 +609,7 @@ def plot_enriched_gp_info_plots_(adata: AnnData,
     # Save and display plot
     plt.subplots_adjust(wspace=wspace, hspace=0.275)
     if save_fig:
-        fig.savefig(f"{figure_folder_path}/{fig_name}.svg",
+        fig.savefig(f"{figure_folder_path}/{fig_name}",
                     bbox_extra_artists=(title,),
                     bbox_inches="tight")
     plt.show()
