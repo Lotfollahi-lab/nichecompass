@@ -216,7 +216,7 @@ def compute_omics_recon_nb_loss(x: torch.Tensor,
         (dim: batch_size x n_genes)
     theta:
         Inverse dispersion parameter with positive support.
-        (dim: batch_size x n_genes)
+        (dim: n_genes)
     eps:
         Numerical stability constant.
 
@@ -262,7 +262,7 @@ def compute_gene_expr_recon_zinb_loss(x: torch.Tensor,
         (dim: batch_size x n_genes)
     theta:
         Inverse dispersion parameter with positive support.
-        (dim: batch_size x n_genes)
+        (dim: n_genes)
     zi_prob_logits:
         Logits of the zero inflation probability with real support.
         (dim: batch_size x n_genes)
