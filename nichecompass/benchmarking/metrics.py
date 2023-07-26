@@ -26,7 +26,7 @@ from .nasw import compute_nasw
 
 def compute_benchmarking_metrics(
         adata: AnnData,
-        n_neighbors: int,
+        n_neighbors_spatial_metrics: int,
         metrics: list=["gcs", # spatial conservation (unsupervised)
                        "mlami", # spatial conservation (unsupervised)
                        "cas", # spatial conservation (cell label supervised)
@@ -52,7 +52,7 @@ def compute_benchmarking_metrics(
     ----------
     adata:
         AnnData object to run the benchmarks for.
-    n_neighbors:
+    n_neighbors_spatial_metrics:
         Number of neighbors used for the spatial conservation metrics
         (except clisis).
     metrics:
@@ -83,7 +83,8 @@ def compute_benchmarking_metrics(
 
     # Metrics use different k's for the knn graph
     # Based on specified metrics, determine which knn graphs to compute
-    n_neighbors_list = [n_neighbors] # k for spatial conservation metrics
+    n_neighbors_list = [n_neighbors_spatial_metrics] # k for spatial
+                                                     # conservation metrics
     if any(metric in ["cnmi", "casw", "clisi", "nasw"] for metric in metrics):
         n_neighbors_list.append(15) # default k for biological conservation
                                     # metrics
@@ -91,6 +92,9 @@ def compute_benchmarking_metrics(
         n_neighbors_list.append(50) # kbet-specific k
     if any(metric in ["clisis", "clisi", "blisi"] for metric in metrics):
         n_neighbors_list.append(90) # lisi-specific k
+    
+    # Compute benchmarking metrics
+    benchmark_dict = {}
     
     # Compute nearest neighbor graphs
     if batch_key is None:
@@ -117,13 +121,22 @@ def compute_benchmarking_metrics(
                 not in adata.obsp):
                 print("Computing latent nearest neighbor graph with "
                       f"{n_neighbors} neighbors for entire dataset...")
-                compute_knn_graph_connectivities_and_distances(
-                        adata=adata,
-                        feature_key=latent_key,
-                        knng_key=f"nichecompass_latent_{n_neighbors}knng",
-                        n_neighbors=n_neighbors,
-                        random_state=seed,
-                        n_jobs=n_jobs)
+                try:
+                    compute_knn_graph_connectivities_and_distances(
+                            adata=adata,
+                            feature_key=latent_key,
+                            knng_key=f"nichecompass_latent_{n_neighbors}knng",
+                            n_neighbors=n_neighbors,
+                            random_state=seed,
+                            n_jobs=n_jobs)
+                except ValueError:
+                    print("Could not compute latent nearest neighbor graph "
+                          f"with {n_neighbors} neighbors for entire dataset...")
+                    if n_neighbors == n_neighbors_spatial_metrics:
+                        benchmark_dict["gcs"] = 0.
+                        benchmark_dict["mlami"] = 0.
+                        benchmark_dict["cas"] = 0.
+                    continue
             else:
                 print(f"Using precomputed latent nearest neighbor graph with "
                       f"{n_neighbors} neighbors...")                
@@ -134,9 +147,6 @@ def compute_benchmarking_metrics(
     print("Neighbor graphs computed. "
           f"Elapsed time: {minutes} minutes "
           f"{seconds} seconds.\n")
-
-    # Compute benchmarking metrics
-    benchmark_dict = {}
     
     # Spatial conservation metrics (unsupervised)
     if "gcs" in metrics:
