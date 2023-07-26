@@ -477,7 +477,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 # Separate node feature vector into RNA and ATAC part
                 x_atac = x[:, int(self.n_output_genes_ / 2):]
                 x = x[:, :int(self.n_output_genes_ / 2)]
+                x_neighbors_atac = x_neighbors[:, int(self.n_output_genes_ / 2):]
+                x_neighbors = x_neighbors[:, :int(self.n_output_genes_ / 2)]
                 assert x_atac.size(1) == int(self.n_output_peaks_ / 2)
+                assert x_neighbors_atac.size(1) == int(self.n_output_peaks_ / 2)
                 self.target_node_labels_atac_start_idx = (
                     len(self.target_gene_expr_mask_idx_))
                 self.source_node_labels_atac_start_idx = (
@@ -508,9 +511,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
             # Use observed library size as scaling factor for the negative
             # binomial means of the gene expression distribution
-            self.log_library_size = torch.log(x.sum(1)).unsqueeze(1)[batch_idx]
-            self.log_library_size_neighbors = torch.log(
-                x_neighbors.sum(1)).unsqueeze(1)[batch_idx]
+            library_size = x.sum(1) + x_neighbors.sum(1)
+            self.log_library_size = torch.log(library_size).unsqueeze(1)[batch_idx]
 
             # Get gene expression reconstruction distribution parameters
             output["gene_expr_dist_params"] = self.gene_expr_decoder(
@@ -524,9 +526,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             
             if "chrom_access" in self.modalities_:
                 # Use observed library size as scaling factor for the negative
-                # binomial means of the chromatin accessibility distribution            
+                # binomial means of the chromatin accessibility distribution
+                library_size_atac = x_atac.sum(1) + x_atac_neighbors.sum(1)
                 self.log_library_size_atac = torch.log(
-                    x_atac.sum(1)).unsqueeze(1)[batch_idx]
+                    library_size_atac).unsqueeze(1)[batch_idx]
                 
                 if turn_off_peaks_based_on_genes:
                     # Get dynamic gene weight peak mask to turn off peaks that
