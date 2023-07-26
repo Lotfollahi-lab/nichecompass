@@ -101,7 +101,7 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
 
         Returns
         ----------
-        node_labels:
+        x_neighbors:
             Tensor containing the node labels of the nodes in the current node 
             batch excluding sampled neighbors. These labels are used for the 
             gene expression reconstruction task.
@@ -115,14 +115,12 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         x_l = x_l.repeat(1, self.n_heads).view(-1, self.n_heads, self.n_input)
 
         output = self.propagate(edge_index, x=(x_l, x_r), g=(g_l, g_r))
-        x_neighbors_att = output.mean(dim=1)
-        node_labels = torch.cat(
-            (x, x_neighbors_att), dim=-1)[:, self.features_idx]
+        x_neighbors = output.mean(dim=1)
         alpha = self._alpha
         self._alpha = None
         if return_agg_weights:
-            return node_labels, alpha
-        return node_labels, None
+            return x_neighbors, alpha
+        return x_neighbors, None
 
     def message(self,
                 x_j: torch.Tensor,
@@ -169,17 +167,8 @@ class OneHopGCNNormNodeLabelAggregator(nn.Module):
     neighbor gene expression vector as node labels for the gene expression
     reconstruction task.
     """
-    def __init__(self,
-                 features_idx: torch.Tensor):
-        """
-        Parameters
-        ----------
-        features_idx:
-            Index of omics features that are in the gp and ca masks.
-        """
+    def __init__(self):
         super().__init__()
-        self.features_idx = features_idx
-
         print("ONE HOP GCN NORM NODE LABEL AGGREGATOR")
 
     def forward(self,
@@ -204,7 +193,7 @@ class OneHopGCNNormNodeLabelAggregator(nn.Module):
             
         Returns
         ----------
-        node_labels:
+        x_neighbors:
             Tensor containing the node labels of the nodes in the current node 
             batch. These labels are used for the gene expression reconstruction
             task. (Size: n_nodes_batch x (2 x n_node_features))
@@ -215,13 +204,11 @@ class OneHopGCNNormNodeLabelAggregator(nn.Module):
                                            sparse_sizes=(x.shape[0],
                                                          x.shape[0]))
         adj_norm = gcn_norm(adj)
-        x_neighbors_norm = adj_norm.t().matmul(x)
-        node_labels = torch.cat((x, x_neighbors_norm),
-                                dim=-1)[:, self.features_idx]
+        x_neighbors = adj_norm.t().matmul(x)
         if return_agg_weights:
             alpha = adj_norm.coo()[2]
-            return node_labels, alpha
-        return node_labels, None
+            return x_neighbors, alpha
+        return x_neighbors, None
 
 
 class OneHopSumNodeLabelAggregator(nn.Module):
@@ -237,8 +224,7 @@ class OneHopSumNodeLabelAggregator(nn.Module):
 
     def forward(self,
                 x: torch.Tensor,
-                edge_index:torch.Tensor,
-                batch_size:int) -> torch.Tensor:
+                edge_index:torch.Tensor) -> torch.Tensor:
         """
         Forward pass of the One-hop Sum Node Label Aggregator.
         
@@ -252,13 +238,10 @@ class OneHopSumNodeLabelAggregator(nn.Module):
             Tensor containing the node indices of edges in the current node 
             batch including sampled neighbors.
             (Size: 2 x n_edges_batch_and_sampled_neighbors)
-        batch_size:
-            Node batch size. Is used to return only node labels for the nodes
-            in the current node batch.
 
         Returns
         ----------
-        node_labels:
+        x_neighbors:
             Tensor containing the node labels of the nodes in the current node 
             batch excluding sampled neighbors. These labels are used for the 
             gene expression reconstruction task.
@@ -267,53 +250,5 @@ class OneHopSumNodeLabelAggregator(nn.Module):
         adj = SparseTensor.from_edge_index(edge_index,
                                            sparse_sizes=(x.shape[0],
                                                          x.shape[0]))
-        x_neighbors_sum = adj.t().matmul(x)
-        node_labels = torch.cat((x, x_neighbors_sum), dim=-1)
-        return node_labels[:batch_size]
-
-
-class SelfNodeLabelNoneAggregator(nn.Module):
-    """
-    Self Node Label None Aggregator class that provides an API to pass ´x´ and
-    ´edge_index´ to the forward pass (for consistency with other aggregators) 
-    but does no neighborhood gene expression aggregation. Instead, it just 
-    returns the gene expression of the nodes themselves as labels for the gene 
-    expression reconstruction task (hence 'none aggregator'). Note that this 
-    is a capability for benchmarking but is not compatible with the inference of
-    communication gene programs that require an aggregation of the neighborhood
-    gene expression.
-    """
-    def __init__(self):
-        super().__init__()
-
-    def forward(self,
-                x: torch.Tensor,
-                edge_index: torch.Tensor,
-                batch_size: int) -> torch.Tensor:
-        """
-        Forward pass of the One-hop Sum Node Label Aggregator.
-        
-        Parameters
-        ----------
-        x:
-            Tensor containing the gene expression of the nodes in the current 
-            node batch including sampled neighbors. 
-            (Size: n_nodes_batch_and_sampled_neighbors x n_node_features)
-        edge_index:
-            Tensor containing the node indices of edges in the current node 
-            batch including sampled neighbors.
-            (Size: 2 x n_edges_batch_and_sampled_neighbors)
-        batch_size:
-            Node batch size. Is used to return only node labels for the nodes
-            in the current node batch.
-
-        Returns
-        ----------
-        node_labels:
-            Tensor containing the node labels of the nodes in the current node 
-            batch excluding sampled neighbors. These labels are used for the 
-            gene expression reconstruction task.
-            (Size: n_nodes_batch x (2 x n_node_features))
-        """
-        node_labels = x
-        return node_labels[:batch_size]
+        x_neighbors = adj.t().matmul(x)
+        return x_neighbors

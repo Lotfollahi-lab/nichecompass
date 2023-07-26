@@ -1,6 +1,5 @@
 from .aggregators import (OneHopAttentionNodeLabelAggregator,
                           OneHopGCNNormNodeLabelAggregator,
-                          SelfNodeLabelNoneAggregator,
                           OneHopSumNodeLabelAggregator)
 from .decoders import (CosineSimGraphDecoder,
                        MaskedGeneExprDecoder,

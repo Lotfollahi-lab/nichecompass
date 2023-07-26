@@ -18,8 +18,7 @@ from nichecompass.nn import (CosineSimGraphDecoder,
                            MaskedChromAccessDecoder,
                            OneHopAttentionNodeLabelAggregator,
                            OneHopGCNNormNodeLabelAggregator,
-                           OneHopSumNodeLabelAggregator,
-                           SelfNodeLabelNoneAggregator)
+                           OneHopSumNodeLabelAggregator)
 from .basemodulemixin import BaseModuleMixin
 from .losses import (compute_addon_l1_reg_loss,
                      compute_cat_covariates_contrastive_loss,
@@ -165,7 +164,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  gene_expr_recon_dist: Literal["nb", "zinb"]="nb",
                  chrom_access_recon_dist: Literal["nb"]="nb",
                  node_label_method: Literal[
-                    "self",
                     "one-hop-norm",
                     "one-hop-sum",
                     "one-hop-attention"]="one-hop-attention",
@@ -306,19 +304,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 mask_idx=chrom_access_mask_idx,
                 recon_dist=self.chrom_access_recon_dist_)            
 
-        if node_label_method == "self":
-            self.node_label_aggregator = SelfNodeLabelNoneAggregator(
-                features_idx=self.features_idx_)
         if node_label_method == "one-hop-norm":
-            self.node_label_aggregator = OneHopGCNNormNodeLabelAggregator(
-                features_idx=self.features_idx_)
+            self.node_label_aggregator = OneHopGCNNormNodeLabelAggregator()
         elif node_label_method == "one-hop-sum":
-            self.node_label_aggregator = OneHopSumNodeLabelAggregator(
-                features_idx=self.features_idx_)
+            self.node_label_aggregator = OneHopSumNodeLabelAggregator()
         elif node_label_method == "one-hop-attention":
             self.node_label_aggregator = OneHopAttentionNodeLabelAggregator(
-                n_input=n_input,
-                features_idx=self.features_idx_)
+                n_input=n_input)
         
         # Initialize gene-specific dispersion parameters
         self.theta = torch.nn.Parameter(torch.randn(len(gene_expr_mask_idx)))
@@ -386,7 +378,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     x=x,
                     edge_index=edge_index,
                     return_agg_weights=return_agg_weights)
-            output["node_labels"] = node_label_aggregator_output[0][batch_idx]
+            x_neighbors = node_label_aggregator_output[0]
+            
+            # Concatenate omics feature vector with neighborhood aggregated omics
+            # feature vector and only keep omics features in masks as node labels
+            # In addition, only keep nodes in current node batch
+            output["node_labels"] = torch.cat((x, x_neighbors), dim=-1)[
+                :, self.features_idx_][batch_idx]
+            
         elif decoder == "graph":
             # ´data_batch´ will be an edge batch with sampled positive and
             # negative edges of size edge_batch_size respectively. Each edge has
@@ -510,6 +509,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             # Use observed library size as scaling factor for the negative
             # binomial means of the gene expression distribution
             self.log_library_size = torch.log(x.sum(1)).unsqueeze(1)[batch_idx]
+            self.log_library_size_neighbors = torch.log(
+                x_neighbors.sum(1)).unsqueeze(1)[batch_idx]
 
             # Get gene expression reconstruction distribution parameters
             output["gene_expr_dist_params"] = self.gene_expr_decoder(
