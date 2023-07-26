@@ -2,7 +2,7 @@
 This module contains the functionality to compute all benchmarking metrics based
 on the spatial (physical) feature space and the learned latent feature space of
 a deep generative model. The benchmark consists of metrics for spatial
-conservation, biological conservation, niche identifiability and batch
+conservation, biological conservation, niche identification and batch
 correction.
 """
 
@@ -26,17 +26,19 @@ from .nasw import compute_nasw
 
 def compute_benchmarking_metrics(
         adata: AnnData,
-        metrics: list=["gcs",
-                       "cas",
-                       "clisis",
-                       "cnmi",
-                       "casw",
-                       "clisi",
-                       "nasw",
-                       "basw",
-                       "bgc",
-                       "bilisi",
-                       "kbet"],
+        n_neighbors: int,
+        metrics: list=["gcs", # spatial conservation (unsupervised)
+                       "mlami", # spatial conservation (unsupervised)
+                       "cas", # spatial conservation (cell label supervised)
+                       "clisis", # spatial conservation (cell label supervised)
+                       "cnmi", # biological conservation
+                       "casw", # biological conservation
+                       "clisi", # biological conservation
+                       "nasw", # niche identification
+                       "basw", # batch correction
+                       "bgc", # batch correction
+                       "blisi", # batch correction
+                       "kbet"], # batch correction
         cell_type_key: str="cell_type",
         batch_key: Optional[str]=None, 
         spatial_key: str="spatial",
@@ -50,6 +52,9 @@ def compute_benchmarking_metrics(
     ----------
     adata:
         AnnData object to run the benchmarks for.
+    n_neighbors:
+        Number of neighbors used for the spatial conservation metrics
+        (except clisis).
     metrics:
         List of metrics which will be computed.
     cell_type_key:
@@ -78,11 +83,14 @@ def compute_benchmarking_metrics(
 
     # Metrics use different k's for the knn graph
     # Based on specified metrics, determine which knn graphs to compute
-    n_neighbors_list = [15] # default k for most metrics
+    n_neighbors_list = [n_neighbors] # k for spatial conservation metrics
+    if any(metric in ["cnmi", "casw", "clisi", "nasw"] for metric in metrics):
+        n_neighbors_list.append(15) # default k for biological conservation
+                                    # metrics
     if "kbet" in metrics:
-        n_neighbors_list.append(50)
+        n_neighbors_list.append(50) # kbet-specific k
     if any(metric in ["clisis", "clisi", "blisi"] for metric in metrics):
-        n_neighbors_list.append(90)
+        n_neighbors_list.append(90) # lisi-specific k
     
     # Compute nearest neighbor graphs
     if batch_key is None:
@@ -136,8 +144,8 @@ def compute_benchmarking_metrics(
         benchmark_dict["gcs"] = compute_gcs(
             adata=adata,
             batch_key=batch_key,
-            spatial_knng_key="nichecompass_spatial_15knng",
-            latent_knng_key="nichecompass_latent_15knng",
+            spatial_knng_key=f"nichecompass_spatial_{n_neighbors}knng",
+            latent_knng_key=f"nichecompass_latent_{n_neighbors}knng",
             seed=seed)
 
         elapsed_time = time.time() - start_time
@@ -152,8 +160,8 @@ def compute_benchmarking_metrics(
         benchmark_dict["mlami"] = compute_mlami(
             adata=adata,
             batch_key=batch_key,
-            spatial_knng_key="nichecompass_spatial_15knng",
-            latent_knng_key="nichecompass_latent_15knng",
+            spatial_knng_key=f"nichecompass_spatial_{n_neighbors}knng",
+            latent_knng_key=f"nichecompass_latent_{n_neighbors}knng",
             seed=seed)
         
         elapsed_time = time.time() - start_time
@@ -170,8 +178,8 @@ def compute_benchmarking_metrics(
             adata=adata,
             cell_type_key=cell_type_key,
             batch_key=batch_key,
-            spatial_knng_key="nichecompass_spatial_15knng",
-            latent_knng_key="nichecompass_latent_15knng",
+            spatial_knng_key=f"nichecompass_spatial_{n_neighbors}knng",
+            latent_knng_key=f"nichecompass_latent_{n_neighbors}knng",
             seed=seed)
               
         elapsed_time = time.time() - start_time
@@ -326,22 +334,22 @@ def compute_benchmarking_metrics(
                   f"Elapsed time: {minutes} minutes "
                   f"{seconds} seconds.\n")
               
-        if "bilisi" in metrics:
+        if "blisi" in metrics:
             try:
-                print("Computing BILISI Metric...")
-                benchmark_dict["bilisi"] = scib_metrics.ilisi_knn(
+                print("Computing BLISI Metric...")
+                benchmark_dict["blisi"] = scib_metrics.ilisi_knn(
                     X=adata.obsp["nichecompass_latent_90knng_distances"],
                     batches=adata.obs[batch_key])
 
                 elapsed_time = time.time() - start_time
                 minutes = int(elapsed_time // 60)
                 seconds = int(elapsed_time % 60)
-                print("BILISI metric computed. "
+                print("BLISI metric computed. "
                       f"Elapsed time: {minutes} minutes "
                       f"{seconds} seconds.\n")
             except:
-                print("Could not compute BILISI metric.")
-                benchmark_dict["bilisi"] = 0.
+                print("Could not compute BLISI metric.")
+                benchmark_dict["blisi"] = 0.
               
         if "kbet" in metrics:
             benchmark_dict["kbet"] = scib_metrics.kbet_per_label(
