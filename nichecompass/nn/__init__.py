@@ -2,7 +2,7 @@ from .aggregators import (OneHopAttentionNodeLabelAggregator,
                           OneHopGCNNormNodeLabelAggregator,
                           OneHopSumNodeLabelAggregator)
 from .decoders import (CosineSimGraphDecoder,
-                       MaskedGeneExprDecoder,
+                       MaskedOmicsFeatureDecoder,
                        MaskedChromAccessDecoder)
 from .encoders import Encoder
 from .layercomponents import MaskedLinear
@@ -13,7 +13,7 @@ __all__ = ["OneHopAttentionNodeLabelAggregator",
            "SelfNodeLabelNoneAggregator",
            "OneHopSumNodeLabelAggregator",
            "CosineSimGraphDecoder",
-           "MaskedGeneExprDecoder",
+           "MaskedOmicsFeatureDecoder",
            "MaskedChromAccessDecoder",
            "Encoder",
            "MaskedLinear",

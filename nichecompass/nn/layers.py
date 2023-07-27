@@ -78,16 +78,16 @@ class AddOnMaskedLayer(nn.Module):
     Parameters
     ----------
     n_input:
-        Number of maskable input nodes to the masked layer.
+        Number of mask input nodes to the masked layer.
     n_output:
         Number of output nodes from the masked layer.
     bias:
-        If ´True´, use a bias for the maskable input nodes.
+        If ´True´, use a bias for the mask input nodes.
     mask:
-        Mask that is used to mask the node connections from the input layer to
-        the output layer.
+        Mask that is used to mask the node connections for mask inputs from the
+        input layer to the output layer.
     n_addon_input:
-        Number of non-maskable add-on input nodes to the masked layer.
+        Number of add-on input nodes to the masked layer.
     n_cat_covariates_embed_input:
         Number of categorical covariates embedding input nodes to the masked
         layer.
@@ -97,15 +97,17 @@ class AddOnMaskedLayer(nn.Module):
     def __init__(self,
                  n_input: int,
                  n_output: int,
+                 unmasked_features_idx: list,
                  bias: bool=False,
                  mask: Optional[torch.Tensor]=None,
                  n_addon_input: int=0,
                  n_cat_covariates_embed_input: int=0,
-                 activation: nn.Module=nn.ReLU):
+                 activation: nn.Module=nn.Softmax(dim=-1)):
         super().__init__()
         self.n_input = n_input
         self.n_addon_input = n_addon_input
         self.n_cat_covariates_embed_input = n_cat_covariates_embed_input
+        self.unmasked_features_idx = unmasked_features_idx
 
         # Masked layer
         if mask is None:
@@ -146,31 +148,38 @@ class AddOnMaskedLayer(nn.Module):
             Output of the add-on masked layer.
         """
         if (self.n_addon_input == 0) & (self.n_cat_covariates_embed_input == 0):
-            maskable_input = input
+            mask_input = input
         elif ((self.n_addon_input != 0) &
               (self.n_cat_covariates_embed_input == 0)):
-            maskable_input, addon_input = torch.split(
+            mask_input, addon_input = torch.split(
                 input,
                 [self.n_input, self.n_addon_input],
                 dim=1)
         elif ((self.n_addon_input == 0) &
               (self.n_cat_covariates_embed_input != 0)):
-            maskable_input, cat_covariates_embed_input = torch.split(
+            mask_input, cat_covariates_embed_input = torch.split(
                 input,
                 [self.n_input, self.n_cat_covariates_embed_input],
                 dim=1)          
         elif ((self.n_addon_input != 0) &
               (self.n_cat_covariates_embed_input != 0)):
-            maskable_input, addon_input, cat_covariates_embed_input = torch.split(
+            mask_input, addon_input, cat_covariates_embed_input = torch.split(
                 input,
                 [self.n_input, self.n_addon_input, self.n_cat_covariates_embed_input],
                 dim=1)
 
-        output = self.masked_l(input=maskable_input,
+        output = self.masked_l(input=mask_input,
                                dynamic_mask=dynamic_mask)
         if self.n_addon_input != 0:
-            output += self.addon_l(addon_input)
+            # Only add addon layer output to unmasked features
+            output[:self.unmasked_features_idx] += self.addon_l(addon_input)[
+                :self.unmasked_features_idx]
         if self.n_cat_covariates_embed_input != 0:
-            output += self.cat_covariates_embed_l(cat_covariates_embed_input)
+            if self.n_addon_input != 0:
+                output += self.cat_covariates_embed_l(
+                    cat_covariates_embed_input)
+            else:
+                output[:self.unmasked_features_idx] += self.addon_l(addon_input)[
+                    :self.unmasked_features_idx]                
         output = self.activation(output)
         return output

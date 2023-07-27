@@ -271,7 +271,11 @@ class NicheCompass(BaseModelMixin):
 
         # Retrieve gene program masks
         if gp_targets_mask_key in adata.varm:
-            gp_targets_mask = adata.varm[gp_targets_mask_key].T
+            # NOTE: dtype can be changed to bool and should be able to handle sparse
+            # mask
+            self.gp_targets_mask_ = torch.tensor(
+                adata.varm[gp_targets_mask_key].T,
+                dtype=torch.float32)
         else:
             raise ValueError("Please specify an adequate ´gp_targets_mask_key´ "
                              "for your adata object. The targets mask needs to "
@@ -280,29 +284,26 @@ class NicheCompass(BaseModelMixin):
                              "reconstruction, you can create a mask of 1s that"
                              " allows all gene program latent nodes to "
                              "reconstruct all genes.")
-        # NOTE: dtype can be changed to bool and should be able to handle sparse
-        # mask
-        self.gp_mask_ = torch.tensor(gp_targets_mask, dtype=torch.float32)
-        if node_label_method != "self":
-            if gp_sources_mask_key in adata.varm:
-                gp_sources_mask = adata.varm[gp_sources_mask_key].T
-            else:
-                raise ValueError("Please specify an adequate "
-                                 "´gp_sources_mask_key´ for your adata object. "
-                                 "The sources mask needs to be stored in "
-                                 "´adata.varm[gp_sources_mask_key]´. If you do "
-                                 "not want to mask gene expression "
-                                 "reconstruction, you can create a mask of 1s "
-                                 " that allows all gene program latent nodes to"
-                                 " reconstruct all genes.")
-            # Horizontally concatenate targets and sources masks
+
+        if gp_sources_mask_key in adata.varm:
             # NOTE: dtype can be changed to bool and should be able to handle
             # sparse mask
-            self.gp_mask_ = torch.cat(
-                (self.gp_mask_, torch.tensor(gp_sources_mask, 
-                dtype=torch.float32)), dim=1)
-        
+            self.gp_sources_mask_ = torch.tensor(
+                adata.varm[gp_sources_mask_key].T,
+                dtype=torch.float32)
+                                           
+        else:
+            raise ValueError("Please specify an adequate "
+                             "´gp_sources_mask_key´ for your adata object. "
+                             "The sources mask needs to be stored in "
+                             "´adata.varm[gp_sources_mask_key]´. If you do "
+                             "not want to mask gene expression "
+                             "reconstruction, you can create a mask of 1s "
+                             " that allows all gene program latent nodes to"
+                             " reconstruct all genes.")
+    
         # Retrieve chromatin accessibility masks
+        # TO DO fix masks
         if adata_atac is None:
             self.ca_mask_ = None
             self.gene_peaks_mask_ = None
@@ -355,12 +356,26 @@ class NicheCompass(BaseModelMixin):
                           (ca_targets_mask.shape[1] + 
                            ca_sources_mask.shape[1])),
                     dtype=torch.bool)
-                
-        # Retrieve index of genes in gp mask
-        self.genes_idx_ = adata.uns[genes_idx_key]
-        self.target_genes_idx_ = adata.uns[target_genes_idx_key]
-        self.source_genes_idx_ = adata.uns[source_genes_idx_key]
 
+        # Retrieve index of genes in gp mask and index of genes not in gp mask
+        self.features_idx_dict_ = {}
+        self.features_idx_dict_["masked_genes_idx"] = adata.uns[
+            genes_idx_key]
+        self.features_idx_dict_["unmasked_genes_idx"] = [
+            i for i in range(len(adata.var_names))
+            if i not in self.masked_genes_idx_]
+        self.features_idx_dict_["target_masked_genes_idx"] = adata.uns[
+            target_genes_idx_key]
+        self.features_idx_dict_["target_unmasked_genes_idx"] = [
+            i for i in range(len(adata.var_names))
+            if i not in self.target_masked_genes_idx_]
+        self.features_idx_dict_["source_masked_genes_idx_"] = adata.uns[
+            source_genes_idx_key]
+        self.features_idx_dict_["source_unmasked_genes_idx"] = [
+            i for i in range(len(adata.var_names))
+            if i not in self.source_masked_genes_idx_]
+        
+        # TO DO unmasked idx
         # Retrieve index of peaks in ca mask
         if adata_atac is not None:
             self.peaks_idx_ = adata_atac.uns[peaks_idx_key]
@@ -492,11 +507,10 @@ class NicheCompass(BaseModelMixin):
             cat_covariates_embeds_nums=self.cat_covariates_embeds_nums_,
             n_output_genes=self.n_output_genes_,
             n_output_peaks=self.n_output_peaks_,
-            gene_expr_decoder_mask=self.gp_mask_,
+            target_gene_expr_decoder_mask=self.gp_targets_mask,
+            source_gene_expr_decoder_mask=self.gp_sources_mask_,
             chrom_access_decoder_mask=self.ca_mask_,
-            gene_expr_mask_idx=self.genes_idx_,
-            target_gene_expr_mask_idx=self.target_genes_idx_,
-            source_gene_expr_mask_idx=self.source_genes_idx_,
+            features_idx_dict=self.features_idx_dict_,
             chrom_access_mask_idx=self.peaks_idx_,
             target_chrom_access_mask_idx=self.target_peaks_idx_,
             source_chrom_access_mask_idx=self.source_peaks_idx_,
