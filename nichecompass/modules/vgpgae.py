@@ -15,10 +15,9 @@ from torch_geometric.data import Data
 from nichecompass.nn import (CosineSimGraphDecoder,
                              Encoder,
                              MaskedOmicsFeatureDecoder,
-                           MaskedChromAccessDecoder,
-                           OneHopAttentionNodeLabelAggregator,
-                           OneHopGCNNormNodeLabelAggregator,
-                           OneHopSumNodeLabelAggregator)
+                             OneHopAttentionNodeLabelAggregator,
+                             OneHopGCNNormNodeLabelAggregator,
+                             OneHopSumNodeLabelAggregator)
 from .basemodulemixin import BaseModuleMixin
 from .losses import (compute_addon_l1_reg_loss,
                      compute_cat_covariates_contrastive_loss,
@@ -289,10 +288,23 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             unmasked_features_idx=features_idx_dict["source_unmasked_rna_idx"],
             recon_loss=self.rna_pred_loss_)
         
+        # Initialize gene-specific dispersion parameters
+        self.target_rna_theta = torch.nn.Parameter(torch.randn(n_output_genes))
+        self.source_rna_theta = torch.nn.Parameter(torch.randn(n_output_genes))
+        
+        # Initialize node-label aggregator
+        if node_label_method == "one-hop-norm":
+            self.node_label_aggregator = OneHopGCNNormNodeLabelAggregator()
+        elif node_label_method == "one-hop-sum":
+            self.node_label_aggregator = OneHopSumNodeLabelAggregator()
+        elif node_label_method == "one-hop-attention":
+            self.node_label_aggregator = OneHopAttentionNodeLabelAggregator(
+                n_input=n_input)
+        
         if "atac" in self.modalities_:
             # Initialize masked atac decoders
-            self.target_rna_decoder = MaskedOmicsFeatureDecoder(
-                mod="rna",
+            self.target_atac_decoder = MaskedOmicsFeatureDecoder(
+                mod="atac",
                 n_prior_gp_input=n_prior_gp,
                 n_addon_gp_input=n_addon_gp,
                 n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
@@ -303,10 +315,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 mask=target_rna_decoder_mask,
                 masked_features_idx=features_idx_dict["target_masked_rna_idx"],
                 unmasked_features_idx=features_idx_dict["target_unmasked_rna_idx"],
-                recon_loss=self.rna_pred_loss_)
+                recon_loss="nb")
 
-            self.source_rna_decoder = MaskedOmicsFeatureDecoder(
-                mod="rna",
+            self.source_atac_decoder = MaskedOmicsFeatureDecoder(
+                mod="atac",
                 n_prior_gp_input=n_prior_gp,
                 n_addon_gp_input=n_addon_gp,
                 n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
@@ -315,37 +327,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                               else 0),
                 n_output=n_output_genes,
                 mask=source_rna_decoder_mask,
-                masked_features_idx=features_idx_dict["source_masked_rna_idx"],
-                unmasked_features_idx=features_idx_dict["source_unmasked_rna_idx"],
-                recon_loss=self.rna_pred_loss_)
+                masked_features_idx=features_idx_dict["source_masked_atac_idx"],
+                unmasked_features_idx=features_idx_dict["source_unmasked_atac_idx"],
+                recon_loss="nb")
             
-            # Initialize masked chromatin accessibility decoder
-            self.chrom_access_decoder = MaskedChromAccessDecoder(
-                n_input=n_prior_gp,
-                n_addon_input=n_addon_gp,
-                n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
-                                              if cat_covariates_embeds_nums is not None
-                                              else 0),
-                n_output=n_output_peaks,
-                mask=chrom_access_decoder_mask,
-                mask_idx=chrom_access_mask_idx,
-                recon_dist=self.atac_pred_loss_)            
-
-        if node_label_method == "one-hop-norm":
-            self.node_label_aggregator = OneHopGCNNormNodeLabelAggregator()
-        elif node_label_method == "one-hop-sum":
-            self.node_label_aggregator = OneHopSumNodeLabelAggregator()
-        elif node_label_method == "one-hop-attention":
-            self.node_label_aggregator = OneHopAttentionNodeLabelAggregator(
-                n_input=n_input)
-        
-        # Initialize gene-specific dispersion parameters
-        self.target_rna_theta = torch.nn.Parameter(torch.randn(n_output_genes))
-        self.source_rna_theta = torch.nn.Parameter(torch.randn(n_output_genes))
-
-        if "chrom_access" in self.modalities_:
             # Initialize peak-specific dispersion parameters
-            self.theta_atac = torch.nn.Parameter(torch.randn(len(chrom_access_mask_idx)))
+            self.target_atac_theta = torch.nn.Parameter(torch.randn(n_output_peaks))
+            self.source_atac_theta = torch.nn.Parameter(torch.randn(n_output_peaks))
 
     def forward(self,
                 data_batch: Data,
@@ -407,7 +395,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         else:
             x_enc = x
             
-        # Get categorical covariate embeddings
+        # Get categorical covariates embedding
         if len(self.cat_covariates_cats_) > 0:
             cat_covariates_embeds = []
             for i in range(len(self.cat_covariates_embedders)):
@@ -438,18 +426,16 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             active_gp_mask = self.get_active_gp_mask()
             z[:, ~active_gp_mask] = 0
 
-        # Retrieve node labels
         if decoder == "omics":
             output["node_labels"] = {}
-
-            # Compute aggregated neighborhood omics feature vector to create
-            # concatenated omics reconstruction labels
+            
+            # Compute aggregated neighborhood omics feature vector
             node_label_aggregator_output = self.node_label_aggregator(
                     x=x,
                     edge_index=edge_index,
                     return_agg_weights=return_agg_weights)
             x_neighbors = node_label_aggregator_output[0]
-
+            
             if "atac" not in self.modalities_:
                 # Retrieve node labels and only keep nodes in current node batch
                 output["node_labels"]["target_rna"] = x[batch_idx]
@@ -502,9 +488,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 # Use observed library size as scaling factor for the negative
                 # binomial means of the atac distribution
                 target_atac_library_size = output["node_labels"]["target_atac"].sum(
-                1).unsqueeze(1)
+                    1).unsqueeze(1)
                 source_atac_library_size = output["node_labels"]["source_atac"].sum(
-                1).unsqueeze(1)
+                    1).unsqueeze(1)
                 self.target_atac_log_library_size = torch.log(target_atac_library_size)
                 self.source_rna_log_library_size = torch.log(source_rna_library_size)
                 
@@ -514,7 +500,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     with torch.no_grad():
                         # Round to 4 decimals as genes are never completely
                         # turned off due to L1 being not differentiable at 0
-                        gp_weights = self.get_gp_weights(use_mask_idx=False)[0]
+                        gp_weights = self.get_gp_weights(only_masked_features=False)[0]
                         gp_weights = torch.round(gp_weights, decimals=4)
 
                         non_zero_gene_weights = torch.ne(
@@ -722,14 +708,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             mu=node_model_output["mu"],
             logstd=node_model_output["logstd"])
 
-        # Compute edge reconstruction binary cross entropy loss
+        # Compute edge reconstruction binary cross entropy loss for edge batch
         loss_dict["edge_recon_loss"] = (
             lambda_edge_recon * compute_edge_recon_loss(
                 edge_recon_logits=edge_model_output["edge_recon_logits"],
                 edge_recon_labels=edge_model_output["edge_recon_labels"],
                 edge_incl=edge_model_output["edge_incl"]))
             
-        # Compute categorical covariates contrastive loss
+        # Compute categorical covariates contrastive loss for edge batch
         if (edge_model_output["edge_same_cat_covariates_cat"] is not None) & (
         lambda_cat_covariates_contrastive > 0):
             loss_dict["cat_covariates_contrastive_loss"] = (
@@ -755,31 +741,34 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     mu=node_model_output["source_rna_nb_means"],
                     theta=torch.exp(self.source_rna_theta)))
             
-        # Computed l1 reg loss    
+        # Computed l1 reg loss of genes
         loss_dict["masked_gp_l1_reg_loss"] = (lambda_l1_masked *
             compute_omics_recon_l1_reg_loss(self,
                                             l1_mask=l1_mask))
 
         # Compute group lasso regularization loss of gene programs
         loss_dict["group_lasso_reg_loss"] = (lambda_group_lasso *
-        compute_group_lasso_reg_loss(self))
+            compute_group_lasso_reg_loss(self))
 
         # Compute l1 regularization loss of genes in addon gene programs
         if self.n_addon_gp_ != 0:
             loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon *
-            compute_addon_l1_reg_loss(self))
+            compute_omics_recon_l1_reg_loss(self))
 
-        if "chrom_access" in self.modalities_:
+        if "atac" in self.modalities_:
             # Compute chromatin accessibility reconstruction negative binomial
             # loss
-            theta_atac = torch.exp(self.theta_atac) # peak-specific inverse
-                                                    # dispersion
-            nb_means_atac = node_model_output["chrom_access_dist_params"]
-            loss_dict["chrom_access_recon_loss"] = (lambda_chrom_access_recon * 
+            loss_dict["chrom_access_recon_loss"] = (
+                lambda_chrom_access_recon * 
             compute_omics_recon_nb_loss(
-                    x=node_model_output["node_labels_atac"],
-                    mu=nb_means_atac,
-                    theta=theta_atac))
+                    x=node_model_output["node_labels"]["target_atac"],
+                    mu=node_model_output["target_atac_nb_means"],
+                    theta=torch.exp(self.target_atac_theta))) + (
+                lambda_chrom_access_recon * 
+            compute_omics_recon_nb_loss(
+                    x=node_model_output["node_labels"]["source_atac"],
+                    mu=node_model_output["source_atac_nb_means"],
+                    theta=torch.exp(self.source_atac_theta)))
 
         # Compute optimization loss used for backpropagation as well as global
         # loss used for early stopping of model training and best model saving
@@ -812,46 +801,54 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         return loss_dict
 
     def get_gp_weights(self,
-                       use_mask_idx: bool=False) -> torch.Tensor:
+                       only_masked_features: bool=False) -> List[torch.Tensor]:
         """
-        Get the gene weights of the gene expression negative binomial means
-        decoder.
+        Get the gene program weights of the omics feature decoders.
 
         Returns:
         ----------
         gp_weights_all_modalities:
-            Tuple of tensors containing the decoder gp weights (dim:
-            n_gps x n_genes)
-        gp_peak_weights:
-            Tensor containing the chromatin accessibility decoder peak weights (
-            dim: n_gps x n_peaks)
+            List of tensors containing the decoder gp weights for each
+            omics modality (dim: (n_prior_gp + n_addon_gp) x n_omics_features)
         """
         gp_weights_all_modalities = []
 
         for modality in self.modalities_:
-            decoder = getattr(self, modality + "_decoder")
-            
+            target_decoder = getattr(self, f"target_{modality}_decoder")
+            source_decoder = getattr(self, f"source_{modality}_decoder")
+
             # Get decoder weights of masked gps
-            gp_weights = (
-                decoder.nb_means_normalized_decoder.masked_l.weight.data
+            target_gp_weights_masked = (
+                target_decoder.nb_means_normalized_decoder.masked_l.weight.data
                 ).clone()
+            source_gp_weights_masked = (
+                source_decoder.nb_means_normalized_decoder.masked_l.weight.data
+                ).clone()
+            gp_weights = torch.cat((target_gp_weights_masked,
+                                    source_gp_weights_masked),
+                                   dim=0)
 
             # Add decoder weights of addon gps
             if self.n_addon_gp_ > 0:
-                gp_weights_addon = (
-                    decoder.nb_means_normalized_decoder.addon_l.weight.data
+                target_gp_weights_addon = (
+                    target_decoder.nb_means_normalized_decoder.addon_l.weight.data
                     ).clone()
+                source_gp_weights_addon = (
+                    source_decoder.nb_means_normalized_decoder.addon_l.weight.data
+                    ).clone()
+                gp_weights_addon = torch.cat((target_gp_weights_addon,
+                                              source_gp_weights_addon),
+                                             dim=0)
                 gp_weights = torch.cat([gp_weights, gp_weights_addon], axis=1)
 
             # Only keep omics features in mask
-            if use_mask_idx:
-                mask_idx = getattr(self, modality + "_mask_idx_")
+            if only_masked_features:
+                mask_idx = getattr(self, "features_idx_dict_")[
+                    f"masked_{modality}_idx"]
                 gp_weights = gp_weights[mask_idx, :]
             
-            # append masked_decoder_weights to the list of weights
+            # Append current modality to output list
             gp_weights_all_modalities.append(gp_weights)
-
-        # return the weights as a tuple
         return gp_weights_all_modalities
 
     def get_active_gp_mask(
@@ -894,7 +891,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Tensor containing the gene expression decoder gene weights of active
             gene programs.
         """
-        gp_weights = self.get_gp_weights(use_mask_idx=True)[0]
+        gp_weights = self.get_gp_weights(only_masked_features=True)[0]
 
         # Aggregate absolute gp weights based on ´abs_gp_weights_agg_mode´ and
         # calculate thresholds of aggregated absolute gp weights and get active

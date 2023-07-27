@@ -1194,46 +1194,6 @@ class NicheCompass(BaseModelMixin):
         gp_peak_importances_df.reset_index(drop=True, inplace=True)
         return gp_peak_importances_df
 
-    def compute_latent_graph_connectivities(
-            self,
-            n_neighbors: int=15,
-            mode: Literal["knn", "umap"]="knn",
-            seed: int=42,
-            adata: Optional[AnnData]=None):
-        """
-        Compute latent graph connectivities.
-
-        Parameters
-        ----------
-        n_neighbors:
-            Number of neighbors for graph connectivities computation.
-        mode:
-            Mode to be used for graph connectivities computation.
-        seed:
-            Random seed for reproducible computation.
-        adata:
-            AnnData object to be used. If ´None´, uses the adata object stored 
-            in the model instance.
-        """
-        self._check_if_trained(warn=True)
-
-        if adata is None:
-            adata = self.adata
-
-        # Validate that latent representation exists
-        if self.latent_key_ not in adata.obsm:
-            raise ValueError(f"Key '{self.latent_key_}' not found in "
-                              "'adata.obsm'. Please make sure to first train "
-                              "the model and store the latent representation in"
-                              " 'adata.obsm'.")
-
-        # Compute latent connectivities
-        sc.pp.neighbors(adata=adata,
-                        use_rep=self.latent_key_,
-                        n_neighbors=n_neighbors,
-                        random_state=seed,
-                        key_added="latent")
-
     def get_gp_data(self,
                     selected_gps: Optional[Union[str, list]]=None,
                     adata: Optional[AnnData]=None
@@ -1672,11 +1632,10 @@ class NicheCompass(BaseModelMixin):
             counts_key: str="counts",
             adj_key: str="spatial_connectivities",
             ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+        # TO DO fix x_enc
         """
         Get the gene expression distribution parameters from a trained model. 
-        This is either (´nb_means´, ´zi_probs´) if a zero-inflated negative 
-        binomial is used to model gene expression or ´nb_means´ if a negative 
-        binomial is used to model gene expression.
+        This is ´nb_means´ if a negative binomial is used to model gene expression.
 
         Parameters
         ----------

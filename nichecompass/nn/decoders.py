@@ -59,234 +59,11 @@ class CosineSimGraphDecoder(nn.Module):
             z[:int(z.shape[0]/2)], # ´edge_label_index[0]´
             z[int(z.shape[0]/2):]) # ´edge_label_index[1]´
         return edge_recon_logits
-
-
-class MaskedGeneExprDecoder(nn.Module):
-    """
-    Masked gene expression decoder class.
-
-    Takes the latent space features z as input, and has two separate masked
-    layers to decode the parameters of the gene expression distribution.
-
-    Parameters
-    ----------
-    n_input:
-        Number of maskable input nodes to the decoder (maskable latent space 
-        dimensionality).
-    n_addon_input:
-        Number of non-maskable add-on input nodes to the decoder (non-maskable
-        latent space dimensionality).
-    n_cat_covariates_embed_input:
-        Number of categorical covariates embedding input nodes to the decoder
-        (categorical covariates embedding dimensionality).
-    n_output:
-        Number of output nodes from the decoder (number of genes).
-    mask:
-        Mask that determines which input nodes / latent features can contribute
-        to the reconstruction of which genes.
-    mask_idx:
-        Index of genes that are in the gp mask.
-    gene_expr_recon_dist:
-        The distribution used for gene expression reconstruction. If `nb`, uses
-        a Negative Binomial distribution. If `zinb`, uses a Zero-inflated
-        Negative Binomial distribution.
-    """
-    def __init__(self,
-                 n_input: int,
-                 n_cat_covariates_embed_input: int,
-                 n_addon_input: int,
-                 n_output: int,
-                 mask: torch.Tensor,
-                 mask_idx: torch.Tensor,
-                 recon_dist: Literal["nb", "zinb"]):
-        super().__init__()
-
-        print(f"MASKED GENE EXPRESSION DECODER -> n_input: {n_input}, "
-              f"n_cat_covariates_embed_input: {n_cat_covariates_embed_input}, "
-              f"n_addon_input: {n_addon_input}, n_output: {n_output}")
-
-        self.mask_idx = mask_idx
-        self.recon_dist = recon_dist
-
-        self.nb_means_normalized_decoder = AddOnMaskedLayer(
-            n_input=n_input,
-            n_output=n_output,
-            bias=False,
-            mask=mask,
-            n_addon_input=n_addon_input,
-            n_cat_covariates_embed_input=n_cat_covariates_embed_input,
-            activation=nn.Softmax(dim=-1))
-
-        if recon_dist == "zinb":
-            self.zi_prob_logits_decoder = AddOnMaskedLayer(
-                n_input=n_input,
-                n_output=n_output,
-                bias=False,
-                mask=mask,
-                n_addon_input=n_addon_input,
-                n_cat_covariates_embed_input=n_cat_covariates_embed_input,
-                activation=nn.Identity())
-
-    def forward(self,
-                z: torch.Tensor,
-                log_library_size: torch.Tensor,
-                cat_covariates_embed: Optional[torch.Tensor]=None
-                ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Forward pass of the masked gene expression decoder.
-
-        Parameters
-        ----------
-        z:
-            Tensor containing the latent space features.
-        log_library_size:
-            Tensor containing the log library size of the nodes.
-        cat_covariates_embed:
-            Tensor containing the categorical covariates embedding (all
-            categorical covariates embeddings concatenated into one embedding).
-
-        Returns
-        ----------
-        zinb_parameters:
-            Parameters for the ZINB distribution to model gene expression.
-        """            
-        # Add categorical covariates embedding to latent feature vector
-        if cat_covariates_embed is not None:
-            z = torch.cat((z, cat_covariates_embed), dim=-1)
-        
-        nb_means_normalized = self.nb_means_normalized_decoder(z)
-        
-        nb_means = torch.exp(log_library_size) * nb_means_normalized
-        nb_means = nb_means[:, self.mask_idx]
-        if self.recon_dist == "nb":
-            gene_expr_decoder_params = nb_means
-        elif self.recon_dist == "zinb":
-            zi_prob_logits = self.zi_prob_logits_decoder(z)
-            zi_prob_logits = zi_prob_logits[:, self.mask_idx]
-            gene_expr_decoder_params = (nb_means, zi_prob_logits)
-        return gene_expr_decoder_params
-    
-
-class MaskedChromAccessDecoder(nn.Module):
-    """
-    Masked chromatin accessibility decoder class.
-
-    Takes the latent space features z as input, and has two separate masked
-    layers to decode the parameters of the ZINB distribution.
-
-    Parameters
-    ----------
-    n_input:
-        Number of maskable input nodes to the decoder (maskable latent space 
-        dimensionality).
-    n_addon_input:
-        Number of non-maskable add-on input nodes to the decoder (non-maskable
-        latent space dimensionality).
-    n_cat_covariates_embed_input:
-        Number of categorical covariates embedding input nodes to the decoder
-        (categorical covariates embedding dimensionality).
-    n_output:
-        Number of output nodes from the decoder (number of genes).
-    mask:
-        Mask that determines which input nodes / latent features can contribute
-        to the reconstruction of which genes.
-    mask_idx:
-        Index of peaks that are in the ca mask.
-    gene_expr_recon_dist:
-        The distribution used for gene expression reconstruction. If `nb`, uses
-        a Negative Binomial distribution. If `zinb`, uses a Zero-inflated
-        Negative Binomial distribution.
-    """
-    def __init__(self,
-                 n_input: int,
-                 n_addon_input: int,
-                 n_cat_covariates_embed_input: int,
-                 n_output: int,
-                 mask: torch.Tensor,
-                 mask_idx: torch.Tensor,
-                 recon_dist: Literal["nb", "zinb"]):
-        super().__init__()
-
-        print("MASKED CHROMATIN ACCESSIBILITY DECODER -> n_input: "
-                f"{n_input}, n_cat_covariates_embed_input: "
-                f"{n_cat_covariates_embed_input}, n_addon_input: "
-                f"{n_addon_input}, n_output: {n_output}")
-
-        self.mask_idx = mask_idx
-        self.recon_dist = recon_dist
-
-        self.nb_means_normalized_decoder = AddOnMaskedLayer(
-            n_input=n_input,
-            n_output=n_output,
-            bias=False,
-            mask=mask,
-            n_addon_input=n_addon_input,
-            n_cat_covariates_embed_input=n_cat_covariates_embed_input,
-            activation=nn.Softmax(dim=-1))
-
-        if recon_dist == "zinb":
-            self.zi_prob_logits_decoder = AddOnMaskedLayer(
-                n_input=n_input,
-                n_output=n_output,
-                bias=False,
-                mask=mask,
-                n_addon_input=n_addon_input,
-                n_cat_covariates_embed_input=n_cat_covariates_embed_input,
-                activation=nn.Identity())
-
-    def forward(self,
-                z: torch.Tensor,
-                log_library_size: torch.Tensor,
-                gene_weight_peak_mask: torch.Tensor,
-                cat_covariates_embed: Optional[torch.Tensor]=None
-                ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Forward pass of the masked chromatin accessibility decoder.
-
-        Parameters
-        ----------
-        z:
-            Tensor containing the latent space features.
-        log_library_size:
-            Tensor containing the log library size of the nodes.
-        gene_weight_peak_mask:
-            Tensor containing a dynamic peak mask based on gene weights.
-            If a gene is removed by regularization (its weight is 0),
-            the corresponding peaks will be marked as 0 in the
-            `gene_weight_peak_mask`.
-        cat_covariates_embed:
-            Tensor containing the categorical covariates embedding (all
-            categorical covariates embeddings concatenated into one embedding).
-
-        Returns
-        ----------
-        zinb_parameters:
-            Parameters for the ZINB distribution to model gene expression.
-        """            
-        # Add categorical covariates embedding to latent feature vector
-        if cat_covariates_embed is not None:
-            z = torch.cat((z, cat_covariates_embed), dim=-1)
-        
-        nb_means_normalized = self.nb_means_normalized_decoder(
-            input=z,
-            dynamic_mask=gene_weight_peak_mask)
-        
-        nb_means = torch.exp(log_library_size) * nb_means_normalized
-        nb_means = nb_means[:, self.mask_idx]
-        if self.recon_dist == "nb":
-            chrom_access_decoder_params = nb_means
-        elif self.recon_dist == "zinb":
-            zi_prob_logits = self.zi_prob_logits_decoder(
-                z,
-                gene_weight_peak_mask)
-            zi_prob_logits = zi_prob_logits[:, self.mask_idx]
-            chrom_access_decoder_params = (nb_means, zi_prob_logits)
-        return chrom_access_decoder_params
     
 
 class MaskedOmicsFeatureDecoder(nn.Module):
     """
-    Masked gene expression decoder class.
+    Masked omics feature decoder class.
 
     Takes the latent space features z as input, and has two separate masked
     layers to decode the parameters of the gene expression distribution.
@@ -315,7 +92,7 @@ class MaskedOmicsFeatureDecoder(nn.Module):
         Negative Binomial distribution.
     """
     def __init__(self,
-                 mod: Literal["gene_expr", "chrom_access"],
+                 mod: Literal["rna", "atac"],
                  n_prior_gp_input: int,
                  n_addon_gp_input: int,
                  n_cat_covariates_embed_input: int,
@@ -326,11 +103,15 @@ class MaskedOmicsFeatureDecoder(nn.Module):
                  recon_loss: Literal["nb"]):
         super().__init__()
 
-        # TO DO
-        print(f"MASKED GENE EXPRESSION DECODER -> n_prior_gp_input: {n_prior_gp_input}, "
-              f"n_cat_covariates_embed_input: {n_cat_covariates_embed_input}, "
-              f"n_addon_gp_input: {n_addon_gp_input}, n_output: {n_output}")
-
+        if mod == "rna":
+            print(f"MASKED RNA DECODER -> n_prior_gp_input: {n_prior_gp_input}, "
+                  f"n_cat_covariates_embed_input: {n_cat_covariates_embed_input}, "
+                  f"n_addon_gp_input: {n_addon_gp_input}, n_output: {n_output}")
+        elif mod == "atac":
+            print(f"MASKED ATAC DECODER -> n_prior_gp_input: {n_prior_gp_input}, "
+                  f"n_cat_covariates_embed_input: {n_cat_covariates_embed_input}, "
+                  f"n_addon_gp_input: {n_addon_gp_input}, n_output: {n_output}")
+            
         self.masked_features_idx = masked_features_idx
         self.unmasked_features_idx = unmasked_features_idx
         self.recon_loss = recon_loss
@@ -348,6 +129,7 @@ class MaskedOmicsFeatureDecoder(nn.Module):
     def forward(self,
                 z: torch.Tensor,
                 log_library_size: torch.Tensor,
+                dynamic_mask: Optional[torch.Tensor]=None,
                 cat_covariates_embed: Optional[torch.Tensor]=None
                 ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -359,6 +141,11 @@ class MaskedOmicsFeatureDecoder(nn.Module):
             Tensor containing the latent space features.
         log_library_size:
             Tensor containing the log library size of the nodes.
+        dynamic_mask:
+            For atac modality, a tensor containing a dynamic peak mask based on gene
+            weights. If a gene is removed by regularization (its weight is 0),
+            the corresponding peaks will be marked as 0 in the
+            `gene_weight_peak_mask`.        
         cat_covariates_embed:
             Tensor containing the categorical covariates embedding (all
             categorical covariates embeddings concatenated into one embedding).
@@ -371,6 +158,8 @@ class MaskedOmicsFeatureDecoder(nn.Module):
         if cat_covariates_embed is not None:
             z = torch.cat((z, cat_covariates_embed), dim=-1)
         
-        nb_means_normalized = self.nb_means_normalized_decoder(z)
+        nb_means_normalized = self.nb_means_normalized_decoder(
+            input=z,
+            dynamic_mask=dynamic_mask)
         nb_means = torch.exp(log_library_size) * nb_means_normalized
         return nb_means
