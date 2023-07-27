@@ -651,8 +651,6 @@ class Trainer(BaseTrainerMixin):
             omics_pred_dict_val_accumulated["target_rna_preds"] = np.append(
                 omics_pred_dict_val_accumulated["target_rna_preds"],
                 target_rna_preds_val.detach().cpu().numpy())
-            print("PUI")
-            print("PUI")
             omics_pred_dict_val_accumulated["source_rna_preds"] = np.append(
                 omics_pred_dict_val_accumulated["source_rna_preds"],
                 source_rna_preds_val.detach().cpu().numpy())

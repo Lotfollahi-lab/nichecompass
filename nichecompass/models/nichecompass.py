@@ -411,6 +411,13 @@ class NicheCompass(BaseModelMixin):
         self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
         self.n_prior_gp_ = len(self.gp_targets_mask_)
         self.n_addon_gp_ = n_addon_gps
+        
+        # Add add-on gps to adata
+        if n_addon_gps > 0:
+            gp_list = list(self.adata.uns[self.gp_names_key_])
+            for i in range(n_addon_gps):
+                gp_list.append(f"Add-on {i} GP")
+            self.adata.uns[self.gp_names_key_] = np.array(gp_list)
 
         # Retrieve categorical covariates categories
         if cat_covariates_cats is None:
