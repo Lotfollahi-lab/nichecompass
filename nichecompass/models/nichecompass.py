@@ -210,13 +210,12 @@ class NicheCompass(BaseModelMixin):
                  include_gene_expr_recon_loss: bool=True,
                  include_chrom_access_recon_loss: Optional[bool]=True,
                  include_cat_covariates_contrastive_loss: bool=True,
-                 gene_expr_recon_dist: Literal["nb", "zinb"]="nb",
+                 gene_expr_recon_dist: Literal["nb"]="nb",
                  log_variational: bool=True,
                  node_label_method: Literal[
-                    "self",
                     "one-hop-sum",
                     "one-hop-norm",
-                    "one-hop-attention"]="one-hop-attention",
+                    "one-hop-attention"]="one-hop-norm",
                  active_gp_thresh_ratio: float=0.05,
                  n_layers_encoder: int=1,
                  n_hidden_encoder: Optional[int]=None,
@@ -225,7 +224,7 @@ class NicheCompass(BaseModelMixin):
                  dropout_rate_encoder: float=0.,
                  dropout_rate_graph_decoder: float=0.,
                  cat_covariates_cats: Optional[List[List]]=None,
-                 n_addon_gps: int=0,
+                 n_addon_gps: int=10,
                  cat_covariates_embeds_nums: Optional[List[int]]=None,
                  **kwargs):
         self.adata = adata
@@ -305,7 +304,8 @@ class NicheCompass(BaseModelMixin):
         # Retrieve chromatin accessibility masks
         # TO DO fix masks
         if adata_atac is None:
-            self.ca_mask_ = None
+            self.ca_targets_mask_ = None
+            self.ca_sources_mask_ = None
             self.gene_peaks_mask_ = None
         else:
             self.gene_peaks_mask_ = torch.tensor(adata.varm[gene_peaks_mask_key],
@@ -321,79 +321,76 @@ class NicheCompass(BaseModelMixin):
                                  " accessibility reconstruction, you can create"
                                  " a mask of 1s that allows all gene program "
                                  "latent nodes to reconstruct all peaks.")
-            self.ca_mask_ = torch.sparse_coo_tensor(
+            self.ca_targets_mask_ = torch.sparse_coo_tensor(
                 indices=[ca_targets_mask.row, ca_targets_mask.col],
                 values=ca_targets_mask.data,
                 size=ca_targets_mask.shape,
                 dtype=torch.bool)
-            if node_label_method != "self":
-                if ca_sources_mask_key in adata_atac.varm:
-                    ca_sources_mask = adata_atac.varm[
-                        ca_sources_mask_key].T.tocoo()
-                else:
-                    raise ValueError("Please specify an adequate "
-                                    "´ca_sources_mask_key´ for your adata_atac "
-                                    "object. The sources mask needs to be "
-                                    "stored in "
-                                    "´adata_atac.varm[ca_sources_mask_key]´. If"
-                                    "you do not want to mask chromatin "
-                                    " accessibility reconstruction, you can "
-                                    "create a mask of 1s that allows all gene "
-                                    "program latent nodes to reconstruct all "
-                                    "peaks.")
-                # Horizontally concatenate targets and sources masks
-                ca_combined_mask_row = np.concatenate(
-                    (ca_targets_mask.row, ca_sources_mask.row), axis=0)
-                ca_combined_mask_col = np.concatenate(
-                    (ca_targets_mask.col, (ca_sources_mask.col + 
-                                           ca_targets_mask.shape[1])), axis=0)
-                ca_combined_mask_data = np.concatenate(
-                    (ca_targets_mask.data, ca_sources_mask.data), axis=0)
-                self.ca_mask_ = torch.sparse_coo_tensor(
-                    indices=[ca_combined_mask_row, ca_combined_mask_col],
-                    values=ca_combined_mask_data,
-                    size=(ca_targets_mask.shape[0],
-                          (ca_targets_mask.shape[1] + 
-                           ca_sources_mask.shape[1])),
+            if ca_sources_mask_key in adata_atac.varm:
+                ca_sources_mask = adata_atac.varm[
+                    ca_sources_mask_key].T.tocoo()
+                self.ca_sources_mask_ = torch.sparse_coo_tensor(
+                    indices=[ca_sources_mask.row, ca_sources_mask.col],
+                    values=ca_sources_mask.data,
+                    size=ca_sources_mask.shape,
                     dtype=torch.bool)
+            else:
+                raise ValueError("Please specify an adequate "
+                                "´ca_sources_mask_key´ for your adata_atac "
+                                "object. The sources mask needs to be "
+                                "stored in "
+                                "´adata_atac.varm[ca_sources_mask_key]´. If"
+                                "you do not want to mask chromatin "
+                                " accessibility reconstruction, you can "
+                                "create a mask of 1s that allows all gene "
+                                "program latent nodes to reconstruct all "
+                                "peaks.")
 
         # Retrieve index of genes in gp mask and index of genes not in gp mask
         self.features_idx_dict_ = {}
-        self.features_idx_dict_["masked_genes_idx"] = adata.uns[
+        self.features_idx_dict_["masked_rna_idx"] = adata.uns[
             genes_idx_key]
-        self.features_idx_dict_["unmasked_genes_idx"] = [
+        self.features_idx_dict_["unmasked_rna_idx"] = [
             i for i in range(len(adata.var_names))
-            if i not in self.masked_genes_idx_]
-        self.features_idx_dict_["target_masked_genes_idx"] = adata.uns[
+            if i not in self.features_idx_dict_["masked_rna_idx"]]
+        self.features_idx_dict_["target_masked_rna_idx"] = adata.uns[
             target_genes_idx_key]
-        self.features_idx_dict_["target_unmasked_genes_idx"] = [
+        self.features_idx_dict_["target_unmasked_rna_idx"] = [
             i for i in range(len(adata.var_names))
-            if i not in self.target_masked_genes_idx_]
-        self.features_idx_dict_["source_masked_genes_idx_"] = adata.uns[
+            if i not in self.features_idx_dict_["target_masked_rna_idx"]]
+        self.features_idx_dict_["source_masked_rna_idx"] = adata.uns[
             source_genes_idx_key]
-        self.features_idx_dict_["source_unmasked_genes_idx"] = [
+        self.features_idx_dict_["source_unmasked_rna_idx"] = [
             i for i in range(len(adata.var_names))
-            if i not in self.source_masked_genes_idx_]
+            if i not in self.features_idx_dict_["source_masked_rna_idx"]]
         
-        # TO DO unmasked idx
-        # Retrieve index of peaks in ca mask
+        # Retrieve index of peaks in ca mask and index of peaks not in ca mask
         if adata_atac is not None:
             self.peaks_idx_ = adata_atac.uns[peaks_idx_key]
             self.target_peaks_idx_ = adata_atac.uns[target_peaks_idx_key]
             self.source_peaks_idx_ = adata_atac.uns[source_peaks_idx_key]
-        else:
-            self.peaks_idx_ = None
-            self.target_peaks_idx_ = None
-            self.source_peaks_idx_ = None
+            
+            self.features_idx_dict_["masked_atac_idx"] = adata_atac.uns[
+                peaks_idx_key]
+            self.features_idx_dict_["unmasked_atac_idx"] = [
+                i for i in range(len(adata_atac.var_names))
+                if i not in self.features_idx_dict_["masked_atac_idx"]]
+            self.features_idx_dict_["target_masked_atac_idx"] = adata_atac.uns[
+                target_peaks_idx_key]
+            self.features_idx_dict_["target_unmasked_atac_idx"] = [
+                i for i in range(len(adata_atac.var_names))
+                if i not in self.features_idx_dict_["target_masked_atac_idx"]]
+            self.features_idx_dict_["source_masked_atac_idx"] = adata_atac.uns[
+                source_peaks_idx_key]
+            self.features_idx_dict_["source_unmasked_atac_idx"] = [
+                i for i in range(len(adata_atac.var_names))
+                if i not in self.features_idx_dict_["source_masked_atac_idx"]]
 
         # Determine VGPGAE inputs
         self.n_input_ = adata.n_vars
         self.n_output_genes_ = adata.n_vars
-        if node_label_method != "self":
-            # Target and source genes are concatenated in output
-            self.n_output_genes_ *= 2
         if adata_atac is not None:
-            self.modalities_ = ["gene_expr", "chrom_access"]
+            self.modalities_ = ["rna", "atac"]
             if not np.all(adata.obs.index == adata_atac.obs.index):
                 raise ValueError("Please make sure that 'adata' and "
                                  "'adata_atac' contain the same observations in"
@@ -401,11 +398,8 @@ class NicheCompass(BaseModelMixin):
             # Peaks are concatenated to genes in input
             self.n_input_ += adata_atac.n_vars
             self.n_output_peaks_ = adata_atac.n_vars
-            if node_label_method != "self":
-                # Target and source peaks are concatenated in output
-                self.n_output_peaks_ *= 2
         else:
-            self.modalities_ = ["gene_expr"]
+            self.modalities_ = ["rna"]
             self.n_output_peaks_ = 0
         self.n_layers_encoder_ = n_layers_encoder
         self.conv_layer_encoder_ = conv_layer_encoder
@@ -415,8 +409,8 @@ class NicheCompass(BaseModelMixin):
             self.encoder_n_attention_heads_ = 0
         self.dropout_rate_encoder_ = dropout_rate_encoder
         self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
-        self.n_nonaddon_gps_ = len(self.gp_mask_)
-        self.n_addon_gps_ = n_addon_gps
+        self.n_prior_gp_ = len(self.gp_targets_mask_)
+        self.n_addon_gp_ = n_addon_gps
 
         # Retrieve categorical covariates categories
         if cat_covariates_cats is None:
@@ -440,8 +434,8 @@ class NicheCompass(BaseModelMixin):
 
         # Determine dimensionality of hidden encoder layer if not provided
         if n_hidden_encoder is None:
-            if len(adata.var) > self.n_nonaddon_gps_:
-                n_hidden_encoder = self.n_nonaddon_gps_
+            if len(adata.var) > self.n_prior_gp_:
+                n_hidden_encoder = self.n_prior_gp_
             else:
                 n_hidden_encoder = len(adata.var)
         self.n_hidden_encoder_ = n_hidden_encoder
@@ -502,18 +496,16 @@ class NicheCompass(BaseModelMixin):
             n_input=self.n_input_,
             n_layers_encoder=self.n_layers_encoder_,
             n_hidden_encoder=self.n_hidden_encoder_,
-            n_nonaddon_gps=self.n_nonaddon_gps_,
-            n_addon_gps=self.n_addon_gps_,
+            n_prior_gp=self.n_prior_gp_,
+            n_addon_gp=self.n_addon_gp_,
             cat_covariates_embeds_nums=self.cat_covariates_embeds_nums_,
             n_output_genes=self.n_output_genes_,
             n_output_peaks=self.n_output_peaks_,
-            target_gene_expr_decoder_mask=self.gp_targets_mask,
-            source_gene_expr_decoder_mask=self.gp_sources_mask_,
-            chrom_access_decoder_mask=self.ca_mask_,
+            target_rna_decoder_mask=self.gp_targets_mask_,
+            source_rna_decoder_mask=self.gp_sources_mask_,
+            target_atac_decoder_mask=self.ca_targets_mask_,
+            source_atac_decoder_mask=self.ca_sources_mask_,
             features_idx_dict=self.features_idx_dict_,
-            chrom_access_mask_idx=self.peaks_idx_,
-            target_chrom_access_mask_idx=self.target_peaks_idx_,
-            source_chrom_access_mask_idx=self.source_peaks_idx_,
             gene_peaks_mask=self.gene_peaks_mask_,
             cat_covariates_cats=self.cat_covariates_cats_,
             cat_covariates_no_edges=self.cat_covariates_no_edges_,
@@ -525,7 +517,7 @@ class NicheCompass(BaseModelMixin):
             include_gene_expr_recon_loss=self.include_gene_expr_recon_loss_,
             include_chrom_access_recon_loss=self.include_chrom_access_recon_loss_,
             include_cat_covariates_contrastive_loss=self.include_cat_covariates_contrastive_loss_,
-            gene_expr_recon_dist=self.gene_expr_recon_dist_,
+            rna_pred_loss=self.gene_expr_recon_dist_,
             node_label_method=self.node_label_method_,
             active_gp_thresh_ratio=self.active_gp_thresh_ratio_,
             log_variational=self.log_variational_,
@@ -897,22 +889,6 @@ class NicheCompass(BaseModelMixin):
                 std_norm_factors = np.abs(norm_factors.mean(0)) # sum over
                 # genes; dim: (n_selected_gps,); proportional increase of std
                 # but no negative std
-            elif self.gene_expr_recon_dist_ == "zinb":
-                # Get zero inflation probabilities
-                _, zi_probs = self.get_gene_expr_dist_params(
-                    adata=adata,
-                    counts_key=self.counts_key_,
-                    adj_key=self.adj_key_)
-                non_zi_probs = 1 - zi_probs # dim: (n_obs, 2 x n_genes)
-                non_zi_probs_rep = np.repeat(non_zi_probs[:, :, np.newaxis],
-                                             len(selected_gps),
-                                             axis=2) # dim: (n_obs, 2 x n_genes,
-                                             # n_selected_gps)
-                norm_factors = np.repeat(norm_factors[np.newaxis, :],
-                                         mu.shape[0],
-                                         axis=0) # dim: (n_obs, 2 x n_genes,
-                                         # n_selected_gps)
-                norm_factors *= non_zi_probs_rep
         else:
             gp_weights_sum = selected_gps_weights.sum(0) # sum over genes
             gp_signs = np.zeros_like(gp_weights_sum)
@@ -1114,17 +1090,7 @@ class NicheCompass(BaseModelMixin):
         if gp_weights.sum(0) < 0:
             gp_weights *= -1
 
-        if self.gene_expr_recon_dist_ == "zinb":
-            # Correct for zero inflation probabilities
-            _, zi_probs = self.get_gene_expr_dist_params(
-                adata=adata,
-                counts_key=self.counts_key_,
-                adj_key=self.adj_key_)
-            non_zi_probs = 1 - zi_probs
-            gp_weights_zi = gp_weights * non_zi_probs.sum(0) # sum over all obs
-            # Normalize gp weights to get gene importances
-            gp_gene_importances = np.abs(gp_weights_zi / np.abs(gp_weights_zi).sum(0))
-        elif self.gene_expr_recon_dist_ == "nb":
+        if self.gene_expr_recon_dist_ == "nb":
             # Normalize gp weights to get gene importances
             gp_gene_importances = np.abs(gp_weights / np.abs(gp_weights).sum(0))
 
@@ -1177,7 +1143,7 @@ class NicheCompass(BaseModelMixin):
         """
         self._check_if_trained(warn=True)
 
-        if not "chrom_access" in self.modalities_:
+        if not "atac" in self.modalities_:
             raise ValueError("The model training needs to include ATAC data, "
                              "otherwise peak importances cannot be retrieved.")
         
@@ -1313,7 +1279,7 @@ class NicheCompass(BaseModelMixin):
             all_gps_gene_expr_weights[:, selected_gps_idx]
             .cpu().detach().numpy())
         
-        if "chrom_access" in self.modalities_:
+        if "atac" in self.modalities_:
             all_gps_chrom_access_weights = self.model.get_gp_weights()[1]
             selected_gps_chrom_access_weights = (
                 all_gps_chrom_access_weights[:, selected_gps_idx]
@@ -1447,7 +1413,7 @@ class NicheCompass(BaseModelMixin):
         if only_active_gps:
             n_gps = self.get_active_gps().shape[0]
         else:
-            n_gps = (self.n_nonaddon_gps_ + self.n_addon_gps_ )
+            n_gps = (self.n_prior_gp_ + self.n_addon_gp_ )
 
         # Initialize latent vectors
         if return_mu_std:
@@ -1759,14 +1725,6 @@ class NicheCompass(BaseModelMixin):
                 log_library_size=log_library_size)
             nb_means = nb_means.detach().cpu().numpy()
             return nb_means
-        if self.gene_expr_recon_dist_ == "zinb":
-            nb_means, zi_prob_logits = self.model.get_gene_expr_dist_params(
-                z=mu,
-                log_library_size=log_library_size)
-            zi_probs = torch.sigmoid(zi_prob_logits)
-            nb_means = nb_means.detach().cpu().numpy()
-            zi_probs = zi_probs.detach().cpu().numpy()
-            return nb_means, zi_probs
 
     def get_gp_summary(self) -> pd.DataFrame:
         """
@@ -1785,17 +1743,7 @@ class NicheCompass(BaseModelMixin):
         gp_weights_signs[gp_weights_sum<0] = -1. # reverse sign of gp score
         gp_weights *= gp_weights_signs
 
-        if self.gene_expr_recon_dist_ == "zinb":
-            # Correct for zero inflation probabilities
-            _, zi_probs = self.get_gene_expr_dist_params(
-                adata=self.adata,
-                counts_key=self.counts_key_,
-                adj_key=self.adj_key_)
-            non_zi_probs = 1 - zi_probs
-            gp_weights_zi = gp_weights * non_zi_probs.sum(0) # sum over all obs
-            # Normalize gp weights to get gene importances
-            gp_gene_importances = np.abs(gp_weights_zi / np.abs(gp_weights_zi).sum(0))
-        elif self.gene_expr_recon_dist_ == "nb":
+        if self.gene_expr_recon_dist_ == "nb":
             # Normalize gp weights to get gene importances
             gp_gene_importances = np.abs(gp_weights / np.abs(gp_weights).sum(0))            
 
@@ -1813,10 +1761,10 @@ class NicheCompass(BaseModelMixin):
             self.adata.varm[self.gp_targets_mask_key_] != 0)
         
         # Add entries to gp mask for addon gps
-        if self.n_addon_gps_ > 0:
-            addon_gp_source_genes_mask = np.ones((self.n_addon_gps_,
+        if self.n_addon_gp_ > 0:
+            addon_gp_source_genes_mask = np.ones((self.n_addon_gp_,
                                                   self.adata.n_vars), dtype=bool)
-            addon_gp_target_genes_mask = np.ones((self.n_addon_gps_,
+            addon_gp_target_genes_mask = np.ones((self.n_addon_gp_,
                                                   self.adata.n_vars), dtype=bool)
             gp_source_genes_mask = np.concatenate(
                 (gp_source_genes_mask, addon_gp_source_genes_mask), axis=0)
@@ -1927,7 +1875,7 @@ class NicheCompass(BaseModelMixin):
         gp_summary_df["active_gp_idx"] = (
             gp_summary_df["active_gp_idx"].astype("Int64"))
         
-        if "chrom_access" in self.modalities_:
+        if "atac" in self.modalities_:
             gp_peak_importances = np.abs(
                 chrom_access_gp_weights / np.abs(chrom_access_gp_weights).sum(0))
             chrom_access_gp_weights = np.transpose(chrom_access_gp_weights)
@@ -1948,12 +1896,12 @@ class NicheCompass(BaseModelMixin):
                 self.adata_atac.varm[self.ca_targets_mask_key_] != 0).toarray()
         
             # Add entries to gp mask for addon gps
-            if self.n_addon_gps_ > 0:
+            if self.n_addon_gp_ > 0:
                 addon_gp_source_peaks_mask = np.ones(
-                    (self.n_addon_gps_,
+                    (self.n_addon_gp_,
                      self.adata_atac.n_vars), dtype=bool)
                 addon_gp_target_peaks_mask = np.ones(
-                    (self.n_addon_gps_,
+                    (self.n_addon_gp_,
                      self.adata_atac.n_vars), dtype=bool)
                 gp_source_peaks_mask = np.concatenate(
                     (gp_source_peaks_mask, addon_gp_source_peaks_mask), axis=0)
