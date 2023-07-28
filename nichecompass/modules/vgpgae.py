@@ -793,7 +793,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             if self.n_addon_gp_ != 0:
                 loss_dict["global_loss"] += loss_dict["addon_gp_l1_reg_loss"]
                 loss_dict["optim_loss"] += loss_dict["addon_gp_l1_reg_loss"]
-        if ("chrom_access" in self.modalities_) & self.include_chrom_access_recon_loss_:
+        if ("atac" in self.modalities_) & self.include_chrom_access_recon_loss_:
             loss_dict["global_loss"] += loss_dict["chrom_access_recon_loss"]
             loss_dict["optim_loss"] += loss_dict["chrom_access_recon_loss"]
         return loss_dict
