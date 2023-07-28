@@ -1,5 +1,5 @@
 """
-This module contains (full) neural network layers used by the NicheCompass model.
+This module contains neural network layers used by the NicheCompass model.
 """
 
 
@@ -169,7 +169,10 @@ class AddOnMaskedLayer(nn.Module):
                 dim=1)            
             
         output = self.masked_l(input=mask_input,
-                               dynamic_mask=dynamic_mask)
+                               dynamic_mask=(dynamic_mask[:, :self.n_input] if
+                                             dynamic_mask is not None
+                                             else None)) # dynamic_mask also has entries
+                                                         # for add-on gps
         if self.n_addon_input != 0:
             # Only add addon layer output to unmasked features
             output[:, self.unmasked_features_idx] += self.addon_l(

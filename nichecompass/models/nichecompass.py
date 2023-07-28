@@ -164,7 +164,7 @@ class NicheCompass(BaseModelMixin):
     cat_covariates_cats:
         List of category lists for each categorical covariate to get the right
         encoding when used after reloading.
-    n_addon_gps:
+    n_addon_gp:
         Number of addon gene programs (i.e. gene programs that are not included
         in masks but can be learned de novo).
     cat_covariates_embeds_nums:
@@ -224,7 +224,7 @@ class NicheCompass(BaseModelMixin):
                  dropout_rate_encoder: float=0.,
                  dropout_rate_graph_decoder: float=0.,
                  cat_covariates_cats: Optional[List[List]]=None,
-                 n_addon_gps: int=10,
+                 n_addon_gp: int=10,
                  cat_covariates_embeds_nums: Optional[List[int]]=None,
                  **kwargs):
         self.adata = adata
@@ -302,7 +302,6 @@ class NicheCompass(BaseModelMixin):
                              " reconstruct all genes.")
     
         # Retrieve chromatin accessibility masks
-        # TO DO fix masks
         if adata_atac is None:
             self.ca_targets_mask_ = None
             self.ca_sources_mask_ = None
@@ -410,12 +409,12 @@ class NicheCompass(BaseModelMixin):
         self.dropout_rate_encoder_ = dropout_rate_encoder
         self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
         self.n_prior_gp_ = len(self.gp_targets_mask_)
-        self.n_addon_gp_ = n_addon_gps
+        self.n_addon_gp_ = n_addon_gp
         
         # Add add-on gps to adata
-        if n_addon_gps > 0:
+        if n_addon_gp > 0:
             gp_list = list(self.adata.uns[self.gp_names_key_])
-            for i in range(n_addon_gps):
+            for i in range(n_addon_gp):
                 gp_list.append(f"Add-on {i} GP")
             self.adata.uns[self.gp_names_key_] = np.array(gp_list)
 
@@ -441,8 +440,8 @@ class NicheCompass(BaseModelMixin):
 
         # Determine dimensionality of hidden encoder layer if not provided
         if n_hidden_encoder is None:
-            if len(adata.var) > self.n_prior_gp_:
-                n_hidden_encoder = self.n_prior_gp_
+            if len(adata.var) > (self.n_prior_gp_ + self.n_addon_gp_):
+                n_hidden_encoder = (self.n_prior_gp_ + self.n_addon_gp_)
             else:
                 n_hidden_encoder = len(adata.var)
         self.n_hidden_encoder_ = n_hidden_encoder
@@ -760,10 +759,9 @@ class NicheCompass(BaseModelMixin):
     def run_differential_gp_tests(
             self,
             cat_key: str,
-            selected_cats: Optional[Union[str,list]]=None,
+            selected_cats: Optional[Union[str, list]]=None,
             comparison_cats: Union[str, list]="rest",
-            selected_gps: Optional[Union[str,list]]=None,
-            gp_scores_weight_normalization: bool=False,
+            selected_gps: Optional[Union[str, list]]=None,
             n_sample: int=10000,
             log_bayes_factor_thresh: float=2.3,
             key_added: str="nichecompass_differential_gp_test_results",
@@ -810,11 +808,6 @@ class NicheCompass(BaseModelMixin):
         selected_gps:
             List of gene program names for which differential tests will be run.
             If ´None´, uses all active gene programs.
-        gp_scores_weight_normalization:
-            If ´True´, normalize the gp scores by the nb means gene expression
-            decoder weights. If ´False´, normalize the gp scores by the signs of
-            the summed nb means gene expression decoder weights (this is only
-            relevant with 'zinb' loss).
         n_sample:
             Number of observations to be drawn from the category and comparison
             categories for the log Bayes Factor computation.
@@ -874,36 +867,14 @@ class NicheCompass(BaseModelMixin):
         mu_selected_gps = mu[:, selected_gps_idx]
         std_selected_gps = std[:, selected_gps_idx]
 
-        # Normalize gp scores using the gene expression negative binomial means
-        # decoder weights (if ´gp_scores_weight_normaliztion == True´), and, in
-        # addition, correct them for zero inflation probabilities if
-        # ´self.gene_expr_recon_dist == zinb´. Alternatively (if
-        # ´gp_scores_weight_normalization == False´), just use the signs of the
-        # summed gene expression negative binomial means decoder weights for
-        # normalization. This normalization only causes a difference if a ´zinb´
-        # gene expression reconstruction distribution is used as zero inflation
-        # probabilities differ for different observations / cells and, as a
-        # result also between a category and the comparison categories. The
-        # effect of normalizing mu and std by the gene expression negative
-        # binomial means decoder weight is cancelled out in the calculation of
-        # the log bayes factors
-        if gp_scores_weight_normalization:
-            norm_factors = selected_gps_weights # dim: (2 x n_genes,
-            # n_selected_gps)
-            if self.gene_expr_recon_dist_ == "nb":
-                mu_norm_factors = norm_factors.mean(0) # sum over genes; dim:
-                # (n_selected_gps,)
-                std_norm_factors = np.abs(norm_factors.mean(0)) # sum over
-                # genes; dim: (n_selected_gps,); proportional increase of std
-                # but no negative std
-        else:
-            gp_weights_sum = selected_gps_weights.sum(0) # sum over genes
-            gp_signs = np.zeros_like(gp_weights_sum)
-            gp_signs[gp_weights_sum>0] = 1. # keep sign of gp score
-            gp_signs[gp_weights_sum<0] = -1. # reverse sign of gp score
-            norm_factors = gp_signs # dim: (n_selected_gps,)
-            mu_norm_factors = norm_factors
-            std_norm_factors = 1 # no negative std
+        # Correct signs of gp scores based on sum of weights
+        gp_weights_sum = selected_gps_weights.sum(0) # sum over genes
+        gp_signs = np.zeros_like(gp_weights_sum)
+        gp_signs[gp_weights_sum>0] = 1. # keep sign of gp score
+        gp_signs[gp_weights_sum<0] = -1. # reverse sign of gp score
+        norm_factors = gp_signs # dim: (n_selected_gps,)
+        mu_norm_factors = norm_factors
+        std_norm_factors = 1 # no negative std
 
         # Retrieve category values for each observation, as well as all existing
         # unique categories
@@ -1091,7 +1062,7 @@ class NicheCompass(BaseModelMixin):
                   "Continuing anyways.")
 
         _, gp_weights, _ = self.get_gp_data(selected_gps=selected_gp,
-                                         adata=adata)
+                                            adata=adata)
 
         # Correct signs of gp weights to be aligned with (normalized) gp scores
         if gp_weights.sum(0) < 0:
@@ -1633,64 +1604,18 @@ class NicheCompass(BaseModelMixin):
         return agg_weights
     
 
-    def get_gene_expr_dist_params(
+    def get_omics_decoder_outputs(
             self, 
             adata: Optional[AnnData]=None,
             counts_key: str="counts",
             adj_key: str="spatial_connectivities",
             ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
-        # TO DO fix x_enc
         """
-        Get the gene expression distribution parameters from a trained model. 
-        This is ´nb_means´ if a negative binomial is used to model gene expression.
-
-        Parameters
-        ----------
-        adata:
-            AnnData object to get the gene expression distribution parameters
-            for. If ´None´, uses the adata object stored in the model instance.
-        counts_key:
-            Key under which the counts are stored in ´adata.layer´. If ´None´,
-            uses ´adata.X´ as counts.  
-        adj_key:
-            Key under which the sparse adjacency matrix is stored in 
-            ´adata.obsp´.       
-
-        Returns
-        ----------
-        nb_means:
-            Expected values of the negative binomial distribution (dim: n_obs x
-            n_genes).
-        zi_probs:
-            Zero-inflation probabilities of the zero-inflated negative binomial
-            distribution (dim: n_obs x n_genes).
         """
         self._check_if_trained(warn=False)
-
         device = next(self.model.parameters()).device
-        
-        if adata is None:
-            adata = self.adata
-
-        dataset = SpatialAnnTorchDataset(adata=adata,
-                                         counts_key=counts_key,
-                                         adj_key=adj_key)
-        x = dataset.x.to(device)
-        edge_index = dataset.edge_index.to(device)
-        log_library_size = torch.log(x.sum(1)).unsqueeze(1)
-
-        mu, _ = self.model.get_latent_representation(
-            x=x,
-            edge_index=edge_index,
-            only_active_gps=False,
-            return_mu_std=True)
-
-        if self.gene_expr_recon_dist_ == "nb":
-            nb_means = self.model.get_gene_expr_dist_params(
-                z=mu,
-                log_library_size=log_library_size)
-            nb_means = nb_means.detach().cpu().numpy()
-            return nb_means
+        return 1
+    
 
     def get_gp_summary(self) -> pd.DataFrame:
         """

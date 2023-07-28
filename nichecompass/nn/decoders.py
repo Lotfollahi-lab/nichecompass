@@ -92,7 +92,8 @@ class MaskedOmicsFeatureDecoder(nn.Module):
         Negative Binomial distribution.
     """
     def __init__(self,
-                 mod: Literal["rna", "atac"],
+                 modality: Literal["rna", "atac"],
+                 entity: Literal["target", "source"],
                  n_prior_gp_input: int,
                  n_addon_gp_input: int,
                  n_cat_covariates_embed_input: int,
@@ -103,14 +104,11 @@ class MaskedOmicsFeatureDecoder(nn.Module):
                  recon_loss: Literal["nb"]):
         super().__init__()
 
-        if mod == "rna":
-            print(f"MASKED RNA DECODER -> n_prior_gp_input: {n_prior_gp_input}, "
-                  f"n_cat_covariates_embed_input: {n_cat_covariates_embed_input}, "
-                  f"n_addon_gp_input: {n_addon_gp_input}, n_output: {n_output}")
-        elif mod == "atac":
-            print(f"MASKED ATAC DECODER -> n_prior_gp_input: {n_prior_gp_input}, "
-                  f"n_cat_covariates_embed_input: {n_cat_covariates_embed_input}, "
-                  f"n_addon_gp_input: {n_addon_gp_input}, n_output: {n_output}")
+        print(f"MASKED {entity.upper()} {modality.upper()} DECODER -> "
+              f"n_prior_gp_input: {n_prior_gp_input}, "
+              f"n_cat_covariates_embed_input: {n_cat_covariates_embed_input}, "
+              f"n_addon_gp_input: {n_addon_gp_input}, "
+              f"n_output: {n_output}")
             
         self.masked_features_idx = masked_features_idx
         self.unmasked_features_idx = unmasked_features_idx

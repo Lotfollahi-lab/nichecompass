@@ -631,10 +631,10 @@ class Trainer(BaseTrainerMixin):
 
         # Get node-level ground truth and predictions
         omics_pred_dict_val_accumulated = {}
-        omics_pred_dict_val_accumulated["target_rna_preds"] = np.array([])
-        omics_pred_dict_val_accumulated["target_rna"] = np.array([])
-        omics_pred_dict_val_accumulated["source_rna_preds"] = np.array([])
-        omics_pred_dict_val_accumulated["source_rna"] = np.array([])
+        for modality in self.model.modalities_:
+            for entity in ["target", "source"]:
+                omics_pred_dict_val_accumulated[f"{entity}_{modality}_preds"] = np.array([])
+                omics_pred_dict_val_accumulated[f"{entity}_{modality}"] = np.array([])
         for node_val_data_batch in self.node_val_loader:
             node_val_data_batch = node_val_data_batch.to(self.device)
 
@@ -643,42 +643,14 @@ class Trainer(BaseTrainerMixin):
                 decoder="omics",
                 use_only_active_gps=True)
 
-            target_rna_val = node_val_model_output["node_labels"]["target_rna"]
-            source_rna_val = node_val_model_output["node_labels"]["source_rna"]
-            target_rna_preds_val = node_val_model_output["target_rna_nb_means"]
-            source_rna_preds_val = node_val_model_output["source_rna_nb_means"]
-
-            omics_pred_dict_val_accumulated["target_rna_preds"] = np.append(
-                omics_pred_dict_val_accumulated["target_rna_preds"],
-                target_rna_preds_val.detach().cpu().numpy())
-            omics_pred_dict_val_accumulated["source_rna_preds"] = np.append(
-                omics_pred_dict_val_accumulated["source_rna_preds"],
-                source_rna_preds_val.detach().cpu().numpy())
-            omics_pred_dict_val_accumulated["target_rna"] = np.append(
-                omics_pred_dict_val_accumulated["target_rna"],
-                target_rna_val.detach().cpu().numpy())
-            omics_pred_dict_val_accumulated["source_rna"] = np.append(
-                omics_pred_dict_val_accumulated["source_rna"],
-                source_rna_val.detach().cpu().numpy())
-            
-            if "target_atac" in node_val_model_output["node_labels"].keys():
-                target_atac_val = node_val_model_output["node_labels"]["target_atac"]
-                source_atac_val = node_val_model_output["node_labels"]["source_atac"]
-                target_atac_preds_val = node_val_model_output["target_atac_nb_means"]
-                source_atac_preds_val = node_val_model_output["source_atac_nb_means"]
-
-                omics_pred_dict_val_accumulated["target_atac_preds"] = np.append(
-                    omics_pred_dict_val_accumulated["target_atac_preds"],
-                    target_atac_preds_val.detach().cpu().numpy())
-                omics_pred_dict_val_accumulated["source_atac_preds"] = np.append(
-                    omics_pred_dict_val_accumulated["source_atac_preds"],
-                    source_atac_preds_val.detach().cpu().numpy())
-                omics_pred_dict_val_accumulated["target_atac"] = np.append(
-                    omics_pred_dict_val_accumulated["target_atac"],
-                    target_atac_val.detach().cpu().numpy())
-                omics_pred_dict_val_accumulated["source_atac"] = np.append(
-                    omics_pred_dict_val_accumulated["source_atac"],
-                    source_atac_val.detach().cpu().numpy())         
+            for modality in self.model.modalities_:
+                for entity in ["target", "source"]:
+                    omics_pred_dict_val_accumulated[f"{entity}_{modality}_preds"] = np.append(
+                        omics_pred_dict_val_accumulated[f"{entity}_{modality}_preds"],
+                        node_val_model_output[f"{entity}_{modality}_nb_means"].detach().cpu().numpy())
+                    omics_pred_dict_val_accumulated[f"{entity}_{modality}"] = np.append(
+                        omics_pred_dict_val_accumulated[f"{entity}_{modality}"],
+                        node_val_model_output["node_labels"][f"{entity}_{modality}"].detach().cpu().numpy())        
 
         val_eval_dict = eval_metrics(
             edge_recon_probs=edge_recon_probs_val_accumulated,
@@ -687,19 +659,14 @@ class Trainer(BaseTrainerMixin):
             edge_incl=edge_incl_val_accumulated,
             omics_pred_dict=omics_pred_dict_val_accumulated)
         print("\n--- MODEL EVALUATION ---")
-        print(f"Val AUROC score: {val_eval_dict['auroc_score']:.4f}")
-        print(f"Val AUPRC score: {val_eval_dict['auprc_score']:.4f}")
-        print(f"Val best accuracy score: {val_eval_dict['best_acc_score']:.4f}")
-        print(f"Val best F1 score: {val_eval_dict['best_f1_score']:.4f}")
-        print("Val target rna MSE score: "
-              f"{val_eval_dict['target_rna_mse_score']:.4f}")
-        print("Val source rna MSE score: "
-              f"{val_eval_dict['source_rna_mse_score']:.4f}")
-        if "target_atac_mse_score" in val_eval_dict.keys():
-            print("Val target atac MSE score: "
-                f"{val_eval_dict['target_atac_mse_score']:.4f}")
-            print("Val source atac MSE score: "
-                f"{val_eval_dict['source_atac_mse_score']:.4f}")
+        print(f"val AUROC score: {val_eval_dict['auroc_score']:.4f}")
+        print(f"val AUPRC score: {val_eval_dict['auprc_score']:.4f}")
+        print(f"val best accuracy score: {val_eval_dict['best_acc_score']:.4f}")
+        print(f"val best F1 score: {val_eval_dict['best_f1_score']:.4f}")
+        for modality in self.model.modalities_:
+            for entity in ["target", "source"]:
+                print(f"val {entity} {modality} MSE score: "
+                      f"{val_eval_dict[f'{entity}_{modality}_mse_score']:.4f}")
         for i in range(self.n_cat_covariates):
             if f"cat_covariate{i}_mean_sim_diff" in val_eval_dict.keys():
                 print(f"Val cat covariate{i} mean sim diff: "
