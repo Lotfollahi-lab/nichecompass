@@ -415,7 +415,8 @@ class NicheCompass(BaseModelMixin):
         if n_addon_gp > 0:
             gp_list = list(self.adata.uns[self.gp_names_key_])
             for i in range(n_addon_gp):
-                gp_list.append(f"Add-on {i} GP")
+                if f"Add-on {i} GP" not in gp_list:
+                    gp_list.append(f"Add-on {i} GP")
             self.adata.uns[self.gp_names_key_] = np.array(gp_list)
 
         # Retrieve categorical covariates categories
