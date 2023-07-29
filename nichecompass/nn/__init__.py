@@ -2,19 +2,16 @@ from .aggregators import (OneHopAttentionNodeLabelAggregator,
                           OneHopGCNNormNodeLabelAggregator,
                           OneHopSumNodeLabelAggregator)
 from .decoders import (CosineSimGraphDecoder,
-                       MaskedGeneExprDecoder,
-                       MaskedChromAccessDecoder)
+                       MaskedOmicsFeatureDecoder)
 from .encoders import Encoder
 from .layercomponents import MaskedLinear
 from .layers import GCNLayer, AddOnMaskedLayer
 
 __all__ = ["OneHopAttentionNodeLabelAggregator",
            "OneHopGCNNormNodeLabelAggregator",
-           "SelfNodeLabelNoneAggregator",
            "OneHopSumNodeLabelAggregator",
            "CosineSimGraphDecoder",
-           "MaskedGeneExprDecoder",
-           "MaskedChromAccessDecoder",
+           "MaskedOmicsFeatureDecoder",
            "Encoder",
            "MaskedLinear",
            "GCNLayer",

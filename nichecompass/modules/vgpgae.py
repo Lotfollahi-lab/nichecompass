@@ -13,21 +13,19 @@ from mlflow.exceptions import MlflowException
 from torch_geometric.data import Data
 
 from nichecompass.nn import (CosineSimGraphDecoder,
-                           Encoder,
-                           MaskedGeneExprDecoder,
-                           MaskedChromAccessDecoder,
-                           OneHopAttentionNodeLabelAggregator,
-                           OneHopGCNNormNodeLabelAggregator,
-                           OneHopSumNodeLabelAggregator)
+                             Encoder,
+                             MaskedOmicsFeatureDecoder,
+                             OneHopAttentionNodeLabelAggregator,
+                             OneHopGCNNormNodeLabelAggregator,
+                             OneHopSumNodeLabelAggregator)
 from .basemodulemixin import BaseModuleMixin
 from .losses import (compute_addon_l1_reg_loss,
                      compute_cat_covariates_contrastive_loss,
                      compute_edge_recon_loss,
+                     compute_omics_recon_l1_reg_loss,
                      compute_omics_recon_nb_loss,
-                     compute_gene_expr_recon_zinb_loss,
                      compute_group_lasso_reg_loss,
-                     compute_kl_reg_loss,
-                     compute_masked_l1_reg_loss)
+                     compute_kl_reg_loss)
 from .vgaemodulemixin import VGAEModuleMixin
 
 
@@ -40,13 +38,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     n_input:
         Number of nodes in the input layer.
     n_layers_encoder:
-        Number of layers in the encoder.
+        Number of message passing layers in the encoder.
     n_hidden_encoder:
         Number of nodes in the encoder hidden layer.
-    n_nonaddon_gps:
-        Number of nodes in the latent space (gene programs from the gene program
-        mask).
-    n_addon_gps:
+    n_prior_gp:
+        Number of prior nodes in the latent space (gene programs from the
+        gene program masks).
+    n_addon_gp:
         Number of add-on nodes in the latent space (de-novo gene programs).
     cat_covariates_embeds_nums:
         List of number of embedding nodes for all categorical covariates.
@@ -58,14 +56,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         Number of source and target genes that are included in the gp mask.
     gene_expr_decoder_mask:
         Gene program mask for the gene expression decoder.
-    target_gene_expr_mask_idx:
-        Index of target genes that are in gps of the gp mask.
-    source_gene_expr_mask_idx:
-        Index of source genes that are in gps of the gp mask.
-    target_chrom_access_mask_idx:
-        Index of target peaks that are in gps of the ca mask.
-    source_chrom_access_mask_idx:
-        Index of source peaks that are in gps of the ca mask.
     gene_peaks_mask:
         A mask to map from genes to peaks, used to turn off peaks in the
         chromatin accessibility decoder if the corresponding genes have been
@@ -100,7 +90,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     include_cat_covariates_contrastive_loss:
         If `True`, includes the categorical covariates contrastive loss in the
         backpropagation.
-    gene_expr_recon_dist:
+    rna_pred_loss:
         The distribution used for gene expression reconstruction. If `nb`, uses
         a negative binomial distribution. If `zinb`, uses a zero-inflated
         negative binomial distribution.
@@ -137,19 +127,16 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  n_input: int,
                  n_layers_encoder: int,
                  n_hidden_encoder: int,
-                 n_nonaddon_gps: int,
-                 n_addon_gps: int,
+                 n_prior_gp: int,
+                 n_addon_gp: int,
                  cat_covariates_embeds_nums: List[int],
                  n_output_genes: int,
-                 gene_expr_decoder_mask: torch.Tensor,
-                 gene_expr_mask_idx: torch.Tensor,
-                 target_gene_expr_mask_idx: torch.Tensor,
-                 source_gene_expr_mask_idx: torch.Tensor,
+                 target_rna_decoder_mask: torch.Tensor,
+                 source_rna_decoder_mask: torch.Tensor,
+                 features_idx_dict: dict,
                  n_output_peaks: int=0,
-                 chrom_access_decoder_mask: Optional[torch.Tensor]=None,
-                 chrom_access_mask_idx: Optional[torch.Tensor]=None,
-                 target_chrom_access_mask_idx: Optional[torch.Tensor]=None,
-                 source_chrom_access_mask_idx: Optional[torch.Tensor]=None,
+                 target_atac_decoder_mask: Optional[torch.Tensor]=None,
+                 source_atac_decoder_mask: Optional[torch.Tensor]=None,
                  gene_peaks_mask: Optional[torch.Tensor]=None,
                  cat_covariates_cats: List[List]=[],
                  cat_covariates_no_edges: List[bool]=[],
@@ -161,8 +148,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  include_gene_expr_recon_loss: bool=True,
                  include_chrom_access_recon_loss: bool=True,
                  include_cat_covariates_contrastive_loss: bool=True,
-                 gene_expr_recon_dist: Literal["nb", "zinb"]="nb",
-                 chrom_access_recon_dist: Literal["nb"]="nb",
+                 rna_pred_loss: Literal["nb"]="nb",
+                 atac_pred_loss: Literal["nb"]="nb",
                  node_label_method: Literal[
                     "one-hop-norm",
                     "one-hop-sum",
@@ -178,18 +165,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.n_input_ = n_input
         self.n_layers_encoder_ = n_layers_encoder
         self.n_hidden_encoder_ = n_hidden_encoder
-        self.n_nonaddon_gps_ = n_nonaddon_gps
-        self.n_addon_gps_ = n_addon_gps
+        self.n_prior_gp_ = n_prior_gp
+        self.n_addon_gp_ = n_addon_gp
         self.cat_covariates_embeds_nums_ = cat_covariates_embeds_nums
         self.n_output_genes_ = n_output_genes
         self.n_output_peaks_ = n_output_peaks
-        self.gene_expr_mask_idx_ = gene_expr_mask_idx
-        self.target_gene_expr_mask_idx_ = target_gene_expr_mask_idx
-        self.source_gene_expr_mask_idx_ = source_gene_expr_mask_idx
-        self.chrom_access_mask_idx_ = chrom_access_mask_idx
-        self.target_chrom_access_mask_idx_ = target_chrom_access_mask_idx
-        self.source_chrom_access_mask_idx_ = source_chrom_access_mask_idx
+        self.features_idx_dict_ = features_idx_dict
         self.gene_peaks_mask_ = gene_peaks_mask
+        #assert(torch.all(torch.logical_or(gene_peaks_mask == 0, gene_peaks_mask == 1)))
         self.cat_covariates_cats_ = cat_covariates_cats
         self.n_cat_covariates___ = len(cat_covariates_cats)
         self.cat_covariates_no_edges_ = cat_covariates_no_edges
@@ -207,36 +190,27 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
         self.include_chrom_access_recon_loss_ = include_chrom_access_recon_loss
         self.include_cat_covariates_contrastive_loss_ = include_cat_covariates_contrastive_loss
-        self.gene_expr_recon_dist_ = gene_expr_recon_dist
-        self.chrom_access_recon_dist_ = chrom_access_recon_dist
+        self.rna_pred_loss_ = rna_pred_loss
+        self.atac_pred_loss_ = atac_pred_loss
         self.node_label_method_ = node_label_method
         self.active_gp_thresh_ratio_ = active_gp_thresh_ratio
         self.log_variational_ = log_variational
         self.cat_covariates_embeds_injection_ = cat_covariates_embeds_injection
         self.freeze_ = False
-        self.modalities_ = ["gene_expr"]
-        if chrom_access_decoder_mask is not None:
-            self.modalities_.append("chrom_access")
-            self.features_idx_ = np.concatenate(
-                (target_gene_expr_mask_idx,
-                 (target_chrom_access_mask_idx + int(n_output_genes / 2)),
-                 (source_gene_expr_mask_idx + int(n_output_genes / 2) + int(n_output_peaks / 2)),
-                 (source_chrom_access_mask_idx + n_output_genes + int(n_output_peaks / 2))),
-                 axis=0)
-
-        else:
-            self.features_idx_ = self.gene_expr_mask_idx_
+        self.modalities_ = ["rna"]
+        if target_atac_decoder_mask is not None:
+            self.modalities_.append("atac")
 
         print("--- INITIALIZING NEW NETWORK MODULE: VARIATIONAL GENE PROGRAM "
               "GRAPH AUTOENCODER ---")
         print(f"LOSS -> include_edge_recon_loss: {include_edge_recon_loss}, "
               f"include_gene_expr_recon_loss: {include_gene_expr_recon_loss}, "
-              f"gene_expr_recon_dist: {gene_expr_recon_dist}", end="")
-        if "chrom_access" in self.modalities_:
+              f"rna_pred_loss: {rna_pred_loss}", end="")
+        if "atac" in self.modalities_:
             print(", include_chrom_access_recon_loss: "
                   f"{include_chrom_access_recon_loss}, "
-                  "chrom_access_recon_dist: "
-                  f"{chrom_access_recon_dist}", end=" ")
+                  "atac_pred_loss: "
+                  f"{atac_pred_loss}", end=" ")
         print(f"\nNODE LABEL METHOD -> {node_label_method}")
         print(f"ACTIVE GP THRESHOLD RATIO -> {active_gp_thresh_ratio}")
         print(f"LOG VARIATIONAL -> {log_variational}")
@@ -257,6 +231,15 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 setattr(self,
                         f"cat_covariate{i}_embedder",
                         cat_covariate_embedder)
+        
+        # Initialize node-label aggregator module
+        if node_label_method == "one-hop-norm":
+            self.node_label_aggregator = OneHopGCNNormNodeLabelAggregator()
+        elif node_label_method == "one-hop-sum":
+            self.node_label_aggregator = OneHopSumNodeLabelAggregator()
+        elif node_label_method == "one-hop-attention":
+            self.node_label_aggregator = OneHopAttentionNodeLabelAggregator(
+                n_input=n_input)
 
         # Initialize encoder module
         self.encoder = Encoder(
@@ -267,8 +250,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                           else 0),
             n_layers=n_layers_encoder,
             n_hidden=n_hidden_encoder,
-            n_latent=n_nonaddon_gps,
-            n_addon_latent=n_addon_gps,
+            n_latent=n_prior_gp,
+            n_addon_latent=n_addon_gp,
             conv_layer=conv_layer_encoder,
             n_attention_heads=encoder_n_attention_heads,
             dropout_rate=dropout_rate_encoder,
@@ -278,53 +261,83 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.graph_decoder = CosineSimGraphDecoder(
             dropout_rate=dropout_rate_graph_decoder)
 
-        # Initialize masked gene expression decoder
-        self.gene_expr_decoder = MaskedGeneExprDecoder(
-            n_input=n_nonaddon_gps,
-            n_addon_input=n_addon_gps,
+        # Initialize masked gene expression decoders
+        self.target_rna_decoder = MaskedOmicsFeatureDecoder(
+            modality="rna",
+            entity="target",
+            n_prior_gp_input=n_prior_gp,
+            n_addon_gp_input=n_addon_gp,
             n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
                                           if ("gene_expr_decoder" in self.cat_covariates_embeds_injection_)
                                           & (self.n_cat_covariates___ > 0)
                                           else 0),
             n_output=n_output_genes,
-            mask=gene_expr_decoder_mask,
-            mask_idx=gene_expr_mask_idx,
-            recon_dist=self.gene_expr_recon_dist_)
+            mask=target_rna_decoder_mask,
+            masked_features_idx=features_idx_dict["target_masked_rna_idx"],
+            unmasked_features_idx=features_idx_dict["target_unmasked_rna_idx"],
+            recon_loss=self.rna_pred_loss_)
         
-        if "chrom_access" in self.modalities_:
-            # Initialize masked chromatin accessibility decoder
-            self.chrom_access_decoder = MaskedChromAccessDecoder(
-                n_input=n_nonaddon_gps,
-                n_addon_input=n_addon_gps,
-                n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
-                                              if cat_covariates_embeds_nums is not None
-                                              else 0),
-                n_output=n_output_peaks,
-                mask=chrom_access_decoder_mask,
-                mask_idx=chrom_access_mask_idx,
-                recon_dist=self.chrom_access_recon_dist_)            
-
-        if node_label_method == "one-hop-norm":
-            self.node_label_aggregator = OneHopGCNNormNodeLabelAggregator()
-        elif node_label_method == "one-hop-sum":
-            self.node_label_aggregator = OneHopSumNodeLabelAggregator()
-        elif node_label_method == "one-hop-attention":
-            self.node_label_aggregator = OneHopAttentionNodeLabelAggregator(
-                n_input=n_input)
+        self.source_rna_decoder = MaskedOmicsFeatureDecoder(
+            modality="rna",
+            entity="source",
+            n_prior_gp_input=n_prior_gp,
+            n_addon_gp_input=n_addon_gp,
+            n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
+                                          if ("gene_expr_decoder" in self.cat_covariates_embeds_injection_)
+                                          & (self.n_cat_covariates___ > 0)
+                                          else 0),
+            n_output=n_output_genes,
+            mask=source_rna_decoder_mask,
+            masked_features_idx=features_idx_dict["source_masked_rna_idx"],
+            unmasked_features_idx=features_idx_dict["source_unmasked_rna_idx"],
+            recon_loss=self.rna_pred_loss_)
         
         # Initialize gene-specific dispersion parameters
-        self.theta = torch.nn.Parameter(torch.randn(len(gene_expr_mask_idx)))
+        self.target_rna_theta = torch.nn.Parameter(torch.randn(n_output_genes))
+        self.source_rna_theta = torch.nn.Parameter(torch.randn(n_output_genes))
+        
+        if "atac" in self.modalities_:
+            # Initialize masked atac decoders
+            self.target_atac_decoder = MaskedOmicsFeatureDecoder(
+                modality="atac",
+                entity="target",
+                n_prior_gp_input=n_prior_gp,
+                n_addon_gp_input=n_addon_gp,
+                n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
+                                              if ("gene_expr_decoder" in self.cat_covariates_embeds_injection_)
+                                              & (self.n_cat_covariates___ > 0)
+                                              else 0),
+                n_output=n_output_peaks,
+                mask=target_atac_decoder_mask,
+                masked_features_idx=features_idx_dict["target_masked_atac_idx"],
+                unmasked_features_idx=features_idx_dict["target_unmasked_atac_idx"],
+                recon_loss="nb")
 
-        if "chrom_access" in self.modalities_:
+            self.source_atac_decoder = MaskedOmicsFeatureDecoder(
+                modality="atac",
+                entity="source",
+                n_prior_gp_input=n_prior_gp,
+                n_addon_gp_input=n_addon_gp,
+                n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
+                                              if ("gene_expr_decoder" in self.cat_covariates_embeds_injection_)
+                                              & (self.n_cat_covariates___ > 0)
+                                              else 0),
+                n_output=n_output_peaks,
+                mask=source_atac_decoder_mask,
+                masked_features_idx=features_idx_dict["source_masked_atac_idx"],
+                unmasked_features_idx=features_idx_dict["source_unmasked_atac_idx"],
+                recon_loss="nb")
+            
             # Initialize peak-specific dispersion parameters
-            self.theta_atac = torch.nn.Parameter(torch.randn(len(chrom_access_mask_idx)))
+            self.target_atac_theta = torch.nn.Parameter(torch.randn(n_output_peaks))
+            self.source_atac_theta = torch.nn.Parameter(torch.randn(n_output_peaks))
 
     def forward(self,
                 data_batch: Data,
                 decoder: Literal["graph", "omics"],
                 use_only_active_gps: bool=False,
                 return_agg_weights: bool=False,
-                turn_off_peaks_based_on_genes: bool=True) -> dict:
+                use_atac_dynamic_decoder_mask: bool=True) -> dict:
         """
         Forward pass of the VGPGAE module.
 
@@ -342,9 +355,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         return_agg_weights:
             If ´True´, also return the aggregation weights of the node label
             aggregator.
-        turn_off_peaks_based_on_genes:
-            If ´True´, turn off the mapped peaks (peak gp weights) for genes
-            that have been turned off in a gene program by L1 regularization.
+        use_atac_dynamic_decoder_mask:
+            If ´True´, turn off the mapped atac features (set peak gp weights to 0)
+            for rna features that have been turned off in a gene program.
 
         Returns
         ----------
@@ -356,44 +369,192 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         """
         x = data_batch.x # dim: n_obs x n_omics_features
         edge_index = data_batch.edge_index # dim: 2 x n_edges
-        output = {}
-
-        # Logarithmitize omics feature vector for numerical stability
-        if self.log_variational_:
-            x_enc = torch.log(1 + x)
-        else:
-            x_enc = x
-
-        # Get index of sampled nodes for current batch as well as node or edge
-        # labels depending on decoder
+        
+        # Get index of sampled nodes for current batch
         if decoder == "omics":
             # ´data_batch´ will be a node batch and first node_batch_size
             # elements are the sampled nodes, leading to a dim of ´batch_idx´ of
             # node_batch_size
             batch_idx = torch.tensor(range(data_batch.batch_size))
-
-            # Compute aggregated neighborhood omics feature vector to create
-            # concatenated omics reconstruction labels
-            node_label_aggregator_output = self.node_label_aggregator(
-                    x=x,
-                    edge_index=edge_index,
-                    return_agg_weights=return_agg_weights)
-            x_neighbors = node_label_aggregator_output[0]
-            
-            # Concatenate omics feature vector with neighborhood aggregated omics
-            # feature vector and only keep omics features in masks as node labels
-            # In addition, only keep nodes in current node batch
-            output["node_labels"] = torch.cat((x, x_neighbors), dim=-1)[
-                :, self.features_idx_][batch_idx]
-            
         elif decoder == "graph":
             # ´data_batch´ will be an edge batch with sampled positive and
             # negative edges of size edge_batch_size respectively. Each edge has
             # a source and destination node, leading to a dim of ´batch_idx´ of
             # 4 * edge_batch_size
             batch_idx = torch.cat((data_batch.edge_label_index[0],
-                                   data_batch.edge_label_index[1]), 0)
+                                   data_batch.edge_label_index[1]), 0)            
+        
+        output = {}
+
+        # Logarithmitize omics feature vector for encoder for numerical stability
+        if self.log_variational_:
+            x_enc = torch.log(1 + x)
+        else:
+            x_enc = x
             
+        # Get categorical covariates embedding
+        if len(self.cat_covariates_cats_) > 0:
+            cat_covariates_embeds = []
+            for i in range(len(self.cat_covariates_embedders)):
+                cat_covariates_embeds.append(self.cat_covariates_embedders[i](
+                     data_batch.cat_covariates_cats[:, i]))
+                self.cat_covariates_embed = torch.cat(
+                    cat_covariates_embeds,
+                    dim=1)
+        else:
+            self.cat_covariates_embed = None         
+
+        # Use encoder and reparameterization trick to get latent distribution
+        # parameters and features for current batch
+        encoder_outputs = self.encoder(
+            x=x_enc,
+            edge_index=edge_index,
+            cat_covariates_embed=(self.cat_covariates_embed if "encoder" in
+                                  self.cat_covariates_embeds_injection_ else
+                                  None))
+        self.mu = encoder_outputs[0][batch_idx, :]
+        self.logstd = encoder_outputs[1][batch_idx, :]
+        output["mu"] = self.mu
+        output["logstd"] = self.logstd
+        z = self.reparameterize(self.mu, self.logstd)
+
+        if use_only_active_gps:
+            # Only retain active gene programs
+            active_gp_mask = self.get_active_gp_mask()
+            z[:, ~active_gp_mask] = 0
+
+        if decoder == "omics":
+            output["node_labels"] = {}
+            
+            # Compute aggregated neighborhood omics feature vector
+            node_label_aggregator_output = self.node_label_aggregator(
+                    x=x,
+                    edge_index=edge_index,
+                    return_agg_weights=return_agg_weights)
+            x_neighbors = node_label_aggregator_output[0]
+            
+            if "atac" not in self.modalities_:
+                # Retrieve node labels and only keep nodes in current node batch
+                output["node_labels"]["target_rna"] = x[batch_idx]
+                output["node_labels"]["source_rna"] = x_neighbors[batch_idx]
+            elif "atac" in self.modalities_:
+                # Separate node feature vector into RNA and ATAC part
+                x_atac = x[:, self.n_output_genes_:]
+                x_neighbors_atac = x_neighbors[:, self.n_output_genes_:]
+                x = x[:, :self.n_output_genes_]
+                x_neighbors = x_neighbors[:, :self.n_output_genes_]
+                #assert x.size(1) == self.n_output_genes_
+                #assert x_neighbors.size(1) == self.n_output_genes_
+                #assert x_atac.size(1) == self.n_output_peaks_
+                #assert x_neighbors_atac.size(1) == self.n_output_peaks_
+                
+                # Retrieve node labels and only keep nodes in current node batch
+                output["node_labels"]["target_rna"] = x[batch_idx]  
+                output["node_labels"]["source_rna"] = x_neighbors[batch_idx]
+                output["node_labels"]["target_atac"] = x_atac[batch_idx]  
+                output["node_labels"]["source_atac"] = x_neighbors_atac[batch_idx]
+                
+            # Use observed library size as scaling factor for the negative
+            # binomial means of the rna distribution
+            target_rna_library_size = output["node_labels"]["target_rna"].sum(
+                1).unsqueeze(1)
+            source_rna_library_size = output["node_labels"]["source_rna"].sum(
+                1).unsqueeze(1)
+            self.target_rna_log_library_size = torch.log(target_rna_library_size)
+            self.source_rna_log_library_size = torch.log(source_rna_library_size)
+
+            # Get gene expression reconstruction distribution parameters
+            output["target_rna_nb_means"] = self.target_rna_decoder(
+                z=z,
+                log_library_size=self.target_rna_log_library_size,
+                cat_covariates_embed=(self.cat_covariates_embed[batch_idx] if
+                                      (self.cat_covariates_embed is not None) &
+                                      ("gene_expr_decoder" in
+                                       self.cat_covariates_embeds_injection_) else
+                                      None))
+            output["source_rna_nb_means"] = self.source_rna_decoder(
+                z=z,
+                log_library_size=self.source_rna_log_library_size,
+                cat_covariates_embed=(self.cat_covariates_embed[batch_idx] if
+                                      (self.cat_covariates_embed is not None) &
+                                      ("gene_expr_decoder" in
+                                       self.cat_covariates_embeds_injection_) else
+                                      None))
+            
+            if "atac" in self.modalities_:
+                # Use observed library size as scaling factor for the negative
+                # binomial means of the atac distribution
+                target_atac_library_size = output["node_labels"]["target_atac"].sum(
+                    1).unsqueeze(1)
+                source_atac_library_size = output["node_labels"]["source_atac"].sum(
+                    1).unsqueeze(1)
+                self.target_atac_log_library_size = torch.log(target_atac_library_size)
+                self.source_atac_log_library_size = torch.log(source_atac_library_size)
+                
+                if use_atac_dynamic_decoder_mask:
+                    # Get atac dynamic decoder masks to turn off peaks that
+                    # are mapped to only genes that are turned off
+                    with torch.no_grad():
+                        # Retrieve rna decoder gp weights
+                        gp_weights = self.get_gp_weights(only_masked_features=False)[0]
+                        
+                        # Round to 4 decimals as genes are never completely
+                        # turned off due to L1 being not differentiable at 0
+                        gp_weights = torch.round(gp_weights, decimals=4)
+
+                        # Get boolean mask of non zero target and source gene weights
+                        non_zero_gene_weights = torch.ne(
+                                gp_weights, 
+                                0).float() # dim: (2 x n_genes, n_gps)
+                        non_zero_target_gene_weights = non_zero_gene_weights[
+                            :self.n_output_genes_, :] # dim: (n_genes, n_gps)
+                        non_zero_source_gene_weights = non_zero_gene_weights[
+                            self.n_output_genes_:, :] # dim: (n_genes, n_gps)
+                        
+                        # Multiply boolean mask with gene peak mapping to remove peaks
+                        # that are mapped to only turned off genes
+                        target_atac_dynamic_decoder_mask = torch.matmul(
+                            non_zero_target_gene_weights.t(), # dim: (n_gps, n_genes)
+                            self.gene_peaks_mask_).float() # dim: (n_genes, n_peaks)
+                            # dim: (n_gps, n_peaks)
+                        source_atac_dynamic_decoder_mask = torch.matmul(
+                            non_zero_source_gene_weights.t(),
+                            self.gene_peaks_mask_)
+                        
+                        # Create boolean mask of peaks (until here multiple active
+                        # genes in a gp can be mapped to the same peak, resulting in
+                        # values > 1.)
+                        target_atac_dynamic_decoder_mask = torch.ne(
+                            target_atac_dynamic_decoder_mask, 
+                            0).float().t() # dim: (n_gps, n_peaks)
+                        source_atac_dynamic_decoder_mask = torch.ne(
+                            source_atac_dynamic_decoder_mask, 
+                            0).float().t()
+                else:
+                    target_atac_dynamic_decoder_mask = None
+                    source_atac_dynamic_decoder_mask = None
+                    
+                # Get chromatin accessibility reconstruction distribution
+                # parameters
+                output["target_atac_nb_means"] = self.target_atac_decoder(
+                    z=z,
+                    log_library_size=self.target_atac_log_library_size,
+                    dynamic_mask=target_atac_dynamic_decoder_mask,
+                    cat_covariates_embed=(self.cat_covariates_embed[batch_idx] if
+                                          (self.cat_covariates_embed is not None) &
+                                          ("chrom_access_decoder" in
+                                           self.cat_covariates_embeds_injection_) else
+                                          None))
+                output["source_atac_nb_means"] = self.source_atac_decoder(
+                    z=z,
+                    log_library_size=self.source_atac_log_library_size,
+                    dynamic_mask=source_atac_dynamic_decoder_mask,
+                    cat_covariates_embed=(self.cat_covariates_embed[batch_idx] if
+                                          (self.cat_covariates_embed is not None) &
+                                          ("chrom_access_decoder" in
+                                           self.cat_covariates_embeds_injection_) else
+                                          None))
+        elif decoder == "graph":
             # Store edge labels for loss computation
             output["edge_recon_labels"] = data_batch.edge_label
                 
@@ -436,154 +597,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 output["edge_same_cat_covariates_cat"] = None
                 output["edge_incl"] = None
 
-        # Get categorical covariate embeddings
-        if len(self.cat_covariates_cats_) > 0:
-            cat_covariates_embeds = []
-            for i in range(len(self.cat_covariates_embedders)):
-                cat_covariates_embeds.append(self.cat_covariates_embedders[i](
-                     data_batch.cat_covariates_cats[:, i]))
-                self.cat_covariates_embed = torch.cat(
-                    cat_covariates_embeds,
-                    dim=1)
-        else:
-            self.cat_covariates_embed = None         
-
-        # Use encoder and reparameterization trick to get latent distribution
-        # parameters and features for current batch
-        encoder_outputs = self.encoder(
-            x=x_enc,
-            edge_index=edge_index,
-            cat_covariates_embed=(self.cat_covariates_embed if "encoder" in
-                                  self.cat_covariates_embeds_injection_ else
-                                  None))
-        self.mu = encoder_outputs[0][batch_idx, :]
-        self.logstd = encoder_outputs[1][batch_idx, :]
-        output["mu"] = self.mu
-        output["logstd"] = self.logstd
-        z = self.reparameterize(self.mu, self.logstd)
-
-        if use_only_active_gps:
-            # Only retain active gene programs
-            active_gp_mask = self.get_active_gp_mask()
-            z[:, ~active_gp_mask] = 0
-
-        # Use decoder to get either the edge reconstruction logits or the omics
-        # distribution parameters from the latent feature vectors
-        if decoder == "graph":
-            output["edge_recon_logits"] = self.graph_decoder(
-                z=z)
-        elif decoder == "omics":
-            if "chrom_access" in self.modalities_:
-                # Separate node feature vector into RNA and ATAC part
-                x_atac = x[:, int(self.n_output_genes_ / 2):]
-                x = x[:, :int(self.n_output_genes_ / 2)]
-                x_neighbors_atac = x_neighbors[:, int(self.n_output_genes_ / 2):]
-                x_neighbors = x_neighbors[:, :int(self.n_output_genes_ / 2)]
-                assert x_atac.size(1) == int(self.n_output_peaks_ / 2)
-                assert x_neighbors_atac.size(1) == int(self.n_output_peaks_ / 2)
-                self.target_node_labels_atac_start_idx = (
-                    len(self.target_gene_expr_mask_idx_))
-                self.source_node_labels_atac_start_idx = (
-                    len(self.target_gene_expr_mask_idx_) + 
-                    len(self.target_chrom_access_mask_idx_) +
-                    len(self.source_gene_expr_mask_idx_))
-                self.source_node_labels_rna_start_idx = (
-                    len(self.target_gene_expr_mask_idx_) + 
-                    len(self.target_chrom_access_mask_idx_))
-
-                output["node_labels_atac"] = torch.cat((
-                    output["node_labels"][:, self.target_node_labels_atac_start_idx:
-                                          self.source_node_labels_rna_start_idx],
-                    output["node_labels"][:, self.source_node_labels_atac_start_idx:
-                                          ]), dim=1)
-                output["node_labels"] = torch.cat((
-                    output["node_labels"][:, :self.target_node_labels_atac_start_idx],
-                    output["node_labels"][:, self.source_node_labels_rna_start_idx: 
-                                          self.source_node_labels_atac_start_idx]),
-                                          dim=1)
-                assert output["node_labels_atac"].size(1) == len(self.chrom_access_mask_idx_)
-                assert output["node_labels"].size(1) == len(self.gene_expr_mask_idx_)
-            else:
-                self.target_node_labels_atac_start_idx = None
-                self.source_node_labels_atac_start_idx = None
-                self.source_node_labels_rna_start_idx = (
-                    len(self.target_gene_expr_mask_idx_))
-
-            # Use observed library size as scaling factor for the negative
-            # binomial means of the gene expression distribution
-            library_size = x.sum(1) + x_neighbors.sum(1)
-            self.log_library_size = torch.log(library_size).unsqueeze(1)[batch_idx]
-
-            # Get gene expression reconstruction distribution parameters
-            output["gene_expr_dist_params"] = self.gene_expr_decoder(
-                z=z,
-                log_library_size=self.log_library_size,
-                cat_covariates_embed=(self.cat_covariates_embed[batch_idx] if
-                                      (self.cat_covariates_embed is not None) &
-                                      ("gene_expr_decoder" in
-                                       self.cat_covariates_embeds_injection_) else
-                                      None))
-            
-            if "chrom_access" in self.modalities_:
-                # Use observed library size as scaling factor for the negative
-                # binomial means of the chromatin accessibility distribution
-                library_size_atac = x_atac.sum(1) + x_atac_neighbors.sum(1)
-                self.log_library_size_atac = torch.log(
-                    library_size_atac).unsqueeze(1)[batch_idx]
-                
-                if turn_off_peaks_based_on_genes:
-                    # Get dynamic gene weight peak mask to turn off peaks that
-                    # correspond to genes that are turned off
-                    with torch.no_grad():
-                        # Round to 4 decimals as genes are never completely
-                        # turned off due to L1 being not differentiable at 0
-                        gp_weights = self.get_gp_weights(use_mask_idx=False)[0]
-                        gp_weights = torch.round(gp_weights, decimals=4)
-
-                        non_zero_gene_weights = torch.ne(
-                                gp_weights, 
-                                0).float() # dim: (2 x n_genes, n_gps)
-
-                        non_zero_target_gene_weights = non_zero_gene_weights[
-                            :int(non_zero_gene_weights.size(0) / 2), :]
-                            # dim: (n_genes, n_gps)
-                        non_zero_source_gene_weights = non_zero_gene_weights[
-                            int(non_zero_gene_weights.size(0) / 2):, :]
-                            # dim: (n_genes, n_gps)
-
-                        gene_weight_target_peak_mask = torch.matmul(
-                            non_zero_target_gene_weights.t(), # dim: (n_gps, n_genes)
-                            self.gene_peaks_mask_) # dim: (n_genes, n_peaks)
-                            # dim: (n_gps, n_peaks)
-                        gene_weight_target_peak_mask = torch.ne(
-                            gene_weight_target_peak_mask, 
-                            0).float() # dim: (n_gps, n_peaks)
-
-                        gene_weight_source_peak_mask = torch.matmul(
-                            non_zero_source_gene_weights.t(),
-                            self.gene_peaks_mask_)
-                        gene_weight_source_peak_mask = torch.ne(
-                            gene_weight_source_peak_mask, 
-                            0).float()
-
-                        gene_weight_peak_mask = torch.cat(
-                            (gene_weight_target_peak_mask,
-                             gene_weight_source_peak_mask), dim=1).t()
-                            # dim: (2 x n_peaks, n_gps)
-                else:
-                    gene_weight_peak_mask = None
-
-                # Get chromatin accessibility reconstruction distribution
-                # parameters
-                output["chrom_access_dist_params"] = self.chrom_access_decoder(
-                    z=z,
-                    log_library_size=self.log_library_size_atac,
-                    gene_weight_peak_mask=gene_weight_peak_mask,
-                    cat_covariates_embed=(self.cat_covariates_embed[batch_idx] if
-                                          (self.cat_covariates_embed is not None) &
-                                          ("chrom_access_decoder" in
-                                           self.cat_covariates_embeds_injection_)
-                                          else None))
+            # Use decoder to get the edge reconstruction logits
+            output["edge_recon_logits"] = self.graph_decoder(z=z)
         return output
 
     def loss(self,
@@ -691,14 +706,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             mu=node_model_output["mu"],
             logstd=node_model_output["logstd"])
 
-        # Compute edge reconstruction binary cross entropy loss
+        # Compute edge reconstruction binary cross entropy loss for edge batch
         loss_dict["edge_recon_loss"] = (
             lambda_edge_recon * compute_edge_recon_loss(
                 edge_recon_logits=edge_model_output["edge_recon_logits"],
                 edge_recon_labels=edge_model_output["edge_recon_labels"],
                 edge_incl=edge_model_output["edge_incl"]))
             
-        # Compute categorical covariates contrastive loss
+        # Compute categorical covariates contrastive loss for edge batch
         if (edge_model_output["edge_same_cat_covariates_cat"] is not None) & (
         lambda_cat_covariates_contrastive > 0):
             loss_dict["cat_covariates_contrastive_loss"] = (
@@ -710,50 +725,48 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 contrastive_logits_pos_ratio=contrastive_logits_pos_ratio,
                 contrastive_logits_neg_ratio=contrastive_logits_neg_ratio))
 
-        # Compute gene expression reconstruction negative binomial or
-        # zero-inflated negative binomial loss
-        theta = torch.exp(self.theta) # gene-specific inverse dispersion
-        if self.gene_expr_recon_dist_ == "nb":
-            nb_means = node_model_output["gene_expr_dist_params"]
-            loss_dict["gene_expr_recon_loss"] = (lambda_gene_expr_recon * 
+        # Compute gene expression reconstruction negative binomial loss
+        if self.rna_pred_loss_ == "nb":
+            loss_dict["gene_expr_recon_loss"] = (
+                lambda_gene_expr_recon * 
             compute_omics_recon_nb_loss(
-                    x=node_model_output["node_labels"],
-                    mu=nb_means,
-                    theta=theta))
-        elif self.gene_expr_recon_dist_ == "zinb":
-            nb_means, zi_prob_logits = (
-                node_model_output["gene_expr_dist_params"])
-            loss_dict["gene_expr_recon_loss"] = (lambda_gene_expr_recon * 
-            compute_gene_expr_recon_zinb_loss(
-                    x=node_model_output["node_labels"],
-                    mu=nb_means,
-                    theta=theta,
-                    zi_prob_logits=zi_prob_logits))
+                    x=node_model_output["node_labels"]["target_rna"],
+                    mu=node_model_output["target_rna_nb_means"],
+                    theta=torch.exp(self.target_rna_theta))) + (
+                lambda_gene_expr_recon * 
+            compute_omics_recon_nb_loss(
+                    x=node_model_output["node_labels"]["source_rna"],
+                    mu=node_model_output["source_rna_nb_means"],
+                    theta=torch.exp(self.source_rna_theta)))
             
+        # Computed l1 reg loss of genes
         loss_dict["masked_gp_l1_reg_loss"] = (lambda_l1_masked *
-            compute_masked_l1_reg_loss(self,
-                                       l1_mask=l1_mask))
+            compute_omics_recon_l1_reg_loss(self,
+                                            l1_mask=l1_mask))
 
         # Compute group lasso regularization loss of gene programs
         loss_dict["group_lasso_reg_loss"] = (lambda_group_lasso *
-        compute_group_lasso_reg_loss(self))
+            compute_group_lasso_reg_loss(self))
 
         # Compute l1 regularization loss of genes in addon gene programs
-        if self.n_addon_gps_ != 0:
+        if self.n_addon_gp_ != 0:
             loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon *
-            compute_addon_l1_reg_loss(self))
+            compute_omics_recon_l1_reg_loss(self))
 
-        if "chrom_access" in self.modalities_:
+        if "atac" in self.modalities_:
             # Compute chromatin accessibility reconstruction negative binomial
             # loss
-            theta_atac = torch.exp(self.theta_atac) # peak-specific inverse
-                                                    # dispersion
-            nb_means_atac = node_model_output["chrom_access_dist_params"]
-            loss_dict["chrom_access_recon_loss"] = (lambda_chrom_access_recon * 
+            loss_dict["chrom_access_recon_loss"] = (
+                lambda_chrom_access_recon * 
             compute_omics_recon_nb_loss(
-                    x=node_model_output["node_labels_atac"],
-                    mu=nb_means_atac,
-                    theta=theta_atac))
+                    x=node_model_output["node_labels"]["target_atac"],
+                    mu=node_model_output["target_atac_nb_means"],
+                    theta=torch.exp(self.target_atac_theta))) + (
+                lambda_chrom_access_recon * 
+            compute_omics_recon_nb_loss(
+                    x=node_model_output["node_labels"]["source_atac"],
+                    mu=node_model_output["source_atac_nb_means"],
+                    theta=torch.exp(self.source_atac_theta)))
 
         # Compute optimization loss used for backpropagation as well as global
         # loss used for early stopping of model training and best model saving
@@ -777,55 +790,63 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             loss_dict["optim_loss"] += loss_dict["group_lasso_reg_loss"]
             loss_dict["global_loss"] += loss_dict["masked_gp_l1_reg_loss"]
             loss_dict["optim_loss"] += loss_dict["masked_gp_l1_reg_loss"]
-            if self.n_addon_gps_ != 0:
+            if self.n_addon_gp_ != 0:
                 loss_dict["global_loss"] += loss_dict["addon_gp_l1_reg_loss"]
                 loss_dict["optim_loss"] += loss_dict["addon_gp_l1_reg_loss"]
-        if ("chrom_access" in self.modalities_) & self.include_chrom_access_recon_loss_:
+        if ("atac" in self.modalities_) & self.include_chrom_access_recon_loss_:
             loss_dict["global_loss"] += loss_dict["chrom_access_recon_loss"]
             loss_dict["optim_loss"] += loss_dict["chrom_access_recon_loss"]
         return loss_dict
 
     def get_gp_weights(self,
-                       use_mask_idx: bool=False) -> torch.Tensor:
+                       only_masked_features: bool=False) -> List[torch.Tensor]:
         """
-        Get the gene weights of the gene expression negative binomial means
-        decoder.
+        Get the gene program weights of the omics feature decoders.
 
         Returns:
         ----------
         gp_weights_all_modalities:
-            Tuple of tensors containing the decoder gp weights (dim:
-            n_gps x n_genes)
-        gp_peak_weights:
-            Tensor containing the chromatin accessibility decoder peak weights (
-            dim: n_gps x n_peaks)
+            List of tensors containing the decoder gp weights for each
+            omics modality (dim: (n_prior_gp + n_addon_gp) x n_omics_features)
         """
         gp_weights_all_modalities = []
 
         for modality in self.modalities_:
-            decoder = getattr(self, modality + "_decoder")
-            
+            target_decoder = getattr(self, f"target_{modality}_decoder")
+            source_decoder = getattr(self, f"source_{modality}_decoder")
+
             # Get decoder weights of masked gps
-            gp_weights = (
-                decoder.nb_means_normalized_decoder.masked_l.weight.data
+            target_gp_weights_masked = (
+                target_decoder.nb_means_normalized_decoder.masked_l.weight.data
                 ).clone()
+            source_gp_weights_masked = (
+                source_decoder.nb_means_normalized_decoder.masked_l.weight.data
+                ).clone()
+            gp_weights = torch.cat((target_gp_weights_masked,
+                                    source_gp_weights_masked),
+                                   dim=0)
 
             # Add decoder weights of addon gps
-            if self.n_addon_gps_ > 0:
-                gp_weights_addon = (
-                    decoder.nb_means_normalized_decoder.addon_l.weight.data
+            if self.n_addon_gp_ > 0:
+                target_gp_weights_addon = (
+                    target_decoder.nb_means_normalized_decoder.addon_l.weight.data
                     ).clone()
+                source_gp_weights_addon = (
+                    source_decoder.nb_means_normalized_decoder.addon_l.weight.data
+                    ).clone()
+                gp_weights_addon = torch.cat((target_gp_weights_addon,
+                                              source_gp_weights_addon),
+                                             dim=0)
                 gp_weights = torch.cat([gp_weights, gp_weights_addon], axis=1)
 
             # Only keep omics features in mask
-            if use_mask_idx:
-                mask_idx = getattr(self, modality + "_mask_idx_")
+            if only_masked_features:
+                mask_idx = getattr(self, "features_idx_dict_")[
+                    f"masked_{modality}_idx"]
                 gp_weights = gp_weights[mask_idx, :]
             
-            # append masked_decoder_weights to the list of weights
+            # Append current modality to output list
             gp_weights_all_modalities.append(gp_weights)
-
-        # return the weights as a tuple
         return gp_weights_all_modalities
 
     def get_active_gp_mask(
@@ -868,21 +889,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Tensor containing the gene expression decoder gene weights of active
             gene programs.
         """
-        gp_weights = self.get_gp_weights(use_mask_idx=True)[0]
-
-        # Correct gp weights for zero inflation using zero inflation
-        # probabilities over all observations if zinb distribution is used to
-        # model gene expression
-        if self.gene_expr_recon_dist_ == "zinb":
-            _, zi_probs = self.get_gene_expr_dist_params(
-                z=self.mu,
-                log_library_size=self.log_library_size,
-                cat_covariates_embed=(self.cat_covariates_embed[batch_idx] if
-                                      self.cat_covariates_embed is not None else
-                                      None))
-            non_zi_probs = 1 - zi_probs
-            non_zi_probs_sum = non_zi_probs.sum(0).unsqueeze(1) # sum over obs
-            gp_weights *= non_zi_probs_sum
+        gp_weights = self.get_gp_weights(only_masked_features=True)[0]
 
         # Aggregate absolute gp weights based on ´abs_gp_weights_agg_mode´ and
         # calculate thresholds of aggregated absolute gp weights and get active
@@ -915,13 +922,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
     def log_module_hyperparams_to_mlflow(
             self,
-            excluded_attr: list=["gene_expr_mask_idx_",
-                                 "target_gene_expr_mask_idx_",
-                                 "source_gene_expr_mask_idx_",
-                                 "chrom_access_mask_idx_",
-                                 "target_chrom_access_mask_idx_",
-                                 "source_chrom_access_mask_idx_",
-                                 "features_idx_",
+            excluded_attr: list=["features_idx_dict_",
                                  "gene_peaks_mask_"]):
         """
         Log module hyperparameters to Mlflow.
@@ -1024,23 +1025,23 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             z = self.reparameterize(mu, logstd)
             return z
 
-    def get_gene_expr_dist_params(
+    def get_omics_decoder_outputs(
             self,
+            modality: Literal["rna", "atac"],
+            entity: Literal["source", "target"],
             z: torch.Tensor,
             log_library_size: torch.Tensor,
             cat_covariates_embed: Optional[torch.Tensor]=None,
             ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Decode latent features ´z´ to return the parameters of the distribution
-        used for gene expression reconstruction (either (´nb_means´, ´zi_probs´)
-        if a zero-inflated negative binomial is used or ´nb_means´ if a negative
-        binomial is used).
+        used for omics reconstruction.
 
         Parameters
         ----------
         z:
             Tensor containing the latent features / gene program scores (dim: 
-            n_obs x n_gps).
+            n_obs x n_gp).
         log_library_size:
             Tensor containing the log library size of the observations / cells 
             (dim: n_obs x 1).
@@ -1053,20 +1054,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         nb_means:
             Expected values of the negative binomial distribution (dim: n_obs x
             n_genes).
-        zi_probs:
-            Zero-inflation probabilities of the zero-inflated negative binomial
-            distribution (dim: n_obs x n_genes).
         """
-        if self.gene_expr_recon_dist_ == "nb":
-            nb_means = self.gene_expr_decoder(
-                z=z,
-                log_library_size=log_library_size,
-                cat_covariates_embed=cat_covariates_embed)
-            return nb_means
-        if self.gene_expr_recon_dist_ == "zinb":
-            nb_means, zi_prob_logits = self.gene_expr_decoder(
-                z=z,
-                log_library_size=log_library_size,
-                cat_covariates_embed=cat_covariates_embed)
-            zi_probs = torch.sigmoid(zi_prob_logits)
-            return nb_means, zi_probs
+        decoder = getattr(self, f"{entity}_{modality}_decoder")
+        nb_means = decoder(
+            z=z,
+            log_library_size=log_library_size,
+            cat_covariates_embed=cat_covariates_embed)
+        return nb_means

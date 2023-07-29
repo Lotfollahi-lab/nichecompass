@@ -630,10 +630,11 @@ class Trainer(BaseTrainerMixin):
                 edge_incl_val_accumulated = None
 
         # Get node-level ground truth and predictions
-        gene_expr_preds_val_accumulated = np.array([])
-        gene_expr_val_accumulated = np.array([])
-        chrom_access_preds_val_accumulated = np.array([])
-        chrom_access_val_accumulated = np.array([])
+        omics_pred_dict_val_accumulated = {}
+        for modality in self.model.modalities_:
+            for entity in ["target", "source"]:
+                omics_pred_dict_val_accumulated[f"{entity}_{modality}_preds"] = np.array([])
+                omics_pred_dict_val_accumulated[f"{entity}_{modality}"] = np.array([])
         for node_val_data_batch in self.node_val_loader:
             node_val_data_batch = node_val_data_batch.to(self.device)
 
@@ -642,59 +643,30 @@ class Trainer(BaseTrainerMixin):
                 decoder="omics",
                 use_only_active_gps=True)
 
-            gene_expr_val = node_val_model_output["node_labels"]
-
-            if self.model.gene_expr_recon_dist_ == "nb":
-                nb_means_val = node_val_model_output["gene_expr_dist_params"]
-                gene_expr_preds_val = nb_means_val
-            elif self.model.gene_expr_recon_dist_ == "zinb":
-                nb_means_val, zi_prob_logits_val = (
-                    node_val_model_output["gene_expr_dist_params"])
-                zi_probs_val = torch.sigmoid(zi_prob_logits_val)
-                zi_mask_val = torch.bernoulli(zi_probs_val) > 0
-                gene_expr_preds_val = nb_means_val
-                gene_expr_preds_val[zi_mask_val] = 0
-
-            gene_expr_preds_val_accumulated = np.append(
-                gene_expr_preds_val_accumulated,
-                gene_expr_preds_val.detach().cpu().numpy())
-            gene_expr_val_accumulated = np.append(
-                gene_expr_val_accumulated,
-                gene_expr_val.detach().cpu().numpy())
-            
-            if "node_labels_atac" in node_val_model_output.keys():
-                chrom_access_val = node_val_model_output["node_labels_atac"]
-                chrom_access_preds_val = (
-                    node_val_model_output["chrom_access_dist_params"])
-                chrom_access_preds_val_accumulated = np.append(
-                    chrom_access_preds_val_accumulated,
-                    chrom_access_preds_val.detach().cpu().numpy())
-                chrom_access_val_accumulated = np.append(
-                    chrom_access_val_accumulated,
-                    chrom_access_val.detach().cpu().numpy())
-            else:
-                chrom_access_preds_val_accumulated = None
-                chrom_access_preds_val = None
+            for modality in self.model.modalities_:
+                for entity in ["target", "source"]:
+                    omics_pred_dict_val_accumulated[f"{entity}_{modality}_preds"] = np.append(
+                        omics_pred_dict_val_accumulated[f"{entity}_{modality}_preds"],
+                        node_val_model_output[f"{entity}_{modality}_nb_means"].detach().cpu().numpy())
+                    omics_pred_dict_val_accumulated[f"{entity}_{modality}"] = np.append(
+                        omics_pred_dict_val_accumulated[f"{entity}_{modality}"],
+                        node_val_model_output["node_labels"][f"{entity}_{modality}"].detach().cpu().numpy())        
 
         val_eval_dict = eval_metrics(
             edge_recon_probs=edge_recon_probs_val_accumulated,
             edge_labels=edge_recon_labels_val_accumulated,
             edge_same_cat_covariates_cat=edge_same_cat_covariates_cat_val_accumulated,
             edge_incl=edge_incl_val_accumulated,
-            gene_expr_preds=gene_expr_preds_val_accumulated,
-            gene_expr=gene_expr_val_accumulated,
-            chrom_access_preds=chrom_access_preds_val_accumulated,
-            chrom_access=chrom_access_val_accumulated)
+            omics_pred_dict=omics_pred_dict_val_accumulated)
         print("\n--- MODEL EVALUATION ---")
-        print(f"Val AUROC score: {val_eval_dict['auroc_score']:.4f}")
-        print(f"Val AUPRC score: {val_eval_dict['auprc_score']:.4f}")
-        print(f"Val best accuracy score: {val_eval_dict['best_acc_score']:.4f}")
-        print(f"Val best F1 score: {val_eval_dict['best_f1_score']:.4f}")
-        print("Val gene expr MSE score: "
-              f"{val_eval_dict['gene_expr_mse_score']:.4f}")
-        if "chrom_access_mse_score" in val_eval_dict.keys():
-            print("Val chrom access MSE score: "
-                f"{val_eval_dict['chrom_access_mse_score']:.4f}")
+        print(f"val AUROC score: {val_eval_dict['auroc_score']:.4f}")
+        print(f"val AUPRC score: {val_eval_dict['auprc_score']:.4f}")
+        print(f"val best accuracy score: {val_eval_dict['best_acc_score']:.4f}")
+        print(f"val best F1 score: {val_eval_dict['best_f1_score']:.4f}")
+        for modality in self.model.modalities_:
+            for entity in ["target", "source"]:
+                print(f"val {entity} {modality} MSE score: "
+                      f"{val_eval_dict[f'{entity}_{modality}_mse_score']:.4f}")
         for i in range(self.n_cat_covariates):
             if f"cat_covariate{i}_mean_sim_diff" in val_eval_dict.keys():
                 print(f"Val cat covariate{i} mean sim diff: "

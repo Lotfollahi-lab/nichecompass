@@ -326,11 +326,17 @@ def compute_group_lasso_reg_loss(model: nn.Module) -> torch.Tensor:
     decoder_layerwise_param_gpgroupnorm_sum = torch.stack(
         [torch.mul(
             torch.sqrt(torch.count_nonzero(
-                model.gene_expr_decoder.nb_means_normalized_decoder.masked_l.mask,
+                getattr(
+                    getattr(
+                        getattr(
+                            getattr(model, param_name.split(".")[0]),
+                            param_name.split(".")[1]),
+                        param_name.split(".")[2]),
+                    "mask"),
                 dim=0)),
             torch.linalg.vector_norm(param, ord=2, dim=0)).sum()
          for param_name, param in model.named_parameters() if
-         "gene_expr_decoder.nb_means_normalized_decoder.masked_l" in param_name],
+         "rna_decoder.nb_means_normalized_decoder.masked_l" in param_name],
          dim=0)
 
     # TO DO #
@@ -371,9 +377,9 @@ def compute_kl_reg_loss(mu: torch.Tensor,
     return kl_reg_loss
 
 
-def compute_masked_l1_reg_loss(
+def compute_omics_recon_l1_reg_loss(
         model: nn.Module,
-        l1_mask: np.array) -> torch.Tensor:
+        l1_mask: Optional[np.array]=None) -> torch.Tensor:
     """
     Compute L1 regularization loss for the masked decoder layer weights to 
     encourage gene sparsity of masked gene programs.
@@ -398,7 +404,7 @@ def compute_masked_l1_reg_loss(
         [torch.linalg.vector_norm(param[l1_mask],
                                   ord=1) for
          param_name, param in model.named_parameters() if
-         "gene_expr_decoder.nb_means_normalized_decoder.masked_l" in param_name],
+         "rna_decoder.nb_means_normalized_decoder.masked_l" in param_name],
         dim=0)
     masked_l1_reg_loss = torch.sum(masked_decoder_layerwise_param_sum)
     return masked_l1_reg_loss
