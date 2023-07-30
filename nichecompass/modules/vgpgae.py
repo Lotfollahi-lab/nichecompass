@@ -19,13 +19,12 @@ from nichecompass.nn import (CosineSimGraphDecoder,
                              OneHopGCNNormNodeLabelAggregator,
                              OneHopSumNodeLabelAggregator)
 from .basemodulemixin import BaseModuleMixin
-from .losses import (compute_addon_l1_reg_loss,
-                     compute_cat_covariates_contrastive_loss,
+from .losses import (compute_cat_covariates_contrastive_loss,
                      compute_edge_recon_loss,
-                     compute_omics_recon_l1_reg_loss,
-                     compute_omics_recon_nb_loss,
                      compute_group_lasso_reg_loss,
-                     compute_kl_reg_loss)
+                     compute_gp_l1_reg_loss,
+                     compute_kl_reg_loss,
+                     compute_omics_recon_nb_loss)
 from .vgaemodulemixin import VGAEModuleMixin
 
 
@@ -605,7 +604,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
              edge_model_output: dict,
              node_model_output: dict,
              lambda_l1_masked: float,
-             l1_mask: np.array,
+             l1_targets_mask: np.array,
+             l1_sources_mask: np.array,
              lambda_l1_addon: float,
              lambda_group_lasso: float,
              lambda_gene_expr_recon: float=300.,
@@ -649,10 +649,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Lambda (weighting factor) for the L1 regularization loss of genes in
             masked gene programs. If ´>0´, this will enforce sparsity of genes
             in masked gene programs.
-        l1_mask:
-            Boolean gene program gene mask that is True for all gene program genes
-            to which the L1 regularization loss should be applied (dim: 2 x n_genes,
-            n_gps)
+        l1_targets_mask:
+            Boolean gene program gene mask that is True for all gene program target
+            genes to which the L1 regularization loss should be applied (dim:
+            n_genes, n_gps).
+        l1_sources_mask:
+            Boolean gene program gene mask that is True for all gene program source
+            genes to which the L1 regularization loss should be applied (dim:
+            n_genes, n_gps).
         lambda_l1_addon:
             Lambda (weighting factor) for the L1 regularization loss of genes in
             addon gene programs. If ´>0´, this will enforce sparsity of genes in
@@ -741,8 +745,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             
         # Computed l1 reg loss of genes
         loss_dict["masked_gp_l1_reg_loss"] = (lambda_l1_masked *
-            compute_omics_recon_l1_reg_loss(self,
-                                            l1_mask=l1_mask))
+            compute_gp_l1_reg_loss(
+                self,
+                gp_type="prior",
+                l1_targets_mask=l1_targets_mask,
+                l1_sources_mask=l1_sources_mask))
 
         # Compute group lasso regularization loss of gene programs
         loss_dict["group_lasso_reg_loss"] = (lambda_group_lasso *
@@ -751,7 +758,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         # Compute l1 regularization loss of genes in addon gene programs
         if self.n_addon_gp_ != 0:
             loss_dict["addon_gp_l1_reg_loss"] = (lambda_l1_addon *
-            compute_omics_recon_l1_reg_loss(self))
+            compute_gp_l1_reg_loss(self,
+                                   gp_type="addon"))
 
         if "atac" in self.modalities_:
             # Compute chromatin accessibility reconstruction negative binomial

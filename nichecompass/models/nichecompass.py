@@ -699,10 +699,9 @@ class NicheCompass(BaseModelMixin):
             l1_sources_mask = np.isin(
                 self.adata.varm[self.gp_sources_categories_mask_key_],
                 l1_sources_categories_encoded)
-            l1_mask = np.concatenate((l1_targets_mask, l1_sources_mask),
-                                     axis=0)
         else:
-            l1_mask = None
+            l1_targets_mask = None
+            l1_sources_mask = None
 
         self.trainer.train(
             n_epochs=n_epochs,
@@ -719,7 +718,8 @@ class NicheCompass(BaseModelMixin):
             contrastive_logits_neg_ratio=contrastive_logits_neg_ratio,
             lambda_group_lasso=lambda_group_lasso,
             lambda_l1_masked=lambda_l1_masked,
-            l1_mask=l1_mask,
+            l1_targets_mask=l1_targets_mask,
+            l1_sources_mask=l1_sources_mask,
             lambda_l1_addon=lambda_l1_addon,
             mlflow_experiment_id=mlflow_experiment_id)
         

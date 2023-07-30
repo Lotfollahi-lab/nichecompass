@@ -269,7 +269,7 @@ def generate_enriched_gp_info_plots(plot_label: str,
 
     adata = model.adata.copy()
     if n_top_peaks_per_gp > 0:
-        if "chrom_access" not in model.modalities_:
+        if "atac" not in model.modalities_:
             raise ValueError("The model needs to be trained with ATAC data if"
                              "'n_top_peaks_per_gp' > 0.")
         adata_atac = model.adata_atac.copy()

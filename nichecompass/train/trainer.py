@@ -232,7 +232,8 @@ class Trainer(BaseTrainerMixin):
               lambda_chrom_access_recon: float=10.,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,
-              l1_mask: Optional[np.array]=None,
+              l1_targets_mask: Optional[np.array]=None,
+              l1_sources_mask: Optional[np.array]=None,
               lambda_l1_addon: float=0.,
               mlflow_experiment_id: Optional[str]=None):
         """
@@ -291,10 +292,14 @@ class Trainer(BaseTrainerMixin):
             Lambda (weighting factor) for the L1 regularization loss of genes in
             masked gene programs. If ´>0´, this will enforce sparsity of genes
             in masked gene programs.
-        l1_mask:
-            Boolean gene program gene mask that is True for all gene program genes
-            to which the L1 regularization loss should be applied (dim: 2 x n_genes,
-            n_gps)            
+        l1_targets_mask:
+            Boolean gene program gene mask that is True for all gene program target
+            genes to which the L1 regularization loss should be applied (dim:
+            n_genes, n_gps).
+        l1_sources_mask:
+            Boolean gene program gene mask that is True for all gene program source
+            genes to which the L1 regularization loss should be applied (dim:
+            n_genes, n_gps).
         lambda_l1_addon:
             Lambda (weighting factor) for the L1 regularization loss of genes in
             addon gene programs. If ´>0´, this will enforce sparsity of genes in
@@ -318,7 +323,8 @@ class Trainer(BaseTrainerMixin):
         self.contrastive_logits_neg_ratio_ = contrastive_logits_neg_ratio
         self.lambda_group_lasso_ = lambda_group_lasso
         self.lambda_l1_masked_ = lambda_l1_masked
-        self.l1_mask = l1_mask
+        self.l1_targets_mask = l1_targets_mask
+        self.l1_sources_mask = l1_sources_mask
         self.lambda_l1_addon_ = lambda_l1_addon
         self.mlflow_experiment_id = mlflow_experiment_id
 
@@ -389,7 +395,8 @@ class Trainer(BaseTrainerMixin):
                     contrastive_logits_neg_ratio=self.contrastive_logits_neg_ratio_,
                     lambda_group_lasso=self.lambda_group_lasso_,
                     lambda_l1_masked=self.lambda_l1_masked_,
-                    l1_mask=self.l1_mask,
+                    l1_targets_mask=self.l1_targets_mask,
+                    l1_sources_mask=self.l1_sources_mask,
                     lambda_l1_addon=self.lambda_l1_addon_,
                     edge_recon_active=self.edge_recon_active,
                     cat_covariates_contrastive_active=self.cat_covariates_contrastive_active)
@@ -528,7 +535,8 @@ class Trainer(BaseTrainerMixin):
                     contrastive_logits_neg_ratio=self.contrastive_logits_neg_ratio_,
                     lambda_group_lasso=self.lambda_group_lasso_,
                     lambda_l1_masked=self.lambda_l1_masked_,
-                    l1_mask=self.l1_mask,
+                    l1_targets_mask=self.l1_targets_mask,
+                    l1_sources_mask=self.l1_sources_mask,
                     lambda_l1_addon=self.lambda_l1_addon_,
                     edge_recon_active=True)
 
