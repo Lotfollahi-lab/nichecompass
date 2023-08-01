@@ -14,6 +14,7 @@ from torch_geometric.data import Data
 
 from nichecompass.nn import (CosineSimGraphDecoder,
                              Encoder,
+                             FCOmicsFeatureDecoder,
                              MaskedOmicsFeatureDecoder,
                              OneHopAttentionNodeLabelAggregator,
                              OneHopGCNNormNodeLabelAggregator,
@@ -121,6 +122,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     cat_covariates_embeds_injection:
         List of VGPGAE modules in which the categorical covariates embeddings
         are injected.
+    use_fc_decoder:
+    fc_decoder_n_layers:
     """
     def __init__(self,
                  n_input: int,
@@ -159,7 +162,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                      Literal["encoder",
                              "gene_expr_decoder",
                              "chrom_access_decoder"]]]=["gene_expr_decoder",
-                                                        "chrom_access_decoder"]):
+                                                        "chrom_access_decoder"],
+                 use_fc_decoder: bool=False,
+                 fc_decoder_n_layers: int=2):
         super().__init__()
         self.n_input_ = n_input
         self.n_layers_encoder_ = n_layers_encoder
@@ -260,73 +265,137 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.graph_decoder = CosineSimGraphDecoder(
             dropout_rate=dropout_rate_graph_decoder)
 
-        # Initialize masked gene expression decoders
-        self.target_rna_decoder = MaskedOmicsFeatureDecoder(
-            modality="rna",
-            entity="target",
-            n_prior_gp_input=n_prior_gp,
-            n_addon_gp_input=n_addon_gp,
-            n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
-                                          if ("gene_expr_decoder" in self.cat_covariates_embeds_injection_)
-                                          & (self.n_cat_covariates___ > 0)
-                                          else 0),
-            n_output=n_output_genes,
-            mask=target_rna_decoder_mask,
-            masked_features_idx=features_idx_dict["target_masked_rna_idx"],
-            unmasked_features_idx=features_idx_dict["target_unmasked_rna_idx"],
-            recon_loss=self.rna_pred_loss_)
-        
-        self.source_rna_decoder = MaskedOmicsFeatureDecoder(
-            modality="rna",
-            entity="source",
-            n_prior_gp_input=n_prior_gp,
-            n_addon_gp_input=n_addon_gp,
-            n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
-                                          if ("gene_expr_decoder" in self.cat_covariates_embeds_injection_)
-                                          & (self.n_cat_covariates___ > 0)
-                                          else 0),
-            n_output=n_output_genes,
-            mask=source_rna_decoder_mask,
-            masked_features_idx=features_idx_dict["source_masked_rna_idx"],
-            unmasked_features_idx=features_idx_dict["source_unmasked_rna_idx"],
-            recon_loss=self.rna_pred_loss_)
+        if not use_fc_decoder:
+            # Initialize masked gene expression decoders
+            self.target_rna_decoder = MaskedOmicsFeatureDecoder(
+                modality="rna",
+                entity="target",
+                n_prior_gp_input=n_prior_gp,
+                n_addon_gp_input=n_addon_gp,
+                n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
+                                              if ("gene_expr_decoder" in
+                                              self.cat_covariates_embeds_injection_)
+                                              & (self.n_cat_covariates___ > 0)
+                                              else 0),
+                n_output=n_output_genes,
+                mask=target_rna_decoder_mask,
+                masked_features_idx=features_idx_dict["target_masked_rna_idx"],
+                unmasked_features_idx=features_idx_dict["target_unmasked_rna_idx"],
+                recon_loss=self.rna_pred_loss_)
+            
+            self.source_rna_decoder = MaskedOmicsFeatureDecoder(
+                modality="rna",
+                entity="source",
+                n_prior_gp_input=n_prior_gp,
+                n_addon_gp_input=n_addon_gp,
+                n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
+                                              if ("gene_expr_decoder" in
+                                              self.cat_covariates_embeds_injection_)
+                                              & (self.n_cat_covariates___ > 0)
+                                              else 0),
+                n_output=n_output_genes,
+                mask=source_rna_decoder_mask,
+                masked_features_idx=features_idx_dict["source_masked_rna_idx"],
+                unmasked_features_idx=features_idx_dict["source_unmasked_rna_idx"],
+                recon_loss=self.rna_pred_loss_)
+        else:
+            # Initialize fc expression decoders
+            self.target_rna_decoder = FCOmicsFeatureDecoder(
+                modality="rna",
+                entity="target",
+                n_prior_gp_input=n_prior_gp,
+                n_addon_gp_input=n_addon_gp,
+                n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
+                                              if ("gene_expr_decoder" in
+                                              self.cat_covariates_embeds_injection_)
+                                              & (self.n_cat_covariates___ > 0)
+                                              else 0),
+                n_output=n_output_genes,
+                n_layers=fc_decoder_n_layers,
+                recon_loss=self.rna_pred_loss_)
+            
+            self.source_rna_decoder = FCOmicsFeatureDecoder(
+                modality="rna",
+                entity="source",
+                n_prior_gp_input=n_prior_gp,
+                n_addon_gp_input=n_addon_gp,
+                n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
+                                              if ("gene_expr_decoder" in
+                                              self.cat_covariates_embeds_injection_)
+                                              & (self.n_cat_covariates___ > 0)
+                                              else 0),
+                n_output=n_output_genes,
+                n_layers=fc_decoder_n_layers,
+                recon_loss=self.rna_pred_loss_)          
         
         # Initialize gene-specific dispersion parameters
         self.target_rna_theta = torch.nn.Parameter(torch.randn(n_output_genes))
         self.source_rna_theta = torch.nn.Parameter(torch.randn(n_output_genes))
         
         if "atac" in self.modalities_:
-            # Initialize masked atac decoders
-            self.target_atac_decoder = MaskedOmicsFeatureDecoder(
-                modality="atac",
-                entity="target",
-                n_prior_gp_input=n_prior_gp,
-                n_addon_gp_input=n_addon_gp,
-                n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
-                                              if ("gene_expr_decoder" in self.cat_covariates_embeds_injection_)
-                                              & (self.n_cat_covariates___ > 0)
-                                              else 0),
-                n_output=n_output_peaks,
-                mask=target_atac_decoder_mask,
-                masked_features_idx=features_idx_dict["target_masked_atac_idx"],
-                unmasked_features_idx=features_idx_dict["target_unmasked_atac_idx"],
-                recon_loss="nb")
+            if not use_fc_decoder:
+                # Initialize masked atac decoders
+                self.target_atac_decoder = MaskedOmicsFeatureDecoder(
+                    modality="atac",
+                    entity="target",
+                    n_prior_gp_input=n_prior_gp,
+                    n_addon_gp_input=n_addon_gp,
+                    n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
+                                                  if ("chrom_access_decoder" in
+                                                  self.cat_covariates_embeds_injection_)
+                                                  & (self.n_cat_covariates___ > 0)
+                                                  else 0),
+                    n_output=n_output_peaks,
+                    mask=target_atac_decoder_mask,
+                    masked_features_idx=features_idx_dict["target_masked_atac_idx"],
+                    unmasked_features_idx=features_idx_dict["target_unmasked_atac_idx"],
+                    recon_loss="nb")
 
-            self.source_atac_decoder = MaskedOmicsFeatureDecoder(
-                modality="atac",
-                entity="source",
-                n_prior_gp_input=n_prior_gp,
-                n_addon_gp_input=n_addon_gp,
-                n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
-                                              if ("gene_expr_decoder" in self.cat_covariates_embeds_injection_)
-                                              & (self.n_cat_covariates___ > 0)
-                                              else 0),
-                n_output=n_output_peaks,
-                mask=source_atac_decoder_mask,
-                masked_features_idx=features_idx_dict["source_masked_atac_idx"],
-                unmasked_features_idx=features_idx_dict["source_unmasked_atac_idx"],
-                recon_loss="nb")
-            
+                self.source_atac_decoder = MaskedOmicsFeatureDecoder(
+                    modality="atac",
+                    entity="source",
+                    n_prior_gp_input=n_prior_gp,
+                    n_addon_gp_input=n_addon_gp,
+                    n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
+                                                  if ("chrom_access_decoder" in
+                                                  self.cat_covariates_embeds_injection_)
+                                                  & (self.n_cat_covariates___ > 0)
+                                                  else 0),
+                    n_output=n_output_peaks,
+                    mask=source_atac_decoder_mask,
+                    masked_features_idx=features_idx_dict["source_masked_atac_idx"],
+                    unmasked_features_idx=features_idx_dict["source_unmasked_atac_idx"],
+                    recon_loss="nb")
+            else:
+                # Initialize fc atac decoders
+                self.target_atac_decoder = FCOmicsFeatureDecoder(
+                    modality="atac",
+                    entity="target",
+                    n_prior_gp_input=n_prior_gp,
+                    n_addon_gp_input=n_addon_gp,
+                    n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
+                                                  if ("chrom_access_decoder" in
+                                                  self.cat_covariates_embeds_injection_)
+                                                  & (self.n_cat_covariates___ > 0)
+                                                  else 0),
+                    n_output=n_output_peaks,
+                    n_layers=fc_decoder_n_layers,
+                    recon_loss="nb")
+
+                self.source_atac_decoder = FCOmicsFeatureDecoder(
+                    modality="atac",
+                    entity="source",
+                    n_prior_gp_input=n_prior_gp,
+                    n_addon_gp_input=n_addon_gp,
+                    n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
+                                                  if ("chrom_access_decoder" in
+                                                  self.cat_covariates_embeds_injection_)
+                                                  & (self.n_cat_covariates___ > 0)
+                                                  else 0),
+                    n_output=n_output_peaks,
+                    n_layers=fc_decoder_n_layers,
+                    recon_loss="nb")
+                            
             # Initialize peak-specific dispersion parameters
             self.target_atac_theta = torch.nn.Parameter(torch.randn(n_output_peaks))
             self.source_atac_theta = torch.nn.Parameter(torch.randn(n_output_peaks))

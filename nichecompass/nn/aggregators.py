@@ -2,33 +2,30 @@
 This module contains gene expression aggregators used by the NicheCompass model.
 """
 
-from typing import Optional
-
 import torch
 import torch.nn as nn
-from torch_geometric.nn.inits import glorot
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.conv.gcn_conv import gcn_norm
 from torch_geometric.nn.dense.linear import Linear
-from torch_geometric.utils import add_self_loops, remove_self_loops, softmax
+from torch_geometric.nn.inits import glorot
+from torch_geometric.utils import softmax
 from torch_sparse import SparseTensor
 
 
 class OneHopAttentionNodeLabelAggregator(MessagePassing):
     def __init__(self,
                  n_input: int,
-                 features_idx: torch.Tensor,
                  n_heads: int=4,
                  leaky_relu_negative_slope: float=0.2,
                  dropout_rate: float=0.):
         """
         One-hop Attention Node Label Aggregator class that uses a weighted sum
         of the gene expression of a node's 1-hop neighbors to build an
-        aggregated neighbor gene expression vector for a node. The weights are
+        aggregated neighbor omics feature vector for a node. The weights are
         determined by an additivite attention mechanism with learnable weights.
-        It returns a concatenation of the node's own gene expression and the 
-        attention-aggregated neighbor gene expression vector as node labels for
-        the gene expression reconstruction task. 
+        It returns a concatenation of the node's own omics feature vector and
+        the attention-aggregated neighbor omics feature vector as node labels
+        for the omics reconstruction task. 
         
         Parts of the implementation are inspired by
         https://github.com/pyg-team/pytorch_geometric/blob/master/torch_geometric/nn/conv/gatv2_conv.py#L16
@@ -38,8 +35,6 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         ----------
         n_input:
             Number of omics features used for the Node Label Aggregation.
-        features_idx:
-            Index of omics features that are in the gp and ca masks.
         n_heads:
             Number of attention heads for multi-head attention.
         leaky_relu_negative_slope:
@@ -51,7 +46,6 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         """
         super().__init__(node_dim=0)
         self.n_input = n_input
-        self.features_idx = features_idx
         self.n_heads = n_heads
         self.leaky_relu_negative_slope = leaky_relu_negative_slope
         self.linear_l_l = Linear(n_input,
@@ -68,7 +62,8 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         self._alpha = None
         self.reset_parameters()
 
-        print(f"ONE HOP ATTENTION NODE LABEL AGGREGATOR -> n_input: {n_input}, "
+        print("ONE HOP ATTENTION NODE LABEL AGGREGATOR -> "
+              f"n_input: {n_input}, "
               f"n_heads: {n_heads}")
 
     def reset_parameters(self):
@@ -89,7 +84,7 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         Parameters
         ----------
         x:
-            Tensor containing the gene expression of the nodes in the current 
+            Tensor containing the omics features of the nodes in the current 
             node batch including sampled neighbors. 
             (Size: n_nodes_batch_and_sampled_neighbors x n_node_features)
         edge_index:
@@ -104,7 +99,7 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         x_neighbors:
             Tensor containing the node labels of the nodes in the current node 
             batch excluding sampled neighbors. These labels are used for the 
-            gene expression reconstruction task.
+            omics feature reconstruction task.
             (Size: n_nodes_batch x (2 x n_node_features))
         alpha:
             Aggregation weights for edges in ´edge_index´.
@@ -162,9 +157,9 @@ class OneHopGCNNormNodeLabelAggregator(nn.Module):
     normalized sum (as introduced in Kipf, T. N. & Welling, M. Semi-Supervised 
     Classification with Graph Convolutional Networks. arXiv [cs.LG] (2016)) of 
     the omics feature vector of a node's 1-hop neighbors to build
-    an aggregated neighbor gene expression vector for a node. It returns a 
-    concatenation of the node's own gene expression and the gcn-norm aggregated
-    neighbor gene expression vector as node labels for the gene expression
+    an aggregated neighbor omics feature vector for a node. It returns a 
+    concatenation of the node's own omics feature vector and the gcn-norm
+    aggregated neighbor omics feature vector as node labels for the omics
     reconstruction task.
     """
     def __init__(self):
@@ -181,7 +176,7 @@ class OneHopGCNNormNodeLabelAggregator(nn.Module):
         Parameters
         ----------
         x:
-            Tensor containing the gene expression of the nodes in the current 
+            Tensor containing the omics features of the nodes in the current 
             node batch including sampled neighbors. 
             (Size: n_nodes_batch_and_sampled_neighbors x n_node_features)
         edge_index:
@@ -195,8 +190,8 @@ class OneHopGCNNormNodeLabelAggregator(nn.Module):
         ----------
         x_neighbors:
             Tensor containing the node labels of the nodes in the current node 
-            batch. These labels are used for the gene expression reconstruction
-            task. (Size: n_nodes_batch x (2 x n_node_features))
+            batch. These labels are used for the omics reconstruction task.
+            (Size: n_nodes_batch x (2 x n_node_features))
         alpha:
             Neighbor aggregation weights.
         """
@@ -213,14 +208,15 @@ class OneHopGCNNormNodeLabelAggregator(nn.Module):
 
 class OneHopSumNodeLabelAggregator(nn.Module):
     """
-    One-hop Sum Node Label Aggregator class that sums up the gene expression of
-    a node's 1-hop neighbors to build an aggregated neighbor gene expression 
-    vector for a node. It returns a concatenation of the node's own gene 
-    expression and the sum-aggregated neighbor gene expression vector as node 
-    labels for the gene expression reconstruction task.
+    One-hop Sum Node Label Aggregator class that sums up the omics features of
+    a node's 1-hop neighbors to build an aggregated neighbor omics feature
+    vector for a node. It returns a concatenation of the node's own omics
+    feature vector and the sum-aggregated neighbor omics feature vector as node 
+    labels for the omics reconstruction task.
     """
     def __init__(self):
         super().__init__()
+        print("ONE HOP SUM NODE LABEL AGGREGATOR")
 
     def forward(self,
                 x: torch.Tensor,
@@ -231,7 +227,7 @@ class OneHopSumNodeLabelAggregator(nn.Module):
         Parameters
         ----------
         x:
-            Tensor containing the gene expression of the nodes in the current 
+            Tensor containing the omics features of the nodes in the current 
             node batch including sampled neighbors. 
             (Size: n_nodes_batch_and_sampled_neighbors x n_node_features)
         edge_index:
@@ -244,7 +240,7 @@ class OneHopSumNodeLabelAggregator(nn.Module):
         x_neighbors:
             Tensor containing the node labels of the nodes in the current node 
             batch excluding sampled neighbors. These labels are used for the 
-            gene expression reconstruction task.
+            omics reconstruction task.
             (Size: n_nodes_batch x (2 x n_node_features))
         """
         adj = SparseTensor.from_edge_index(edge_index,
@@ -252,3 +248,4 @@ class OneHopSumNodeLabelAggregator(nn.Module):
                                                          x.shape[0]))
         x_neighbors = adj.t().matmul(x)
         return x_neighbors
+    
