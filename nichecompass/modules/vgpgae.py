@@ -128,10 +128,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         List of VGPGAE modules in which the categorical covariates embeddings
         are injected.
     use_fc_decoder:
+<<<<<<< HEAD
         If ´True´, uses a fully connected decoder instead of masked decoder.
         Just for ablation purposes.
     fc_decoder_n_layers:
         Number of layers to use if ´use_fc_decoder == True´.
+=======
+    fc_decoder_n_layers:
+>>>>>>> aa287129cb1baefa05c1e018f26b3555dc3c8d9e
     """
     def __init__(self,
                  n_input: int,
@@ -283,6 +287,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 entity="target",
                 n_prior_gp_input=n_prior_gp,
                 n_addon_gp_input=n_addon_gp,
+<<<<<<< HEAD
                 n_cat_covariates_embed_input=(
                     sum(cat_covariates_embeds_nums) if
                     ("gene_expr_decoder" in
@@ -295,12 +300,25 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 unmasked_features_idx=features_idx_dict[
                     "target_unmasked_rna_idx"],
                 recon_loss=self.rna_recon_loss_)
+=======
+                n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
+                                              if ("gene_expr_decoder" in
+                                              self.cat_covariates_embeds_injection_)
+                                              & (self.n_cat_covariates___ > 0)
+                                              else 0),
+                n_output=n_output_genes,
+                mask=target_rna_decoder_mask,
+                masked_features_idx=features_idx_dict["target_masked_rna_idx"],
+                unmasked_features_idx=features_idx_dict["target_unmasked_rna_idx"],
+                recon_loss=self.rna_pred_loss_)
+>>>>>>> aa287129cb1baefa05c1e018f26b3555dc3c8d9e
             
             self.source_rna_decoder = MaskedOmicsFeatureDecoder(
                 modality="rna",
                 entity="source",
                 n_prior_gp_input=n_prior_gp,
                 n_addon_gp_input=n_addon_gp,
+<<<<<<< HEAD
                 n_cat_covariates_embed_input=(
                     sum(cat_covariates_embeds_nums) if
                     ("gene_expr_decoder" in
@@ -313,6 +331,18 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 unmasked_features_idx=features_idx_dict[
                     "source_unmasked_rna_idx"],
                 recon_loss=self.rna_recon_loss_)
+=======
+                n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
+                                              if ("gene_expr_decoder" in
+                                              self.cat_covariates_embeds_injection_)
+                                              & (self.n_cat_covariates___ > 0)
+                                              else 0),
+                n_output=n_output_genes,
+                mask=source_rna_decoder_mask,
+                masked_features_idx=features_idx_dict["source_masked_rna_idx"],
+                unmasked_features_idx=features_idx_dict["source_unmasked_rna_idx"],
+                recon_loss=self.rna_pred_loss_)
+>>>>>>> aa287129cb1baefa05c1e018f26b3555dc3c8d9e
         else:
             # Initialize fc expression decoders
             self.target_rna_decoder = FCOmicsFeatureDecoder(
@@ -320,6 +350,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 entity="target",
                 n_prior_gp_input=n_prior_gp,
                 n_addon_gp_input=n_addon_gp,
+<<<<<<< HEAD
                 n_cat_covariates_embed_input=(
                     sum(cat_covariates_embeds_nums) if
                     ("gene_expr_decoder" in
@@ -329,12 +360,23 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 n_output=n_output_genes,
                 n_layers=fc_decoder_n_layers,
                 recon_loss=self.rna_recon_loss_)
+=======
+                n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
+                                              if ("gene_expr_decoder" in
+                                              self.cat_covariates_embeds_injection_)
+                                              & (self.n_cat_covariates___ > 0)
+                                              else 0),
+                n_output=n_output_genes,
+                n_layers=fc_decoder_n_layers,
+                recon_loss=self.rna_pred_loss_)
+>>>>>>> aa287129cb1baefa05c1e018f26b3555dc3c8d9e
             
             self.source_rna_decoder = FCOmicsFeatureDecoder(
                 modality="rna",
                 entity="source",
                 n_prior_gp_input=n_prior_gp,
                 n_addon_gp_input=n_addon_gp,
+<<<<<<< HEAD
                 n_cat_covariates_embed_input=(
                     sum(cat_covariates_embeds_nums) if
                     ("gene_expr_decoder" in
@@ -344,6 +386,16 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 n_output=n_output_genes,
                 n_layers=fc_decoder_n_layers,
                 recon_loss=self.rna_recon_loss_)          
+=======
+                n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
+                                              if ("gene_expr_decoder" in
+                                              self.cat_covariates_embeds_injection_)
+                                              & (self.n_cat_covariates___ > 0)
+                                              else 0),
+                n_output=n_output_genes,
+                n_layers=fc_decoder_n_layers,
+                recon_loss=self.rna_pred_loss_)          
+>>>>>>> aa287129cb1baefa05c1e018f26b3555dc3c8d9e
         
         # Initialize gene-specific dispersion parameters
         self.target_rna_theta = torch.nn.Parameter(torch.randn(n_output_genes))
@@ -357,6 +409,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     entity="target",
                     n_prior_gp_input=n_prior_gp,
                     n_addon_gp_input=n_addon_gp,
+<<<<<<< HEAD
                     n_cat_covariates_embed_input=(
                         sum(cat_covariates_embeds_nums) if
                         ("chrom_access_decoder" in
@@ -369,6 +422,17 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                         "target_masked_atac_idx"],
                     unmasked_features_idx=features_idx_dict[
                         "target_unmasked_atac_idx"],
+=======
+                    n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
+                                                  if ("chrom_access_decoder" in
+                                                  self.cat_covariates_embeds_injection_)
+                                                  & (self.n_cat_covariates___ > 0)
+                                                  else 0),
+                    n_output=n_output_peaks,
+                    mask=target_atac_decoder_mask,
+                    masked_features_idx=features_idx_dict["target_masked_atac_idx"],
+                    unmasked_features_idx=features_idx_dict["target_unmasked_atac_idx"],
+>>>>>>> aa287129cb1baefa05c1e018f26b3555dc3c8d9e
                     recon_loss="nb")
 
                 self.source_atac_decoder = MaskedOmicsFeatureDecoder(
@@ -376,6 +440,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     entity="source",
                     n_prior_gp_input=n_prior_gp,
                     n_addon_gp_input=n_addon_gp,
+<<<<<<< HEAD
                     n_cat_covariates_embed_input=(
                         sum(cat_covariates_embeds_nums) if
                         ("chrom_access_decoder" in
@@ -388,6 +453,17 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                         "source_masked_atac_idx"],
                     unmasked_features_idx=features_idx_dict[
                         "source_unmasked_atac_idx"],
+=======
+                    n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
+                                                  if ("chrom_access_decoder" in
+                                                  self.cat_covariates_embeds_injection_)
+                                                  & (self.n_cat_covariates___ > 0)
+                                                  else 0),
+                    n_output=n_output_peaks,
+                    mask=source_atac_decoder_mask,
+                    masked_features_idx=features_idx_dict["source_masked_atac_idx"],
+                    unmasked_features_idx=features_idx_dict["source_unmasked_atac_idx"],
+>>>>>>> aa287129cb1baefa05c1e018f26b3555dc3c8d9e
                     recon_loss="nb")
             else:
                 # Initialize fc atac decoders
@@ -396,12 +472,20 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     entity="target",
                     n_prior_gp_input=n_prior_gp,
                     n_addon_gp_input=n_addon_gp,
+<<<<<<< HEAD
                     n_cat_covariates_embed_input=(
                         sum(cat_covariates_embeds_nums) if
                         ("chrom_access_decoder" in
                          self.cat_covariates_embeds_injection_) &
                          (self.n_cat_covariates_ > 0)
                          else 0),
+=======
+                    n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
+                                                  if ("chrom_access_decoder" in
+                                                  self.cat_covariates_embeds_injection_)
+                                                  & (self.n_cat_covariates___ > 0)
+                                                  else 0),
+>>>>>>> aa287129cb1baefa05c1e018f26b3555dc3c8d9e
                     n_output=n_output_peaks,
                     n_layers=fc_decoder_n_layers,
                     recon_loss="nb")
@@ -411,12 +495,20 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     entity="source",
                     n_prior_gp_input=n_prior_gp,
                     n_addon_gp_input=n_addon_gp,
+<<<<<<< HEAD
                     n_cat_covariates_embed_input=(
                         sum(cat_covariates_embeds_nums) if
                         ("chrom_access_decoder" in
                          self.cat_covariates_embeds_injection_) &
                          (self.n_cat_covariates_ > 0)
                          else 0),
+=======
+                    n_cat_covariates_embed_input=(sum(cat_covariates_embeds_nums)
+                                                  if ("chrom_access_decoder" in
+                                                  self.cat_covariates_embeds_injection_)
+                                                  & (self.n_cat_covariates___ > 0)
+                                                  else 0),
+>>>>>>> aa287129cb1baefa05c1e018f26b3555dc3c8d9e
                     n_output=n_output_peaks,
                     n_layers=fc_decoder_n_layers,
                     recon_loss="nb")
