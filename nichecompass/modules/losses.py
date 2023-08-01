@@ -19,7 +19,7 @@ def compute_cat_covariates_contrastive_loss(
         contrastive_logits_pos_ratio: float=0.,
         contrastive_logits_neg_ratio: float=0.) -> torch.Tensor:
     """
-    Compute categorical covariates contrastive weighted binary cross entropycompute_addon_l1_reg_loss
+    Compute categorical covariates contrastive weighted binary cross entropy
     loss with logits. The loss is computed for each categorical covariate
     separately and added up. Sampled edges with nodes from different categories
     whose edge reconstruction logits are among the top
@@ -171,9 +171,9 @@ def compute_omics_recon_nb_loss(x: torch.Tensor,
                                 theta: torch.Tensor,
                                 eps: float=1e-8) -> torch.Tensor:
     """
-    Compute gene expression reconstruction loss according to a negative binomial
-    gene expression model, which is often used to model omics count data such as
-    scRNA-seq or scATAC-seq data.
+    Compute omics reconstruction loss according to a negative binomial model,
+    which is often used to model omics count data such as scRNA-seq or
+    scATAC-seq data.
 
     Parts of the implementation are adapted from Lopez, R., Regier, J., Cole, M.
     B., Jordan, M. I. & Yosef, N. Deep generative modeling for single-cell
@@ -199,7 +199,7 @@ def compute_omics_recon_nb_loss(x: torch.Tensor,
     Returns
     ----------
     nb_loss:
-        Gene expression reconstruction loss using a NB gene expression model.
+        Omics reconstruction loss using a negative binomial model.
     """
     log_theta_mu_eps = torch.log(theta + mu + eps)
     log_likelihood_nb = (
@@ -208,77 +208,11 @@ def compute_omics_recon_nb_loss(x: torch.Tensor,
         + torch.lgamma(x + theta)
         - torch.lgamma(theta)
         - torch.lgamma(x + 1))
-
     nb_loss = torch.mean(-log_likelihood_nb.sum(-1))
     return nb_loss 
 
 
-def compute_gene_expr_recon_zinb_loss(x: torch.Tensor,
-                                      mu: torch.Tensor,
-                                      theta: torch.Tensor,
-                                      zi_prob_logits: torch.Tensor,
-                                      eps: float=1e-8) -> torch.Tensor:
-    """
-    Gene expression reconstruction loss according to a zero-inflated negative 
-    binomial gene expression model, which is used to model scRNA-seq count data
-    due to its capacity of modeling excess zeros and overdispersion. The 
-    bernoulli distribution is parameterized using logits, hence the use of a 
-    softplus function.
-
-    Parts of the implementation are adapted from
-    https://github.com/scverse/scvi-tools/blob/master/scvi/distributions/_negative_binomial.py#L22
-    (01.10.2022).
-
-    Parameters
-    ----------
-    x:
-        Reconstructed feature matrix.
-    mu:
-        Mean of the negative binomial with positive support.
-        (dim: batch_size x n_genes)
-    theta:
-        Inverse dispersion parameter with positive support.
-        (dim: n_genes)
-    zi_prob_logits:
-        Logits of the zero inflation probability with real support.
-        (dim: batch_size x n_genes)
-    eps:
-        Numerical stability constant.
-
-    Returns
-    ----------
-    zinb_loss:
-        Gene expression reconstruction loss using a ZINB gene expression model.
-    """
-    # Reshape theta for broadcasting
-    theta = theta.view(1, theta.size(0))
-
-    # Uses log(sigmoid(x)) = -softplus(-x)
-    softplus_zi_prob_logits = F.softplus(-zi_prob_logits)
-    log_theta_eps = torch.log(theta + eps)
-    log_theta_mu_eps = torch.log(theta + mu + eps)
-    zi_prob_logits_theta_log = -zi_prob_logits + theta * (log_theta_eps - 
-                                                          log_theta_mu_eps)
-
-    case_zero = F.softplus(zi_prob_logits_theta_log) - softplus_zi_prob_logits
-    mul_case_zero = torch.mul((x < eps).type(torch.float32), case_zero)
-
-    case_non_zero = (
-        -softplus_zi_prob_logits
-        + zi_prob_logits_theta_log
-        + x * (torch.log(mu + eps) - log_theta_mu_eps)
-        + torch.lgamma(x + theta)
-        - torch.lgamma(theta)
-        - torch.lgamma(x + 1))
-                     
-    mul_case_non_zero = torch.mul((x > eps).type(torch.float32), case_non_zero)
-
-    log_likehood_zinb = mul_case_zero + mul_case_non_zero
-    zinb_loss = torch.mean(-log_likehood_zinb.sum(-1))
-    return zinb_loss
-
-
-def compute_group_lasso_reg_loss(model: nn.Module) -> torch.Tensor:
+def compute_gp_group_lasso_reg_loss(model: nn.Module) -> torch.Tensor:
     """
     Compute group lasso regularization loss for the masked decoder layer weights
     to enforce gene program sparsity (each gene program is a group; groups are
@@ -314,9 +248,6 @@ def compute_group_lasso_reg_loss(model: nn.Module) -> torch.Tensor:
          for param_name, param in model.named_parameters() if
          "rna_decoder.nb_means_normalized_decoder.masked_l" in param_name],
          dim=0)
-
-    # TO DO #
-    # Sum over ´masked_l´ layer and ´addon_l´ layer if addon gene programs exist
     group_lasso_reg_loss = torch.sum(decoder_layerwise_param_gpgroupnorm_sum)
     return group_lasso_reg_loss
 

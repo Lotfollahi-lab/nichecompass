@@ -39,3 +39,4 @@ class VGAEModuleMixin:
         else:
             rep = mu
             return rep
+        
