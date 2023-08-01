@@ -179,7 +179,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         print(f"LOSS -> include_edge_recon_loss: {include_edge_recon_loss}, "
               f"include_gene_expr_recon_loss: {include_gene_expr_recon_loss}, "
               f"rna_recon_loss: {rna_recon_loss}", end="")
-        if "atac" in self.modalities_:
+        if target_atac_decoder_mask is not None:
             print(", include_chrom_access_recon_loss: "
                   f"{include_chrom_access_recon_loss}, "
                   "atac_recon_loss: "
