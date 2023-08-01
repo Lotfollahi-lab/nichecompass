@@ -524,7 +524,7 @@ class NicheCompass(BaseModelMixin):
             include_gene_expr_recon_loss=self.include_gene_expr_recon_loss_,
             include_chrom_access_recon_loss=self.include_chrom_access_recon_loss_,
             include_cat_covariates_contrastive_loss=self.include_cat_covariates_contrastive_loss_,
-            rna_pred_loss=self.gene_expr_recon_dist_,
+            rna_recon_loss=self.gene_expr_recon_dist_,
             node_label_method=self.node_label_method_,
             active_gp_thresh_ratio=self.active_gp_thresh_ratio_,
             log_variational=self.log_variational_,

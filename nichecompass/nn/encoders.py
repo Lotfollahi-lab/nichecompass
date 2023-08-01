@@ -2,7 +2,7 @@
 This module contains encoders used by the NicheCompass model.
 """
 
-from typing import Literal, Optional
+from typing import Literal, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -11,38 +11,41 @@ from torch_geometric.nn import GATv2Conv, GCNConv
 
 class Encoder(nn.Module):
     """
-    Graph Convolutional Network encoder class as per Kipf, T. N. & Welling, M.
-    Variational Graph Auto-Encoders. arXiv [stat.ML] (2016).
+    Encoder class.
 
-    Takes the input space features x and the edge indices as input, computes one 
-    shared GCN layer and one subsequent separate GCN layer to output mu and 
-    logstd of the latent space normal distribution respectively.
+    Takes the input space features x and the edge indices as input, computes one
+    fully connected layer and then uses message passing layers to output mu and 
+    logstd of the latent space normal distribution.
 
     Parameters
     ----------
     n_input:
-        Number of input nodes to the GCN encoder.
+        Number of input nodes (omics features) to the encoder.
     n_cat_covariates_embed_input:
-        Number of categorical covariates embedding input nodes to the GCN
-        encoder.
-    n_layers:
-        Number of layers.
+        Number of categorical covariates embedding input nodes to the encoder.
     n_hidden:
-        Number of hidden nodes outputted by the first GCN layer.
+        Number of hidden nodes outputted after the first fully connected layer
+        and intermediate message passing layers.
     n_latent:
-        Number of output nodes from the GCN encoder, making up the latent space
-        features.
+        Number of output nodes (prior gps) from the encoder, making up the
+        latent space features.
     n_addon_latent:
-        Number of add-on nodes in the latent space (new gene programs).
+        Number of add-on nodes in the latent space (new gps).
     conv_layer:
-        Convolutional layer used.
+        Message passing layer used.
+    n_layers:
+        Number of message passing layers.
+    cat_covariates_embed_mode:
+        Indicates where to inject the categorical covariates embedding if
+        injected.
     n_attention_heads:
         Only relevant if ´conv_layer == gatv2conv´. Number of attention heads
         used.
     dropout_rate:
         Probability of nodes to be dropped in the hidden layer during training.
     activation:
-        Activation function used in the first GCN layer.
+        Activation function used after the fully connected layer and
+        intermediate message passing layers.
     """
     def __init__(self,
                  n_input: int,
@@ -57,16 +60,21 @@ class Encoder(nn.Module):
                  dropout_rate: float=0.,
                  activation: nn.Module=nn.ReLU):
         super().__init__()
+        print("ENCODER -> "
+              f"n_input: {n_input}, "
+              f"n_cat_covariates_embed_input: {n_cat_covariates_embed_input}, "
+              f"n_layers: {n_layers}, "
+              f"n_hidden: {n_hidden}, "
+              f"n_latent: {n_latent}, "
+              f"n_addon_latent: {n_addon_latent}, "
+              f"conv_layer: {conv_layer}, "
+              f"n_attention_heads: "
+              f"{n_attention_heads if conv_layer == 'gatv2conv' else '0'}, "
+              f"dropout_rate: {dropout_rate}")
+
         self.n_addon_latent = n_addon_latent
         self.n_layers = n_layers
         self.cat_covariates_embed_mode = cat_covariates_embed_mode
-
-        print(f"ENCODER -> n_input: {n_input}, n_cat_covariates_embed_input: "
-              f"{n_cat_covariates_embed_input}, n_layers: {n_layers}, "
-              f"n_hidden: {n_hidden}, n_latent: {n_latent}, n_addon_latent: "
-              f"{n_addon_latent}, conv_layer: {conv_layer}, n_attention_heads: "
-              f"{n_attention_heads if conv_layer == 'gatv2conv' else '0'}, "
-              f"dropout_rate: {dropout_rate}")
         
         if ((cat_covariates_embed_mode == "input") &
             (n_cat_covariates_embed_input != 0)):
@@ -123,14 +131,14 @@ class Encoder(nn.Module):
                 x: torch.Tensor,
                 edge_index: torch.Tensor,
                 cat_covariates_embed: Optional[torch.Tensor]=None
-                ) -> torch.Tensor:
+                ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Forward pass of the GCN encoder.
+        Forward pass of the encoder.
 
         Parameters
         ----------
         x:
-            Tensor containing the gene expression input features.
+            Tensor containing the omics features.
         edge_index:
             Tensor containing the edge indices for message passing.
         cat_covariates_embed:
@@ -182,3 +190,4 @@ class Encoder(nn.Module):
                 (logstd, self.addon_conv_logstd(hidden, edge_index)),
                 dim=1)
         return mu, logstd
+    
