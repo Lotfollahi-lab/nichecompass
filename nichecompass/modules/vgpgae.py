@@ -977,9 +977,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             return_gp_weights: bool=False
             ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
-        Get a mask of active gene programs based on the gene expression decoder
-        gene weights of gene programs. Active gene programs are gene programs
-        whose absolute gene weights aggregated over all genes are greater than
+        Get a mask of active gene programs based on the rna decoder gene weights
+        of gene programs. Active gene programs are gene programs whose absolute
+        gene weights aggregated over all genes are greater than
         ´self.active_gp_thresh_ratio_´ times the absolute gene weights
         aggregation of the gene program with the maximum value across all gene
         programs. Depending on ´abs_gp_weights_agg_mode´, the aggregation will
@@ -997,8 +997,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             ´sum+nzmeans´, uses a combination of sums and means of non-zero
             absolute gp weights for aggregation and active gp determination.
         return_gp_weights:
-            If ´True´, in addition return the gene expression decoder gene
-            weights of the active gene programs.
+            If ´True´, in addition return the rna decoder gene weights of the
+            active gene programs.
 
         Returns
         ----------
@@ -1006,8 +1006,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Boolean tensor of gene programs which contains `True` for active
             gene programs and `False` for inactive gene programs.
         active_gp_weights:
-            Tensor containing the gene expression decoder gene weights of active
-            gene programs.
+            Tensor containing the rna decoder gene weights of active gene
+            programs.
         """
         gp_weights = self.get_gp_weights(only_masked_features=True)[0]
 
