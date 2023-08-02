@@ -97,10 +97,10 @@ def compute_nasw(
     for resolution in clustering_resolutions:
         if not f"leiden_latent_{str(resolution)}" in adata.obs:
             sc.tl.leiden(adata,
-                        resolution=resolution,
-                        random_state=seed,
-                        key_added=f"leiden_latent_{str(resolution)}",
-                        adjacency=adata.obsp[latent_knng_connectivities_key])
+                         resolution=resolution,
+                         random_state=seed,
+                         key_added=f"leiden_latent_{str(resolution)}",
+                         adjacency=adata.obsp[latent_knng_connectivities_key])
         else:
             print("Using precomputed latent Leiden clusters for resolution "
                   f"{str(resolution)}.")
