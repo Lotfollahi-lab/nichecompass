@@ -552,7 +552,7 @@ def plot_enriched_gp_info_plots_(adata: AnnData,
                         adata,
                         color=adata.uns[f"{gp}_{modality_entity}_top_"
                                         f"{modality_entity.split('_')[1]}"][j],
-                        color_map=("Blues" if
+                        color_map=("RdBu" if
                                    adata.uns[f"{gp}_{modality_entity}_top_"
                                              f"{modality_entity.split('_')[1][:-1]}"
                                              "_signs"][j] == "+" else "Reds"),
@@ -576,7 +576,7 @@ def plot_enriched_gp_info_plots_(adata: AnnData,
                         adata=adata[adata.obs[sample_key] == feature_space],
                         color=adata.uns[f"{gp}_{modality_entity}_top_"
                                         f"{modality_entity.split('_')[1]}"][j],
-                        color_map=("Blues" if
+                        color_map=("RdBu_r" if
                                    adata.uns[f"{gp}_{modality_entity}_top_"
                                              f"{modality_entity.split('_')[1][:-1]}"
                                              "_signs"][j] == "+" else "Reds"),
