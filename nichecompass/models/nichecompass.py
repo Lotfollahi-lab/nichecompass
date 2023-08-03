@@ -146,8 +146,11 @@ class NicheCompass(BaseModelMixin):
         maximum value will be set to inactive. If ´==0´, all gene programs will
         be considered active. More information can be found in 
         ´self.model.get_active_gp_mask()´.
+    n_fc_layers_encoder:
+        Number of fully connected layers in the encoder before message passing
+        layers.
     n_layers_encoder:
-        Number of GNN layers in the encoder.
+        Number of message passing layers in the encoder.
     n_hidden_encoder:
         Number of nodes in the encoder hidden layers. If ´None´ is determined
         automatically based on the number of input genes and gene programs.
@@ -217,6 +220,7 @@ class NicheCompass(BaseModelMixin):
                     "one-hop-norm",
                     "one-hop-attention"]="one-hop-norm",
                  active_gp_thresh_ratio: float=0.05,
+                 n_fc_layers_encoder: int=1,
                  n_layers_encoder: int=1,
                  n_hidden_encoder: Optional[int]=None,
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
@@ -351,6 +355,11 @@ class NicheCompass(BaseModelMixin):
 
         # Retrieve index of genes in gp mask and index of genes not in gp mask
         self.features_idx_dict_ = {}
+        self.features_idx_dict_["masked_rna_idx"] = adata.uns[
+            genes_idx_key]
+        self.features_idx_dict_["unmasked_rna_idx"] = [
+            i for i in range(len(adata.var_names))
+            if i not in self.features_idx_dict_["masked_rna_idx"]]
         self.features_idx_dict_["target_masked_rna_idx"] = adata.uns[
             target_genes_idx_key]
         self.features_idx_dict_["target_unmasked_rna_idx"] = [
@@ -368,6 +377,11 @@ class NicheCompass(BaseModelMixin):
             self.target_peaks_idx_ = adata_atac.uns[target_peaks_idx_key]
             self.source_peaks_idx_ = adata_atac.uns[source_peaks_idx_key]
             
+            self.features_idx_dict_["masked_atac_idx"] = adata_atac.uns[
+                peaks_idx_key]
+            self.features_idx_dict_["unmasked_atac_idx"] = [
+                i for i in range(len(adata_atac.var_names))
+                if i not in self.features_idx_dict_["masked_atac_idx"]]
             self.features_idx_dict_["target_masked_atac_idx"] = adata_atac.uns[
                 target_peaks_idx_key]
             self.features_idx_dict_["target_unmasked_atac_idx"] = [
@@ -394,6 +408,7 @@ class NicheCompass(BaseModelMixin):
         else:
             self.modalities_ = ["rna"]
             self.n_output_peaks_ = 0
+        self.n_fc_layers_encoder_ = n_fc_layers_encoder
         self.n_layers_encoder_ = n_layers_encoder
         self.conv_layer_encoder_ = conv_layer_encoder
         if conv_layer_encoder == "gatv2conv":
@@ -495,6 +510,7 @@ class NicheCompass(BaseModelMixin):
         # neural network module
         self.model = VGPGAE(
             n_input=self.n_input_,
+            n_fc_layers_encoder=self.n_fc_layers_encoder_,
             n_layers_encoder=self.n_layers_encoder_,
             n_hidden_encoder=self.n_hidden_encoder_,
             n_prior_gp=self.n_prior_gp_,

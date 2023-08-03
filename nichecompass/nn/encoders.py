@@ -31,6 +31,8 @@ class Encoder(nn.Module):
         latent space features.
     n_addon_latent:
         Number of add-on nodes in the latent space (new gps).
+    n_fc_layers:
+        Number of fully connected layers before the message passing layers.
     conv_layer:
         Message passing layer used.
     n_layers:
@@ -53,6 +55,7 @@ class Encoder(nn.Module):
                  n_hidden: int,
                  n_latent: int,
                  n_addon_latent: int=10,
+                 n_fc_layers: int=1,
                  conv_layer: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  n_layers: int=1,
                  cat_covariates_embed_mode: Literal["input", "hidden"]="hidden",
@@ -67,6 +70,7 @@ class Encoder(nn.Module):
               f"n_hidden: {n_hidden}, "
               f"n_latent: {n_latent}, "
               f"n_addon_latent: {n_addon_latent}, "
+              f"n_fc_layers: {n_fc_layers}, "
               f"conv_layer: {conv_layer}, "
               f"n_attention_heads: "
               f"{n_attention_heads if conv_layer == 'gatv2conv' else '0'}, "
@@ -74,6 +78,7 @@ class Encoder(nn.Module):
 
         self.n_addon_latent = n_addon_latent
         self.n_layers = n_layers
+        self.n_fc_layers = n_fc_layers
         self.cat_covariates_embed_mode = cat_covariates_embed_mode
         
         if ((cat_covariates_embed_mode == "input") &
@@ -81,7 +86,12 @@ class Encoder(nn.Module):
             # Add categorical covariates embedding to input
             n_input += n_cat_covariates_embed_input
         
-        self.fc_l = nn.Linear(n_input, n_hidden)
+        if n_fc_layers == 2:
+            self.fc_l1 = nn.Linear(n_input, int(n_input / 2))
+            self.batch_norm = nn.BatchNorm1d(int(n_input / 2))
+            self.fc_l2 = nn.Linear(int(n_input / 2), n_hidden)
+        elif n_fc_layers == 1:
+            self.fc_l1 = nn.Linear(n_input, n_hidden)
         
         if ((cat_covariates_embed_mode == "hidden") &
             (n_cat_covariates_embed_input != 0)):
@@ -163,7 +173,10 @@ class Encoder(nn.Module):
                               axis=1)
         
         # FC forward pass shared across all nodes
-        hidden = self.dropout(self.activation(self.fc_l(x)))
+        hidden = self.dropout(self.activation(self.fc_l1(x)))
+        if self.n_fc_layers == 2:
+            hidden = self.batch_norm(hidden)
+            hidden = self.dropout(self.activation(self.fc_l2(hidden)))
         
         if ((self.cat_covariates_embed_mode == "hidden") &
             (cat_covariates_embed is not None)):

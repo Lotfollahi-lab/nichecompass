@@ -37,6 +37,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     ----------
     n_input:
         Number of nodes in the input layer.
+    n_fc_layers_encoder:
+        Number of fully connected layers in the encoder.
     n_layers_encoder:
         Number of message passing layers in the encoder.
     n_hidden_encoder:
@@ -135,6 +137,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     """
     def __init__(self,
                  n_input: int,
+                 n_fc_layers_encoder: int,
                  n_layers_encoder: int,
                  n_hidden_encoder: int,
                  n_prior_gp: int,
@@ -192,6 +195,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                   f"{cat_covariates_embeds_injection}")
 
         self.n_input_ = n_input
+        self.n_fc_layers_encoder_ = n_fc_layers_encoder
         self.n_layers_encoder_ = n_layers_encoder
         self.n_hidden_encoder_ = n_hidden_encoder
         self.n_prior_gp_ = n_prior_gp
@@ -263,6 +267,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 ("encoder" in self.cat_covariates_embeds_injection_) &
                 (self.n_cat_covariates_ > 0)
                 else 0),
+            n_fc_layers=n_fc_layers_encoder,
             n_layers=n_layers_encoder,
             n_hidden=n_hidden_encoder,
             n_latent=n_prior_gp,
