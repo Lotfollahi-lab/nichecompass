@@ -307,8 +307,12 @@ class NicheCompass(BaseModelMixin):
             self.ca_sources_mask_ = None
             self.gene_peaks_mask_ = None
         else:
-            self.gene_peaks_mask_ = torch.tensor(adata.varm[gene_peaks_mask_key],
-                                                 dtype=torch.float32)
+            gene_peaks_mask = adata.varm[gene_peaks_mask_key].tocoo()
+            self.gene_peaks_mask_ = torch.sparse_coo_tensor(
+                indices=[gene_peaks_mask.row, gene_peaks_mask.col],
+                values=gene_peaks_mask.data,
+                size=gene_peaks_mask.shape,
+                dtype=torch.float32) # bool does not work with torch.mm
             if ca_targets_mask_key in adata_atac.varm:
                 ca_targets_mask = adata_atac.varm[ca_targets_mask_key].T.tocoo()
             else:
@@ -347,11 +351,6 @@ class NicheCompass(BaseModelMixin):
 
         # Retrieve index of genes in gp mask and index of genes not in gp mask
         self.features_idx_dict_ = {}
-        self.features_idx_dict_["masked_rna_idx"] = adata.uns[
-            genes_idx_key]
-        self.features_idx_dict_["unmasked_rna_idx"] = [
-            i for i in range(len(adata.var_names))
-            if i not in self.features_idx_dict_["masked_rna_idx"]]
         self.features_idx_dict_["target_masked_rna_idx"] = adata.uns[
             target_genes_idx_key]
         self.features_idx_dict_["target_unmasked_rna_idx"] = [
@@ -369,11 +368,6 @@ class NicheCompass(BaseModelMixin):
             self.target_peaks_idx_ = adata_atac.uns[target_peaks_idx_key]
             self.source_peaks_idx_ = adata_atac.uns[source_peaks_idx_key]
             
-            self.features_idx_dict_["masked_atac_idx"] = adata_atac.uns[
-                peaks_idx_key]
-            self.features_idx_dict_["unmasked_atac_idx"] = [
-                i for i in range(len(adata_atac.var_names))
-                if i not in self.features_idx_dict_["masked_atac_idx"]]
             self.features_idx_dict_["target_masked_atac_idx"] = adata_atac.uns[
                 target_peaks_idx_key]
             self.features_idx_dict_["target_unmasked_atac_idx"] = [

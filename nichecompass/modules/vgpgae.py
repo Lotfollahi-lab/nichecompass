@@ -615,13 +615,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                         
                         # Multiply boolean mask with gene peak mapping to remove
                         # peaks that are mapped to only turned off genes
-                        target_atac_dynamic_decoder_mask = torch.matmul(
+                        target_atac_dynamic_decoder_mask = torch.mm(
                             non_zero_target_gene_weights.t(), # dim: (n_gps,
                                                               #       n_genes)
                             self.gene_peaks_mask_).float() # dim: (n_genes,
                                                            #       n_peaks)
                             # dim: (n_gps, n_peaks)
-                        source_atac_dynamic_decoder_mask = torch.matmul(
+                        source_atac_dynamic_decoder_mask = torch.mm(
                             non_zero_source_gene_weights.t(),
                             self.gene_peaks_mask_)
                         

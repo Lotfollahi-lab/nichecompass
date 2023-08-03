@@ -3,9 +3,9 @@ from .analysis import (aggregate_obsp_matrix_per_cell_type,
                        create_new_color_dict,
                        generate_enriched_gp_info_plots,
                        plot_non_zero_gene_count_means_dist)
-from .multimodal_pairing import (add_multimodal_mask_to_adata,
+from .multimodal_mapping import (add_multimodal_mask_to_adata,
                                  get_gene_annotations,
-                                 generate_multimodal_pairing_dict)
+                                 generate_multimodal_mapping_dict)
 from .gene_programs import (add_gps_from_gp_dict_to_adata,
                             extract_gp_dict_from_collectri_tf_network,
                             extract_gp_dict_from_nichenet_lrt_interactions,
@@ -28,6 +28,6 @@ __all__ = ["add_gps_from_gp_dict_to_adata",
            "get_gene_annotations",
            "generate_enriched_gp_info_plots",
            "plot_non_zero_gene_count_means_dist",
-           "generate_multimodal_pairing_dict",
+           "generate_multimodal_mapping_dict",
            "get_unique_genes_from_gp_dict",
            "compute_knn_graph_connectivities_and_distances"]
