@@ -1015,11 +1015,18 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             programs.
         """
         gp_weights = self.get_gp_weights(only_masked_features=True)[0]
-
-        # Aggregate absolute gp weights based on ´abs_gp_weights_agg_mode´ and
-        # calculate thresholds of aggregated absolute gp weights and get active
-        # gp mask and (optionally) active gp weights
-        abs_gp_weights_sums = gp_weights.norm(p=1, dim=0)
+        #gp_scores = self.get_gp_scores(only_active_gps=False)
+        #abs_gp_scores_sums = gp_scores.norm(p=1, dim=0)
+        
+        # Normalize gp weights with gp-wise sums of absolute scores
+        #gp_weights_normalized = abs_gp_scores_sums * gp_weights
+        gp_weights_normalized = gp_weights
+        
+        # Aggregate absolute normalized gp weights based on
+        # ´abs_gp_weights_agg_mode´ and calculate thresholds of aggregated
+        # absolute normalized gp weights and get active gp mask and (optionally)
+        # active gp weights
+        abs_gp_weights_sums = gp_weights_normalized.norm(p=1, dim=0)
         if abs_gp_weights_agg_mode in ["sum", "sum+nzmeans"]:
             max_abs_gp_weights_sum = max(abs_gp_weights_sums)
             min_abs_gp_weights_sum_thresh = (self.active_gp_thresh_ratio_ * 
