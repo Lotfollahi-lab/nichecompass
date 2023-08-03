@@ -1,10 +1,11 @@
 """
-This module contains utilities to add gene annotations (gene positions in the
-chromosomes) and gene peak links as prior knowledge for use by the NicheCompass model.
+This module contains utilities to add positional bp annotations to genes and
+peaks and link genes to peaks based on spatial proximity for creating masks used
+by the NicheCompass model.
 """
 
 import os
-from typing import Callable, List, Literal, Optional, Tuple
+from typing import Callable, Literal, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -13,56 +14,60 @@ import scipy.sparse as sp
 from anndata import AnnData
 from scglue import genomics
 
+
 def get_gene_annotations(
         adata: AnnData,
         adata_atac: Optional[AnnData]=None,
         gtf_file_path: Optional[os.PathLike]="../datasets/ga_data/gencode.vM32.chr_patch_hapl_scaff.annotation.gtf.gz",
-        adata_join_col_name: str=None,
+        adata_join_col_name: Optional[str]=None,
         gtf_join_col_name: Optional[str]="gene_name",
         by_func: Optional[Callable]=None,
         drop_unannotated_genes: bool=True) -> Tuple[AnnData, AnnData]:
     """
-    Get genomic annotations including chromosomal bp positions of genes by joining with a GTF file from GENCODE.
-    The GFT file is provided but can also be downloaded from 
+    Get genomic annotations including chromosomal bp positions of genes by
+    joining with a GTF file from GENCODE. The GFT file is provided but can also
+    be downloaded from
     https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M32/gencode.vM32.chr_patch_hapl_scaff.annotation.gff3.gz.
-
+    for example.
+    
     Parts of the implementation are adapted from 
     Cao, Z.-J. & Gao, G. Multi-omics single-cell data integration and regulatory
     inference with graph-linked embedding. Nat. Biotechnol. 40, 1458–1466 (2022)
-    (https://github.com/gao-lab/GLUE/blob/master/scglue/data.py#L86); 14.04.23).
+    -> https://github.com/gao-lab/GLUE/blob/master/scglue/data.py#L86; 14.04.23.
 
     Parameters
     ----------
-    adata
-        Input dataset
+    adata:
+        AnnData rna object for which to get gene annotations.
     adata_join_col_name:
-        Specify a column in ´´adata.var´´ used to merge with GTF attributes,
-        otherwise ´´adata.var_names´´ is used by default.
-    gtf
-        Path to the GTF file
+        Column in ´adata.var´ that is used to merge with GTF file. If ´None´,
+        ´adata.var_names´ is used.
+    gtf_file_path:
+        Path to the GTF file used to get gene annotations.
     gtf_join_col_name:
-        Specify a field in the GTF attributes used to merge with ´´adata.var´´,
-        e.g. "gene_id", "gene_name".
-    by_func
-        Specify an element-wise function used to transform merging fields,
-        e.g. removing suffix in gene IDs.
+        Column in GTF file that is used to merge with ´adata.var´, e.g.
+        ´gene_id´, or ´gene_name´.
+    by_func:
+        An element-wise function used to transform merging fields, e.g. for
+        removing suffix in gene IDs.
     drop_unannotated_genes:
         If ´True´, drop genes for which no annotation was found.
 
     Returns
     ----------
     adata:
-        The annotated RNA-seq AnnData object.
+        The annotated AnnData rna object.
     adata_atac:
-        The annotated ATAC-seq AnnData object.
+        The annotated AnnData atac object.
 
     Note
-    ----
-    The genomic locations are converted to 0-based as specified
-    in bed format rather than 1-based as specified in GTF format.
+    ----------
+    The genomic locations are converted to 0-based as specified in bed format
+    rather than 1-based as specified in GTF format.
     """
     gene_names = (adata.var_names if adata_join_col_name is None 
                   else adata.var[adata_join_col_name])
+    
     gtf = genomics.read_gtf(
         gtf_file_path).query("feature == 'gene'").split_attribute()
     
@@ -70,9 +75,10 @@ def get_gene_annotations(
         by_func = np.vectorize(by_func)
         gene_names = by_func(gene_names)
         gtf[gtf_join_col_name] = by_func(gtf[gtf_join_col_name])
+        
+    # Drop duplicates. Typically scaffolds come first, chromosomes come last
     gtf = gtf.sort_values("seqname").drop_duplicates(
-        subset=[gtf_join_col_name], keep="last") # typically scaffolds come 
-                                                 # first, chromosomes come last
+        subset=[gtf_join_col_name], keep="last")
 
     merge_df = pd.concat([
         pd.DataFrame(gtf.to_bed(name=gtf_join_col_name)),
@@ -90,7 +96,6 @@ def get_gene_annotations(
         adata_atac.var["chrom"] = split.map(lambda x: x[0])
         adata_atac.var["chromStart"] = split.map(lambda x: x[1]).astype(int)
         adata_atac.var["chromEnd"] = split.map(lambda x: x[2]).astype(int)
-
     return adata, adata_atac
 
 
@@ -115,9 +120,9 @@ def generate_multimodal_mapping_dict(
     Parameters
     ----------
     adata
-        AnnData object with genes as features.
+        AnnData rna object with genes as features.
     adata_atac:
-        AnnData object with peaks as features.
+        AnnData atac object with peaks as features.
     gene_region:
         Defines what should be considered to determine the bp positions for
         genes. Allowed values are ´gene_body´, ´promoter´, or ´combined´.
@@ -190,22 +195,22 @@ def add_multimodal_mask_to_adata(
         ca_sources_mask_key: str="nichecompass_ca_sources",
         source_peaks_idx_key: str="nichecompass_source_peaks_idx",
         target_peaks_idx_key: str="nichecompass_target_peaks_idx",
-        peaks_idx_key: str="nichecompass_peaks_idx") -> AnnData:
+        peaks_idx_key: str="nichecompass_peaks_idx") -> Tuple[AnnData, AnnData]:
     """
     Retrieve atac target and source gene program masks from the rna gene program
     masks stored in ´adata´ by mapping the genes from the gene programs to the
     peaks defined in the mapping dictionary. Only consider peaks that are in
     ´adata_atac´ and store the results as sparse boolean matrices in
-    ´adata_atac.varm´.
+    ´adata_atac.varm´. Also store a gene peak mapping mask in ´adata´.
 
     Parameters
     ----------
     adata:
-        AnnData object with rna gene program masks stored in 
+        AnnData rna object with rna gene program masks stored in 
         ´adata.varm[gp_targets_mask_key]´ and ´adata.varm[gp_sources_mask_key]´,
         and gene program names stored in ´adata.uns[gp_names_key]´.
     adata_atac:
-        AnnData object to which the atac gene program masks will be added.
+        AnnData atac object to which the atac gene program masks will be added.
     gene_peak_mapping_dict:
         A mapping dictionary with uppercase genes as keys and the corresponding
         list of peaks as values.
@@ -250,8 +255,10 @@ def add_multimodal_mask_to_adata(
 
     Returns
     -------
+    adata:
+        The modified AnnData rna object with the gene peak mask stored.
     adata_atac:
-        The modified AnnData object with added chromatin accessibility masks.
+        The modified AnnData atac object with atac gene program masks stored.
     """
     if filter_peaks_based_on_genes:
         all_gene_peaks = list(
