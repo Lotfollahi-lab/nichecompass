@@ -420,13 +420,20 @@ class NicheCompass(BaseModelMixin):
         self.n_prior_gp_ = len(self.gp_targets_mask_)
         self.n_addon_gp_ = n_addon_gp
         
-        # Add add-on gps to adata
         if n_addon_gp > 0:
+            # Add add-on gps to adata
             gp_list = list(self.adata.uns[self.gp_names_key_])
             for i in range(n_addon_gp):
                 if f"Add-on {i} GP" not in gp_list:
                     gp_list.append(f"Add-on {i} GP")
             self.adata.uns[self.gp_names_key_] = np.array(gp_list)
+        else:
+            # Remove add-on gps from adata
+            for gp_name in list(adata.uns[gp_names_key]):
+                if "Add-on" in gp_name:
+                    self.adata.uns[gp_names_key] = np.delete(
+                        self.adata.uns[gp_names_key],
+                        list(self.adata.uns[gp_names_key]).index(gp_name))
 
         # Retrieve categorical covariates categories
         if cat_covariates_cats is None:
