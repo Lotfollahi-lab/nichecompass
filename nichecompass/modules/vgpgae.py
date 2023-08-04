@@ -364,9 +364,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 n_layers=fc_decoder_n_layers,
                 recon_loss=self.rna_recon_loss_)          
         
-        # Initialize gene-specific dispersion parameters
-        self.target_rna_theta = torch.nn.Parameter(torch.randn(n_output_genes))
-        self.source_rna_theta = torch.nn.Parameter(torch.randn(n_output_genes))
+        # Initialize gene-specific dispersion parameters for all reconstructed
+        # genes
+        self.target_rna_theta = torch.nn.Parameter(torch.randn(
+            len(self.features_idx_dict_["target_reconstructed_rna_idx"])))
+        self.source_rna_theta = torch.nn.Parameter(torch.randn(
+            len(self.features_idx_dict_["source_reconstructed_rna_idx"])))
         
         if "atac" in self.modalities_:
             if not use_fc_decoder:
@@ -449,11 +452,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     n_layers=fc_decoder_n_layers,
                     recon_loss="nb")
                             
-            # Initialize peak-specific dispersion parameters
-            self.target_atac_theta = torch.nn.Parameter(
-                torch.randn(n_output_peaks))
-            self.source_atac_theta = torch.nn.Parameter(
-                torch.randn(n_output_peaks))
+            # Initialize peak-specific dispersion parameters for all
+            # reconstructed peaks
+            self.target_atac_theta = torch.nn.Parameter(torch.randn(
+                len(self.features_idx_dict_["target_reconstructed_atac_idx"])))
+            self.source_atac_theta = torch.nn.Parameter(torch.randn(
+                len(self.features_idx_dict_["source_reconstructed_atac_idx"])))
 
     def forward(self,
                 data_batch: Data,
@@ -563,8 +567,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             
             if "atac" not in self.modalities_:
                 # Retrieve node labels and only keep nodes in current node batch
-                output["node_labels"]["target_rna"] = x[batch_idx]
-                output["node_labels"]["source_rna"] = x_neighbors[batch_idx]
+                # and reconstructed features
+                output["node_labels"]["target_rna"] = x[batch_idx][
+                    :, self.features_idx_dict_["target_reconstructed_rna_idx"]]
+                output["node_labels"]["source_rna"] = x_neighbors[batch_idx][
+                    :, self.features_idx_dict_["source_reconstructed_rna_idx"]]
             elif "atac" in self.modalities_:
                 # Separate node feature vector into RNA and ATAC part. x is a
                 # concatenated vector containing first RNA features, then ATAC
@@ -578,10 +585,15 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 assert x_neighbors_atac.size(1) == self.n_output_peaks_
                 
                 # Retrieve node labels and only keep nodes in current node batch
-                output["node_labels"]["target_rna"] = x[batch_idx]  
-                output["node_labels"]["source_rna"] = x_neighbors[batch_idx]
-                output["node_labels"]["target_atac"] = x_atac[batch_idx]  
-                output["node_labels"]["source_atac"] = x_neighbors_atac[batch_idx]
+                # and reconstructed features
+                output["node_labels"]["target_rna"] = x[batch_idx][
+                    :, self.features_idx_dict_["target_reconstructed_rna_idx"]] 
+                output["node_labels"]["source_rna"] = x_neighbors[batch_idx][
+                    :, self.features_idx_dict_["source_reconstructed_rna_idx"]]
+                output["node_labels"]["target_atac"] = x_atac[batch_idx][
+                    :, self.features_idx_dict_["target_reconstructed_atac_idx"]]  
+                output["node_labels"]["source_atac"] = x_neighbors_atac[batch_idx][
+                    :, self.features_idx_dict_["source_reconstructed_atac_idx"]] 
                 
             # Use observed library size as scaling factor for the negative
             # binomial means of the rna distribution
@@ -592,7 +604,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             self.target_rna_log_library_size = torch.log(target_rna_library_size)
             self.source_rna_log_library_size = torch.log(source_rna_library_size)
 
-            # Get gene expression reconstruction distribution parameters
+            # Get gene expression reconstruction distribution parameters for
+            # reconstructed genes
             output["target_rna_nb_means"] = self.target_rna_decoder(
                 z=z,
                 log_library_size=self.target_rna_log_library_size,
@@ -601,7 +614,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     (self.cat_covariates_embed is not None) &
                     ("gene_expr_decoder" in
                      self.cat_covariates_embeds_injection_)
-                     else None))
+                     else None))[
+                    :, self.features_idx_dict_["target_reconstructed_rna_idx"]]
             output["source_rna_nb_means"] = self.source_rna_decoder(
                 z=z,
                 log_library_size=self.source_rna_log_library_size,
@@ -610,7 +624,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 (self.cat_covariates_embed is not None) &
                 ("gene_expr_decoder" in
                  self.cat_covariates_embeds_injection_)
-                 else None))
+                 else None))[
+                    :, self.features_idx_dict_["source_reconstructed_rna_idx"]]
             
             if "atac" in self.modalities_:
                 # Use observed library size as scaling factor for the negative
@@ -672,7 +687,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     source_atac_dynamic_decoder_mask = None
                     
                 # Get chromatin accessibility reconstruction distribution
-                # parameters
+                # parameters for reconstructed peaks
                 output["target_atac_nb_means"] = self.target_atac_decoder(
                     z=z,
                     log_library_size=self.target_atac_log_library_size,
@@ -682,7 +697,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                         (self.cat_covariates_embed is not None) & 
                         ("chrom_access_decoder" in
                          self.cat_covariates_embeds_injection_) else
-                        None))
+                        None))[
+                    :, self.features_idx_dict_["target_reconstructed_atac_idx"]]
                 output["source_atac_nb_means"] = self.source_atac_decoder(
                     z=z,
                     log_library_size=self.source_atac_log_library_size,
@@ -692,7 +708,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                         (self.cat_covariates_embed is not None) &
                         ("chrom_access_decoder" in
                          self.cat_covariates_embeds_injection_) else
-                        None))
+                        None))[
+                    :, self.features_idx_dict_["source_reconstructed_atac_idx"]]
         elif decoder == "graph":
             # Store edge labels in output for loss computation
             output["edge_recon_labels"] = data_batch.edge_label

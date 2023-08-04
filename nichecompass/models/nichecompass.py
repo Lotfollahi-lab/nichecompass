@@ -375,6 +375,20 @@ class NicheCompass(BaseModelMixin):
             i for i in range(len(adata.var_names))
             if i not in self.features_idx_dict_["source_masked_rna_idx"]]
         
+        # Determine index of reconstructed genes
+        if n_addon_gp > 0:
+            # All genes are reconstructed
+            self.features_idx_dict_["target_reconstructed_rna_idx"] = [
+                i for i in range(len(adata.var_names))]
+            self.features_idx_dict_["source_reconstructed_rna_idx"] = [
+                i for i in range(len(adata.var_names))]
+        else:
+            # Only masked genes are reconstructed
+            self.features_idx_dict_["target_reconstructed_rna_idx"] = (
+                self.features_idx_dict_["target_masked_rna_idx"])
+            self.features_idx_dict_["source_reconstructed_rna_idx"] = (
+                self.features_idx_dict_["source_masked_rna_idx"])
+        
         # Retrieve index of peaks in ca mask and index of peaks not in ca mask
         if adata_atac is not None:
             self.peaks_idx_ = adata_atac.uns[peaks_idx_key]
@@ -396,6 +410,20 @@ class NicheCompass(BaseModelMixin):
             self.features_idx_dict_["source_unmasked_atac_idx"] = [
                 i for i in range(len(adata_atac.var_names))
                 if i not in self.features_idx_dict_["source_masked_atac_idx"]]
+            
+            # Determine index of reconstructed peaks
+            if n_addon_gp > 0:
+                # All peaks are reconstructed
+                self.features_idx_dict_["target_reconstructed_atac_idx"] = [
+                    i for i in range(len(adata_atac.var_names))]
+                self.features_idx_dict_["source_reconstructed_atac_idx"] = [
+                    i for i in range(len(adata_atac.var_names))]
+            else:
+                # Only masked peaks are reconstructed
+                self.features_idx_dict_["target_reconstructed_atac_idx"] = (
+                    self.features_idx_dict_["target_masked_atac_idx"])
+                self.features_idx_dict_["source_reconstructed_atac_idx"] = (
+                    self.features_idx_dict_["source_masked_atac_idx"])
 
         # Determine VGPGAE inputs
         self.n_input_ = adata.n_vars
