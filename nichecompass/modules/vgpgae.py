@@ -82,6 +82,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
     encoder_n_attention_heads:
         Only relevant if ´conv_layer_encoder == gatv2conv´. Number of attention
         heads used.
+    encoder_use_bn:
+        If ´True´, uses a batch normalization layer at the end of the encoder to
+        normalize ´mu´.
     dropout_rate_encoder:
         Probability that nodes will be dropped in the encoder during training.
     dropout_rate_graph_decoder:
@@ -155,6 +158,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  cat_covariates_no_edges: List[bool]=[],
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=4,
+                 encoder_use_bn: bool=False,
                  dropout_rate_encoder: float=0.,
                  dropout_rate_graph_decoder: float=0.,
                  include_edge_recon_loss: bool=True,
@@ -219,6 +223,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                   for cat_covariate_cats in cat_covariates_cats]
         self.conv_layer_encoder_ = conv_layer_encoder
         self.encoder_n_attention_heads_ = encoder_n_attention_heads
+        self.encoder_use_bn_ = encoder_use_bn
         self.dropout_rate_encoder_ = dropout_rate_encoder
         self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
         self.include_edge_recon_loss_ = include_edge_recon_loss
@@ -275,7 +280,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             conv_layer=conv_layer_encoder,
             n_attention_heads=encoder_n_attention_heads,
             dropout_rate=dropout_rate_encoder,
-            activation=torch.relu)
+            activation=torch.relu,
+            use_bn=encoder_use_bn)
         
         # Initialize graph decoder module
         self.graph_decoder = CosineSimGraphDecoder(

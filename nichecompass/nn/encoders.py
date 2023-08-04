@@ -48,6 +48,8 @@ class Encoder(nn.Module):
     activation:
         Activation function used after the fully connected layer and
         intermediate message passing layers.
+    use_bn:
+        If ´True´, include a batch normalization layer to normalize ´mu´.
     """
     def __init__(self,
                  n_input: int,
@@ -61,7 +63,8 @@ class Encoder(nn.Module):
                  cat_covariates_embed_mode: Literal["input", "hidden"]="hidden",
                  n_attention_heads: int=4,
                  dropout_rate: float=0.,
-                 activation: nn.Module=nn.ReLU):
+                 activation: nn.Module=nn.ReLU,
+                 use_bn: bool=True):
         super().__init__()
         print("ENCODER -> "
               f"n_input: {n_input}, "
@@ -74,12 +77,14 @@ class Encoder(nn.Module):
               f"conv_layer: {conv_layer}, "
               f"n_attention_heads: "
               f"{n_attention_heads if conv_layer == 'gatv2conv' else '0'}, "
-              f"dropout_rate: {dropout_rate}")
+              f"dropout_rate: {dropout_rate}, ",
+              f"use_bn: {use_bn}")
 
         self.n_addon_latent = n_addon_latent
         self.n_layers = n_layers
         self.n_fc_layers = n_fc_layers
         self.cat_covariates_embed_mode = cat_covariates_embed_mode
+        self.use_bn = use_bn
         
         if ((cat_covariates_embed_mode == "input") &
             (n_cat_covariates_embed_input != 0)):
@@ -136,6 +141,8 @@ class Encoder(nn.Module):
                                                    concat=False)
         self.activation = activation
         self.dropout = nn.Dropout(dropout_rate)
+        if use_bn:
+            self.bn_layer_mu = nn.BatchNorm1d(n_hidden, affine=False)
 
     def forward(self,
                 x: torch.Tensor,
@@ -202,5 +209,7 @@ class Encoder(nn.Module):
             logstd = torch.cat(
                 (logstd, self.addon_conv_logstd(hidden, edge_index)),
                 dim=1)
+        if self.use_bn:
+            mu = self.bn_layer_mu(mu)
         return mu, logstd
     

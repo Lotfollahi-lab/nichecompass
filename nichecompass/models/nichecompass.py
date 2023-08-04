@@ -159,6 +159,9 @@ class NicheCompass(BaseModelMixin):
     encoder_n_attention_heads:
         Only relevant if ´conv_layer_encoder == gatv2conv´. Number of attention
         heads used in the GNN layers of the encoder.
+    encoder_use_bn:
+        If ´True´, uses a batch normalization layer at the end of the encoder to
+        normalize ´mu´.
     dropout_rate_encoder:
         Probability that nodes will be dropped in the encoder during training.
     dropout_rate_graph_decoder:
@@ -225,6 +228,7 @@ class NicheCompass(BaseModelMixin):
                  n_hidden_encoder: Optional[int]=None,
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: Optional[int]=4,
+                 encoder_use_bn: bool=False,
                  dropout_rate_encoder: float=0.,
                  dropout_rate_graph_decoder: float=0.,
                  cat_covariates_cats: Optional[List[List]]=None,
@@ -415,6 +419,7 @@ class NicheCompass(BaseModelMixin):
             self.encoder_n_attention_heads_ = encoder_n_attention_heads
         else:
             self.encoder_n_attention_heads_ = 0
+        self.encoder_use_bn_ = encoder_use_bn
         self.dropout_rate_encoder_ = dropout_rate_encoder
         self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
         self.n_prior_gp_ = len(self.gp_targets_mask_)
@@ -535,6 +540,7 @@ class NicheCompass(BaseModelMixin):
             cat_covariates_no_edges=self.cat_covariates_no_edges_,
             conv_layer_encoder=self.conv_layer_encoder_,
             encoder_n_attention_heads=self.encoder_n_attention_heads_,
+            encoder_use_bn=self.encoder_use_bn_,
             dropout_rate_encoder=self.dropout_rate_encoder_,
             dropout_rate_graph_decoder=self.dropout_rate_graph_decoder_,
             include_edge_recon_loss=self.include_edge_recon_loss_,
@@ -667,8 +673,9 @@ class NicheCompass(BaseModelMixin):
             ID of the Mlflow experiment used for tracking training parameters
             and metrics.
         retrieve_cat_covariates_embeds:
-            If ´True´, retrieve the categorical covariates embeddings after model training
-            is finished if multiple categorical covariates categories are present.
+            If ´True´, retrieve the categorical covariates embeddings after
+            model training is finished if multiple categorical covariates
+            categories are present.
         retrieve_recon_edge_probs:
             If ´True´, retrieve the reconstructed edge probabilities after model
             training is finished.
@@ -1914,6 +1921,11 @@ class NicheCompass(BaseModelMixin):
         active_gp_df = pd.DataFrame(self.adata.obsm[self.latent_key_],
                                     columns=active_gp_names)
         active_gp_df = active_gp_df.set_index(self.adata.obs.index)
+
+        # Drop columns if they are already in adata.obs
+        for col in active_gp_df.columns:
+            if col in self.adata.obs:
+                self.adata.obs.drop(col, axis=1, inplace=True)
 
         # Concatenate active gene program df horizontally to 'adata.obs'
         self.adata.obs = pd.concat([self.adata.obs, active_gp_df], axis=1)
