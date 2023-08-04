@@ -133,13 +133,13 @@ def compute_edge_recon_loss(
     ----------
     edge_recon_logits:
         Predicted edge reconstruction logits for both positive and negative
-        sampled edges (dim: 2 * edge_batch_size).
+        sampled edges (dim: 2 * ´edge_batch_size´).
     edge_recon_labels:
         Edge ground truth labels for both positive and negative sampled edges
-        (dim: 2 * edge_batch_size).
+        (dim: 2 * ´edge_batch_size´).
     edge_incl:
         Boolean mask which indicates edges to be included in the edge recon loss
-        (dim: 2 * edge_batch_size). If ´None´, includes all edges.
+        (dim: 2 * ´edge_batch_size´). If ´None´, includes all edges.
 
     Returns
     ----------
@@ -177,9 +177,9 @@ def compute_omics_recon_nb_loss(x: torch.Tensor,
 
     Parts of the implementation are adapted from Lopez, R., Regier, J., Cole, M.
     B., Jordan, M. I. & Yosef, N. Deep generative modeling for single-cell
-    transcriptomics. Nat. Methods 15, 1053–1058 (2018):
-    https://github.com/scverse/scvi-tools/blob/main/scvi/distributions/_negative_binomial.py#L75
-    (29.11.2022).
+    transcriptomics. Nat. Methods 15, 1053–1058 (2018) ->
+    https://github.com/scverse/scvi-tools/blob/main/scvi/distributions/_negative_binomial.py#L75;
+    29.11.2022.
 
     Parameters
     ----------

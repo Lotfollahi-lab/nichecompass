@@ -1,5 +1,5 @@
 """
-This module contains encoders used by the NicheCompass model.
+This module contains the encoder used by the NicheCompass model.
 """
 
 from typing import Literal, Optional, Tuple
@@ -13,8 +13,8 @@ class Encoder(nn.Module):
     """
     Encoder class.
 
-    Takes the input space features x and the edge indices as input, computes one
-    fully connected layer and then uses message passing layers to output mu and 
+    Takes the input space features x and the edge indices as input, first computes
+    fully connected layers and then uses message passing layers to output mu and 
     logstd of the latent space normal distribution.
 
     Parameters
@@ -24,13 +24,14 @@ class Encoder(nn.Module):
     n_cat_covariates_embed_input:
         Number of categorical covariates embedding input nodes to the encoder.
     n_hidden:
-        Number of hidden nodes outputted after the first fully connected layer
-        and intermediate message passing layers.
+        Number of hidden nodes outputted after the fully connected layers and
+        intermediate message passing layers.
     n_latent:
         Number of output nodes (prior gps) from the encoder, making up the
-        latent space features.
+        first part of the latent space features z.
     n_addon_latent:
-        Number of add-on nodes in the latent space (new gps).
+        Number of add-on nodes in the latent space (new gps), making up the
+        second part of the latent space features z.
     n_fc_layers:
         Number of fully connected layers before the message passing layers.
     conv_layer:
@@ -46,10 +47,10 @@ class Encoder(nn.Module):
     dropout_rate:
         Probability of nodes to be dropped in the hidden layer during training.
     activation:
-        Activation function used after the fully connected layer and
+        Activation function used after the fully connected layers and
         intermediate message passing layers.
     use_bn:
-        If ´True´, include a batch normalization layer to normalize ´mu´.
+        If ´True´, use a batch normalization layer at the end to normalize ´mu´.
     """
     def __init__(self,
                  n_input: int,
@@ -60,7 +61,7 @@ class Encoder(nn.Module):
                  n_fc_layers: int=1,
                  conv_layer: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  n_layers: int=1,
-                 cat_covariates_embed_mode: Literal["input", "hidden"]="hidden",
+                 cat_covariates_embed_mode: Literal["input", "hidden"]="input",
                  n_attention_heads: int=4,
                  dropout_rate: float=0.,
                  activation: nn.Module=nn.ReLU,
@@ -69,15 +70,15 @@ class Encoder(nn.Module):
         print("ENCODER -> "
               f"n_input: {n_input}, "
               f"n_cat_covariates_embed_input: {n_cat_covariates_embed_input}, "
-              f"n_layers: {n_layers}, "
               f"n_hidden: {n_hidden}, "
               f"n_latent: {n_latent}, "
               f"n_addon_latent: {n_addon_latent}, "
               f"n_fc_layers: {n_fc_layers}, "
+              f"n_layers: {n_layers}, "
               f"conv_layer: {conv_layer}, "
               f"n_attention_heads: "
               f"{n_attention_heads if conv_layer == 'gatv2conv' else '0'}, "
-              f"dropout_rate: {dropout_rate}, ",
+              f"dropout_rate: {dropout_rate}, "
               f"use_bn: {use_bn}")
 
         self.n_addon_latent = n_addon_latent
@@ -93,7 +94,7 @@ class Encoder(nn.Module):
         
         if n_fc_layers == 2:
             self.fc_l1 = nn.Linear(n_input, int(n_input / 2))
-            self.batch_norm = nn.BatchNorm1d(int(n_input / 2))
+            self.fc_bn = nn.BatchNorm1d(int(n_input / 2))
             self.fc_l2 = nn.Linear(int(n_input / 2), n_hidden)
         elif n_fc_layers == 1:
             self.fc_l1 = nn.Linear(n_input, n_hidden)
@@ -142,7 +143,8 @@ class Encoder(nn.Module):
         self.activation = activation
         self.dropout = nn.Dropout(dropout_rate)
         if use_bn:
-            self.bn_layer_mu = nn.BatchNorm1d(n_hidden, affine=False)
+            # Remove learnable parameters by setting ´affine´ to ´False´
+            self.bn_mu = nn.BatchNorm1d(n_hidden, affine=False)
 
     def forward(self,
                 x: torch.Tensor,
@@ -182,7 +184,7 @@ class Encoder(nn.Module):
         # FC forward pass shared across all nodes
         hidden = self.dropout(self.activation(self.fc_l1(x)))
         if self.n_fc_layers == 2:
-            hidden = self.batch_norm(hidden)
+            hidden = self.fc_bn(hidden)
             hidden = self.dropout(self.activation(self.fc_l2(hidden)))
         
         if ((self.cat_covariates_embed_mode == "hidden") &
@@ -210,6 +212,6 @@ class Encoder(nn.Module):
                 (logstd, self.addon_conv_logstd(hidden, edge_index)),
                 dim=1)
         if self.use_bn:
-            mu = self.bn_layer_mu(mu)
+            mu = self.bn_mu(mu)
         return mu, logstd
     

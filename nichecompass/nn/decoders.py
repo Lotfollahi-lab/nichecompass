@@ -66,8 +66,8 @@ class MaskedOmicsFeatureDecoder(nn.Module):
     """
     Masked omics feature decoder class.
 
-    Takes the latent space features z as input, and has a masked layer to decode
-    the parameters of the underlying omics feature distributions.
+    Takes the latent space features z (gp scores) as input, and has a masked
+    layer to decode the parameters of the underlying omics feature distributions.
 
     Parameters
     ----------
@@ -77,7 +77,7 @@ class MaskedOmicsFeatureDecoder(nn.Module):
         Entity that is decoded. Can be either `target` or `source`.
     n_prior_gp_input:
         Number of maskable prior gp input nodes to the decoder (maskable latent
-        space  dimensionality).
+        space dimensionality).
     n_addon_gp_input:
         Number of non-maskable add-on gp input nodes to the decoder (
         non-maskable latent space dimensionality).
@@ -87,7 +87,7 @@ class MaskedOmicsFeatureDecoder(nn.Module):
     n_output:
         Number of output nodes from the decoder (number of omics features).
     mask:
-        Mask that determines which input nodes / latent features can contribute
+        Mask that determines which input nodes / latent features z can contribute
         to the reconstruction of which omics features.
     masked_features_idx:
         Index of omics features that are included in the mask.
@@ -143,10 +143,10 @@ class MaskedOmicsFeatureDecoder(nn.Module):
         z:
             Tensor containing the latent space features.
         log_library_size:
-            Tensor containing the log library size of the nodes.
+            Tensor containing the omics feature log library size of the nodes.
         dynamic_mask:
            Dynamic mask that can change in each forward pass. Is used for atac
-           modality. If a gene is removed by regularization in the rna decoder
+           modality: if a gene is removed by regularization in the rna decoder
            (its weight is set to 0), the corresponding peaks will be marked as 0
            in the `dynamic_mask`.        
         cat_covariates_embed:
