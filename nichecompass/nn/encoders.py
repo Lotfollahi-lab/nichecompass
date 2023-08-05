@@ -143,8 +143,7 @@ class Encoder(nn.Module):
         self.activation = activation
         self.dropout = nn.Dropout(dropout_rate)
         if use_bn:
-            # Remove learnable parameters by setting ´affine´ to ´False´
-            self.bn_mu = nn.BatchNorm1d(n_hidden, affine=False)
+            self.bn_mu = nn.BatchNorm1d(n_hidden, affine=True)
 
     def forward(self,
                 x: torch.Tensor,

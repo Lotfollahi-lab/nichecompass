@@ -458,6 +458,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 len(self.features_idx_dict_["target_reconstructed_atac_idx"])))
             self.source_atac_theta = torch.nn.Parameter(torch.randn(
                 len(self.features_idx_dict_["source_reconstructed_atac_idx"])))
+            
+            # Initialize running mean abs gp scores
+            self.register_buffer("running_mean_abs_mu",
+                                 torch.zeros(n_prior_gp + n_addon_gp))
 
     def forward(self,
                 data_batch: Data,
@@ -556,6 +560,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             z[:, ~active_gp_mask] = 0
 
         if decoder == "omics":
+            if self.training:
+                with torch.no_grad():
+                    # Update running mean absolute gp scores using exponential
+                    # moving average with momentum of 0.1
+                    mean_abs_mu = self.mu.norm(p=1, dim=0) / self.mu.size(1)
+                    self.running_mean_abs_mu = (
+                        0.1 * mean_abs_mu + 0.9 * self.running_mean_abs_mu)
+                    
             output["node_labels"] = {}
             
             # Compute aggregated neighborhood omics feature vector
@@ -971,6 +983,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             loss_dict["optim_loss"] += loss_dict["chrom_access_recon_loss"]
         return loss_dict
 
+    @torch.no_grad()
     def get_gp_weights(self,
                        only_masked_features: bool=False) -> List[torch.Tensor]:
         """
@@ -1021,7 +1034,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             # Append current modality to output list
             gp_weights_all_modalities.append(gp_weights)
         return gp_weights_all_modalities
-
+ 
+    @torch.no_grad()
     def get_active_gp_mask(
             self,
             abs_gp_weights_agg_mode: Literal["sum",
@@ -1063,12 +1077,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             programs.
         """
         gp_weights = self.get_gp_weights(only_masked_features=True)[0]
-        #gp_scores = self.get_gp_scores(only_active_gps=False)
-        #abs_gp_scores_sums = gp_scores.norm(p=1, dim=0)
         
-        # Normalize gp weights with gp-wise sums of absolute scores
-        #gp_weights_normalized = abs_gp_scores_sums * gp_weights
-        gp_weights_normalized = gp_weights
+        # Normalize gp weights with running mean absolute gp scores
+        gp_weights_normalized = (self.running_mean_abs_mu * gp_weights)
         
         # Aggregate absolute normalized gp weights based on
         # ´abs_gp_weights_agg_mode´ and calculate thresholds of aggregated
