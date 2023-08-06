@@ -15,8 +15,8 @@ class AddOnMaskedLayer(nn.Module):
     Add-on masked layer class. 
     
     Parts of the implementation are adapted from 
-    https://github.com/theislab/scarches/blob/7980a187294204b5fb5d61364bb76c0b809eb945/scarches/models/expimap/modules.py#L28
-    (01.10.2022).
+    https://github.com/theislab/scarches/blob/7980a187294204b5fb5d61364bb76c0b809eb945/scarches/models/expimap/modules.py#L28;
+    01.10.2022.
 
     Parameters
     ----------
@@ -27,10 +27,11 @@ class AddOnMaskedLayer(nn.Module):
     mask:
         Mask that is used to mask the node connections for mask inputs from the
         input layer to the output layer.
+    addon_mask:
+        Mask that is used to mask the node connections for add-on inputs from
+        the input layer to the output layer.
     masked_features_idx:
         Index of input features that are included in the mask.
-    unmasked_features_idx:
-        Index of input features that are not included in the mask.
     bias:
         If ´True´, use a bias for the mask input nodes.
     n_addon_input:
@@ -45,8 +46,8 @@ class AddOnMaskedLayer(nn.Module):
                  n_input: int,
                  n_output: int,
                  mask: torch.Tensor,
+                 addon_mask: torch.Tensor,
                  masked_features_idx: List,
-                 unmasked_features_idx: List,
                  bias: bool=False,
                  n_addon_input: int=0,
                  n_cat_covariates_embed_input: int=0,
@@ -56,14 +57,19 @@ class AddOnMaskedLayer(nn.Module):
         self.n_addon_input = n_addon_input
         self.n_cat_covariates_embed_input = n_cat_covariates_embed_input
         self.masked_features_idx = masked_features_idx
-        self.unmasked_features_idx = unmasked_features_idx
 
         # Masked layer
-        self.masked_l = MaskedLinear(n_input, n_output, mask, bias=bias)
+        self.masked_l = MaskedLinear(n_input=n_input,
+                                     n_output=n_output,
+                                     mask=mask,
+                                     bias=bias)
 
         # Add-on layer
         if n_addon_input != 0:
-            self.addon_l = nn.Linear(n_addon_input, n_output, bias=False)
+            self.addon_l = MaskedLinear(n_input=n_addon_input,
+                                        n_output=n_output,
+                                        mask=addon_mask,
+                                        bias=False)
         
         # Categorical covariates embedding layer
         if n_cat_covariates_embed_input != 0:
@@ -114,16 +120,17 @@ class AddOnMaskedLayer(nn.Module):
                 [self.n_input, self.n_addon_input, self.n_cat_covariates_embed_input],
                 dim=1)            
             
-        output = self.masked_l(input=mask_input,
-                               dynamic_mask=(dynamic_mask[:, :self.n_input] if
-                                             dynamic_mask is not None
-                                             else None)) # dynamic_mask also has
-                                                         # entries for add-on
-                                                         # gps
+        output = self.masked_l(
+            input=mask_input,
+            dynamic_mask=(dynamic_mask[:, :self.n_input] if
+                          dynamic_mask is not None else None)) 
+            # Dynamic mask also has entries for add-on gps
         if self.n_addon_input != 0:
-            # Only add add-on layer output to unmasked features
-            output[:, self.unmasked_features_idx] += self.addon_l(
-                addon_input)[:, self.unmasked_features_idx]
+            # Only unmasked features will have weights != 0.
+            output += self.addon_l(
+                input=addon_input,
+                dynamic_mask=(dynamic_mask[:, self.n_input:] if
+                              dynamic_mask is not None else None))
         if self.n_cat_covariates_embed_input != 0:
             if self.n_addon_input != 0:
                 output += self.cat_covariates_embed_l(

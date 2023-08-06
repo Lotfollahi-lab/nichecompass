@@ -14,11 +14,11 @@ class MaskedLinear(nn.Linear):
     Masked linear class.
     
     Parts of the implementation are adapted from
-    https://github.com/theislab/scarches/blob/master/scarches/models/expimap/modules.py#L9
-    (01.10.2022).
+    https://github.com/theislab/scarches/blob/master/scarches/models/expimap/modules.py#L9;
+    01.10.2022.
 
-    Uses a binary mask to mask connections from the input layer to the output 
-    layer so that only unmasked connections can be used.
+    Uses static and dynamic binary masks to mask connections from the input
+    layer to the output layer so that only unmasked connections can be used.
 
     Parameters
     ----------
@@ -27,8 +27,8 @@ class MaskedLinear(nn.Linear):
     n_output:
         Number of output nodes from the masked layer.
     mask:
-        Mask that is used to mask the node connections from the input layer to
-        the output layer.
+        Static mask that is used to mask the node connections from the input
+        layer to the output layer.
     bias:
         If ´True´, use a bias.
     """
@@ -40,19 +40,19 @@ class MaskedLinear(nn.Linear):
         # Mask should have dim n_input x n_output
         if n_input != mask.shape[0] or n_output != mask.shape[1]:
             raise ValueError("Incorrect shape of the mask. Mask should have dim"
-                             " (n_input x n_output). Please provide a mask with"
-                             f" dimensions ({n_input} x {n_output}).")
+                            " (n_input x n_output). Please provide a mask with"
+                            f"  dimensions ({n_input} x {n_output}).")
         super().__init__(n_input, n_output, bias)
-        
-        self.register_buffer("mask", mask.t())
 
-        # Zero out weights with the mask so that the optimizer does not consider
-        # them
-        if self.mask.is_sparse: # this is the case for the ca decoder
-            # Convert mask to dense; in the future check whether weights could
-            # be sparse to use a multiplication (sparse, sparse) instead
+        self.register_buffer("mask", mask.t())
+        if self.mask.is_sparse: # this is the case for the atac decoder
+            # Convert mask to dense; in the future check whether weights
+            # could be sparse to use a multiplication (sparse, sparse)
+            # instead
             self.mask = self.mask.to_dense()
 
+        # Zero out weights with the mask so that the optimizer does not
+        # consider them
         self.weight.data *= self.mask
 
     def forward(self,

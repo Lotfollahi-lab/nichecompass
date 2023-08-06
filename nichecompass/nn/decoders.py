@@ -87,12 +87,13 @@ class MaskedOmicsFeatureDecoder(nn.Module):
     n_output:
         Number of output nodes from the decoder (number of omics features).
     mask:
-        Mask that determines which input nodes / latent features z can contribute
-        to the reconstruction of which omics features.
+        Mask that determines which masked input nodes / prior gp latent features
+        z can contribute to the reconstruction of which omics features.
+    addon_mask:
+        Mask that determines which add-on input nodes / add-on gp latent
+        features z can contribute to the reconstruction of which omics features.
     masked_features_idx:
         Index of omics features that are included in the mask.
-    unmasked_features_idx:
-        Index of omics features that are not included in the mask.
     recon_loss:
         The loss used for omics reconstruction. If `nb`, uses a negative
         binomial loss.
@@ -105,8 +106,8 @@ class MaskedOmicsFeatureDecoder(nn.Module):
                  n_cat_covariates_embed_input: int,
                  n_output: int,
                  mask: torch.Tensor,
+                 addon_mask: torch.Tensor,
                  masked_features_idx: List,
-                 unmasked_features_idx: List,
                  recon_loss: Literal["nb"]):
         super().__init__()
         print(f"MASKED {entity.upper()} {modality.upper()} DECODER -> "
@@ -116,7 +117,6 @@ class MaskedOmicsFeatureDecoder(nn.Module):
               f"n_output: {n_output}")
 
         self.masked_features_idx = masked_features_idx
-        self.unmasked_features_idx = unmasked_features_idx
         self.recon_loss = recon_loss
 
         self.nb_means_normalized_decoder = AddOnMaskedLayer(
@@ -126,8 +126,8 @@ class MaskedOmicsFeatureDecoder(nn.Module):
             n_output=n_output,
             bias=False,
             mask=mask,
+            addon_mask=addon_mask,
             masked_features_idx=masked_features_idx,
-            unmasked_features_idx=unmasked_features_idx,
             activation=nn.Softmax(dim=-1))
 
     def forward(self,

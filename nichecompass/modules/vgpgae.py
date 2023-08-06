@@ -297,7 +297,66 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 features_idx_dict["source_masked_rna_idx"]).intersection(
                 set(features_idx_dict["source_unmasked_rna_idx"]))
             assert len(source_rna_idx_intersect) == 0
-            
+
+            for entity in ["target", "source"]:
+                if n_addon_gp > 0:
+                    # Initialize rna add-on masks which are 0 everywhere except
+                    # for the genes that are unmasked, in which case they are 1
+                    rna_decoder_addon_mask = torch.zeros(
+                        n_addon_gp,
+                        n_output_genes,
+                        dtype=torch.float32)
+                    rna_decoder_addon_mask[
+                        :, features_idx_dict[f"{entity}_unmasked_rna_idx"]] = 1.
+                    setattr(self,
+                            f"{entity}_rna_decoder_addon_mask",
+                            rna_decoder_addon_mask)
+                    
+                    # Set add-on rna idx to unmasked rna idx as all unmasked
+                    # genes are part of add-on gps
+                    features_idx_dict[f"{entity}_addon_rna_idx"] = (
+                        features_idx_dict[f"{entity}_unmasked_rna_idx"])
+                    
+                    if "atac" in self.modalities_:
+                        # Initialize atac add-on masks which are 0 everywhere
+                        # except for the peaks that are mapped to genes that are
+                        # unmasked, in which case they are 1
+                        atac_decoder_addon_mask = torch.mm(
+                            getattr(self,
+                                    f"{entity}_rna_decoder_addon_mask"),
+                            self.gene_peaks_mask_)
+                        setattr(self,
+                                f"{entity}_atac_decoder_addon_mask",
+                                atac_decoder_addon_mask)
+
+                        # Determine add-on atac idx based on peaks that are
+                        # mapped to unmasked genes
+                        features_idx_dict[f"{entity}_addon_atac_idx"] = (
+                            torch.nonzero(
+                            (atac_decoder_addon_mask.sum(axis=0) > 0)
+                            ).squeeze().tolist())
+                    
+                    for modality in self.modalities_:
+                        # Determine index of reconstructed omics features as
+                        # combination of masked and add-on omics features
+                        features_idx_dict[
+                            f"{entity}_reconstructed_{modality}_idx"] = sorted(
+                            list(set(
+                            features_idx_dict[f"{entity}_masked_{modality}_idx"] +
+                            features_idx_dict[f"{entity}_addon_{modality}_idx"])))
+                else:
+                    for modality in self.modalities_:
+                        setattr(self,
+                                f"{entity}_{modality}_decoder_addon_mask",
+                                None)
+                        features_idx_dict[f"{entity}_addon_{modality}_idx"] = None
+
+                        # Determine index of reconstructed omics features as
+                        # masked omics features
+                        features_idx_dict[
+                            f"{entity}_reconstructed_{modality}_idx"] = (
+                            features_idx_dict[f"{entity}_masked_{modality}_idx"])     
+
             # Initialize masked gene expression decoders
             self.target_rna_decoder = MaskedOmicsFeatureDecoder(
                 modality="rna",
@@ -312,9 +371,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                      else 0),
                 n_output=n_output_genes,
                 mask=target_rna_decoder_mask,
+                addon_mask=self.target_rna_decoder_addon_mask,
                 masked_features_idx=features_idx_dict["target_masked_rna_idx"],
-                unmasked_features_idx=features_idx_dict[
-                    "target_unmasked_rna_idx"],
                 recon_loss=self.rna_recon_loss_)
             self.source_rna_decoder = MaskedOmicsFeatureDecoder(
                 modality="rna",
@@ -329,9 +387,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                      else 0),
                 n_output=n_output_genes,
                 mask=source_rna_decoder_mask,
+                addon_mask=self.source_rna_decoder_addon_mask,
                 masked_features_idx=features_idx_dict["source_masked_rna_idx"],
-                unmasked_features_idx=features_idx_dict[
-                    "source_unmasked_rna_idx"],
                 recon_loss=self.rna_recon_loss_)
         else:
             # Initialize fc expression decoders
@@ -381,7 +438,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 source_atac_idx_intersect = set(
                     features_idx_dict["source_masked_atac_idx"]).intersection(
                     set(features_idx_dict["source_unmasked_atac_idx"]))
-                assert len(source_atac_idx_intersect) == 0
+                assert len(source_atac_idx_intersect) == 0               
                 
                 # Initialize masked atac decoders
                 self.target_atac_decoder = MaskedOmicsFeatureDecoder(
@@ -397,10 +454,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                          else 0),
                     n_output=n_output_peaks,
                     mask=target_atac_decoder_mask,
+                    addon_mask=self.target_atac_decoder_addon_mask,
                     masked_features_idx=features_idx_dict[
                         "target_masked_atac_idx"],
-                    unmasked_features_idx=features_idx_dict[
-                        "target_unmasked_atac_idx"],
                     recon_loss="nb")
                 self.source_atac_decoder = MaskedOmicsFeatureDecoder(
                     modality="atac",
@@ -415,10 +471,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                          else 0),
                     n_output=n_output_peaks,
                     mask=source_atac_decoder_mask,
+                    addon_mask=self.source_atac_decoder_addon_mask,
                     masked_features_idx=features_idx_dict[
                         "source_masked_atac_idx"],
-                    unmasked_features_idx=features_idx_dict[
-                        "source_unmasked_atac_idx"],
                     recon_loss="nb")
             else:
                 # Initialize fc atac decoders
