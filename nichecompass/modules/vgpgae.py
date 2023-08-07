@@ -206,6 +206,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.n_addon_gp_ = n_addon_gp
         self.cat_covariates_embeds_nums_ = cat_covariates_embeds_nums
         self.n_output_genes_ = n_output_genes
+        self.target_rna_decoder_mask = target_rna_decoder_mask
+        self.source_rna_decoder_mask = source_rna_decoder_mask
         self.n_output_peaks_ = n_output_peaks
         self.features_idx_dict_ = features_idx_dict
         self.gene_peaks_mask_ = gene_peaks_mask
@@ -370,7 +372,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                      (self.n_cat_covariates_ > 0)
                      else 0),
                 n_output=n_output_genes,
-                mask=target_rna_decoder_mask,
+                mask=self.target_rna_decoder_mask,
                 addon_mask=self.target_rna_decoder_addon_mask,
                 masked_features_idx=features_idx_dict["target_masked_rna_idx"],
                 recon_loss=self.rna_recon_loss_)
@@ -386,7 +388,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                      (self.n_cat_covariates_ > 0)
                      else 0),
                 n_output=n_output_genes,
-                mask=source_rna_decoder_mask,
+                mask=self.source_rna_decoder_mask,
                 addon_mask=self.source_rna_decoder_addon_mask,
                 masked_features_idx=features_idx_dict["source_masked_rna_idx"],
                 recon_loss=self.rna_recon_loss_)
@@ -622,9 +624,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     mean_abs_mu = self.mu.norm(p=1, dim=0) / self.mu.size(0)
                     self.running_mean_abs_mu = (
                         0.1 * mean_abs_mu + 0.9 * self.running_mean_abs_mu)
-                    
-                    print(mean_abs_mu)
-                    print(self.running_mean_abs_mu)
                     
             output["node_labels"] = {}
             
@@ -1224,12 +1223,13 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         Returns
         -------
         z:
-            Latent space features (dim: n_obs, n_active_gps).
+            Latent space features (dim: n_obs x n_gps or n_obs x n_active_gps).
         mu:
-            Expected values of the latent posterior (dim: n_obs, n_active_gps).
+            Expected values of the latent posteriors (dim: n_obs x n_gps or
+            n_obs x n_active_gps).
         std:
-            Standard deviations of the latent posterior (dim: n_obs, 
-            n_active_gps).
+            Standard deviations of the latent posteriors (dim: n_obs x 
+            n_gps or n_obs x n_active_gps).
         """
         # Logarithmitize omics feature vector if done during training
         if self.log_variational_:
@@ -1265,12 +1265,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             mu, logstd = mu[:, active_gp_mask], logstd[:, active_gp_mask]
 
         if return_mu_std:
-            # (?) check whether this is redundant
             std = torch.exp(logstd)
             return mu, std
         else:
-            # Sample latent features from the latent normal distribution if in 
-            # training mode or return ´mu´ if not in training mode
             z = self.reparameterize(mu, logstd)
             return z
 
@@ -1304,9 +1301,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Expected values of the negative binomial distribution (dim: n_obs x
             n_genes).
         """
-        decoder = getattr(self, f"{entity}_{modality}_decoder")
-        nb_means = decoder(
-            z=z,
-            log_library_size=log_library_size,
-            cat_covariates_embed=cat_covariates_embed)
-        return nb_means
+        raise NotImplementedError
+        
+        #decoder = getattr(self, f"{entity}_{modality}_decoder")
+        #nb_means = decoder(
+        #    z=z,
+        #    log_library_size=log_library_size,
+        #    cat_covariates_embed=cat_covariates_embed)
+        #return nb_means
