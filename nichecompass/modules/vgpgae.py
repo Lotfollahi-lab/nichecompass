@@ -428,6 +428,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.source_rna_theta = torch.nn.Parameter(torch.randn(
             len(self.features_idx_dict_["source_reconstructed_rna_idx"])))
         
+        # Initialize running mean abs gp scores
+        self.register_buffer("running_mean_abs_mu",
+                             torch.zeros(n_prior_gp + n_addon_gp))
+        
         if "atac" in self.modalities_:
             if not use_fc_decoder:
             # Check validity of mask indices
@@ -513,10 +517,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 len(self.features_idx_dict_["target_reconstructed_atac_idx"])))
             self.source_atac_theta = torch.nn.Parameter(torch.randn(
                 len(self.features_idx_dict_["source_reconstructed_atac_idx"])))
-            
-            # Initialize running mean abs gp scores
-            self.register_buffer("running_mean_abs_mu",
-                                 torch.zeros(n_prior_gp + n_addon_gp))
 
     def forward(self,
                 data_batch: Data,
@@ -619,9 +619,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 with torch.no_grad():
                     # Update running mean absolute gp scores using exponential
                     # moving average with momentum of 0.1
-                    mean_abs_mu = self.mu.norm(p=1, dim=0) / self.mu.size(1)
+                    mean_abs_mu = self.mu.norm(p=1, dim=0) / self.mu.size(0)
                     self.running_mean_abs_mu = (
                         0.1 * mean_abs_mu + 0.9 * self.running_mean_abs_mu)
+                    
+                    print(mean_abs_mu)
+                    print(self.running_mean_abs_mu)
                     
             output["node_labels"] = {}
             
@@ -1228,7 +1231,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Standard deviations of the latent posterior (dim: n_obs, 
             n_active_gps).
         """
-        # Convert gene expression if done during training
+        # Logarithmitize omics feature vector if done during training
         if self.log_variational_:
             x_enc = torch.log(1 + node_batch.x)
         else:

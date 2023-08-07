@@ -689,7 +689,7 @@ class NicheCompass(BaseModelMixin):
             neighborhood graph.
         trainer_kwargs:
             Kwargs for the model Trainer.
-        """        
+        """
         self.trainer = Trainer(
             adata=self.adata,
             adata_atac=self.adata_atac,
@@ -1310,7 +1310,7 @@ class NicheCompass(BaseModelMixin):
             node_batch_size: int=64,
             ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         """
-        Get the latent / gene program representation from a trained model.
+        Get the latent representation / gene program scores from a trained model.
 
         Parameters
         ----------
@@ -1910,7 +1910,7 @@ class NicheCompass(BaseModelMixin):
         return gp_summary_df
     
 
-    def add_active_gp_expr_to_obs(self) -> None:
+    def add_active_gp_scores_to_obs(self) -> None:
         """
         Add the expression of all active gene programs to ´adata.obs´.      
         """
@@ -1922,11 +1922,11 @@ class NicheCompass(BaseModelMixin):
                                     columns=active_gp_names)
         active_gp_df = active_gp_df.set_index(self.adata.obs.index)
 
-        # Drop columns if they are already in adata.obs
+        # Drop columns if they are already in ´adata.obs´
         for col in active_gp_df.columns:
             if col in self.adata.obs:
                 self.adata.obs.drop(col, axis=1, inplace=True)
 
-        # Concatenate active gene program df horizontally to 'adata.obs'
+        # Concatenate active gene program df horizontally to ´adata.obs´
         self.adata.obs = pd.concat([self.adata.obs, active_gp_df], axis=1)
         
