@@ -689,7 +689,7 @@ class NicheCompass(BaseModelMixin):
             neighborhood graph.
         trainer_kwargs:
             Kwargs for the model Trainer.
-        """        
+        """
         self.trainer = Trainer(
             adata=self.adata,
             adata_atac=self.adata_atac,
@@ -1199,37 +1199,32 @@ class NicheCompass(BaseModelMixin):
 
     def get_gp_data(self,
                     selected_gps: Optional[Union[str, list]]=None,
-                    adata: Optional[AnnData]=None
-                    ) -> Tuple[np.ndarray, np.ndarray]:
+                    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
-        Get the index of selected gene programs as well as their gene weights of
-        the gene expression negative binomial means decoder.
+        Get the index of selected gene programs as well as their omics decoder
+        weights.
 
         Parameters:
         ----------
         selected_gps:
             Names of the selected gene programs for which data should be
             retrieved.
-        adata:
-            AnnData object to be used. If ´None´, uses the adata object stored
-            in the model instance.
 
         Returns:
         ----------
         selected_gps_idx:
             Index of the selected gene programs (dim: n_selected_gps,)
-        selected_gp_weights:
-            Gene expression decoder gene weights of the selected gene programs
-            (dim: (n_genes, n_gps) if ´self.node_label_method == self´ or
-            (2 x n_genes, n_gps) otherwise).
+        selected_gps_rna_decoder_weights:
+            Gene weights of the rna decoders of the selected gene programs
+            (dim: (2 * n_genes) x n_selected_gps).
+        selected_gps_atac_decoder_weights:
+            Peak weights of the atac decoders of the selected gene programs
+            (dim: (2 * n_peaks) x n_selected_gps).
         """
         self._check_if_trained(warn=True)
-        
-        if adata is None:
-            adata = self.adata
 
         # Get selected gps and their index
-        all_gps = list(adata.uns[self.gp_names_key_])
+        all_gps = list(self.adata.uns[self.gp_names_key_])
         if selected_gps is None:
             selected_gps = all_gps
         elif isinstance(selected_gps, str):
@@ -1237,22 +1232,22 @@ class NicheCompass(BaseModelMixin):
         selected_gps_idx = np.array([all_gps.index(gp) for gp in selected_gps])
 
         # Get weights of selected gps
-        all_gps_gene_expr_weights = self.model.get_gp_weights()[0]
-        selected_gps_gene_expr_weights = (
-            all_gps_gene_expr_weights[:, selected_gps_idx]
+        all_gps_rna_decoder_weights = self.model.get_gp_weights()[0]
+        selected_gps_rna_decoder_weights = (
+            all_gps_rna_decoder_weights[:, selected_gps_idx]
             .cpu().detach().numpy())
         
         if "atac" in self.modalities_:
-            all_gps_chrom_access_weights = self.model.get_gp_weights()[1]
-            selected_gps_chrom_access_weights = (
-                all_gps_chrom_access_weights[:, selected_gps_idx]
+            all_gps_atac_decoder_weights = self.model.get_gp_weights()[1]
+            selected_gps_atac_decoder_weights = (
+                all_gps_atac_decoder_weights[:, selected_gps_idx]
                 .cpu().detach().numpy())
         else:
-            selected_gps_chrom_access_weights = None
+            selected_gps_atac_decoder_weights = None
 
         return (selected_gps_idx,
-                selected_gps_gene_expr_weights,
-                selected_gps_chrom_access_weights)
+                selected_gps_rna_decoder_weights,
+                selected_gps_atac_decoder_weights)
 
     def get_cat_covariates_embeds(self) -> np.ndarray:
         """
@@ -1310,7 +1305,7 @@ class NicheCompass(BaseModelMixin):
             node_batch_size: int=64,
             ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         """
-        Get the latent / gene program representation from a trained model.
+        Get the latent representation / gene program scores from a trained model.
 
         Parameters
         ----------
@@ -1629,63 +1624,58 @@ class NicheCompass(BaseModelMixin):
         return agg_weights
     
 
-    def get_omics_decoder_outputs(
-            self, 
-            adata: Optional[AnnData]=None,
-            counts_key: str="counts",
-            adj_key: str="spatial_connectivities",
-            ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+    def get_omics_decoder_outputs():
         """
         """
-        self._check_if_trained(warn=False)
-        device = next(self.model.parameters()).device
-        return 1
+        raise NotImplementedError
     
 
     def get_gp_summary(self) -> pd.DataFrame:
         """
+        Get summary information of gene programs and return it as a DataFrame.
+        
         Returns
         ----------
         gp_summary_df:
             DataFrame with gene program summary information.
-
-        TO DO: extend to addon gps.
         """
-        # Get source and target (sign corrected) gene weights
-        _, gp_weights, chrom_access_gp_weights = self.get_gp_data()
-        gp_weights_sum = gp_weights.sum(0) # sum over genes
-        gp_weights_signs = np.zeros_like(gp_weights_sum)
-        gp_weights_signs[gp_weights_sum>0] = 1. # keep sign of gp score
-        gp_weights_signs[gp_weights_sum<0] = -1. # reverse sign of gp score
-        gp_weights *= gp_weights_signs
+        # Get source and target omics decoder weights
+        _, gp_gene_weights, gp_peak_weights = self.get_gp_data()
 
-        if self.gene_expr_recon_dist_ == "nb":
-            # Normalize gp weights to get gene importances
-            gp_gene_importances = np.abs(gp_weights / np.abs(gp_weights).sum(0))            
+        # Normalize gp weights to get gene importances
+        gp_gene_importances = np.where(
+            np.abs(gp_gene_weights).sum(0) != 0,
+            gp_gene_weights / np.abs(gp_gene_weights).sum(0),
+            0)      
 
-        gp_weights = np.transpose(gp_weights)
+        # Split gene weights and importances into source and target part
+        gp_gene_weights = np.transpose(gp_gene_weights)
         gp_gene_importances = np.transpose(gp_gene_importances)
-        gp_source_genes_weights_all_arr = gp_weights[:, int(gp_weights.shape[1]/2):]
-        gp_target_genes_weights_all_arr = gp_weights[:, :int(gp_weights.shape[1]/2)]
-        gp_source_gene_importances_all_arr = gp_gene_importances[:, int(gp_weights.shape[1]/2):]
-        gp_target_gene_importances_all_arr = gp_gene_importances[:, :int(gp_weights.shape[1]/2)]
-
-        # Get source and target genes
-        gp_source_genes_mask = np.transpose(
-            self.adata.varm[self.gp_sources_mask_key_] != 0)
-        gp_target_genes_mask = np.transpose(
-            self.adata.varm[self.gp_targets_mask_key_] != 0)
+        gp_gene_weights_source = gp_gene_weights[
+            :, (gp_gene_weights.shape[1] // 2):]
+        gp_gene_weights_target = gp_gene_weights[
+            :, :(gp_gene_weights.shape[1] // 2)]
+        gp_gene_importances_source = gp_gene_importances[
+            :, (gp_gene_weights.shape[1] // 2):]
+        gp_gene_importances_target = gp_gene_importances[
+            :, :(gp_gene_weights.shape[1] // 2)]
+        
+        # Get source and target gene masks
+        gp_gene_mask_source = np.transpose(
+            np.array(self.model.source_rna_decoder_mask).T != 0)
+        gp_gene_mask_target = np.transpose(
+            np.array(self.model.target_rna_decoder_mask).T != 0)
         
         # Add entries to gp mask for addon gps
         if self.n_addon_gp_ > 0:
-            addon_gp_source_genes_mask = np.ones((self.n_addon_gp_,
-                                                  self.adata.n_vars), dtype=bool)
-            addon_gp_target_genes_mask = np.ones((self.n_addon_gp_,
-                                                  self.adata.n_vars), dtype=bool)
-            gp_source_genes_mask = np.concatenate(
-                (gp_source_genes_mask, addon_gp_source_genes_mask), axis=0)
-            gp_target_genes_mask = np.concatenate(
-                (gp_target_genes_mask, addon_gp_target_genes_mask), axis=0)
+            gp_gene_addon_mask_source = np.transpose(
+            np.array(self.model.source_rna_decoder_addon_mask).T != 0)
+            gp_gene_addon_mask_target = np.transpose(
+            np.array(self.model.target_rna_decoder_addon_mask).T != 0)
+            gp_gene_mask_source = np.concatenate(
+                (gp_gene_mask_source, gp_gene_addon_mask_source), axis=0)
+            gp_gene_mask_target = np.concatenate(
+                (gp_gene_mask_target, gp_gene_addon_mask_target), axis=0)
 
         # Get active gp mask
         gp_active_status = (self.model.get_active_gp_mask().cpu().detach()
@@ -1716,12 +1706,12 @@ class NicheCompass(BaseModelMixin):
              gp_source_genes_importances_arr,
              gp_target_genes_importances_arr) in zip(
                 self.adata.uns[self.gp_names_key_],
-                gp_source_genes_mask,
-                gp_target_genes_mask,
-                gp_source_genes_weights_all_arr,
-                gp_target_genes_weights_all_arr,
-                gp_source_gene_importances_all_arr,
-                gp_target_gene_importances_all_arr):
+                gp_gene_mask_source,
+                gp_gene_mask_target,
+                gp_gene_weights_source,
+                gp_gene_weights_target,
+                gp_gene_importances_source,
+                gp_gene_importances_target):
             gp_names.append(gp_name)
             active_gp_idx.append(active_gps.index(gp_name)
                                  if gp_name in active_gps else np.nan)
@@ -1783,8 +1773,8 @@ class NicheCompass(BaseModelMixin):
              "n_non_zero_target_genes": n_non_zero_target_genes,
              "gp_source_genes": gp_source_genes,
              "gp_target_genes": gp_target_genes,
-             "gp_source_genes_weights_sign_corrected": gp_source_genes_weights,
-             "gp_target_genes_weights_sign_corrected": gp_target_genes_weights,
+             "gp_source_genes_weights": gp_source_genes_weights,
+             "gp_target_genes_weights": gp_target_genes_weights,
              "gp_source_genes_importances": gp_source_genes_importances,
              "gp_target_genes_importances": gp_target_genes_importances})
         
@@ -1793,17 +1783,17 @@ class NicheCompass(BaseModelMixin):
         
         if "atac" in self.modalities_:
             gp_peak_importances = np.abs(
-                chrom_access_gp_weights / np.abs(chrom_access_gp_weights).sum(0))
-            chrom_access_gp_weights = np.transpose(chrom_access_gp_weights)
+                gp_peak_weights / np.abs(gp_peak_weights).sum(0))
+            gp_peak_weights = np.transpose(gp_peak_weights)
             gp_peak_importances = np.transpose(gp_peak_importances)
-            gp_source_peaks_weights_all_arr = chrom_access_gp_weights[
-                :, int(chrom_access_gp_weights.shape[1]/2):]
-            gp_target_peaks_weights_all_arr = chrom_access_gp_weights[
-                :, :int(chrom_access_gp_weights.shape[1]/2)]
-            gp_source_peak_importances_all_arr = gp_peak_importances[
-                :, int(chrom_access_gp_weights.shape[1]/2):]
-            gp_target_peak_importances_all_arr = gp_peak_importances[
-                :, :int(chrom_access_gp_weights.shape[1]/2)]
+            gp_peak_weights_source = gp_peak_weights[
+                :, (gp_peak_weights.shape[1] // 2):]
+            gp_peak_weights_target = gp_peak_weights[
+                :, :(gp_peak_weights.shape[1] // 2)]
+            gp_peak_importances_source = gp_peak_importances[
+                :, (gp_peak_weights.shape[1] // 2):]
+            gp_peak_importances_target = gp_peak_importances[
+                :, :(gp_peak_weights.shape[1] // 2)]
 
             # Get source and target peaks
             gp_source_peaks_mask = np.transpose(
@@ -1843,10 +1833,10 @@ class NicheCompass(BaseModelMixin):
                  gp_target_peaks_importances_arr) in zip(
                     gp_source_peaks_mask,
                     gp_target_peaks_mask,
-                    gp_source_peaks_weights_all_arr,
-                    gp_target_peaks_weights_all_arr,
-                    gp_source_peak_importances_all_arr,
-                    gp_target_peak_importances_all_arr):
+                    gp_peak_weights_source,
+                    gp_peak_weights_target,
+                    gp_peak_importances_source,
+                    gp_peak_importances_target):
                 # Sort source peaks according to absolute weights
                 sorted_source_peaks_weights = []
                 sorted_source_peaks_importances = []
@@ -1898,8 +1888,8 @@ class NicheCompass(BaseModelMixin):
             gp_summary_df["n_non_zero_target_peaks"] = n_non_zero_target_peaks
             gp_summary_df["gp_source_peaks"] = gp_source_peaks
             gp_summary_df["gp_target_peaks"] = gp_target_peaks
-            gp_summary_df["gp_source_peaks_weights_sign_corrected"] = gp_source_peaks_weights
-            gp_summary_df["gp_target_peaks_weights_sign_corrected"] = gp_target_peaks_weights
+            gp_summary_df["gp_source_peaks_weights"] = gp_source_peaks_weights
+            gp_summary_df["gp_target_peaks_weights"] = gp_target_peaks_weights
             gp_summary_df["gp_source_peaks_importances"] = gp_source_peaks_importances
             gp_summary_df["gp_target_peaks_importances"] = gp_target_peaks_importances
             gp_summary_df["gp_source_peaks_importances"] = (
@@ -1910,7 +1900,7 @@ class NicheCompass(BaseModelMixin):
         return gp_summary_df
     
 
-    def add_active_gp_expr_to_obs(self) -> None:
+    def add_active_gp_scores_to_obs(self) -> None:
         """
         Add the expression of all active gene programs to ´adata.obs´.      
         """
@@ -1922,11 +1912,11 @@ class NicheCompass(BaseModelMixin):
                                     columns=active_gp_names)
         active_gp_df = active_gp_df.set_index(self.adata.obs.index)
 
-        # Drop columns if they are already in adata.obs
+        # Drop columns if they are already in ´adata.obs´
         for col in active_gp_df.columns:
             if col in self.adata.obs:
                 self.adata.obs.drop(col, axis=1, inplace=True)
 
-        # Concatenate active gene program df horizontally to 'adata.obs'
+        # Concatenate active gene program df horizontally to ´adata.obs´
         self.adata.obs = pd.concat([self.adata.obs, active_gp_df], axis=1)
         
