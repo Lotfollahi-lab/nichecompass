@@ -573,8 +573,8 @@ class NicheCompass(BaseModelMixin):
               contrastive_logits_neg_ratio: float=0.,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,
-              l1_targets_categories: list=["target_gene"],
-              l1_sources_categories: list=["enzyme"],
+              l1_targets_categories: list=["receptor", "sensor", "target_gene", "marker"],
+              l1_sources_categories: list=["ligand", "enzyme", "tf", "marker"],
               lambda_l1_addon: float=0.,
               edge_val_ratio: float=0.1,
               node_val_ratio: float=0.1,
@@ -1624,12 +1624,6 @@ class NicheCompass(BaseModelMixin):
         return agg_weights
     
 
-    def get_omics_decoder_outputs():
-        """
-        """
-        raise NotImplementedError
-    
-
     def get_gp_summary(self) -> pd.DataFrame:
         """
         Get summary information of gene programs and return it as a DataFrame.
@@ -1698,69 +1692,69 @@ class NicheCompass(BaseModelMixin):
         gp_target_genes_weights = []
         gp_source_genes_importances = []
         gp_target_genes_importances = []
-        for (gp_name,
-             gp_source_genes_idx,
-             gp_target_genes_idx,
-             gp_source_genes_weights_arr,
-             gp_target_genes_weights_arr,
-             gp_source_genes_importances_arr,
-             gp_target_genes_importances_arr) in zip(
-                self.adata.uns[self.gp_names_key_],
+        for (name,
+             gene_mask_source,
+             gene_mask_target,
+             gene_weights_source,
+             gene_weights_target,
+             gene_importances_source,
+             gene_importances_target) in zip(
+                all_gps,
                 gp_gene_mask_source,
                 gp_gene_mask_target,
                 gp_gene_weights_source,
                 gp_gene_weights_target,
                 gp_gene_importances_source,
                 gp_gene_importances_target):
-            gp_names.append(gp_name)
-            active_gp_idx.append(active_gps.index(gp_name)
-                                 if gp_name in active_gps else np.nan)
-            all_gp_idx.append(all_gps.index(gp_name))
+            gp_names.append(name)
+            active_gp_idx.append(active_gps.index(name)
+                                 if name in active_gps else np.nan)
+            all_gp_idx.append(all_gps.index(name))
 
             # Sort source genes according to absolute weights
-            sorted_source_genes_weights = []
-            sorted_source_genes_importances = []
-            sorted_source_genes = []
+            gene_weights_source_sorted = []
+            gene_importances_source_sorted = []
+            genes_source_sorted = []
             for _, weights, importances, genes in sorted(zip(
-                np.abs(np.around(gp_source_genes_weights_arr[gp_source_genes_idx],
-                                 decimals=4)),
-                np.around(gp_source_genes_weights_arr[gp_source_genes_idx],
+                np.abs(np.around(gene_weights_source[gene_mask_source],
+                                 decimals=4)), # just for sorting
+                np.around(gene_weights_source[gene_mask_source],
                           decimals=4),
-                np.around(gp_source_genes_importances_arr[gp_source_genes_idx],
+                np.around(gene_importances_source[gene_mask_source],
                           decimals=4),        
-                self.adata.var_names[gp_source_genes_idx].tolist()),reverse=True):
-                    sorted_source_genes.append(genes)
-                    sorted_source_genes_weights.append(weights)
-                    sorted_source_genes_importances.append(importances)
+                self.adata.var_names[gene_mask_source].tolist()), reverse=True):
+                    genes_source_sorted.append(genes)
+                    gene_weights_source_sorted.append(weights)
+                    gene_importances_source_sorted.append(importances)
             
             # Sort target genes according to absolute weights
-            sorted_target_genes_weights = []
-            sorted_target_genes_importances = []
-            sorted_target_genes = []
+            geme_weights_target_sorted = []
+            gene_importances_target_sorted = []
+            genes_target_sorted = []
             for _, weights, importances, genes in sorted(zip(
-                np.abs(np.around(gp_target_genes_weights_arr[gp_target_genes_idx],
-                                 decimals=4)),
-                np.around(gp_target_genes_weights_arr[gp_target_genes_idx],
+                np.abs(np.around(gene_weights_target[gene_mask_target],
+                                 decimals=4)), # just for sorting
+                np.around(gene_weights_target[gene_mask_target],
                           decimals=4),                 
-                np.around(gp_target_genes_importances_arr[gp_target_genes_idx],
+                np.around(gene_importances_target[gene_mask_target],
                           decimals=4),
-                self.adata.var_names[gp_target_genes_idx].tolist()), reverse=True):
-                    sorted_target_genes.append(genes)
-                    sorted_target_genes_weights.append(weights)
-                    sorted_target_genes_importances.append(importances)                 
+                self.adata.var_names[gene_mask_target].tolist()), reverse=True):
+                    genes_target_sorted.append(genes)
+                    geme_weights_target_sorted.append(weights)
+                    gene_importances_target_sorted.append(importances)                 
                 
-            n_source_genes.append(len(sorted_source_genes))
+            n_source_genes.append(len(genes_source_sorted))
             n_non_zero_source_genes.append(len(np.array(
-                sorted_source_genes_weights).nonzero()[0]))
-            n_target_genes.append(len(sorted_target_genes))
+                gene_weights_source_sorted).nonzero()[0]))
+            n_target_genes.append(len(genes_target_sorted))
             n_non_zero_target_genes.append(len(np.array(
-                sorted_target_genes_weights).nonzero()[0]))
-            gp_source_genes.append(sorted_source_genes)
-            gp_target_genes.append(sorted_target_genes)
-            gp_source_genes_weights.append(sorted_source_genes_weights)
-            gp_target_genes_weights.append(sorted_target_genes_weights)
-            gp_source_genes_importances.append(sorted_source_genes_importances)
-            gp_target_genes_importances.append(sorted_target_genes_importances)
+                geme_weights_target_sorted).nonzero()[0]))
+            gp_source_genes.append(genes_source_sorted)
+            gp_target_genes.append(genes_target_sorted)
+            gp_source_genes_weights.append(gene_weights_source_sorted)
+            gp_target_genes_weights.append(geme_weights_target_sorted)
+            gp_source_genes_importances.append(gene_importances_source_sorted)
+            gp_target_genes_importances.append(gene_importances_target_sorted)
    
         gp_summary_df = pd.DataFrame(
             {"gp_name": gp_names,
@@ -1782,8 +1776,15 @@ class NicheCompass(BaseModelMixin):
             gp_summary_df["active_gp_idx"].astype("Int64"))
         
         if "atac" in self.modalities_:
-            gp_peak_importances = np.abs(
-                gp_peak_weights / np.abs(gp_peak_weights).sum(0))
+            # Add peak info for each gp
+            
+            # Normalize gp weights to get gene importances
+            gp_peak_importances = np.where(
+                np.abs(gp_peak_weights).sum(0) != 0,
+                gp_peak_weights / np.abs(gp_peak_weights).sum(0),
+                0)
+        
+            # Split peak weights and importances into source and target part
             gp_peak_weights = np.transpose(gp_peak_weights)
             gp_peak_importances = np.transpose(gp_peak_importances)
             gp_peak_weights_source = gp_peak_weights[
@@ -1795,24 +1796,24 @@ class NicheCompass(BaseModelMixin):
             gp_peak_importances_target = gp_peak_importances[
                 :, :(gp_peak_weights.shape[1] // 2)]
 
-            # Get source and target peaks
-            gp_source_peaks_mask = np.transpose(
-                self.adata_atac.varm[self.ca_sources_mask_key_] != 0).toarray()
-            gp_target_peaks_mask = np.transpose(
-                self.adata_atac.varm[self.ca_targets_mask_key_] != 0).toarray()
-        
+            # Get source and target peak masks
+            gp_peak_mask_source = np.transpose(
+                np.array(
+                    self.model.source_atac_decoder_mask.to_dense()).T != 0)
+            gp_peak_mask_target = np.transpose(
+                np.array(
+                    self.model.target_atac_decoder_mask.to_dense()).T != 0)
+
             # Add entries to gp mask for addon gps
             if self.n_addon_gp_ > 0:
-                addon_gp_source_peaks_mask = np.ones(
-                    (self.n_addon_gp_,
-                     self.adata_atac.n_vars), dtype=bool)
-                addon_gp_target_peaks_mask = np.ones(
-                    (self.n_addon_gp_,
-                     self.adata_atac.n_vars), dtype=bool)
-                gp_source_peaks_mask = np.concatenate(
-                    (gp_source_peaks_mask, addon_gp_source_peaks_mask), axis=0)
-                gp_target_peaks_mask = np.concatenate(
-                    (gp_target_peaks_mask, addon_gp_target_peaks_mask), axis=0)
+                gp_peak_addon_mask_source = np.transpose(
+                np.array(self.model.source_atac_decoder_addon_mask).T != 0)
+                gp_peak_addon_mask_target = np.transpose(
+                np.array(self.model.target_atac_decoder_addon_mask).T != 0)
+                gp_peak_mask_source = np.concatenate(
+                    (gp_peak_mask_source, gp_peak_addon_mask_source), axis=0)
+                gp_peak_mask_target = np.concatenate(
+                    (gp_peak_mask_target, gp_peak_addon_mask_target), axis=0)
 
             # Collect info for each gp in lists of lists
             n_source_peaks = []
@@ -1831,32 +1832,32 @@ class NicheCompass(BaseModelMixin):
                  gp_target_peaks_weights_arr,
                  gp_source_peaks_importances_arr,
                  gp_target_peaks_importances_arr) in zip(
-                    gp_source_peaks_mask,
-                    gp_target_peaks_mask,
+                    gp_peak_mask_source,
+                    gp_peak_mask_target,
                     gp_peak_weights_source,
                     gp_peak_weights_target,
                     gp_peak_importances_source,
                     gp_peak_importances_target):
                 # Sort source peaks according to absolute weights
-                sorted_source_peaks_weights = []
-                sorted_source_peaks_importances = []
-                sorted_source_peaks = []
+                peak_weights_source_sorted = []
+                peak_importances_source_sorted = []
+                peaks_source_sorted = []
                 for _, weights, importances, peaks in sorted(zip(
                     np.abs(np.around(gp_source_peaks_weights_arr[gp_source_peaks_idx],
-                                    decimals=4)),
+                                    decimals=4)), # just for sorting
                     np.around(gp_source_peaks_weights_arr[gp_source_peaks_idx],
                             decimals=4),
                     np.around(gp_source_peaks_importances_arr[gp_source_peaks_idx],
                             decimals=4),        
                     self.adata_atac.var_names[gp_source_peaks_idx].tolist()),reverse=True):
-                        sorted_source_peaks.append(peaks)
-                        sorted_source_peaks_weights.append(weights)
-                        sorted_source_peaks_importances.append(importances)
+                        peaks_source_sorted.append(peaks)
+                        peak_weights_source_sorted.append(weights)
+                        peak_importances_source_sorted.append(importances)
                 
                 # Sort target peaks according to absolute weights
-                sorted_target_peaks_weights = []
-                sorted_target_peaks_importances = []
-                sorted_target_peaks = []
+                peak_weights_target_sorted = []
+                peak_importances_target_sorted = []
+                peaks_target_sorted = []
                 for _, weights, importances, peaks in sorted(zip(
                     np.abs(np.around(gp_target_peaks_weights_arr[gp_target_peaks_idx],
                                     decimals=4)),
@@ -1865,22 +1866,22 @@ class NicheCompass(BaseModelMixin):
                     np.around(gp_target_peaks_importances_arr[gp_target_peaks_idx],
                             decimals=4),
                     self.adata_atac.var_names[gp_target_peaks_idx].tolist()), reverse=True):
-                        sorted_target_peaks.append(peaks)
-                        sorted_target_peaks_weights.append(weights)
-                        sorted_target_peaks_importances.append(importances)                 
+                        peaks_target_sorted.append(peaks)
+                        peak_weights_target_sorted.append(weights)
+                        peak_importances_target_sorted.append(importances)                 
                     
-                n_source_peaks.append(len(sorted_source_peaks))
+                n_source_peaks.append(len(peaks_source_sorted))
                 n_non_zero_source_peaks.append(len(np.array(
-                    sorted_source_peaks_weights).nonzero()[0]))
-                n_target_peaks.append(len(sorted_target_peaks))
+                    peak_weights_source_sorted).nonzero()[0]))
+                n_target_peaks.append(len(peaks_target_sorted))
                 n_non_zero_target_peaks.append(len(np.array(
-                    sorted_target_peaks_weights).nonzero()[0]))
-                gp_source_peaks.append(sorted_source_peaks)
-                gp_target_peaks.append(sorted_target_peaks)
-                gp_source_peaks_weights.append(sorted_source_peaks_weights)
-                gp_target_peaks_weights.append(sorted_target_peaks_weights)
-                gp_source_peaks_importances.append(sorted_source_peaks_importances)
-                gp_target_peaks_importances.append(sorted_target_peaks_importances)
+                    peak_weights_target_sorted).nonzero()[0]))
+                gp_source_peaks.append(peaks_source_sorted)
+                gp_target_peaks.append(peaks_target_sorted)
+                gp_source_peaks_weights.append(peak_weights_source_sorted)
+                gp_target_peaks_weights.append(peak_weights_target_sorted)
+                gp_source_peaks_importances.append(peak_importances_source_sorted)
+                gp_target_peaks_importances.append(peak_importances_target_sorted)
 
             gp_summary_df["n_source_peaks"] = n_source_peaks
             gp_summary_df["n_non_zero_source_peaks"] = n_non_zero_source_peaks
@@ -1896,7 +1897,7 @@ class NicheCompass(BaseModelMixin):
                 gp_summary_df["gp_source_peaks_importances"].replace(np.nan, 0.))
             gp_summary_df["gp_target_peaks_importances"] = (
                 gp_summary_df["gp_target_peaks_importances"].replace(np.nan, 0.))
-        
+
         return gp_summary_df
     
 

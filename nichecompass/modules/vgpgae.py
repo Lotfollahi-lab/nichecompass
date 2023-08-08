@@ -209,6 +209,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.target_rna_decoder_mask = target_rna_decoder_mask
         self.source_rna_decoder_mask = source_rna_decoder_mask
         self.n_output_peaks_ = n_output_peaks
+        self.target_atac_decoder_mask = target_atac_decoder_mask
+        self.source_atac_decoder_mask = source_atac_decoder_mask
         self.features_idx_dict_ = features_idx_dict
         self.gene_peaks_mask_ = gene_peaks_mask
         #assert(torch.all(torch.logical_or(gene_peaks_mask == 0,
@@ -459,7 +461,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                          (self.n_cat_covariates_ > 0)
                          else 0),
                     n_output=n_output_peaks,
-                    mask=target_atac_decoder_mask,
+                    mask=self.target_atac_decoder_mask,
                     addon_mask=self.target_atac_decoder_addon_mask,
                     masked_features_idx=features_idx_dict[
                         "target_masked_atac_idx"],
@@ -476,7 +478,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                          (self.n_cat_covariates_ > 0)
                          else 0),
                     n_output=n_output_peaks,
-                    mask=source_atac_decoder_mask,
+                    mask=self.source_atac_decoder_mask,
                     addon_mask=self.source_atac_decoder_addon_mask,
                     masked_features_idx=features_idx_dict[
                         "source_masked_atac_idx"],
