@@ -658,7 +658,7 @@ class Trainer(BaseTrainerMixin):
                         node_val_model_output[f"{entity}_{modality}_nb_means"].detach().cpu().numpy())
                     omics_pred_dict_val_accumulated[f"{entity}_{modality}"] = np.append(
                         omics_pred_dict_val_accumulated[f"{entity}_{modality}"],
-                        node_val_model_output["node_labels"][f"{entity}_{modality}"].detach().cpu().numpy())        
+                        node_val_model_output["node_labels"][f"{entity}_{modality}"].detach().cpu().numpy())
 
         val_eval_dict = eval_metrics(
             edge_recon_probs=edge_recon_probs_val_accumulated,

@@ -573,8 +573,8 @@ class NicheCompass(BaseModelMixin):
               contrastive_logits_neg_ratio: float=0.,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,
-              l1_targets_categories: list=["receptor", "sensor", "target_gene", "marker"],
-              l1_sources_categories: list=["ligand", "enzyme", "tf", "marker"],
+              l1_targets_categories: Optional[list]=None,
+              l1_sources_categories: Optional[list]=None,
               lambda_l1_addon: float=0.,
               edge_val_ratio: float=0.1,
               node_val_ratio: float=0.1,
@@ -709,14 +709,22 @@ class NicheCompass(BaseModelMixin):
         
         if lambda_l1_masked > 0.:
             # Create mask for l1 regularization loss
-            l1_targets_categories_encoded = [
-                self.adata.uns[
-                    self.targets_categories_label_encoder_key_][category]
-                for category in l1_targets_categories]
-            l1_sources_categories_encoded = [
-                self.adata.uns[
-                    self.sources_categories_label_encoder_key_][category]
-                for category in l1_sources_categories]
+            if l1_targets_categories is None:
+                l1_targets_categories_encoded = list(self.adata.uns[
+                    self.targets_categories_label_encoder_key_].values())
+            else:
+                l1_targets_categories_encoded = [
+                    self.adata.uns[
+                        self.targets_categories_label_encoder_key_][category]
+                    for category in l1_targets_categories]
+            if l1_sources_categories is None:
+                l1_sources_categories_encoded = list(self.adata.uns[
+                    self.sources_categories_label_encoder_key_].values())
+            else:
+                l1_sources_categories_encoded = [
+                    self.adata.uns[
+                        self.sources_categories_label_encoder_key_][category]
+                    for category in l1_sources_categories]
             l1_targets_mask = np.isin(
                 self.adata.varm[self.gp_targets_categories_mask_key_],
                 l1_targets_categories_encoded)
@@ -750,6 +758,7 @@ class NicheCompass(BaseModelMixin):
         self.node_batch_size_ = self.trainer.node_batch_size_
         
         self.is_trained_ = True
+        self.model.eval()
 
         self.adata.obsm[self.latent_key_], _ = self.get_latent_representation(
            adata=self.adata,

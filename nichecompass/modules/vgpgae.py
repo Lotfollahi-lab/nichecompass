@@ -737,8 +737,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                         target_atac_dynamic_decoder_mask = torch.mm(
                             non_zero_target_gene_weights.t(), # dim: (n_gps,
                                                               #       n_genes)
-                            self.gene_peaks_mask_).float() # dim: (n_genes,
-                                                           #       n_peaks)
+                            self.gene_peaks_mask_) # dim: (n_genes,
+                                                   # n_peaks)
                             # dim: (n_gps, n_peaks)
                         source_atac_dynamic_decoder_mask = torch.mm(
                             non_zero_source_gene_weights.t(),
@@ -1135,7 +1135,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Tensor containing the rna decoder gene weights of active gene
             programs.
         """
-        gp_weights = self.get_gp_weights(only_masked_features=True)[0]
+        gp_weights = self.get_gp_weights(only_masked_features=False)[0]
         
         # Normalize gp weights with running mean absolute gp scores
         gp_weights_normalized = (self.running_mean_abs_mu * gp_weights)
