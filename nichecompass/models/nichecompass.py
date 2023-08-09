@@ -429,8 +429,8 @@ class NicheCompass(BaseModelMixin):
             # Add add-on gps to adata
             gp_list = list(self.adata.uns[self.gp_names_key_])
             for i in range(n_addon_gp):
-                if f"Add-on {i} GP" not in gp_list:
-                    gp_list.append(f"Add-on {i} GP")
+                if f"Add-on_{i}_GP" not in gp_list:
+                    gp_list.append(f"Add-on_{i}_GP")
             self.adata.uns[self.gp_names_key_] = np.array(gp_list)
         else:
             # Remove add-on gps from adata
@@ -886,8 +886,7 @@ class NicheCompass(BaseModelMixin):
 
         # Get indeces and weights for selected gps
         selected_gps_idx, selected_gps_weights, chrom_access_gp_weights = self.get_gp_data(
-            selected_gps=selected_gps,
-            adata=adata)
+            selected_gps=selected_gps)
 
         # Get gp / latent scores for selected gps
         mu, std = self.get_latent_representation(
@@ -900,15 +899,6 @@ class NicheCompass(BaseModelMixin):
             node_batch_size=self.node_batch_size_)
         mu_selected_gps = mu[:, selected_gps_idx]
         std_selected_gps = std[:, selected_gps_idx]
-
-        # Correct signs of gp scores based on sum of weights
-        gp_weights_sum = selected_gps_weights.sum(0) # sum over genes
-        gp_signs = np.zeros_like(gp_weights_sum)
-        gp_signs[gp_weights_sum>0] = 1. # keep sign of gp score
-        gp_signs[gp_weights_sum<0] = -1. # reverse sign of gp score
-        norm_factors = gp_signs # dim: (n_selected_gps,)
-        mu_norm_factors = norm_factors
-        std_norm_factors = 1 # no negative std
 
         # Retrieve category values for each observation, as well as all existing
         # unique categories
@@ -940,38 +930,12 @@ class NicheCompass(BaseModelMixin):
             if comparison_cats == "rest":
                 comparison_cat_mask = ~cat_mask
             else:
-                comparison_cat_mask = cat_values.isin(comparison_cats)
+                comparison_cat_mask = cat_values.isin(comparison_cats)          
 
-            # Aggregate normalization factors
-            if norm_factors.ndim == 1 or norm_factors.ndim == 2:
-                mu_norm_factors_cat = mu_norm_factors
-                mu_norm_factors_comparison_cat =  mu_norm_factors
-                std_norm_factors_cat = std_norm_factors
-                std_norm_factors_comparison_cat = std_norm_factors
-            elif norm_factors.ndim == 3:
-                # Compute mean of normalization factors across genes for the
-                # category under consideration and the comparison categories
-                # respectively
-                mu_norm_factors_cat = norm_factors[cat_mask].mean(1)
-                std_norm_factors_cat = np.abs(norm_factors[cat_mask].mean(1))
-                mu_norm_factors_comparison_cat = (
-                    norm_factors[comparison_cat_mask].mean(1)) # dim:
-                    # (n_selected_gps,)
-                std_norm_factors_comparison_cat = np.abs(
-                    norm_factors[comparison_cat_mask].mean(1)) # dim:
-                    # (n_selected_gps,)             
-
-            # Normalize gp scores
-            mu_selected_gps_cat = (
-                mu_selected_gps[cat_mask] * mu_norm_factors_cat)
-            std_selected_gps_cat = (
-                std_selected_gps[cat_mask] * std_norm_factors_cat)
-            mu_selected_gps_comparison_cat = (
-                mu_selected_gps[comparison_cat_mask] *
-                mu_norm_factors_comparison_cat)
-            std_selected_gps_comparison_cat = (
-                std_selected_gps[comparison_cat_mask] *
-                std_norm_factors_comparison_cat)
+            mu_selected_gps_cat = mu_selected_gps[cat_mask]
+            std_selected_gps_cat = std_selected_gps[cat_mask]
+            mu_selected_gps_comparison_cat = mu_selected_gps[comparison_cat_mask]
+            std_selected_gps_comparison_cat = std_selected_gps[comparison_cat_mask]
 
             # Generate random samples of category and comparison categories
             # observations with equal size
@@ -1032,15 +996,6 @@ class NicheCompass(BaseModelMixin):
         results.drop("abs_log_bayes_factor", axis=1, inplace=True)
         adata.uns[key_added] = results
 
-        # Normalize gp scores
-        if mu_norm_factors.ndim == 2:
-            mu_norm_factors = mu_norm_factors.mean(0) # mean over genes,
-            # dim: (n_selected_gps,)
-        elif norm_factors.ndim == 3:
-            mu_norm_factors = norm_factors.mean(1) # mean over genes,
-            # dim: (n_obs, n_selected_gps)
-        mu_selected_gps *= mu_norm_factors # use broadcasting
-
         # Retrieve enriched gene programs
         enriched_gps = results["gene_program"].unique().tolist()
         enriched_gps_idx = [selected_gps.index(gp) for gp in enriched_gps]
@@ -1060,61 +1015,49 @@ class NicheCompass(BaseModelMixin):
 
     def compute_gp_gene_importances(
             self,
-            selected_gp: str,
-            adata: Optional[AnnData]=None) -> pd.DataFrame:
+            selected_gp: str) -> pd.DataFrame:
         """
         Compute gene importances for the genes of a given gene program. Gene
-        importances are determined by the normalized weights of the gene
-        expression decoder, corrected for gene expression zero inflation in the
-        case of ´self.edge_recon_dist == zinb´.
+        importances are determined by the normalized weights of the rna
+        decoders.
 
         Parameters
         ----------
         selected_gp:
             Name of the gene program for which the gene importances should be
             retrieved.
-        adata:
-            AnnData object to be used. If ´None´, uses the adata object stored
-            in the model instance.
      
         Returns
         ----------
         gp_gene_importances_df:
-            Pandas DataFrame containing genes, sign-corrected gene weights, gene
+            Pandas DataFrame containing genes, gene weights, gene
             importances and an indicator whether the gene belongs to the
             communication source or target, stored in ´gene_entity´.
         """
         self._check_if_trained(warn=True)
-        
-        if adata is None:
-            adata = self.adata
 
         # Check if selected gene program is active
-        active_gps = adata.uns[self.active_gp_names_key_]
+        active_gps = self.adata.uns[self.active_gp_names_key_]
         if selected_gp not in active_gps:
             print(f"GP '{selected_gp}' is not an active gene program. "
                   "Continuing anyways.")
 
-        _, gp_weights, _ = self.get_gp_data(selected_gps=selected_gp,
-                                            adata=adata)
+        _, gp_gene_weights, _ = self.get_gp_data(selected_gps=selected_gp)
 
-        # Correct signs of gp weights to be aligned with (normalized) gp scores
-        if gp_weights.sum(0) < 0:
-            gp_weights *= -1
-
-        if self.gene_expr_recon_dist_ == "nb":
-            # Normalize gp weights to get gene importances
-            gp_gene_importances = np.abs(gp_weights / np.abs(gp_weights).sum(0))
+        # Normalize gp gene weights to get gp gene importances
+        gp_gene_importances = np.where(
+            np.abs(gp_gene_weights).sum(0) != 0,
+            np.abs(gp_gene_weights) / np.abs(gp_gene_weights).sum(0),
+            0)
 
         # Create result dataframe
         gp_gene_importances_df = pd.DataFrame()
-        gp_gene_importances_df["gene"] = [gene for gene in
-                                          adata.var_names.tolist()] * 2
-        gp_gene_importances_df["gene_entity"] = (["target"] *
-                                                 len(adata.var_names) +
-                                                 ["source"] *
-                                                 len(adata.var_names))
-        gp_gene_importances_df["gene_weight_sign_corrected"] = gp_weights
+        gp_gene_importances_df["gene"] = [
+            gene for gene in self.adata.var_names.tolist()] * 2
+        gp_gene_importances_df["gene_entity"] = (
+            ["target"] * len(self.adata.var_names) +
+            ["source"] * len(self.adata.var_names))
+        gp_gene_importances_df["gene_weight"] = gp_gene_weights
         gp_gene_importances_df["gene_importance"] = gp_gene_importances
         gp_gene_importances_df = (gp_gene_importances_df
             [gp_gene_importances_df["gene_importance"] != 0])
@@ -1126,30 +1069,22 @@ class NicheCompass(BaseModelMixin):
     
     def compute_gp_peak_importances(
             self,
-            selected_gp: str,
-            adata: Optional[AnnData]=None,
-            adata_atac: Optional[AnnData]=None) -> pd.DataFrame:
+            selected_gp: str) -> pd.DataFrame:
         """
         Compute peak importances for the peaks of a given gene program. Peak
-        importances are determined by the normalized weights of the chromatin
-        accessibility decoder.
+        importances are determined by the normalized weights of the atac
+        decoders.
 
         Parameters
         ----------
         selected_gp:
             Name of the gene program for which the peak importances should be
             retrieved.
-        adata:
-            AnnData object to be used. If ´None´, uses the adata object stored
-            in the model instance.
-        adata_atac:
-            ATAC AnnData object to be used. If ´None´, uses the adata_atac
-            object stored in the model instance.
      
         Returns
         ----------
         gp_peak_importances_df:
-            Pandas DataFrame containing peaks, sign-corrected peak weights, peak
+            Pandas DataFrame containing peaks, peak weights, peak
             importances and an indicator whether the peak belongs to the
             communication source or target, stored in ´peak_entity´.
         """
@@ -1158,46 +1093,31 @@ class NicheCompass(BaseModelMixin):
         if not "atac" in self.modalities_:
             raise ValueError("The model training needs to include ATAC data, "
                              "otherwise peak importances cannot be retrieved.")
-        
-        if adata is None:
-            adata = self.adata
-
-        if adata_atac is None:
-            adata_atac = self.adata_atac
 
         # Check if selected gene program is active
-        active_gps = adata.uns[self.active_gp_names_key_]
+        active_gps = self.adata.uns[self.active_gp_names_key_]
         if selected_gp not in active_gps:
             print(f"GP '{selected_gp}' is not an active gene program. "
                   "Continuing anyways.")
 
-        _, gp_gene_expr_weights, gp_chrom_access_weights = self.get_gp_data(
-            selected_gps=selected_gp,
-            adata=adata)
+        _, gp_gene_weights, gp_peak_weights = self.get_gp_data(
+            selected_gps=selected_gp)
 
-        # Correct signs of GP chrom access weights to be aligned with
-        # (normalized) GP scores. Note that GP scores are normalized based on
-        # gene expr weights
-        if gp_gene_expr_weights.sum(0) < 0:
-            gp_chrom_access_weights *= -1
-
-        # Normalize GP chrom access weights to get peak importances
-        gp_peak_importances = np.abs(
-            gp_chrom_access_weights / np.abs(gp_chrom_access_weights).sum(0))
+        # Normalize gp peak weights to get gp peak importances
+        gp_peak_importances = np.where(
+            np.abs(gp_peak_weights).sum(0) != 0,
+            np.abs(gp_peak_weights) / np.abs(gp_peak_weights).sum(0),
+            0)
 
         # Create result dataframe
         gp_peak_importances_df = pd.DataFrame()
-        gp_peak_importances_df["peak"] = [peak for peak in
-                                          adata_atac.var_names.tolist()] * 2
-        gp_peak_importances_df["peak_entity"] = (["target"] *
-                                                 len(adata_atac.var_names) +
-                                                 ["source"] *
-                                                 len(adata_atac.var_names))
-        gp_peak_importances_df["peak_weight_sign_corrected"] = (
-            gp_chrom_access_weights)
+        gp_peak_importances_df["peak"] = [
+            peak for peak in self.adata_atac.var_names.tolist()] * 2
+        gp_peak_importances_df["peak_entity"] = (
+            ["target"] * len(self.adata_atac.var_names) +
+            ["source"] * len(self.adata_atac.var_names))
+        gp_peak_importances_df["peak_weight"] = gp_peak_weights
         gp_peak_importances_df["peak_importance"] = gp_peak_importances
-        gp_peak_importances_df["peak_importance"] = (
-            gp_peak_importances_df["peak_importance"] .replace(np.nan, 0.))
         gp_peak_importances_df = (gp_peak_importances_df
             [gp_peak_importances_df["peak_importance"] != 0])
         gp_peak_importances_df.sort_values(by="peak_importance",
@@ -1648,7 +1568,7 @@ class NicheCompass(BaseModelMixin):
         # Normalize gp weights to get gene importances
         gp_gene_importances = np.where(
             np.abs(gp_gene_weights).sum(0) != 0,
-            gp_gene_weights / np.abs(gp_gene_weights).sum(0),
+            np.abs(gp_gene_weights) / np.abs(gp_gene_weights).sum(0),
             0)      
 
         # Split gene weights and importances into source and target part
@@ -1790,7 +1710,7 @@ class NicheCompass(BaseModelMixin):
             # Normalize gp weights to get gene importances
             gp_peak_importances = np.where(
                 np.abs(gp_peak_weights).sum(0) != 0,
-                gp_peak_weights / np.abs(gp_peak_weights).sum(0),
+                np.abs(gp_peak_weights) / np.abs(gp_peak_weights).sum(0),
                 0)
         
             # Split peak weights and importances into source and target part
