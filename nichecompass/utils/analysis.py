@@ -305,8 +305,6 @@ def generate_enriched_gp_info_plots(plot_label: str,
         gp_gene_importances_df = model.compute_gp_gene_importances(
             selected_gp=gp)
         
-        print(gp_gene_importances_df)
-        
         gp_source_genes_gene_importances_df = gp_gene_importances_df[
             gp_gene_importances_df["gene_entity"] == "source"]
         gp_target_genes_gene_importances_df = gp_gene_importances_df[
