@@ -664,7 +664,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 output["node_labels"]["target_atac"] = x_atac[batch_idx][
                     :, self.features_idx_dict_["target_reconstructed_atac_idx"]]  
                 output["node_labels"]["source_atac"] = x_neighbors_atac[batch_idx][
-                    :, self.features_idx_dict_["source_reconstructed_atac_idx"]] 
+                    :, self.features_idx_dict_["source_reconstructed_atac_idx"]]
                 
             # Use observed library size as scaling factor for the negative
             # binomial means of the rna distribution
@@ -1003,7 +1003,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     x=node_model_output["node_labels"]["target_atac"],
                     mu=node_model_output["target_atac_nb_means"],
                     theta=torch.exp(self.target_atac_theta))) 
-            loss_dict["chrom_access_recon_loss"] =+ (
+            loss_dict["chrom_access_recon_loss"] += (
                 lambda_chrom_access_recon * 
             compute_omics_recon_nb_loss(
                     x=node_model_output["node_labels"]["source_atac"],
