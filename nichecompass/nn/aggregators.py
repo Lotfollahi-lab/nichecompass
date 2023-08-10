@@ -220,7 +220,8 @@ class OneHopSumNodeLabelAggregator(nn.Module):
 
     def forward(self,
                 x: torch.Tensor,
-                edge_index:torch.Tensor) -> torch.Tensor:
+                edge_index:torch.Tensor,
+                return_agg_weights: bool=False) -> torch.Tensor:
         """
         Forward pass of the One-hop Sum Node Label Aggregator.
         
@@ -247,5 +248,5 @@ class OneHopSumNodeLabelAggregator(nn.Module):
                                            sparse_sizes=(x.shape[0],
                                                          x.shape[0]))
         x_neighbors = adj.t().matmul(x)
-        return x_neighbors
+        return x_neighbors, None
     
