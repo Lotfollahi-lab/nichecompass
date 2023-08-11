@@ -72,7 +72,7 @@ class MaskedLinear(nn.Linear):
             connections).
         """
         if dynamic_mask is not None:
-            dynamic_mask = dynamic_mask.t()
+            dynamic_mask = dynamic_mask.t().to(self.mask.device)
             self.weight.data *= dynamic_mask
             masked_weights = self.weight * self.mask * dynamic_mask
         else:
