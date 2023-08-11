@@ -122,14 +122,14 @@ class AddOnMaskedLayer(nn.Module):
             
         output = self.masked_l(
             input=mask_input,
-            dynamic_mask=(dynamic_mask[:, :self.n_input] if
+            dynamic_mask=(dynamic_mask[:self.n_input, :] if
                           dynamic_mask is not None else None)) 
             # Dynamic mask also has entries for add-on gps
         if self.n_addon_input != 0:
             # Only unmasked features will have weights != 0.
             output += self.addon_l(
                 input=addon_input,
-                dynamic_mask=(dynamic_mask[:, self.n_input:] if
+                dynamic_mask=(dynamic_mask[self.n_input:, :] if
                               dynamic_mask is not None else None))
         if self.n_cat_covariates_embed_input != 0:
             if self.n_addon_input != 0:

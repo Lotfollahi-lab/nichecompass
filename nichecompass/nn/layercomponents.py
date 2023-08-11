@@ -77,9 +77,9 @@ class MaskedLinear(nn.Linear):
             connections).
         """
         if dynamic_mask is not None:
-            self.dynamic_mask = dynamic_mask
-            self.weight.data *= self.dynamic_mask
-            masked_weights = self.weight * self.mask * self.dynamic_mask
+            dynamic_mask = dynamic_mask.t()
+            self.weight.data *= dynamic_mask
+            masked_weights = self.weight * self.mask * dynamic_mask
         else:
             masked_weights = self.weight * self.mask
         output = nn.functional.linear(input, masked_weights, self.bias)
