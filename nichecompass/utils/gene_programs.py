@@ -980,17 +980,29 @@ def filter_and_combine_gp_dict_gps(
             new_gp_name = "_".join([gp[:-3] for gp in overlap_gp]) + "_GP"
             new_gp_sources = []
             new_gp_targets = []
+            new_gp_sources_categories = []
+            new_gp_targets_categories = []
             for gp in overlap_gp:
-                new_gp_sources.extend(gp_dict[gp]["sources"])
-                new_gp_targets.extend(gp_dict[gp]["targets"])
+                for new_gp_source, new_gp_source_category in zip(
+                    gp_dict[gp]["sources"], gp_dict[gp]["sources_categories"]):
+                    if new_gp_source not in new_gp_sources:
+                        new_gp_sources.extend(new_gp_source)
+                        new_gp_sources_categories.extend(new_gp_source_category)
+                for new_gp_target, new_gp_target_category in zip(
+                    gp_dict[gp]["targets"], gp_dict[gp]["targets_categories"]):
+                    if new_gp_target not in new_gp_targets:
+                        new_gp_targets.extend(new_gp_target)
+                        new_gp_targets_categories.extend(new_gp_target_category)
                 new_gp_dict.pop(gp, None)
                 if verbose:
                     print(f"Removing GP '{gp}' as it is a component of the "
                           f"combined GP '{new_gp_name}'.")
-            new_gp_dict[new_gp_name] = {"sources": 
-                                        sorted(list(set(new_gp_sources)))}
-            new_gp_dict[new_gp_name]["targets"] = sorted(
-                list(set(new_gp_targets)))
+            new_gp_dict[new_gp_name] = {"sources": new_gp_sources}
+            new_gp_dict[new_gp_name]["targets"] = new_gp_targets
+            new_gp_dict[new_gp_name]["sources_categories"] = (
+                new_gp_sources_categories)
+            new_gp_dict[new_gp_name]["targets_categories"] = (
+                new_gp_targets_categories)
     return new_gp_dict
 
 
