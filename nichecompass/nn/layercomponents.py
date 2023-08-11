@@ -45,11 +45,6 @@ class MaskedLinear(nn.Linear):
         super().__init__(n_input, n_output, bias)
 
         self.register_buffer("mask", mask.t())
-        if self.mask.is_sparse: # this is the case for the atac decoder
-            # Convert mask to dense; in the future check whether weights
-            # could be sparse to use a multiplication (sparse, sparse)
-            # instead
-            self.mask = self.mask.to_dense()
 
         # Zero out weights with the mask so that the optimizer does not
         # consider them
