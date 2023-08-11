@@ -261,12 +261,18 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         
         # Initialize node-label aggregator module
         if node_label_method == "one-hop-norm":
-            self.node_label_aggregator = OneHopGCNNormNodeLabelAggregator()
+            self.rna_node_label_aggregator = OneHopGCNNormNodeLabelAggregator(
+                modality="rna")
         elif node_label_method == "one-hop-sum":
-            self.node_label_aggregator = OneHopSumNodeLabelAggregator()
+            self.rna_node_label_aggregator = OneHopSumNodeLabelAggregator(
+                modality="rna")
         elif node_label_method == "one-hop-attention":
-            self.node_label_aggregator = OneHopAttentionNodeLabelAggregator(
+            self.rna_node_label_aggregator = OneHopAttentionNodeLabelAggregator(
+                modality="rna",
                 n_input=n_input)
+        if "atac" in self.modalities_:
+            self.atac_node_label_aggregator = OneHopSumNodeLabelAggregator(
+                modality="atac")
 
         # Initialize encoder module
         self.encoder = Encoder(
@@ -628,44 +634,27 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                         0.1 * mean_abs_mu + 0.9 * self.running_mean_abs_mu)
                     
             output["node_labels"] = {}
-            
-            # Compute aggregated neighborhood omics feature vector
-            node_label_aggregator_output = self.node_label_aggregator(
+
+            # Get rna and atac part from omics feature vector
+            x_atac = x[:, self.n_output_genes_:]
+            x = x[:, :self.n_output_genes_]
+        
+            # Compute aggregated neighborhood rna feature vector
+            rna_node_label_aggregator_output = self.rna_node_label_aggregator(
                     x=x,
                     edge_index=edge_index,
                     return_agg_weights=return_agg_weights)
-            x_neighbors = node_label_aggregator_output[0]
+            x_neighbors = rna_node_label_aggregator_output[0]
+ 
+            # Retrieve rna node labels and only keep nodes in current node batch
+            # and reconstructed features
+            assert x.size(1) == self.n_output_genes_
+            assert x_neighbors.size(1) == self.n_output_genes_
+            output["node_labels"]["target_rna"] = x[batch_idx][
+                :, self.features_idx_dict_["target_reconstructed_rna_idx"]]
+            output["node_labels"]["source_rna"] = x_neighbors[batch_idx][
+                :, self.features_idx_dict_["source_reconstructed_rna_idx"]]
             
-            if "atac" not in self.modalities_:
-                # Retrieve node labels and only keep nodes in current node batch
-                # and reconstructed features
-                output["node_labels"]["target_rna"] = x[batch_idx][
-                    :, self.features_idx_dict_["target_reconstructed_rna_idx"]]
-                output["node_labels"]["source_rna"] = x_neighbors[batch_idx][
-                    :, self.features_idx_dict_["source_reconstructed_rna_idx"]]
-            elif "atac" in self.modalities_:
-                # Separate node feature vector into RNA and ATAC part. x is a
-                # concatenated vector containing first RNA features, then ATAC
-                x_atac = x[:, self.n_output_genes_:]
-                x_neighbors_atac = x_neighbors[:, self.n_output_genes_:]
-                x = x[:, :self.n_output_genes_]
-                x_neighbors = x_neighbors[:, :self.n_output_genes_]
-                assert x.size(1) == self.n_output_genes_
-                assert x_neighbors.size(1) == self.n_output_genes_
-                assert x_atac.size(1) == self.n_output_peaks_
-                assert x_neighbors_atac.size(1) == self.n_output_peaks_
-                
-                # Retrieve node labels and only keep nodes in current node batch
-                # and reconstructed features
-                output["node_labels"]["target_rna"] = x[batch_idx][
-                    :, self.features_idx_dict_["target_reconstructed_rna_idx"]] 
-                output["node_labels"]["source_rna"] = x_neighbors[batch_idx][
-                    :, self.features_idx_dict_["source_reconstructed_rna_idx"]]
-                output["node_labels"]["target_atac"] = x_atac[batch_idx][
-                    :, self.features_idx_dict_["target_reconstructed_atac_idx"]]  
-                output["node_labels"]["source_atac"] = x_neighbors_atac[batch_idx][
-                    :, self.features_idx_dict_["source_reconstructed_atac_idx"]]
-                
             # Use observed library size as scaling factor for the negative
             # binomial means of the rna distribution
             target_rna_library_size = output["node_labels"]["target_rna"].sum(
@@ -699,6 +688,23 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     :, self.features_idx_dict_["source_reconstructed_rna_idx"]]
             
             if "atac" in self.modalities_:
+                # Compute aggregated neighborhood atac feature vector
+                atac_node_label_aggregator_output = (
+                    self.atac_node_label_aggregator(
+                        x=x_atac,
+                        edge_index=edge_index,
+                        return_agg_weights=return_agg_weights))
+                x_neighbors_atac = atac_node_label_aggregator_output[0]
+
+                # Retrieve node labels and only keep nodes in current node batch
+                # and reconstructed features
+                assert x_atac.size(1) == self.n_output_peaks_
+                assert x_neighbors_atac.size(1) == self.n_output_peaks_
+                output["node_labels"]["target_atac"] = x_atac[batch_idx][
+                    :, self.features_idx_dict_["target_reconstructed_atac_idx"]]  
+                output["node_labels"]["source_atac"] = x_neighbors_atac[batch_idx][
+                    :, self.features_idx_dict_["source_reconstructed_atac_idx"]]
+
                 # Use observed library size as scaling factor for the negative
                 # binomial means of the atac distribution
                 target_atac_library_size = output["node_labels"][

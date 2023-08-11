@@ -2,6 +2,8 @@
 This module contains gene expression aggregators used by the NicheCompass model.
 """
 
+from typing import Literal
+
 import torch
 import torch.nn as nn
 from torch_geometric.nn.conv import MessagePassing
@@ -14,6 +16,7 @@ from torch_sparse import SparseTensor
 
 class OneHopAttentionNodeLabelAggregator(MessagePassing):
     def __init__(self,
+                 modality: Literal["rna", "atac"],
                  n_input: int,
                  n_heads: int=4,
                  leaky_relu_negative_slope: float=0.2,
@@ -33,6 +36,8 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
 
         Parameters
         ----------
+        modality:
+            Omics modality that is aggregated. Can be either `rna` or `atac`.
         n_input:
             Number of omics features used for the Node Label Aggregation.
         n_heads:
@@ -62,7 +67,7 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
         self._alpha = None
         self.reset_parameters()
 
-        print("ONE HOP ATTENTION NODE LABEL AGGREGATOR -> "
+        print(f"ONE HOP ATTENTION {modality.upper()} NODE LABEL AGGREGATOR -> "
               f"n_input: {n_input}, "
               f"n_heads: {n_heads}")
 
@@ -161,10 +166,14 @@ class OneHopGCNNormNodeLabelAggregator(nn.Module):
     concatenation of the node's own omics feature vector and the gcn-norm
     aggregated neighbor omics feature vector as node labels for the omics
     reconstruction task.
+
+    modality:
+        Omics modality that is aggregated. Can be either `rna` or `atac`.
     """
-    def __init__(self):
+    def __init__(self,
+                 modality: Literal["rna", "atac"]):
         super().__init__()
-        print("ONE HOP GCN NORM NODE LABEL AGGREGATOR")
+        print(f"ONE HOP GCN NORM {modality.upper()} NODE LABEL AGGREGATOR")
 
     def forward(self,
                 x: torch.Tensor,
@@ -213,10 +222,16 @@ class OneHopSumNodeLabelAggregator(nn.Module):
     vector for a node. It returns a concatenation of the node's own omics
     feature vector and the sum-aggregated neighbor omics feature vector as node 
     labels for the omics reconstruction task.
+
+    Parameters
+    ----------
+    modality:
+        Omics modality that is aggregated. Can be either `rna` or `atac`.
     """
-    def __init__(self):
+    def __init__(self,
+                 modality: Literal["rna", "atac"]):
         super().__init__()
-        print("ONE HOP SUM NODE LABEL AGGREGATOR")
+        print(f"ONE HOP SUM {modality.upper()} NODE LABEL AGGREGATOR")
 
     def forward(self,
                 x: torch.Tensor,
