@@ -234,6 +234,7 @@ class NicheCompass(BaseModelMixin):
                  cat_covariates_cats: Optional[List[List]]=None,
                  n_addon_gp: int=10,
                  cat_covariates_embeds_nums: Optional[List[int]]=None,
+                 include_edge_kl_loss: bool=True,
                  **kwargs):
         self.adata = adata
         self.adata_atac = adata_atac
@@ -275,6 +276,7 @@ class NicheCompass(BaseModelMixin):
         self.log_variational_ = log_variational
         self.node_label_method_ = node_label_method
         self.active_gp_thresh_ratio_ = active_gp_thresh_ratio
+        self.include_edge_kl_loss_ = include_edge_kl_loss
 
         # Retrieve gene program masks
         if gp_targets_mask_key in adata.varm:
@@ -551,7 +553,8 @@ class NicheCompass(BaseModelMixin):
             node_label_method=self.node_label_method_,
             active_gp_thresh_ratio=self.active_gp_thresh_ratio_,
             log_variational=self.log_variational_,
-            cat_covariates_embeds_injection=self.cat_covariates_embeds_injection_)
+            cat_covariates_embeds_injection=self.cat_covariates_embeds_injection_,
+            include_edge_kl_loss=self.include_edge_kl_loss_)
 
         self.is_trained_ = False
 

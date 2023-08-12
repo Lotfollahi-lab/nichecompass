@@ -179,7 +179,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                              "chrom_access_decoder"]]]=["gene_expr_decoder",
                                                         "chrom_access_decoder"],
                  use_fc_decoder: bool=False,
-                 fc_decoder_n_layers: int=2):
+                 fc_decoder_n_layers: int=2,
+                 include_edge_kl_loss: bool=True):
         super().__init__()
         print("--- INITIALIZING NEW NETWORK MODULE: VARIATIONAL GENE PROGRAM "
               "GRAPH AUTOENCODER ---")
@@ -234,6 +235,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.include_gene_expr_recon_loss_ = include_gene_expr_recon_loss
         self.include_chrom_access_recon_loss_ = include_chrom_access_recon_loss
         self.include_cat_covariates_contrastive_loss_ = include_cat_covariates_contrastive_loss
+        self.include_edge_kl_loss_ = include_edge_kl_loss
         self.rna_recon_loss_ = rna_recon_loss
         self.atac_recon_loss_ = atac_recon_loss
         self.node_label_method_ = node_label_method
@@ -1014,11 +1016,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
         # Compute Kullback-Leibler divergence loss for edge and node batch
         loss_dict["kl_reg_loss"] = compute_kl_reg_loss(
-            mu=edge_model_output["mu"],
-            logstd=edge_model_output["logstd"])
-        loss_dict["kl_reg_loss"] += compute_kl_reg_loss(
             mu=node_model_output["mu"],
             logstd=node_model_output["logstd"])
+        if self.include_edge_kl_loss_:
+            loss_dict["kl_reg_loss"] += compute_kl_reg_loss(
+                mu=edge_model_output["mu"],
+                logstd=edge_model_output["logstd"])
 
         # Compute edge reconstruction binary cross entropy loss for edge batch
         loss_dict["edge_recon_loss"] = (
