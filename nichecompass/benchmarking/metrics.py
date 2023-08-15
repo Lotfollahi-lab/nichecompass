@@ -92,14 +92,14 @@ def compute_benchmarking_metrics(
         if len(n_neighbors_list) > 0:
             # Compute spatial nearest neighbor graphs
             for n_neighbors in n_neighbors_list:
-                if (f"nichecompass_spatial_{n_neighbors}knng_connectivities"
+                if (f"{spatial_key}_{n_neighbors}knng_connectivities"
                     not in adata.obsp):
                     print("Computing spatial nearest neighbor graph with "
                           f"{n_neighbors} neighbors for entire dataset...")
                     compute_knn_graph_connectivities_and_distances(
                             adata=adata,
                             feature_key=spatial_key,
-                            knng_key=f"nichecompass_spatial_{n_neighbors}knng",
+                            knng_key=f"{spatial_key}_{n_neighbors}knng",
                             n_neighbors=n_neighbors,
                             random_state=seed,
                             n_jobs=n_jobs)
@@ -109,7 +109,7 @@ def compute_benchmarking_metrics(
 
             # Compute latent nearest neighbor graphs
             for n_neighbors in n_neighbors_list:
-                if (f"nichecompass_latent_{n_neighbors}knng_connectivities"
+                if (f"{latent_key}_{n_neighbors}knng_connectivities"
                     not in adata.obsp):
                     print("Computing latent nearest neighbor graph with "
                           f"{n_neighbors} neighbors for entire dataset...")
@@ -117,8 +117,7 @@ def compute_benchmarking_metrics(
                         compute_knn_graph_connectivities_and_distances(
                                 adata=adata,
                                 feature_key=latent_key,
-                                knng_key="nichecompass_latent_"
-                                         f"{n_neighbors}knng",
+                                knng_key=f"{latent_key}_{n_neighbors}knng",
                                 n_neighbors=n_neighbors,
                                 random_state=seed,
                                 n_jobs=n_jobs)
@@ -147,8 +146,8 @@ def compute_benchmarking_metrics(
         benchmarking_dict["gcs"] = compute_gcs(
             adata=adata,
             batch_key=batch_key,
-            spatial_knng_key=f"nichecompass_spatial_15knng",
-            latent_knng_key=f"nichecompass_latent_15knng",
+            spatial_knng_key=f"{spatial_key}_15knng",
+            latent_knng_key=f"{latent_key}_15knng",
             seed=seed)
 
         elapsed_time = time.time() - start_time
@@ -163,8 +162,8 @@ def compute_benchmarking_metrics(
         benchmarking_dict["mlami"] = compute_mlami(
             adata=adata,
             batch_key=batch_key,
-            spatial_knng_key=f"nichecompass_spatial_15knng",
-            latent_knng_key=f"nichecompass_latent_15knng",
+            spatial_knng_key=f"{spatial_key}_15knng",
+            latent_knng_key=f"{latent_key}_15knng",
             seed=seed)
         
         elapsed_time = time.time() - start_time
@@ -181,8 +180,8 @@ def compute_benchmarking_metrics(
             adata=adata,
             cell_type_key=cell_type_key,
             batch_key=batch_key,
-            spatial_knng_key=f"nichecompass_spatial_15knng",
-            latent_knng_key=f"nichecompass_latent_15knng",
+            spatial_knng_key=f"{spatial_key}_15knng",
+            latent_knng_key=f"{latent_key}_15knng",
             seed=seed)
               
         elapsed_time = time.time() - start_time
@@ -199,8 +198,8 @@ def compute_benchmarking_metrics(
                 adata=adata,
                 cell_type_key=cell_type_key,
                 batch_key=batch_key,
-                spatial_knng_key="nichecompass_spatial_90knng",
-                latent_knng_key="nichecompass_latent_90knng",
+                spatial_knng_key=f"{spatial_key}_90knng",
+                latent_knng_key=f"{latent_key}_90knng",
                 seed=seed)
 
             elapsed_time = time.time() - start_time
@@ -250,7 +249,7 @@ def compute_benchmarking_metrics(
         try:
             print("Computing CLISI metric...")
             benchmarking_dict["clisi"] = scib_metrics.clisi_knn(
-                X=adata.obsp["nichecompass_latent_90knng_distances"],
+                X=adata.obsp[f"{latent_key}_90knng_distances"],
                 labels=adata.obs[cell_type_key])
 
             elapsed_time = time.time() - start_time
@@ -268,7 +267,8 @@ def compute_benchmarking_metrics(
         print("Computing NASW Metric...")
         benchmarking_dict["nasw"] = compute_nasw(
                 adata=adata,
-                latent_knng_key="nichecompass_latent_15knng",
+                latent_knng_key=f"{latent_key}_15knng",
+                latent_key=latent_key,
                 seed=seed)
         
         elapsed_time = time.time() - start_time
@@ -296,7 +296,7 @@ def compute_benchmarking_metrics(
               
         if "bgc" in metrics:
             benchmarking_dict["bgc"] = scib_metrics.graph_connectivity(
-                X=adata.obsp["nichecompass_latent_15knng_distances"],
+                X=adata.obsp[f"{latent_key}_15knng_distances"],
                 labels=adata.obs[batch_key])
               
             elapsed_time = time.time() - start_time
@@ -310,7 +310,7 @@ def compute_benchmarking_metrics(
             try:
                 print("Computing BLISI Metric...")
                 benchmarking_dict["blisi"] = scib_metrics.ilisi_knn(
-                    X=adata.obsp["nichecompass_latent_90knng_distances"],
+                    X=adata.obsp[f"{latent_key}_90knng_distances"],
                     batches=adata.obs[batch_key])
 
                 elapsed_time = time.time() - start_time
@@ -325,7 +325,7 @@ def compute_benchmarking_metrics(
               
         if "kbet" in metrics:
             benchmarking_dict["kbet"] = scib_metrics.kbet_per_label(
-                X=adata.obsp["nichecompass_latent_50knng_connectivities"],
+                X=adata.obsp[f"{latent_key}_50knng_connectivities"],
                 batches=adata.obs[batch_key],
                 labels=adata.obs[cell_type_key])
               
