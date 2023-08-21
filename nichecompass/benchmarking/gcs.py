@@ -89,7 +89,7 @@ def compute_gcs(
         unique_batches = adata.obs[batch_key].unique().tolist()
         for batch in unique_batches:
             adata_batch = adata[adata.obs[batch_key] == batch]
-            adata_batch_list.append(adata_batch)       
+            adata_batch_list.append(adata_batch)
 
     if spatial_knng_connectivities_key in adata.obsp:
         print("Using precomputed spatial nearest neighbor graph...")

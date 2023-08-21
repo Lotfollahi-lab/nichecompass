@@ -148,6 +148,8 @@ def compute_benchmarking_metrics(
             batch_key=batch_key,
             spatial_knng_key=f"{spatial_key}_15knng",
             latent_knng_key=f"{latent_key}_15knng",
+            spatial_key=spatial_key,
+            latent_key=latent_key,
             seed=seed)
 
         elapsed_time = time.time() - start_time
@@ -164,6 +166,8 @@ def compute_benchmarking_metrics(
             batch_key=batch_key,
             spatial_knng_key=f"{spatial_key}_15knng",
             latent_knng_key=f"{latent_key}_15knng",
+            spatial_key=spatial_key,
+            latent_key=latent_key,
             seed=seed)
         
         elapsed_time = time.time() - start_time
@@ -182,6 +186,8 @@ def compute_benchmarking_metrics(
             batch_key=batch_key,
             spatial_knng_key=f"{spatial_key}_15knng",
             latent_knng_key=f"{latent_key}_15knng",
+            spatial_key=spatial_key,
+            latent_key=latent_key,
             seed=seed)
               
         elapsed_time = time.time() - start_time
@@ -200,6 +206,8 @@ def compute_benchmarking_metrics(
                 batch_key=batch_key,
                 spatial_knng_key=f"{spatial_key}_90knng",
                 latent_knng_key=f"{latent_key}_90knng",
+                spatial_key=spatial_key,
+                latent_key=latent_key,
                 seed=seed)
 
             elapsed_time = time.time() - start_time
