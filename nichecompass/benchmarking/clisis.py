@@ -199,5 +199,5 @@ def compute_clisis(
     max_cell_log_rclisi = np.log2(n_cell_types / 1)
     norm_cell_log_rclisi_scores = cell_log_rclisi_scores / max_cell_log_rclisi
 
-    clisis = (1 - np.median(abs(norm_cell_log_rclisi_scores)))
+    clisis = (1 - np.nanmedian(abs(norm_cell_log_rclisi_scores)))
     return clisis
