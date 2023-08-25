@@ -273,8 +273,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 modality="rna",
                 n_input=n_input)
         if "atac" in self.modalities_:
-            self.atac_node_label_aggregator = OneHopSumNodeLabelAggregator(
-                modality="atac")
+            if node_label_method == "one-hop-norm":
+                self.atac_node_label_aggregator = OneHopGCNNormNodeLabelAggregator(
+                    modality="atac")
+            elif node_label_method == "one-hop-sum":
+                self.rna_node_label_aggregator = OneHopSumNodeLabelAggregator(
+                    modality="rna")
 
         # Initialize encoder module
         self.encoder = Encoder(
