@@ -1338,6 +1338,98 @@ class NicheCompass(BaseModelMixin):
             return mu, std
         else:
             return z
+        
+    def get_omics_decoder_outputs(
+                self, 
+                adata: Optional[AnnData]=None,
+                adata_atac: Optional[AnnData]=None,
+                counts_key: Optional[str]="counts",
+                adj_key: str="spatial_connectivities",
+                cat_covariates_keys: Optional[List[str]]=None,
+                only_active_gps: bool=True,
+                node_batch_size: int=64,
+                ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+            """
+            Get the omics decoder outputs.
+
+            Parameters
+            ----------
+            adata:
+                AnnData object to get the latent representation for. If ´None´, uses
+                the adata object stored in the model instance.
+            counts_key:
+                Key under which the counts are stored in ´adata.layer´. If ´None´,
+                uses ´adata.X´ as counts. 
+            adj_key:
+                Key under which the sparse adjacency matrix is stored in 
+                ´adata.obsp´.
+            cat_covariates_keys:
+                Keys under which the categorical covariates are stored in ´adata.obs´.
+            only_active_gps:
+                If ´True´, return only the latent representation of active gps.
+
+            Returns
+            ----------
+            output:
+                A dictionary containing the omics decoder outputs.
+            """
+            self._check_if_trained(warn=False)
+
+            device = next(self.model.parameters()).device
+
+            if adata is None:
+                adata = self.adata
+            if (adata_atac is None) & hasattr(self, "adata_atac"):
+                adata_atac = self.adata_atac
+
+            # Create single dataloader containing entire dataset
+            data_dict = prepare_data(
+                adata=adata,
+                cat_covariates_label_encoders=self.model.cat_covariates_label_encoders_,
+                adata_atac=adata_atac,
+                counts_key=counts_key,
+                adj_key=adj_key,
+                cat_covariates_keys=cat_covariates_keys,
+                edge_val_ratio=0.,
+                edge_test_ratio=0.,
+                node_val_ratio=0.,
+                node_test_ratio=0.)
+            node_masked_data = data_dict["node_masked_data"]
+            loader_dict = initialize_dataloaders(
+                node_masked_data=node_masked_data,
+                edge_train_data=None,
+                edge_val_data=None,
+                edge_batch_size=None,
+                node_batch_size=node_batch_size,
+                shuffle=False)
+            node_loader = loader_dict["node_train_loader"]
+            
+            output = {}    
+            output["target_rna_nb_means"] = np.empty(shape=(adata.shape[0], self.n_output_genes_))
+            output["source_rna_nb_means"] = np.empty(shape=(adata.shape[0], self.n_output_genes_))
+            if "atac" in self.modalities_:
+                output["target_atac_nb_means"] = np.empty(shape=(adata.shape[0], self.n_output_peaks_))
+                output["source_atac_nb_means"] = np.empty(shape=(adata.shape[0], self.n_output_peaks_))
+
+            # Get latent representation for each batch of the dataloader and put it
+            # into latent vectors
+            for i, node_batch in enumerate(node_loader):
+                n_obs_before_batch = i * node_batch_size
+                n_obs_after_batch = n_obs_before_batch + node_batch.batch_size
+                node_batch = node_batch.to(device)
+                output_batch = self.model.get_omics_decoder_outputs(
+                    node_batch=node_batch,
+                    only_active_gps=only_active_gps)
+                output["target_rna_nb_means"][n_obs_before_batch:n_obs_after_batch, :] = (
+                    output_batch["target_rna_nb_means"].detach().cpu().numpy())
+                output["source_rna_nb_means"][n_obs_before_batch:n_obs_after_batch, :] = (
+                    output_batch["source_rna_nb_means"].detach().cpu().numpy())
+                if "atac" in self.modalities_:
+                    output["target_atac_nb_means"][n_obs_before_batch:n_obs_after_batch, :] = (
+                        output_batch["target_atac_nb_means"].detach().cpu().numpy())
+                    output["source_atac_nb_means"][n_obs_before_batch:n_obs_after_batch, :] = (
+                        output_batch["source_atac_nb_means"].detach().cpu().numpy())
+            return output
     
     @torch.no_grad()
     def get_recon_edge_probs(self,      
