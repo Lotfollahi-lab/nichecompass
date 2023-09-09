@@ -731,10 +731,58 @@ default_color_dict = {
 def create_new_color_dict(
         adata,
         cat_key,
+        color_palette="default",
         cats="None",
         overwrite_color_dict={"-1" : "#E1D9D1"}):
     new_categories = adata.obs[cat_key].unique().tolist()
-    new_color_dict = {key: value for key, value in zip(new_categories, default_color_dict.values())}
+    if color_palette == "cell_type":
+        # https://github.com/scverse/scanpy/blob/master/scanpy/plotting/palettes.py#L40
+        new_color_dict = {key: value for key, value in zip(
+            new_categories,
+            ["#023fa5",
+             "#7d87b9",
+             "#bec1d4",
+             "#d6bcc0",
+             "#bb7784",
+             "#8e063b",
+             "#4a6fe3",
+             "#8595e1",
+             "#b5bbe3",
+             "#e6afb9",
+             "#e07b91",
+             "#d33f6a",
+             "#11c638",
+             "#8dd593",
+             "#c6dec7",
+             "#ead3c6",
+             "#f0b98d",
+             "#ef9708",
+             "#0fcfc0",
+             "#9cded6",
+             "#d5eae7",
+             "#f3e1eb",
+             "#f6c4e1",
+             "#f79cd4",
+             '#7f7f7f',
+             "#c7c7c7",
+             "#1CE6FF",
+             "#336600"])}
+    elif color_palette == "batch":
+        # sns.color_palette("colorblind").as_hex()
+        new_color_dict = {key: value for key, value in zip(
+            new_categories,
+            ['#0173b2',
+             '#d55e00',
+             '#ece133',
+             '#ca9161',
+             '#fbafe4',
+             '#949494',
+             '#de8f05',
+             '#029e73',
+             '#cc78bc',
+             '#56b4e9'])}
+    elif color_palette == "default":
+        new_color_dict = {key: value for key, value in zip(new_categories, default_color_dict.values())}
     for key, val in overwrite_color_dict.items():
         new_color_dict[key] = val
     return new_color_dict
