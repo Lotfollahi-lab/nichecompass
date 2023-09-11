@@ -338,9 +338,9 @@ def extract_gp_dict_from_collectri_tf_network(
     for tf, target_genes in zip(tf_target_genes_df["source"],
                                 tf_target_genes_df["target"]):
         gp_dict[tf + "_TF_target_genes_GP"] = {
-            "sources": [tf] + target_genes,
+            "sources": [],
             "targets": [tf] + target_genes,
-            "sources_categories": ["tf"] + ["target_gene"] * len(target_genes),
+            "sources_categories": [],
             "targets_categories": ["tf"] + ["target_gene"] * len(target_genes)}
         
     if plot_gp_gene_count_distributions:
@@ -432,18 +432,13 @@ def extract_gp_dict_from_nichenet_lrt_interactions(
     # Download (or load) NicheNet ligand receptor network and ligand target
     # matrix and store in df (optionally also on disk)
     if not load_from_disk:
-        if version == "v1":
-            lr_network_url = "https://zenodo.org/record/3260758/files/" \
-                             "lr_network.rds"
-            ligand_target_matrix_url = "https://zenodo.org/record/3260758/" \
-                                       "files/ligand_target_matrix.rds"
-        elif version == "v2" and species == "human":
+        if species == "human":
             lr_network_url = "https://zenodo.org/record/7074291/files/" \
                              "lr_network_human_21122021.rds"
             ligand_target_matrix_url = "https://zenodo.org/record/7074291/" \
                                        "files/ligand_target_matrix_nsga2r_" \
                                        "final.rds"
-        elif version == "v2" and species == "mouse":
+        elif species == "mouse":
             lr_network_url = "https://zenodo.org/record/7074291/files/" \
                              "lr_network_mouse_21122021.rds"
             ligand_target_matrix_url = "https://zenodo.org/record/7074291/" \
@@ -514,53 +509,28 @@ def extract_gp_dict_from_nichenet_lrt_interactions(
         
         # Build gp dict using ligand in source node and receptors and target
         # genes in target node
-        gp_dict[ligand + "_ligand_receptor_target_gene_GP"] = {
+        gp_dict[ligand + "_ligand_receptor_target_gene_GP_sources"] = {
             "sources": [ligand],
+            "targets": []}
+        gp_dict[ligand + "_ligand_receptor_target_gene_GP_targets"] = {
+            "sources": [],
             "targets": receptors +
                        [target for target, include in
                         ligand_target_mask_dict[ligand].items() if include & 
                         (target not in receptors)]} # don't duplicate receptors
         
         # Add source and target categories
-        gp_dict[ligand + "_ligand_receptor_target_gene_GP"][
+        gp_dict[ligand + "_ligand_receptor_target_gene_GP_sources"][
             "sources_categories"] = ["ligand"]
-        gp_dict[ligand + "_ligand_receptor_target_gene_GP"][
+        gp_dict[ligand + "_ligand_receptor_target_gene_GP_sources"][
+            "targets_categories"] = []
+        gp_dict[ligand + "_ligand_receptor_target_gene_GP_targets"][
             "targets_categories"] = (["receptor"] * len(receptors) +
                                      ["target_gene"] * (
-            len(gp_dict[ligand + "_ligand_receptor_target_gene_GP"]["targets"]) -
+            len(gp_dict[ligand + "_ligand_receptor_target_gene_GP_targets"]["targets"]) -
             len(receptors)))
-        
-    if version == "v1" and species == "mouse":
-        # Create mapping df to map from human genes to mouse orthologs
-        mapping_df = pd.read_csv(gene_orthologs_mapping_file_path)
-        grouped_mapping_df = mapping_df.groupby(
-            "Gene name")["Mouse gene name"].agg(list).reset_index()
-        
-        # Map all genes in the gp dict to their orthologs from the mapping df
-        # or capitalize them if no orthologs are found
-        for gp_name, gp in gp_dict.items():
-            gp["sources_categories"] = [element for sublist in [[source_category] *
-                                        len(grouped_mapping_df[
-                                            grouped_mapping_df["Gene name"] == source][
-                                            "Mouse gene name"].values[0])
-                                        if source in grouped_mapping_df["Gene name"].values
-                                        else [source_category]
-                                        for source, source_category in zip(gp["sources"], gp["sources_categories"])] for element in sublist]
-            gp["targets_categories"] = [element for sublist in [[target_category] *
-                                        len(grouped_mapping_df[
-                                            grouped_mapping_df["Gene name"] == target][
-                                            "Mouse gene name"].values[0])
-                                        if target in grouped_mapping_df["Gene name"].values
-                                        else [target_category]
-                                        for target, target_category in zip(gp["targets"], gp["targets_categories"])] for element in sublist]   
-            gp["sources"] = [element for sublist in [grouped_mapping_df[grouped_mapping_df[
-                "Gene name"] == source]["Mouse gene name"].values[0]
-                             if source in grouped_mapping_df["Gene name"].values
-                             else [source.capitalize()] for source in gp["sources"]] for element in sublist]
-            gp["targets"] = [element for sublist in [grouped_mapping_df[grouped_mapping_df[
-                "Gene name"] == target]["Mouse gene name"].values[0]
-                             if target in grouped_mapping_df["Gene name"].values
-                             else [target.capitalize()] for target in gp["targets"]] for element in sublist]
+        gp_dict[ligand + "_ligand_receptor_target_gene_GP_targets"][
+            "sources_categories"] = []
         
     if plot_gp_gene_count_distributions:
         create_gp_gene_count_distribution_plots(
@@ -660,10 +630,15 @@ def extract_gp_dict_from_omnipath_lr_interactions(
     # Extract gene programs and store in nested dict
     gp_dict = {}
     for ligand, receptors in lr_interaction_dict.items():
-        gp_dict[ligand + "_ligand_receptor_GP"] = {
+        gp_dict[ligand + "_ligand_receptor_GP_sources"] = {
             "sources": [ligand],
-            "targets": receptors,
+            "targets": [],
             "sources_categories": ["ligand"],
+            "targets_categories": []}
+        gp_dict[ligand + "_ligand_receptor_GP_targets"] = {
+            "sources": [],
+            "targets": receptors,
+            "sources_categories": [],
             "targets_categories": ["receptor"] * len(receptors)}
         
     if species == "mouse":
@@ -784,14 +759,17 @@ def extract_gp_dict_from_mebocost_es_interactions(
     met_interaction_dict = metabolite_df.to_dict()
     gp_dict = {}
     for metabolite, enzyme_genes in met_interaction_dict["enzyme_genes"].items():
-        gp_dict[metabolite + "_metabolite_enzyme_sensor_GP"] = {
+        gp_dict[metabolite + "_metabolite_enzyme_sensor_GP_sources"] = {
             "sources": enzyme_genes,
-            "sources_categories": ["enzyme"] * len(enzyme_genes)}
+            "sources_categories": ["enzyme"] * len(enzyme_genes),
+            "targets": [],
+            "targets_categories": []}
     for metabolite, sensor_genes in met_interaction_dict["sensor_genes"].items():
-        gp_dict[metabolite + "_metabolite_enzyme_sensor_GP"][
-            "targets"] = sensor_genes
-        gp_dict[metabolite + "_metabolite_enzyme_sensor_GP"][
-            "targets_categories"] = ["sensor"] * len(sensor_genes)
+        gp_dict[metabolite + "_metabolite_enzyme_sensor_GP_targets"] = {
+            "sources": [],
+            "sources_categories": [],
+            "targets": sensor_genes,
+            "targets_categories": ["sensor"] * len(sensor_genes)}
 
     if plot_gp_gene_count_distributions:
         create_gp_gene_count_distribution_plots(gp_dict=gp_dict,
@@ -804,8 +782,8 @@ def filter_and_combine_gp_dict_gps(
         gp_dict: dict,
         gp_filter_mode: Optional[Literal["subset", "superset"]]=None,
         combine_overlap_gps: bool=True,
-        overlap_thresh_source_genes: float=1.,
-        overlap_thresh_target_genes: float=1.,
+        overlap_thresh_source_genes: float=0.,
+        overlap_thresh_target_genes: float=0.,
         overlap_thresh_genes: float=1.,
         verbose: bool=False) -> dict:
     """
