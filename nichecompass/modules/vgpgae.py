@@ -648,7 +648,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
                     if "atac" in self.modalities_:
                         self.target_atac_dynamic_decoder_mask[~active_gp_mask, :] = 0
-                        self.source_atac_dynamic_decoder_mask[~active_gp_mask, :] = 0   
+                        self.source_atac_dynamic_decoder_mask[~active_gp_mask, :] = 0
                     
             # Determine which features should be reconstructed based on
             # static and dynamic masks (if a feature is not connected to any
@@ -656,25 +656,27 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             # activation outputs). This can happen when no add-on gene programs
             # are present or when gene programs are turned off.
             if self.n_addon_gp_ > 0:
-                target_rna_static_decoder_mask = torch.cat(
+                target_rna_decoder_static_mask = torch.cat(
                     (self.target_rna_decoder_mask,
                      self.target_rna_decoder_addon_mask), dim=0)
                 source_rna_decoder_static_mask = torch.cat(
                     (self.source_rna_decoder_mask,
                      self.source_rna_decoder_addon_mask), dim=0)
             else:
-                target_rna_static_decoder_mask = self.target_rna_decoder_mask
+                target_rna_decoder_static_mask = self.target_rna_decoder_mask
                 source_rna_decoder_static_mask = self.source_rna_decoder_mask
 
             self.target_n_gps_per_gene = (
-                target_rna_static_decoder_mask *
-                self.target_rna_dynamic_decoder_mask).sum(0)
+                target_rna_decoder_static_mask
+                * self.target_rna_dynamic_decoder_mask
+                ).sum(0)
             self.features_idx_dict_["target_reconstructed_rna_idx"] = (
                 torch.nonzero(self.target_n_gps_per_gene)).flatten().tolist()
 
             self.source_n_gps_per_gene = (
-                source_rna_decoder_static_mask *
-                self.source_rna_dynamic_decoder_mask).sum(0)
+                source_rna_decoder_static_mask
+                * self.source_rna_dynamic_decoder_mask
+                ).sum(0)
             self.features_idx_dict_["source_reconstructed_rna_idx"] = (
                 torch.nonzero(self.source_n_gps_per_gene)).flatten().tolist()
 
@@ -753,14 +755,16 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     source_atac_decoder_static_mask = self.source_atac_decoder_mask
 
                 self.target_n_gps_per_peak = (
-                    target_atac_decoder_static_mask *
-                    self.target_atac_dynamic_decoder_mask).sum(0)
+                    target_atac_decoder_static_mask
+                    * self.target_atac_dynamic_decoder_mask
+                    ).sum(0)
                 self.features_idx_dict_["target_reconstructed_atac_idx"] = (
                     torch.nonzero(self.target_n_gps_per_peak)).flatten().tolist()
 
                 self.source_n_gps_per_peak = (
-                    source_atac_decoder_static_mask *
-                    self.source_atac_dynamic_decoder_mask).sum(0)
+                    source_atac_decoder_static_mask
+                    * self.source_atac_dynamic_decoder_mask
+                    ).sum(0)
                 self.features_idx_dict_["source_reconstructed_atac_idx"] = (
                     torch.nonzero(self.source_n_gps_per_peak)).flatten().tolist()
 
