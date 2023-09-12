@@ -179,8 +179,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                              "chrom_access_decoder"]]]=["gene_expr_decoder",
                                                         "chrom_access_decoder"],
                  use_fc_decoder: bool=False,
-                 fc_decoder_n_layers: int=2,
-                 include_edge_kl_loss: bool=True):
+                 fc_decoder_n_layers: int=1,
+                 include_edge_kl_loss: bool=False):
         super().__init__()
         print("--- INITIALIZING NEW NETWORK MODULE: VARIATIONAL GENE PROGRAM "
               "GRAPH AUTOENCODER ---")
@@ -277,8 +277,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 self.atac_node_label_aggregator = OneHopGCNNormNodeLabelAggregator(
                     modality="atac")
             elif node_label_method == "one-hop-sum":
-                self.rna_node_label_aggregator = OneHopSumNodeLabelAggregator(
-                    modality="rna")
+                self.atac_node_label_aggregator = OneHopSumNodeLabelAggregator(
+                    modality="atac")
 
         # Initialize encoder module
         self.encoder = Encoder(
@@ -433,9 +433,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                              torch.zeros(n_prior_gp + n_addon_gp))
         
         # Initialize rna dynamic decoder masks
-        self.target_rna_dynamic_decoder_mask = torch.ones(
+        self.target_rna_decoder_dynamic_mask = torch.ones(
             (n_prior_gp + n_addon_gp), n_output_genes, dtype=torch.bool)
-        self.source_rna_dynamic_decoder_mask = torch.ones(
+        self.source_rna_decoder_dynamic_mask = torch.ones(
             (n_prior_gp + n_addon_gp), n_output_genes, dtype=torch.bool)
         
         if "atac" in self.modalities_:
@@ -524,9 +524,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 n_output_peaks))
             
             # Initialize atac dynamic decoder masks
-            self.target_atac_dynamic_decoder_mask = torch.ones(
+            self.target_atac_decoder_dynamic_mask = torch.ones(
                 (n_prior_gp + n_addon_gp), n_output_peaks, dtype=torch.bool)
-            self.source_atac_dynamic_decoder_mask = torch.ones(
+            self.source_atac_decoder_dynamic_mask = torch.ones(
                 (n_prior_gp + n_addon_gp), n_output_peaks, dtype=torch.bool)
 
     def forward(self,
@@ -643,12 +643,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
                     # Set dynamic mask to 0 for all inactive gene programs to
                     # not affect omics decoders
-                    self.target_rna_dynamic_decoder_mask[~active_gp_mask, :] = 0
-                    self.source_rna_dynamic_decoder_mask[~active_gp_mask, :] = 0
+                    self.target_rna_decoder_dynamic_mask[~active_gp_mask, :] = 0
+                    self.source_rna_decoder_dynamic_mask[~active_gp_mask, :] = 0
 
                     if "atac" in self.modalities_:
-                        self.target_atac_dynamic_decoder_mask[~active_gp_mask, :] = 0
-                        self.source_atac_dynamic_decoder_mask[~active_gp_mask, :] = 0
+                        self.target_atac_decoder_dynamic_mask[~active_gp_mask, :] = 0
+                        self.source_atac_decoder_dynamic_mask[~active_gp_mask, :] = 0
                     
             # Determine which features should be reconstructed based on
             # static and dynamic masks (if a feature is not connected to any
@@ -668,14 +668,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
             self.target_n_gps_per_gene = (
                 target_rna_decoder_static_mask
-                * self.target_rna_dynamic_decoder_mask
+                * self.target_rna_decoder_dynamic_mask
                 ).sum(0)
             self.features_idx_dict_["target_reconstructed_rna_idx"] = (
                 torch.nonzero(self.target_n_gps_per_gene)).flatten().tolist()
 
             self.source_n_gps_per_gene = (
                 source_rna_decoder_static_mask
-                * self.source_rna_dynamic_decoder_mask
+                * self.source_rna_decoder_dynamic_mask
                 ).sum(0)
             self.features_idx_dict_["source_reconstructed_rna_idx"] = (
                 torch.nonzero(self.source_n_gps_per_gene)).flatten().tolist()
@@ -704,7 +704,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             assert x_neighbors.size(1) == self.n_output_genes_
             output["node_labels"]["target_rna"] = x[batch_idx][
                 :, self.features_idx_dict_["target_reconstructed_rna_idx"]]
-            output["node_labels"]["source_rna"] = x_neighbors[batch_idx][
+            output["node_labels"]["source_rna"] = x[batch_idx][
                 :, self.features_idx_dict_["source_reconstructed_rna_idx"]]
             
             # Use observed library size as scaling factor for the negative
@@ -756,14 +756,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
                 self.target_n_gps_per_peak = (
                     target_atac_decoder_static_mask
-                    * self.target_atac_dynamic_decoder_mask
+                    * self.target_atac_decoder_dynamic_mask
                     ).sum(0)
                 self.features_idx_dict_["target_reconstructed_atac_idx"] = (
                     torch.nonzero(self.target_n_gps_per_peak)).flatten().tolist()
 
                 self.source_n_gps_per_peak = (
                     source_atac_decoder_static_mask
-                    * self.source_atac_dynamic_decoder_mask
+                    * self.source_atac_decoder_dynamic_mask
                     ).sum(0)
                 self.features_idx_dict_["source_reconstructed_atac_idx"] = (
                     torch.nonzero(self.source_n_gps_per_peak)).flatten().tolist()
@@ -785,7 +785,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 # and reconstructed features
                 assert x_atac.size(1) == self.n_output_peaks_
                 assert x_neighbors_atac.size(1) == self.n_output_peaks_
-                output["node_labels"]["target_atac"] = x_atac[batch_idx][
+                output["node_labels"]["target_atac"] = x_neighbors_atac[batch_idx][
                     :, self.features_idx_dict_["target_reconstructed_atac_idx"]]  
                 output["node_labels"]["source_atac"] = x_neighbors_atac[batch_idx][
                     :, self.features_idx_dict_["source_reconstructed_atac_idx"]]
@@ -825,26 +825,26 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                         
                         # Multiply boolean mask with gene peak mapping to remove
                         # peaks that are mapped to only turned off genes
-                        target_atac_dynamic_decoder_mask = torch.mm(
+                        target_atac_decoder_dynamic_mask = torch.mm(
                             non_zero_target_gene_weights.t().to(torch.float32), # dim: (n_gps,
                                                               #       n_genes)
                             self.gene_peaks_mask_.to(torch.float32)).to(torch.bool) # dim: (n_genes,
                                                    # n_peaks)
                             # dim: (n_gps, n_peaks)
-                        source_atac_dynamic_decoder_mask = torch.mm(
+                        source_atac_decoder_dynamic_mask = torch.mm(
                             non_zero_source_gene_weights.t().to(torch.float32),
                             self.gene_peaks_mask_.to(torch.float32)).to(torch.bool)
                         
                         # Create boolean mask of peaks (until here multiple
                         # active genes in a gp can be mapped to the same peak,
                         # resulting in values > 1.)
-                        self.target_atac_dynamic_decoder_mask = (
-                            self.target_atac_dynamic_decoder_mask & torch.ne(
-                            target_atac_dynamic_decoder_mask, 
+                        self.target_atac_decoder_dynamic_mask = (
+                            self.target_atac_decoder_dynamic_mask & torch.ne(
+                            target_atac_decoder_dynamic_mask, 
                             0)) # dim: (n_gps, n_peaks)
-                        self.source_atac_dynamic_decoder_mask = (
-                            self.source_atac_dynamic_decoder_mask & torch.ne(
-                            source_atac_dynamic_decoder_mask, 
+                        self.source_atac_decoder_dynamic_mask = (
+                            self.source_atac_decoder_dynamic_mask & torch.ne(
+                            source_atac_decoder_dynamic_mask, 
                             0))
                     
                 # Get chromatin accessibility reconstruction distribution
@@ -852,7 +852,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 output["target_atac_nb_means"] = self.target_atac_decoder(
                     z=z,
                     log_library_size=self.target_atac_log_library_size,
-                    dynamic_mask=self.target_atac_dynamic_decoder_mask,
+                    dynamic_mask=self.target_atac_decoder_dynamic_mask,
                     cat_covariates_embed=(
                         self.cat_covariates_embed[batch_idx] if
                         (self.cat_covariates_embed is not None) & 
@@ -863,7 +863,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 output["source_atac_nb_means"] = self.source_atac_decoder(
                     z=z,
                     log_library_size=self.source_atac_log_library_size,
-                    dynamic_mask=self.source_atac_dynamic_decoder_mask,
+                    dynamic_mask=self.source_atac_decoder_dynamic_mask,
                     cat_covariates_embed=(
                         self.cat_covariates_embed[batch_idx] if
                         (self.cat_covariates_embed is not None) &
@@ -1135,7 +1135,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
     @torch.no_grad()
     def get_gp_weights(self,
-                       only_masked_features: bool=False) -> List[torch.Tensor]:
+                       only_masked_features: bool=False,
+                       return_source_target: bool=False) -> List[torch.Tensor]:
         """
         Get the gene program weights of the omics feature decoders.
 
@@ -1145,22 +1146,23 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             List of tensors containing the decoder gp weights for each
             omics modality (dim: (n_prior_gp + n_addon_gp) x n_omics_features)
         """
-        gp_weights_all_modalities = []
+        if return_source_target:
+            target_gp_weights_all_modalities = []
+            source_gp_weights_all_modalities = []
+        else:
+            gp_weights_all_modalities = []
 
         for modality in self.modalities_:
             target_decoder = getattr(self, f"target_{modality}_decoder")
             source_decoder = getattr(self, f"source_{modality}_decoder")
 
             # Get decoder weights of masked gps
-            target_gp_weights_masked = (
+            target_gp_weights = (
                 target_decoder.nb_means_normalized_decoder.masked_l.weight.data
                 ).clone()
-            source_gp_weights_masked = (
+            source_gp_weights = (
                 source_decoder.nb_means_normalized_decoder.masked_l.weight.data
                 ).clone()
-            gp_weights = torch.cat((target_gp_weights_masked,
-                                    source_gp_weights_masked),
-                                   dim=0)
 
             # Add decoder weights of addon gps
             if self.n_addon_gp_ > 0:
@@ -1170,28 +1172,37 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 source_gp_weights_addon = (
                     source_decoder.nb_means_normalized_decoder.addon_l.weight.data
                     ).clone()
-                gp_weights_addon = torch.cat((target_gp_weights_addon,
-                                              source_gp_weights_addon),
-                                             dim=0)
-                gp_weights = torch.cat([gp_weights, gp_weights_addon], axis=1)
-
+                target_gp_weights = torch.cat([target_gp_weights,
+                                               target_gp_weights_addon], axis=1)
+                source_gp_weights = torch.cat([source_gp_weights,
+                                               source_gp_weights_addon], axis=1)
+                
             # Only keep omics features in mask
             if only_masked_features:
-                mask_idx = getattr(self, "features_idx_dict_")[
-                    f"masked_{modality}_idx"]
-                gp_weights = gp_weights[mask_idx, :]
-            
-            # Append current modality to output list
-            gp_weights_all_modalities.append(gp_weights)
-        return gp_weights_all_modalities
+                target_mask_idx = getattr(self, "features_idx_dict_")[
+                    f"target_masked_{modality}_idx"]
+                source_mask_idx = getattr(self, "features_idx_dict_")[
+                    f"source_masked_{modality}_idx"]
+                target_gp_weights = target_gp_weights[target_mask_idx, :]
+                source_gp_weights = source_gp_weights[source_mask_idx, :]
+
+            if return_source_target:
+                target_gp_weights_all_modalities.append(target_gp_weights)
+                source_gp_weights_all_modalities.append(source_gp_weights)
+                return target_gp_weights_all_modalities, source_gp_weights_all_modalities
+            else:
+                gp_weights = torch.cat((target_gp_weights,
+                                        source_gp_weights),
+                                    dim=0)
+                gp_weights_all_modalities.append(gp_weights)
+                return gp_weights_all_modalities
  
     @torch.no_grad()
     def get_active_gp_mask(
             self,
             abs_gp_weights_agg_mode: Literal["sum",
                                              "nzmeans",
-                                             "sum+nzmeans"]="sum+nzmeans",
-            return_gp_weights: bool=False
+                                             "sum+nzmeans"]="sum+nzmeans"
             ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Get a mask of active gene programs based on the rna decoder gene weights
@@ -1226,39 +1237,62 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Tensor containing the rna decoder gene weights of active gene
             programs.
         """
-        gp_weights = self.get_gp_weights(only_masked_features=False)[0]
+        target_gp_weights_all_modalities, source_gp_weights_all_modalities = (
+            self.get_gp_weights(return_source_target=True))
+        
+        # Get rna decoder gp weights
+        target_gp_weights = target_gp_weights_all_modalities[0]
+        source_gp_weights = source_gp_weights_all_modalities[0]
         
         # Normalize gp weights with running mean absolute gp scores
-        gp_weights_normalized = (self.running_mean_abs_mu * gp_weights)
+        target_gp_weights_normalized = (
+            self.running_mean_abs_mu * target_gp_weights)
+        source_gp_weights_normalized = (
+            self.running_mean_abs_mu * source_gp_weights)
         
         # Aggregate absolute normalized gp weights based on
         # ´abs_gp_weights_agg_mode´ and calculate thresholds of aggregated
         # absolute normalized gp weights and get active gp mask and (optionally)
         # active gp weights
-        abs_gp_weights_sums = gp_weights_normalized.norm(p=1, dim=0)
+        abs_target_gp_weights_sums = target_gp_weights_normalized.norm(p=1, dim=0)
+        abs_source_gp_weights_sums = source_gp_weights_normalized.norm(p=1, dim=0)
         if abs_gp_weights_agg_mode in ["sum", "sum+nzmeans"]:
-            max_abs_gp_weights_sum = max(abs_gp_weights_sums)
-            min_abs_gp_weights_sum_thresh = (self.active_gp_thresh_ratio_ * 
-                                             max_abs_gp_weights_sum)
-            active_gp_mask = (abs_gp_weights_sums >= 
-                              min_abs_gp_weights_sum_thresh)
+            max_abs_target_gp_weights_sum = max(abs_target_gp_weights_sums)
+            min_abs_target_gp_weights_sum_thresh = (
+                self.active_gp_thresh_ratio_ * max_abs_target_gp_weights_sum)
+            active_gp_mask = (abs_target_gp_weights_sums >= 
+                              min_abs_target_gp_weights_sum_thresh)
+            max_abs_source_gp_weights_sum = max(abs_source_gp_weights_sums)
+            min_abs_source_gp_weights_sum_thresh = (
+                self.active_gp_thresh_ratio_ * max_abs_source_gp_weights_sum)
+            active_gp_mask = active_gp_mask | (
+                abs_source_gp_weights_sums >= min_abs_source_gp_weights_sum_thresh)
         if abs_gp_weights_agg_mode in ["nzmeans", "sum+nzmeans"]:
-            abs_gp_weights_nzmeans = (abs_gp_weights_sums / 
-                                      torch.count_nonzero(gp_weights, dim=0))
-            max_abs_gp_weights_nzmean = max(abs_gp_weights_nzmeans)
-            min_abs_gp_weights_nzmean_thresh = (self.active_gp_thresh_ratio_ *
-                                                max_abs_gp_weights_nzmean)
+            abs_target_gp_weights_nzmeans = (
+                abs_target_gp_weights_sums / 
+                torch.count_nonzero(target_gp_weights, dim=0))
+            max_abs_target_gp_weights_nzmean = max(abs_target_gp_weights_nzmeans)
+            min_abs_target_gp_weights_nzmean_thresh = (
+                self.active_gp_thresh_ratio_ * max_abs_target_gp_weights_nzmean)
+            abs_source_gp_weights_nzmeans = (
+                abs_source_gp_weights_sums / 
+                torch.count_nonzero(source_gp_weights, dim=0))
+            max_abs_source_gp_weights_nzmean = max(abs_source_gp_weights_nzmeans)
+            min_abs_source_gp_weights_nzmean_thresh = (
+                self.active_gp_thresh_ratio_ * max_abs_source_gp_weights_nzmean)
             if abs_gp_weights_agg_mode == "nzmeans":
-                active_gp_mask = (abs_gp_weights_nzmeans >= 
-                                  min_abs_gp_weights_nzmean_thresh)
+                active_gp_mask = (abs_target_gp_weights_nzmeans >= 
+                                  min_abs_target_gp_weights_nzmean_thresh) | (
+                                  abs_source_gp_weights_nzmeans >= 
+                                  min_abs_source_gp_weights_nzmean_thresh    
+                                  )
             elif abs_gp_weights_agg_mode == "sum+nzmeans":
                 # Combine active gp mask
-                active_gp_mask = active_gp_mask | (abs_gp_weights_nzmeans >=
-                                 min_abs_gp_weights_nzmean_thresh)
-        if return_gp_weights:
-            active_gp_weights = gp_weights[:, active_gp_mask]
-            return active_gp_mask, active_gp_weights
-        else:
+                active_gp_mask = active_gp_mask | (abs_target_gp_weights_nzmeans >=
+                                 min_abs_target_gp_weights_nzmean_thresh) | (
+                                 abs_source_gp_weights_nzmeans >=
+                                 min_abs_source_gp_weights_nzmean_thresh
+                                 )
             return active_gp_mask
 
     def log_module_hyperparams_to_mlflow(
@@ -1535,7 +1569,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             output["target_atac_nb_means"] = self.target_atac_decoder(
                 z=z,
                 log_library_size=target_atac_log_library_size,
-                dynamic_mask=self.target_atac_dynamic_decoder_mask,
+                dynamic_mask=self.target_atac_decoder_dynamic_mask,
                 cat_covariates_embed=(
                     cat_covariates_embed[batch_idx] if
                     (cat_covariates_embed is not None) & 
@@ -1546,7 +1580,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             output["source_atac_nb_means"] = self.source_atac_decoder(
                 z=z,
                 log_library_size=self.source_atac_log_library_size,
-                dynamic_mask=self.source_atac_dynamic_decoder_mask,
+                dynamic_mask=self.source_atac_decoder_dynamic_mask,
                 cat_covariates_embed=(
                     cat_covariates_embed[batch_idx] if
                     (cat_covariates_embed is not None) &
