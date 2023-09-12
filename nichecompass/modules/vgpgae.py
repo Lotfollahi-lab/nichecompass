@@ -180,7 +180,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                                         "chrom_access_decoder"],
                  use_fc_decoder: bool=False,
                  fc_decoder_n_layers: int=1,
-                 include_edge_kl_loss: bool=False):
+                 include_edge_kl_loss: bool=True):
         super().__init__()
         print("--- INITIALIZING NEW NETWORK MODULE: VARIATIONAL GENE PROGRAM "
               "GRAPH AUTOENCODER ---")
@@ -318,12 +318,18 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 if n_addon_gp > 0:
                     # Initialize rna add-on masks which are 0 everywhere except
                     # for the genes that are unmasked, in which case they are 1
+                    if entity == "target":
+                        # first half is used for target, second for source
+                        addon_idx = slice(None, int(n_addon_gp / 2))
+                    else:
+                        addon_idx = slice(int(n_addon_gp / 2), None)
+                    
                     rna_decoder_addon_mask = torch.zeros(
                         n_addon_gp,
                         n_output_genes,
                         dtype=torch.float32)
                     rna_decoder_addon_mask[
-                        :, features_idx_dict[f"{entity}_unmasked_rna_idx"]] = 1.
+                        addon_idx, features_idx_dict[f"{entity}_unmasked_rna_idx"]] = 1.
                     setattr(self,
                             f"{entity}_rna_decoder_addon_mask",
                             rna_decoder_addon_mask)
@@ -785,9 +791,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 # and reconstructed features
                 assert x_atac.size(1) == self.n_output_peaks_
                 assert x_neighbors_atac.size(1) == self.n_output_peaks_
-                output["node_labels"]["target_atac"] = x_neighbors_atac[batch_idx][
+                output["node_labels"]["target_atac"] = x_atac[batch_idx][
                     :, self.features_idx_dict_["target_reconstructed_atac_idx"]]  
-                output["node_labels"]["source_atac"] = x_neighbors_atac[batch_idx][
+                output["node_labels"]["source_atac"] = x_atac[batch_idx][
                     :, self.features_idx_dict_["source_reconstructed_atac_idx"]]
 
                 # Use observed library size as scaling factor for the negative
@@ -1189,13 +1195,16 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             if return_source_target:
                 target_gp_weights_all_modalities.append(target_gp_weights)
                 source_gp_weights_all_modalities.append(source_gp_weights)
-                return target_gp_weights_all_modalities, source_gp_weights_all_modalities
             else:
                 gp_weights = torch.cat((target_gp_weights,
                                         source_gp_weights),
                                     dim=0)
                 gp_weights_all_modalities.append(gp_weights)
-                return gp_weights_all_modalities
+        
+        if return_source_target:
+            return target_gp_weights_all_modalities, source_gp_weights_all_modalities
+        else:
+            return gp_weights_all_modalities
  
     @torch.no_grad()
     def get_active_gp_mask(
