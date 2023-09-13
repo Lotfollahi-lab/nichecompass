@@ -14,7 +14,7 @@ def initialize_dataloaders(node_masked_data: Data,
                            edge_batch_size: Optional[int]=64,
                            node_batch_size: int=64,
                            n_direct_neighbors: int=-1,
-                           n_hops: int=2,
+                           n_hops: int=1,
                            shuffle: bool=True,
                            edges_directed: bool=False,
                            neg_edge_sampling_ratio: float=1.) -> dict:

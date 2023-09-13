@@ -144,7 +144,7 @@ class Trainer(BaseTrainerMixin):
         self.seed_ = seed
         self.monitor_ = monitor
         self.verbose_ = verbose
-        self.loaders_n_hops_ = kwargs.pop("loaders_n_hops", 2)
+        self.loaders_n_hops_ = kwargs.pop("loaders_n_hops", 1)
         self.grad_clip_value_ = kwargs.pop("grad_clip_value", 0.)
         self.epoch = -1
         self.training_time = 0

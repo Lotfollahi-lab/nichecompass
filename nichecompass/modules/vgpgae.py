@@ -277,8 +277,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 self.atac_node_label_aggregator = OneHopGCNNormNodeLabelAggregator(
                     modality="atac")
             elif node_label_method == "one-hop-sum":
-                self.rna_node_label_aggregator = OneHopSumNodeLabelAggregator(
-                    modality="rna")
+                self.atac_node_label_aggregator = OneHopSumNodeLabelAggregator(
+                    modality="atac")
 
         # Initialize encoder module
         self.encoder = Encoder(
