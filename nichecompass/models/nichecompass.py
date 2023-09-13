@@ -576,7 +576,7 @@ class NicheCompass(BaseModelMixin):
               contrastive_logits_neg_ratio: float=0.,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,
-              l1_targets_categories: Optional[list]=None,
+              l1_targets_categories: Optional[list]=["target_gene"],
               l1_sources_categories: Optional[list]=None,
               lambda_l1_addon: float=0.,
               edge_val_ratio: float=0.1,

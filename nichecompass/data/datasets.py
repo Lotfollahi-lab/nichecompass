@@ -48,6 +48,7 @@ class SpatialAnnTorchDataset():
                  adata_atac: Optional[AnnData]=None,
                  counts_key: Optional[str]="counts",
                  adj_key: str="spatial_connectivities",
+                 edge_label_adj_key: str="edge_label_spatial_connectivities",
                  self_loops: bool=True,
                  cat_covariates_keys: Optional[str]=None):
         if counts_key is None:
@@ -75,6 +76,12 @@ class SpatialAnnTorchDataset():
         else:
             self.adj = sparse_mx_to_sparse_tensor(
                 sp.csr_matrix(adata.obsp[adj_key]))
+            
+        # Store edge label adjacency matrix
+        if edge_label_adj_key in adata.obsp:
+            self.edge_label_adj = sp.csr_matrix(adata.obsp[edge_label_adj_key])
+        else:
+            self.edge_label_adj = None
 
         # Validate adjacency matrix symmetry
         if (self.adj.nnz() != self.adj.t().nnz()):

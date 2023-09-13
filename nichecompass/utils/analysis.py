@@ -626,7 +626,6 @@ def plot_enriched_gp_info_plots_(adata: AnnData,
                     bbox_extra_artists=(title,),
                     bbox_inches="tight")
     plt.show()
-    
 
 default_color_dict = {
     "0": "#66C5CC",

@@ -77,14 +77,15 @@ def initialize_dataloaders(node_masked_data: Data,
             directed=False,
             shuffle=shuffle,
             input_nodes=node_masked_data.val_mask)
-
+        
     # Edge-level dataloaders
     if edge_train_data is not None:
         loader_dict["edge_train_loader"] = LinkNeighborLoader(
             edge_train_data,
             num_neighbors=[n_direct_neighbors] * n_hops,
             batch_size=edge_batch_size,
-            edge_label_index=edge_train_data.edge_label_index,
+            edge_label=None, # will automatically be added as 1 for all edges
+            edge_label_index=edge_train_data.edge_label_index[:, edge_train_data.edge_label.bool()], # limit the edges to the ones from the edge_label_adj
             directed=edges_directed,
             shuffle=shuffle,
             neg_sampling_ratio=neg_edge_sampling_ratio)
@@ -93,7 +94,8 @@ def initialize_dataloaders(node_masked_data: Data,
             edge_val_data,
             num_neighbors=[n_direct_neighbors] * n_hops,
             batch_size=edge_batch_size,
-            edge_label_index=edge_val_data.edge_label_index,
+            edge_label=None, # will automatically be added as 1 for all edges
+            edge_label_index=edge_val_data.edge_label_index[:, edge_val_data.edge_label.bool()], # limit the edges to the ones from the edge_label_adj
             directed=edges_directed,
             shuffle=shuffle,
             neg_sampling_ratio=neg_edge_sampling_ratio)

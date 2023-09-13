@@ -4,6 +4,7 @@ This module contains data processors for the training of an NicheCompass model.
 
 from typing import List, Optional, Tuple
 
+import scipy.sparse as sp
 import torch
 from anndata import AnnData
 from torch_geometric.data import Data
@@ -14,6 +15,7 @@ from .datasets import SpatialAnnTorchDataset
 
 
 def edge_level_split(data: Data,
+                     edge_label_adj: Optional[sp.csr_matrix],
                      val_ratio: float=0.1,
                      test_ratio: float=0.,
                      is_undirected: bool=True,
@@ -32,6 +34,9 @@ def edge_level_split(data: Data,
     ----------
     data:
         PyG Data object to be split.
+    edge_label_adj:
+        Adjacency matrix which contains edges for edge reconstruction. If 
+        ´None´, uses the 'normal' adjacency matrix used for message passing.
     val_ratio:
         Ratio of edges to be included in the validation split.
     test_ratio:
@@ -63,14 +68,23 @@ def edge_level_split(data: Data,
     data_no_self_loops.edge_index, data_no_self_loops.edge_attr = (
         remove_self_loops(edge_index=data.edge_index,
                           edge_attr=data.edge_attr))
-
+    
+    if edge_label_adj is not None:
+        # Add edge label which is 1 for edges from edge_label_adj and 0 otherwise.
+        # This will be used by dataloader to only sample edges from edge_label_adj
+        # as opposed to from adj.
+        data_no_self_loops.edge_label = torch.tensor(
+            [(edge_label_adj[edge_index[0].item(), edge_index[1].item()] == 1.0) for
+             edge_index in data_no_self_loops.edge_attr]).int()
+    
     random_link_split = RandomLinkSplit(
         num_val=val_ratio,
         num_test=test_ratio,
         is_undirected=is_undirected,
+        key="edge_label", # if ´edge_label´ is not existent, it will be added with 1s
         neg_sampling_ratio=neg_sampling_ratio)
     train_data, val_data, test_data = random_link_split(data_no_self_loops)
-
+    
     # Readd self loops for message passing
     for split_data in [train_data, val_data, test_data]:
         split_data.edge_index = add_self_loops(
@@ -193,6 +207,7 @@ def prepare_data(adata: AnnData,
     # Edge-level split for edge reconstruction
     edge_train_data, edge_val_data, edge_test_data = edge_level_split(
         data=data,
+        edge_label_adj=dataset.edge_label_adj,
         val_ratio=edge_val_ratio,
         test_ratio=edge_test_ratio)
     data_dict["edge_train_data"] = edge_train_data
