@@ -121,6 +121,7 @@ def prepare_data(adata: AnnData,
                  adata_atac: Optional[AnnData]=None,
                  counts_key: Optional[str]="counts",
                  adj_key: str="spatial_connectivities",
+                 omics_adj_key: str="omics_spatial_connectivities",
                  cat_covariates_keys: Optional[List[str]]=None,
                  edge_val_ratio: float=0.1,
                  edge_test_ratio: float=0.,
@@ -175,6 +176,7 @@ def prepare_data(adata: AnnData,
         adata_atac=adata_atac,
         counts_key=counts_key,
         adj_key=adj_key,
+        omics_adj_key=omics_adj_key,
         cat_covariates_keys=cat_covariates_keys,
         cat_covariates_label_encoders=cat_covariates_label_encoders)
 
@@ -183,6 +185,13 @@ def prepare_data(adata: AnnData,
     data = Data(x=dataset.x,
                 edge_index=dataset.edge_index,
                 edge_attr=dataset.edge_index.t()) # store index of edge nodes as
+                                                  # edge attribute for
+                                                  # aggregation weight retrieval
+                                                  # in mini batches
+
+    omics_data = Data(x=dataset.x,
+                      edge_index=dataset.omics_edge_index,
+                edge_attr=dataset.omics_edge_index.t()) # store index of edge nodes as
                                                   # edge attribute for
                                                   # aggregation weight retrieval
                                                   # in mini batches
@@ -201,7 +210,7 @@ def prepare_data(adata: AnnData,
 
     # Node-level split for gene expression reconstruction
     data_dict["node_masked_data"] = node_level_split_mask(
-        data=data,
+        data=omics_data,
         val_ratio=node_val_ratio,
         test_ratio=node_test_ratio)
     return data_dict

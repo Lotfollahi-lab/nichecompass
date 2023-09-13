@@ -48,6 +48,7 @@ class SpatialAnnTorchDataset():
                  adata_atac: Optional[AnnData]=None,
                  counts_key: Optional[str]="counts",
                  adj_key: str="spatial_connectivities",
+                 omics_adj_key: str="omics_spatial_connectivities",
                  self_loops: bool=True,
                  cat_covariates_keys: Optional[str]=None):
         if counts_key is None:
@@ -75,19 +76,26 @@ class SpatialAnnTorchDataset():
         else:
             self.adj = sparse_mx_to_sparse_tensor(
                 sp.csr_matrix(adata.obsp[adj_key]))
+            
+        if sp.issparse(adata.obsp[omics_adj_key]):
+            self.omics_adj = sparse_mx_to_sparse_tensor(adata.obsp[omics_adj_key])
+        else:
+            self.omics_adj = sparse_mx_to_sparse_tensor(
+                sp.csr_matrix(adata.obsp[omics_adj_key]))
 
         # Validate adjacency matrix symmetry
         if (self.adj.nnz() != self.adj.t().nnz()):
             raise ImportError("The input adjacency matrix has to be symmetric.")
         
         self.edge_index = self.adj.to_torch_sparse_coo_tensor()._indices()
+        self.omics_edge_index = self.omics_adj.to_torch_sparse_coo_tensor()._indices()
 
         if self_loops:
             # Add self loops to account for autocrine communication
             # Remove self loops in case there are already before adding new ones
-            self.edge_index, _ = remove_self_loops(self.edge_index)
-            self.edge_index, _ = add_self_loops(self.edge_index,
-                                                num_nodes=self.x.size(0))
+            self.omics_edge_index, _ = remove_self_loops(self.omics_edge_index)
+            self.omics_edge_index, _ = add_self_loops(self.omics_edge_index,
+                                                      num_nodes=self.x.size(0))
             
         if cat_covariates_keys is not None:
             self.cat_covariates_cats = []
