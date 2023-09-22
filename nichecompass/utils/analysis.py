@@ -734,63 +734,76 @@ def create_new_color_dict(
         cats="None",
         overwrite_color_dict={"-1" : "#E1D9D1"}):
     new_categories = adata.obs[cat_key].unique().tolist()
-    if color_palette == "cell_type":
-        if adata.obs[cat_key].nunique() > 20:
-            # https://github.com/scverse/scanpy/blob/master/scanpy/plotting/palettes.py#L40
-            new_color_dict = {key: value for key, value in zip(
-                new_categories,
-                ["#023fa5",
-                 "#7d87b9",
-                 "#bec1d4",
-                 "#d6bcc0",
-                 "#bb7784",
-                 "#8e063b",
-                 "#4a6fe3",
-                 "#8595e1",
-                 "#b5bbe3",
-                 "#e6afb9",
-                 "#e07b91",
-                 "#d33f6a",
-                 "#11c638",
-                 "#8dd593",
-                 "#c6dec7",
-                 "#ead3c6",
-                 "#f0b98d",
-                 "#ef9708",
-                 "#0fcfc0",
-                 "#9cded6",
-                 "#d5eae7",
-                 "#f3e1eb",
-                 "#f6c4e1",
-                 "#f79cd4",
-                 '#7f7f7f',
-                 "#c7c7c7",
-                 "#1CE6FF",
-                 "#336600"])}
-        else:
-            # https://github.com/vega/vega/wiki/Scales#scale-range-literals (some adjusted)
-            new_color_dict = {key: value for key, value in zip(
-                new_categories,
-                ['#1f77b4',
-                 '#ff7f0e',
-                 '#279e68',
-                 '#d62728',
-                 '#aa40fc',
-                 '#8c564b',
-                 '#e377c2',
-                 '#b5bd61',
-                 '#17becf',
-                 '#aec7e8',
-                 '#ffbb78',
-                 '#98df8a',
-                 '#ff9896',
-                 '#c5b0d5',
-                 '#c49c94',
-                 '#f7b6d2',
-                 '#dbdb8d',
-                 '#9edae5',
-                 '#ad494a',
-                 '#8c6d31'])}            
+    if color_palette == "cell_type_30":
+        # https://github.com/scverse/scanpy/blob/master/scanpy/plotting/palettes.py#L40
+        new_color_dict = {key: value for key, value in zip(
+            new_categories,
+            ["#023fa5",
+             "#7d87b9",
+             "#bec1d4",
+             "#d6bcc0",
+             "#bb7784",
+             "#8e063b",
+             "#4a6fe3",
+             "#8595e1",
+             "#b5bbe3",
+             "#e6afb9",
+             "#e07b91",
+             "#d33f6a",
+             "#11c638",
+             "#8dd593",
+             "#c6dec7",
+             "#ead3c6",
+             "#f0b98d",
+             "#ef9708",
+             "#0fcfc0",
+             "#9cded6",
+             "#d5eae7",
+             "#f3e1eb",
+             "#f6c4e1",
+             "#f79cd4",
+             '#7f7f7f',
+             "#c7c7c7",
+             "#1CE6FF",
+             "#336600"])}
+    elif color_palette == "cell_type_20":
+        # https://github.com/vega/vega/wiki/Scales#scale-range-literals (some adjusted)
+        new_color_dict = {key: value for key, value in zip(
+            new_categories,
+            ['#1f77b4',
+             '#ff7f0e',
+             '#279e68',
+             '#d62728',
+             '#aa40fc',
+             '#8c564b',
+             '#e377c2',
+             '#b5bd61',
+             '#17becf',
+             '#aec7e8',
+             '#ffbb78',
+             '#98df8a',
+             '#ff9896',
+             '#c5b0d5',
+             '#c49c94',
+             '#f7b6d2',
+             '#dbdb8d',
+             '#9edae5',
+             '#ad494a',
+             '#8c6d31'])}
+    elif color_palette == "cell_type_10":
+        # scanpy vega10
+        new_color_dict = {key: value for key, value in zip(
+            new_categories,
+            ['#7f7f7f',
+             '#ff7f0e',
+             '#279e68',
+             '#e377c2',
+             '#17becf',
+             '#8c564b',
+             '#d62728',
+             '#1f77b4',
+             '#b5bd61',
+             '#aa40fc'])}
     elif color_palette == "batch":
         # sns.color_palette("colorblind").as_hex()
         new_color_dict = {key: value for key, value in zip(
