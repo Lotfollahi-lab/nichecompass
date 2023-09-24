@@ -1507,7 +1507,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 self.atac_node_label_aggregator(
                     x=x_atac,
                     edge_index=edge_index,
-                    return_agg_weights=return_agg_weights))
+                    return_agg_weights=False))
             x_neighbors_atac = atac_node_label_aggregator_output[0]
 
             # Retrieve node labels and only keep nodes in current node batch
@@ -1545,7 +1545,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 :, self.features_idx_dict_["target_reconstructed_atac_idx"]]
             output["source_atac_nb_means"] = self.source_atac_decoder(
                 z=z,
-                log_library_size=self.source_atac_log_library_size,
+                log_library_size=source_atac_log_library_size,
                 dynamic_mask=self.source_atac_dynamic_decoder_mask,
                 cat_covariates_embed=(
                     cat_covariates_embed[batch_idx] if

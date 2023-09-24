@@ -212,5 +212,6 @@ class Encoder(nn.Module):
                 dim=1)
         if self.use_bn:
             mu = self.bn_mu(mu)
+        mu = self.activation(mu)
         return mu, logstd
     
