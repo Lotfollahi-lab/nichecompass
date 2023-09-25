@@ -3,15 +3,19 @@ This module contains utilities to analyze niches inferred by the NicheCompass
 model.
 """
 
-from typing import Optional
+from typing import Optional, Tuple
 
 import holoviews as hv
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scanpy as sc
+import scipy.sparse as sp
 import seaborn as sns
 from anndata import AnnData
+from matplotlib import cm, colors
+from matplotlib.lines import Line2D
+import networkx as nx
 
 from ..models import NicheCompass
 
@@ -843,3 +847,235 @@ def plot_non_zero_gene_count_means_dist(
     plt.xlabel("Average Non-zero Gene Counts")
     plt.ylabel("Gene Density")
     plt.show()
+
+
+def compute_communication_gp_network(
+    gp_list: list,
+    model: NicheCompass,
+    group_key: str="niche",
+    n_neighbors: int=90):
+    """
+    Compute network of communication gene program strengths.
+    """
+    # Compute neighborhood graph
+    sc.pp.neighbors(model.adata,
+                    n_neighbors=n_neighbors,
+                    use_rep="spatial",
+                    key_added="spatial_cci")
+
+    gp_network_dfs = []
+    gp_summary_df = model.get_gp_summary()
+    for gp in gp_list:
+        gp_idx = model.adata.uns[model.gp_names_key_].tolist().index(gp)
+        active_gp_idx = model.adata.uns[model.active_gp_names_key_].tolist().index(gp)
+        gp_scores = model.adata.obsm[model.latent_key_][:, active_gp_idx]
+        gp_targets_cats = model.adata.varm[model.gp_targets_categories_mask_key_][:, gp_idx]
+        gp_sources_cats = model.adata.varm[model.gp_sources_categories_mask_key_][:, gp_idx]
+        targets_cats_label_encoder = model.adata.uns[model.targets_categories_label_encoder_key_]
+        sources_cats_label_encoder = model.adata.uns[model.sources_categories_label_encoder_key_]
+
+        sources_cat_idx_dict = {}
+        for source_cat, source_cat_label in sources_cats_label_encoder.items():
+            sources_cat_idx_dict[source_cat] = np.where(gp_sources_cats == source_cat_label)[0]
+
+        targets_cat_idx_dict = {}
+        for target_cat, target_cat_label in targets_cats_label_encoder.items():
+            targets_cat_idx_dict[target_cat] = np.where(gp_targets_cats == target_cat_label)[0]
+
+        # Get indices of all source and target genes
+        source_genes_idx = np.append(
+            sources_cat_idx_dict["ligand"],
+            sources_cat_idx_dict["enzyme"])
+        target_genes_idx = np.append(
+            np.append(targets_cat_idx_dict["receptor"],
+                      targets_cat_idx_dict["target_gene"]),
+            targets_cat_idx_dict["sensor"])
+
+        gp_source_scores = np.zeros((len(model.adata.obs), len(source_genes_idx)))
+        gp_target_scores = np.zeros((len(model.adata.obs), len(target_genes_idx)))
+
+        for i, source_gene_idx in enumerate(source_genes_idx):
+            source_gene = model.adata.var_names[source_gene_idx]
+            gp_source_scores[:, i] = (
+                model.adata[:, model.adata.var_names.tolist().index(source_gene)].X.toarray().flatten() / model.adata[:, model.adata.var_names.tolist().index(source_gene)].X.toarray().flatten().max() *
+                gp_summary_df[gp_summary_df["gp_name"] == gp]["gp_source_genes_weights"].values[0][gp_summary_df[gp_summary_df["gp_name"] == gp]["gp_source_genes"].values[0].index(source_gene)] *
+                gp_scores)
+
+        for j, target_gene_idx in enumerate(target_genes_idx):
+            target_gene = model.adata.var_names[target_gene_idx]
+            gp_target_scores[:, j] = (
+                model.adata[:, model.adata.var_names.tolist().index(target_gene)].X.toarray().flatten() / model.adata[:, model.adata.var_names.tolist().index(target_gene)].X.toarray().flatten().max() *
+                gp_summary_df[gp_summary_df["gp_name"] == gp]["gp_target_genes_weights"].values[0][gp_summary_df[gp_summary_df["gp_name"] == gp]["gp_target_genes"].values[0].index(target_gene)] *
+                gp_scores)
+
+        agg_gp_source_score = gp_source_scores.mean(1)
+        agg_gp_target_score = gp_target_scores.mean(1)
+        agg_gp_source_score[agg_gp_source_score < 0] = 0.
+        agg_gp_target_score[agg_gp_target_score < 0] = 0.
+
+        model.adata.obs[f"{gp}_source_score"] = agg_gp_source_score
+        model.adata.obs[f"{gp}_target_score"] = agg_gp_target_score
+
+        score_matrix = np.outer(agg_gp_source_score, agg_gp_target_score)
+
+        model.adata.obsp[f"{gp}_connectivities"] = (model.adata.obsp["spatial_cci_connectivities"] > 0).multiply(sp.csr_matrix(score_matrix))
+
+        # Aggregate neighbor connectivities for each group
+        gp_network_df_pivoted = aggregate_obsp_matrix_per_cell_type(
+            adata=model.adata,
+            obsp_key=f"{gp}_connectivities",
+            cell_type_key=group_key,
+            group_key=None,
+            agg_rows=True)
+
+        gp_network_df = gp_network_df_pivoted.melt(var_name="source", value_name="gp_score", ignore_index=False).reset_index()
+        gp_network_df.columns = ["source", "target", "strength"]
+
+        gp_network_df = gp_network_df.sort_values("strength", ascending=False)
+
+        # Normalize strength
+        min_value = gp_network_df["strength"].min()
+        max_value = gp_network_df["strength"].max()
+        gp_network_df["strength"] = (gp_network_df["strength"] - min_value) / (max_value - min_value)
+        gp_network_df["strength"] = np.round(gp_network_df["strength"], 2)
+        gp_network_df = gp_network_df[gp_network_df["strength"] > 0]
+
+        gp_network_df["edge_type"] = gp
+        gp_network_dfs.append(gp_network_df)
+
+    network_df = pd.concat(gp_network_dfs, ignore_index=True)
+    return network_df
+
+
+def visualize_communication_gp_network(
+    adata,
+    network_df,
+    cat_colors,
+    edge_type_colors: Optional[dict]=None,
+    edge_width_scale: int=20.0,
+    fontsize: int=14,
+    figsize: Tuple[int, int]=(18, 16),
+    save: bool=False,
+    save_path: str="communication_gp_network.svg",
+    show: bool=True,
+    text_space: float=1.3,
+    cat_key: str="niche",
+    edge_attr: str="strength"):
+    """
+    Visualize a communication gp network.
+    """
+    # Assuming you have unique edge types in your 'edge_type' column
+    edge_types = np.unique(network_df['edge_type'])
+    
+    if edge_type_colors is None:
+        # Colorblindness adjusted vega_10
+        # See https://github.com/theislab/scanpy/issues/387
+        vega_10 = list(map(colors.to_hex, cm.tab10.colors))
+        vega_10_scanpy = vega_10.copy()
+        vega_10_scanpy[2] = "#279e68"  # green
+        vega_10_scanpy[4] = "#aa40fc"  # purple
+        vega_10_scanpy[8] = "#b5bd61"  # kakhi
+        edge_type_colors = vega_10_scanpy
+
+    # Create a dictionary that maps edge types to colors
+    edge_type_color_dict = {edge_type: color for edge_type, color in zip(edge_types, edge_type_colors)}
+
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=figsize)
+    ax.axis("off")
+    G = nx.from_pandas_edgelist(
+        network_df,
+        source="source",
+        target="target",
+        edge_attr=["edge_type", edge_attr],
+        create_using=nx.DiGraph(),
+    )
+    nodes = np.unique(network_df["target"])
+    node_colors = [cat_colors[node] for node in nodes]
+    pos = nx.circular_layout(G)
+
+    nx.set_node_attributes(G, cat_colors, "color")
+    node_color = nx.get_node_attributes(G, "color")
+
+    description = nx.draw_networkx_labels(G, pos, font_size=fontsize)
+    n = adata.obs[cat_key].nunique()
+    node_list = sorted(G.nodes())
+    angle = []
+    angle_dict = {}
+    for i, node in zip(range(n), node_list):
+        theta = 2.0 * np.pi * i / n
+        angle.append((np.cos(theta), np.sin(theta)))
+        angle_dict[node] = theta
+    pos = {}
+    for node_i, node in enumerate(node_list):
+        pos[node] = angle[node_i]
+
+    r = fig.canvas.get_renderer()
+    trans = plt.gca().transData.inverted()
+    for node, t in description.items():
+        bb = t.get_window_extent(renderer=r)
+        bbdata = bb.transformed(trans)
+        radius = text_space + bbdata.width / 2.0
+        position = (radius * np.cos(angle_dict[node]), radius * np.sin(angle_dict[node]))
+        t.set_position(position)
+        t.set_rotation(angle_dict[node] * 360.0 / (2.0 * np.pi))
+        t.set_clip_on(False)
+
+    edgelist = [(u, v) for u, v, e in G.edges(data=True) if u != v]
+    edge_colors = [edge_type_color_dict[edge_data['edge_type']] for u, v, edge_data in G.edges(data=True) if u != v]
+    width = [e[edge_attr] * edge_width_scale for u, v, e in G.edges(data=True) if u != v]
+
+    h2 = nx.draw_networkx(
+        G,
+        pos,
+        with_labels=False,
+        node_size=500,
+        edgelist=edgelist,
+        width=width,
+        edge_vmin=0.0,
+        edge_vmax=1.0,
+        edge_color=edge_colors,  # Use the edge type colors here
+        arrows=True,
+        arrowstyle="-|>",
+        arrowsize=20,
+        vmin=0.0,
+        vmax=1.0,
+        cmap=plt.cm.binary,  # Use a colormap for node colors if needed
+        node_color=list(node_color.values()),
+        ax=ax,
+        connectionstyle="arc3, rad = 0.1",
+    )
+
+    #https://stackoverflow.com/questions/19877666/add-legends-to-linecollection-plot - uses plotted data to define the color but here we already have colors defined, so just need a Line2D object.
+    def make_proxy(clr, mappable, **kwargs):
+        return Line2D([0, 1], [0, 1], color=clr, **kwargs)
+
+    # generate proxies with the above function
+    proxies = [make_proxy(clr, h2, lw=5) for clr in set(edge_colors)]
+    # and some text for the legend -- you should use something from df.
+    labels = [edge.split("_")[0] + " GP" for edge in edge_types[::-1]]
+    lgd = plt.legend(proxies, labels, loc="lower left")
+
+    edgelist = [(u, v) for u, v, e in G.edges(data=True) if ((u == v))] + [(u, v) for u, v, e in G.edges(data=True) if ((u != v))]
+    edge_colors = [edge_type_color_dict[edge_data['edge_type']] for u, v, edge_data in G.edges(data=True) if u == v]
+    width = [e[edge_attr] * edge_width_scale for u, v, e in G.edges(data=True) if u == v] + [0 for u, v, e in G.edges(data=True) if ((u != v))]
+    nx.draw_networkx_edges(
+        G,
+        pos,
+        node_size=500,
+        edgelist=edgelist, 
+        width=width,
+        edge_vmin=0.0,
+        edge_vmax=1.0,
+        edge_color=edge_colors,
+        arrows=False,
+        arrowstyle="-|>",
+        arrowsize=20,
+        ax=ax,
+        connectionstyle="arc3",)
+    plt.tight_layout()
+    if save:
+        plt.savefig(save_path)
+    if show:
+        plt.show()
+    plt.close(fig)
+    plt.ion()
