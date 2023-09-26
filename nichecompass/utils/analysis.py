@@ -862,7 +862,7 @@ def compute_communication_gp_network(
                     n_neighbors=n_neighbors,
                     use_rep="spatial",
                     key_added="spatial_cci")
-
+    
     gp_network_dfs = []
     gp_summary_df = model.get_gp_summary()
     for gp in gp_list:
@@ -920,7 +920,7 @@ def compute_communication_gp_network(
 
         model.adata.obsp[f"{gp}_connectivities"] = (model.adata.obsp["spatial_cci_connectivities"] > 0).multiply(sp.csr_matrix(score_matrix))
 
-        # Aggregate neighbor connectivities for each group
+        # Aggregate gp connectivities for each group
         gp_network_df_pivoted = aggregate_obsp_matrix_per_cell_type(
             adata=model.adata,
             obsp_key=f"{gp}_connectivities",
