@@ -916,9 +916,11 @@ def compute_communication_gp_network(
         model.adata.obs[f"{gp}_source_score"] = agg_gp_source_score
         model.adata.obs[f"{gp}_target_score"] = agg_gp_target_score
 
-        score_matrix = np.outer(agg_gp_source_score, agg_gp_target_score)
+        score_matrix = sp.csr_matrix(agg_gp_source_score).T.dot(
+            sp.csr_matrix(agg_gp_target_score))
 
-        model.adata.obsp[f"{gp}_connectivities"] = (model.adata.obsp["spatial_cci_connectivities"] > 0).multiply(sp.csr_matrix(score_matrix))
+        model.adata.obsp[f"{gp}_connectivities"] = (model.adata.obsp["spatial_cci_connectivities"] > 0).multiply(
+            score_matrix)
 
         # Aggregate gp connectivities for each group
         gp_network_df_pivoted = aggregate_obsp_matrix_per_cell_type(
@@ -989,8 +991,6 @@ def visualize_communication_gp_network(
         edge_attr=["edge_type", edge_attr],
         create_using=nx.DiGraph(),
     )
-    nodes = np.unique(network_df["target"])
-    node_colors = [cat_colors[node] for node in nodes]
     pos = nx.circular_layout(G)
 
     nx.set_node_attributes(G, cat_colors, "color")
@@ -1051,7 +1051,6 @@ def visualize_communication_gp_network(
 
     # generate proxies with the above function
     proxies = [make_proxy(clr, h2, lw=5) for clr in set(edge_colors)]
-    # and some text for the legend -- you should use something from df.
     labels = [edge.split("_")[0] + " GP" for edge in edge_types[::-1]]
     lgd = plt.legend(proxies, labels, loc="lower left")
 

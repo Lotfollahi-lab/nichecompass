@@ -94,8 +94,8 @@ class Encoder(nn.Module):
         
         if n_fc_layers == 2:
             self.fc_l1 = nn.Linear(n_input, int(n_input / 2))
-            self.fc_bn = nn.BatchNorm1d(int(n_input / 2))
             self.fc_l2 = nn.Linear(int(n_input / 2), n_hidden)
+            self.fc_l2_bn = nn.BatchNorm1d(n_hidden)
         elif n_fc_layers == 1:
             self.fc_l1 = nn.Linear(n_input, n_hidden)
         
@@ -183,8 +183,8 @@ class Encoder(nn.Module):
         # FC forward pass shared across all nodes
         hidden = self.dropout(self.activation(self.fc_l1(x)))
         if self.n_fc_layers == 2:
-            hidden = self.fc_bn(hidden)
             hidden = self.dropout(self.activation(self.fc_l2(hidden)))
+            hidden = self.fc_l2_bn(hidden)
         
         if ((self.cat_covariates_embed_mode == "hidden") &
             (cat_covariates_embed is not None)):

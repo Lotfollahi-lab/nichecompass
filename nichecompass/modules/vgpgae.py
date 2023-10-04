@@ -639,7 +639,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 if use_only_active_gps:
                     # Set running mean abs mu of inactive gene programs to 0 for
                     # active gp determination
-                    self.running_mean_abs_mu[~active_gp_mask] = 0  
+                    # self.running_mean_abs_mu[~active_gp_mask] = 0  
 
                     # Set dynamic mask to 0 for all inactive gene programs to
                     # not affect omics decoders
@@ -1135,7 +1135,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
     @torch.no_grad()
     def get_gp_weights(self,
-                       only_masked_features: bool=False) -> List[torch.Tensor]:
+                       only_masked_features: bool=False,
+                       gp_type: Literal["all", "prior", "addon"]="all"
+                       ) -> List[torch.Tensor]:
         """
         Get the gene program weights of the omics feature decoders.
 
@@ -1151,19 +1153,20 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             target_decoder = getattr(self, f"target_{modality}_decoder")
             source_decoder = getattr(self, f"source_{modality}_decoder")
 
-            # Get decoder weights of masked gps
-            target_gp_weights_masked = (
-                target_decoder.nb_means_normalized_decoder.masked_l.weight.data
-                ).clone()
-            source_gp_weights_masked = (
-                source_decoder.nb_means_normalized_decoder.masked_l.weight.data
-                ).clone()
-            gp_weights = torch.cat((target_gp_weights_masked,
-                                    source_gp_weights_masked),
-                                   dim=0)
+            if gp_type != "addon":
+                # Get decoder weights of masked gps
+                target_gp_weights_masked = (
+                    target_decoder.nb_means_normalized_decoder.masked_l.weight.data
+                    ).clone()
+                source_gp_weights_masked = (
+                    source_decoder.nb_means_normalized_decoder.masked_l.weight.data
+                    ).clone()
+                gp_weights = torch.cat((target_gp_weights_masked,
+                                        source_gp_weights_masked),
+                                    dim=0)
 
             # Add decoder weights of addon gps
-            if self.n_addon_gp_ > 0:
+            if (gp_type != "masked") & (self.n_addon_gp_ > 0):
                 target_gp_weights_addon = (
                     target_decoder.nb_means_normalized_decoder.addon_l.weight.data
                     ).clone()
@@ -1173,7 +1176,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 gp_weights_addon = torch.cat((target_gp_weights_addon,
                                               source_gp_weights_addon),
                                              dim=0)
+                
+            if (gp_type == "all") & (self.n_addon_gp_ > 0):
                 gp_weights = torch.cat([gp_weights, gp_weights_addon], axis=1)
+            elif gp_type == "addon":
+                gp_weights = gp_weights_addon
 
             # Only keep omics features in mask
             if only_masked_features:
@@ -1226,35 +1233,61 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Tensor containing the rna decoder gene weights of active gene
             programs.
         """
-        gp_weights = self.get_gp_weights(only_masked_features=False)[0]
-        
-        # Normalize gp weights with running mean absolute gp scores
-        gp_weights_normalized = (self.running_mean_abs_mu * gp_weights)
-        
-        # Aggregate absolute normalized gp weights based on
-        # ´abs_gp_weights_agg_mode´ and calculate thresholds of aggregated
-        # absolute normalized gp weights and get active gp mask and (optionally)
-        # active gp weights
-        abs_gp_weights_sums = gp_weights_normalized.norm(p=1, dim=0)
-        if abs_gp_weights_agg_mode in ["sum", "sum+nzmeans"]:
-            max_abs_gp_weights_sum = max(abs_gp_weights_sums)
-            min_abs_gp_weights_sum_thresh = (self.active_gp_thresh_ratio_ * 
-                                             max_abs_gp_weights_sum)
-            active_gp_mask = (abs_gp_weights_sums >= 
-                              min_abs_gp_weights_sum_thresh)
-        if abs_gp_weights_agg_mode in ["nzmeans", "sum+nzmeans"]:
-            abs_gp_weights_nzmeans = (abs_gp_weights_sums / 
-                                      torch.count_nonzero(gp_weights, dim=0))
-            max_abs_gp_weights_nzmean = max(abs_gp_weights_nzmeans)
-            min_abs_gp_weights_nzmean_thresh = (self.active_gp_thresh_ratio_ *
-                                                max_abs_gp_weights_nzmean)
-            if abs_gp_weights_agg_mode == "nzmeans":
-                active_gp_mask = (abs_gp_weights_nzmeans >= 
-                                  min_abs_gp_weights_nzmean_thresh)
-            elif abs_gp_weights_agg_mode == "sum+nzmeans":
-                # Combine active gp mask
-                active_gp_mask = active_gp_mask | (abs_gp_weights_nzmeans >=
-                                 min_abs_gp_weights_nzmean_thresh)
+        active_gp_mask = torch.zeros(self.n_prior_gp_ + self.n_addon_gp_,
+                                     dtype=torch.bool)
+
+        if (self.n_addon_gp_ > 0):
+            gp_types = ["masked", "addon"]
+        else:
+            gp_types = ["masked"]
+
+        for gp_type in gp_types:
+            gp_weights = self.get_gp_weights(only_masked_features=False,
+                                             gp_type=gp_type)[0]
+
+            # Get index of gps based on ´gp_type´
+            if gp_type == "masked":
+                gp_idx = slice(None, self.n_prior_gp_)
+            elif gp_type == "addon":
+                gp_idx = slice(self.n_prior_gp_, None)
+
+            # Normalize gp weights with running mean absolute gp scores
+            gp_weights_normalized = (self.running_mean_abs_mu[gp_idx] *
+                                     gp_weights)
+            
+            print(gp_weights.sum(0))
+            print(gp_weights_normalized.sum(0))
+            print(self.running_mean_abs_mu[gp_idx])
+            
+            # Aggregate absolute normalized gp weights based on
+            # ´abs_gp_weights_agg_mode´ and calculate thresholds of aggregated
+            # absolute normalized gp weights and get active gp mask and (optionally)
+            # active gp weights
+            abs_gp_weights_sums = gp_weights_normalized.norm(p=1, dim=0)
+            if abs_gp_weights_agg_mode in ["sum", "sum+nzmeans"]:
+                max_abs_gp_weights_sum = max(abs_gp_weights_sums)
+                min_abs_gp_weights_sum_thresh = (self.active_gp_thresh_ratio_ * 
+                                                max_abs_gp_weights_sum)
+                active_gp_mask[gp_idx] = active_gp_mask[gp_idx] | (
+                    abs_gp_weights_sums >= min_abs_gp_weights_sum_thresh)
+            
+            if abs_gp_weights_agg_mode in ["nzmeans", "sum+nzmeans"]:
+                abs_gp_weights_nzmeans = (
+                    abs_gp_weights_sums / 
+                    torch.count_nonzero(gp_weights_normalized, dim=0))
+                abs_gp_weights_nzmeans = torch.nan_to_num(abs_gp_weights_nzmeans)
+                max_abs_gp_weights_nzmean = max(abs_gp_weights_nzmeans)
+                min_abs_gp_weights_nzmean_thresh = (self.active_gp_thresh_ratio_ *
+                                                    max_abs_gp_weights_nzmean)
+                if abs_gp_weights_agg_mode == "nzmeans":
+                    active_gp_mask[gp_idx] = active_gp_mask[gp_idx] | (
+                        abs_gp_weights_nzmeans >= 
+                        min_abs_gp_weights_nzmean_thresh)
+                elif abs_gp_weights_agg_mode == "sum+nzmeans":
+                    # Combine active gp mask
+                    active_gp_mask[gp_idx] = active_gp_mask[gp_idx] | (
+                        abs_gp_weights_nzmeans >=
+                        min_abs_gp_weights_nzmean_thresh)
         if return_gp_weights:
             active_gp_weights = gp_weights[:, active_gp_mask]
             return active_gp_mask, active_gp_weights

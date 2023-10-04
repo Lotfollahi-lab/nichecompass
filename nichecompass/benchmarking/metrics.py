@@ -33,7 +33,6 @@ def compute_benchmarking_metrics(
                        "clisi", # biological conservation
                        "nasw", # niche separability
                        "basw", # batch correction
-                       "bgc", # batch correction
                        "blisi", # batch correction
                        "kbet"], # batch correction
         cell_type_key: str="cell_type",
@@ -74,7 +73,7 @@ def compute_benchmarking_metrics(
     # Metrics use different k's for the knn graph
     # Based on specified metrics, determine which knn graphs to compute
     n_neighbors_list = []
-    if any(metric in ["gcs", "mlami", "cas", "bgc", "nasw"] for metric in
+    if any(metric in ["gcs", "mlami", "cas", "nasw"] for metric in
            metrics):
         n_neighbors_list.append(15) # default k for connectivity-based
                                     # metrics
@@ -299,18 +298,6 @@ def compute_benchmarking_metrics(
             minutes = int(elapsed_time // 60)
             seconds = int(elapsed_time % 60)
             print("BASW metric computed. "
-                  f"Elapsed time: {minutes} minutes "
-                  f"{seconds} seconds.\n")
-              
-        if "bgc" in metrics:
-            benchmarking_dict["bgc"] = scib_metrics.graph_connectivity(
-                X=adata.obsp[f"{latent_key}_15knng_distances"],
-                labels=adata.obs[batch_key])
-              
-            elapsed_time = time.time() - start_time
-            minutes = int(elapsed_time // 60)
-            seconds = int(elapsed_time % 60)
-            print("BGC metric computed. "
                   f"Elapsed time: {minutes} minutes "
                   f"{seconds} seconds.\n")
               

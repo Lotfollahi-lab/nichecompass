@@ -719,7 +719,8 @@ class NicheCompass(BaseModelMixin):
                 l1_targets_categories_encoded = [
                     self.adata.uns[
                         self.targets_categories_label_encoder_key_][category]
-                    for category in l1_targets_categories]
+                    for category in l1_targets_categories if category in
+                    self.targets_categories_label_encoder_key_]
             if l1_sources_categories is None:
                 l1_sources_categories_encoded = list(self.adata.uns[
                     self.sources_categories_label_encoder_key_].values())

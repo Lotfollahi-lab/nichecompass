@@ -338,9 +338,9 @@ def extract_gp_dict_from_collectri_tf_network(
     for tf, target_genes in zip(tf_target_genes_df["source"],
                                 tf_target_genes_df["target"]):
         gp_dict[tf + "_TF_target_genes_GP"] = {
-            "sources": [tf] + target_genes,
+            "sources": [],
             "targets": [tf] + target_genes,
-            "sources_categories": ["tf"] + ["target_gene"] * len(target_genes),
+            "sources_categories": [],
             "targets_categories": ["tf"] + ["target_gene"] * len(target_genes)}
         
     if plot_gp_gene_count_distributions:
