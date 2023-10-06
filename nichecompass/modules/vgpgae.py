@@ -639,7 +639,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 if use_only_active_gps:
                     # Set running mean abs mu of inactive gene programs to 0 for
                     # active gp determination
-                    # self.running_mean_abs_mu[~active_gp_mask] = 0  
+                    self.running_mean_abs_mu[~active_gp_mask] = 0  
 
                     # Set dynamic mask to 0 for all inactive gene programs to
                     # not affect omics decoders
@@ -1234,7 +1234,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             programs.
         """
         active_gp_mask = torch.zeros(self.n_prior_gp_ + self.n_addon_gp_,
-                                     dtype=torch.bool)
+                                     dtype=torch.bool,
+                                     device=next(self.parameters()).device)
 
         if (self.n_addon_gp_ > 0):
             gp_types = ["masked", "addon"]
@@ -1254,10 +1255,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             # Normalize gp weights with running mean absolute gp scores
             gp_weights_normalized = (self.running_mean_abs_mu[gp_idx] *
                                      gp_weights)
-            
-            print(gp_weights.sum(0))
-            print(gp_weights_normalized.sum(0))
-            print(self.running_mean_abs_mu[gp_idx])
             
             # Aggregate absolute normalized gp weights based on
             # ´abs_gp_weights_agg_mode´ and calculate thresholds of aggregated
