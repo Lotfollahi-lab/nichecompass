@@ -227,8 +227,8 @@ class Trainer(BaseTrainerMixin):
               lambda_chrom_access_recon: float=10.,
               lambda_group_lasso: float=0.,
               lambda_l1_masked: float=0.,
-              l1_targets_mask: Optional[np.array]=None,
-              l1_sources_mask: Optional[np.array]=None,
+              l1_targets_mask: Optional[torch.Tensor]=None,
+              l1_sources_mask: Optional[torch.Tensor]=None,
               lambda_l1_addon: float=0.,
               mlflow_experiment_id: Optional[str]=None):
         """

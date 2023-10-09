@@ -144,6 +144,7 @@ class Encoder(nn.Module):
         self.dropout = nn.Dropout(dropout_rate)
         if use_bn:
             self.bn_mu = nn.BatchNorm1d(n_hidden, affine=True)
+        #self.final_activation = nn.Tanh()
 
     def forward(self,
                 x: torch.Tensor,
@@ -212,6 +213,6 @@ class Encoder(nn.Module):
                 dim=1)
         if self.use_bn:
             mu = self.bn_mu(mu)
-        #mu = self.activation(mu)
+        #mu = self.final_activation(mu)
         return mu, logstd
     

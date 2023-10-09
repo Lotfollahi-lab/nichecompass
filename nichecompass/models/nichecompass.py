@@ -729,12 +729,12 @@ class NicheCompass(BaseModelMixin):
                     self.adata.uns[
                         self.sources_categories_label_encoder_key_][category]
                     for category in l1_sources_categories]
-            l1_targets_mask = np.isin(
+            l1_targets_mask = torch.from_numpy(np.isin(
                 self.adata.varm[self.gp_targets_categories_mask_key_],
-                l1_targets_categories_encoded)
-            l1_sources_mask = np.isin(
+                l1_targets_categories_encoded))
+            l1_sources_mask = torch.from_numpy(np.isin(
                 self.adata.varm[self.gp_sources_categories_mask_key_],
-                l1_sources_categories_encoded)
+                l1_sources_categories_encoded))
         else:
             l1_targets_mask = None
             l1_sources_mask = None

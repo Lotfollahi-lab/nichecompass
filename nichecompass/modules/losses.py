@@ -287,16 +287,19 @@ def compute_kl_reg_loss(mu: torch.Tensor,
 def compute_gp_l1_reg_loss(
         model: nn.Module,
         gp_type: Literal["prior", "addon"],
-        l1_targets_mask: Optional[np.array]=None,
-        l1_sources_mask: Optional[np.array]=None) -> torch.Tensor:
+        l1_targets_mask: Optional[torch.Tensor]=None,
+        l1_sources_mask: Optional[torch.Tensor]=None) -> torch.Tensor:
     """
-    Compute L1 regularization loss for the masked decoder layer weights to 
-    encourage gene sparsity of masked gene programs.
+    Compute L1 regularization loss for the rna decoder weights of gene programs
+    of the type ´gp_type´ to encourage gene sparsity of those gene programs.
 
     Parameters
     ----------
     model:
         The VGPGAE module.
+    gp_type:
+        Type of gene programs to which the L1 regularization loss should be
+        applied.
     l1_targets_mask:
         Boolean gene program gene mask that is True for all gene program target
         genes to which the L1 regularization loss should be applied (dim:
@@ -308,15 +311,22 @@ def compute_gp_l1_reg_loss(
 
     Returns
     ----------
-   gp_l1_reg_loss:
-        L1 regularization loss for the masked decoder layer weights.
+    gp_l1_reg_loss:
+        L1 regularization loss for the rna decoder weights.
     """
     if gp_type == "prior":
         layer_name = "masked_l"
     elif gp_type == "addon":
         layer_name = "addon_l"
-    # First compute layer-wise sum of absolute weights over target
-    # and source expression decoder layers, then sum across layers
+
+    # First compute layer-wise sum of absolute weights over target and source
+    # rna decoder layers, then sum across layers. Use l1 masks to determine
+    # which weights are included in the sum.
+    # NOTE:
+    # - the absolute weights and thus the L1 loss will be higher for highly
+    #   expressed genes
+    # - the model will keep weights non-zero for gps with very high scores and
+    #   turn off weights for gps with low scores 
     decoder_layerwise_param_sum = torch.stack(
         [torch.linalg.vector_norm(param[l1_targets_mask if 
                                         "target" in param_name else

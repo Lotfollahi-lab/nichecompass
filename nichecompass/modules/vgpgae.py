@@ -924,8 +924,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
              edge_model_output: dict,
              node_model_output: dict,
              lambda_l1_masked: float,
-             l1_targets_mask: np.array,
-             l1_sources_mask: np.array,
+             l1_targets_mask: torch.Tensor,
+             l1_sources_mask: torch.Tensor,
              lambda_l1_addon: float,
              lambda_group_lasso: float,
              lambda_gene_expr_recon: float=300.,
@@ -957,7 +957,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             (dim: n_genes, n_gps).
         l1_sources_mask:
             Boolean gene program gene mask that is True for all gene program
-            sourcengenes to which the L1 regularization loss should be applied
+            source genes to which the L1 regularization loss should be applied
             (dim: n_genes, n_gps).
         lambda_l1_addon:
             Lambda (weighting factor) for the L1 regularization loss of genes in
@@ -1494,10 +1494,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         # and reconstructed features
         assert x.size(1) == self.n_output_genes_
         assert x_neighbors.size(1) == self.n_output_genes_
-        output["node_labels"]["target_rna"] = x[batch_idx][
-            :, self.features_idx_dict_["target_reconstructed_rna_idx"]]
-        output["node_labels"]["source_rna"] = x_neighbors[batch_idx][
-            :, self.features_idx_dict_["source_reconstructed_rna_idx"]]
+
+        # This may include genes that are excluded from reconstruction due to
+        # turn off of inactive gene programs
+        output["node_labels"]["target_rna"] = x[batch_idx]
+        output["node_labels"]["source_rna"] = x_neighbors[batch_idx]
 
         # Use observed library size as scaling factor for the negative
         # binomial means of the rna distribution
@@ -1518,8 +1519,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 (cat_covariates_embed is not None) &
                 ("gene_expr_decoder" in
                  self.cat_covariates_embeds_injection_)
-                 else None))[
-                :, self.features_idx_dict_["target_reconstructed_rna_idx"]]
+                 else None))
         output["source_rna_nb_means"] = self.source_rna_decoder(
             z=z,
             log_library_size=source_rna_log_library_size,
@@ -1528,8 +1528,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             (cat_covariates_embed is not None) &
             ("gene_expr_decoder" in
              self.cat_covariates_embeds_injection_)
-             else None))[
-                :, self.features_idx_dict_["source_reconstructed_rna_idx"]]
+             else None))
 
         if "atac" in self.modalities_:
             # Compute aggregated neighborhood atac feature vector
