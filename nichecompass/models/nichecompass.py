@@ -238,7 +238,6 @@ class NicheCompass(BaseModelMixin):
                  **kwargs):
         self.adata = adata
         self.adata_atac = adata_atac
-
         self.counts_key_ = counts_key
         self.adj_key_ = adj_key
         self.gp_names_key_ = gp_names_key
@@ -310,6 +309,11 @@ class NicheCompass(BaseModelMixin):
                              "reconstruction, you can create a mask of 1s "
                              " that allows all gene program latent nodes to"
                              " reconstruct all genes.")
+            
+        # Determine features scale factors
+        self.features_scale_factors_ = torch.concat(
+            (torch.tensor(self.adata.X.sum(0))[0],
+             torch.tensor(self.adata.X.sum(0))[0]))
     
         # Retrieve chromatin accessibility masks
         if adata_atac is None:
@@ -537,6 +541,7 @@ class NicheCompass(BaseModelMixin):
             target_atac_decoder_mask=self.ca_targets_mask_,
             source_atac_decoder_mask=self.ca_sources_mask_,
             features_idx_dict=self.features_idx_dict_,
+            features_scale_factors=self.features_scale_factors_,
             gene_peaks_mask=gene_peaks_mask,
             cat_covariates_cats=self.cat_covariates_cats_,
             cat_covariates_no_edges=self.cat_covariates_no_edges_,
@@ -720,7 +725,7 @@ class NicheCompass(BaseModelMixin):
                     self.adata.uns[
                         self.targets_categories_label_encoder_key_][category]
                     for category in l1_targets_categories if category in
-                    self.targets_categories_label_encoder_key_]
+                    self.adata.uns[self.targets_categories_label_encoder_key_]]
             if l1_sources_categories is None:
                 l1_sources_categories_encoded = list(self.adata.uns[
                     self.sources_categories_label_encoder_key_].values())
@@ -728,7 +733,8 @@ class NicheCompass(BaseModelMixin):
                 l1_sources_categories_encoded = [
                     self.adata.uns[
                         self.sources_categories_label_encoder_key_][category]
-                    for category in l1_sources_categories]
+                    for category in l1_sources_categories if category in
+                    self.adata.uns[self.sources_categories_label_encoder_key_]]
             l1_targets_mask = torch.from_numpy(np.isin(
                 self.adata.varm[self.gp_targets_categories_mask_key_],
                 l1_targets_categories_encoded))
@@ -1220,6 +1226,8 @@ class NicheCompass(BaseModelMixin):
             Gene program names of active gene programs (dim: n_active_gps,)
         """
         self._check_if_trained(warn=True)
+        
+        device = next(self.model.parameters()).device
 
         active_gp_mask = self.model.get_active_gp_mask()
         active_gp_mask = active_gp_mask.detach().cpu().numpy()
@@ -1344,9 +1352,6 @@ class NicheCompass(BaseModelMixin):
                 self, 
                 adata: Optional[AnnData]=None,
                 adata_atac: Optional[AnnData]=None,
-                counts_key: Optional[str]="counts",
-                adj_key: str="spatial_connectivities",
-                cat_covariates_keys: Optional[List[str]]=None,
                 only_active_gps: bool=True,
                 node_batch_size: int=64,
                 ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
@@ -1388,9 +1393,9 @@ class NicheCompass(BaseModelMixin):
                 adata=adata,
                 cat_covariates_label_encoders=self.model.cat_covariates_label_encoders_,
                 adata_atac=adata_atac,
-                counts_key=counts_key,
-                adj_key=adj_key,
-                cat_covariates_keys=cat_covariates_keys,
+                counts_key=self.counts_key_,
+                adj_key=self.adj_key_,
+                cat_covariates_keys=self.cat_covariates_keys_,
                 edge_val_ratio=0.,
                 edge_test_ratio=0.,
                 node_val_ratio=0.,
@@ -1658,6 +1663,8 @@ class NicheCompass(BaseModelMixin):
         gp_summary_df:
             DataFrame with gene program summary information.
         """
+        device = next(self.model.parameters()).device
+        
         # Get source and target omics decoder weights
         _, gp_gene_weights, gp_peak_weights = self.get_gp_data()
 

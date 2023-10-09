@@ -150,6 +150,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  target_rna_decoder_mask: torch.Tensor,
                  source_rna_decoder_mask: torch.Tensor,
                  features_idx_dict: dict,
+                 features_scale_factors: torch.Tensor,
                  n_output_peaks: int=0,
                  target_atac_decoder_mask: Optional[torch.Tensor]=None,
                  source_atac_decoder_mask: Optional[torch.Tensor]=None,
@@ -213,6 +214,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.target_atac_decoder_mask = target_atac_decoder_mask
         self.source_atac_decoder_mask = source_atac_decoder_mask
         self.features_idx_dict_ = features_idx_dict
+        self.features_scale_factors_ = features_scale_factors
         self.gene_peaks_mask_ = gene_peaks_mask
         #assert(torch.all(torch.logical_or(gene_peaks_mask == 0,
         #                                  gene_peaks_mask == 1)))
@@ -1197,8 +1199,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             self,
             abs_gp_weights_agg_mode: Literal["sum",
                                              "nzmeans",
-                                             "sum+nzmeans"]="sum+nzmeans",
-            return_gp_weights: bool=False
+                                             "sum+nzmeans",
+                                             "nzmedians",
+                                             "sum+nzmedians"]="sum+nzmedians",
+            return_gp_weights: bool=False,
             ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Get a mask of active gene programs based on the rna decoder gene weights
@@ -1233,9 +1237,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             Tensor containing the rna decoder gene weights of active gene
             programs.
         """
+        device = next(self.parameters()).device
+        
         active_gp_mask = torch.zeros(self.n_prior_gp_ + self.n_addon_gp_,
                                      dtype=torch.bool,
-                                     device=next(self.parameters()).device)
+                                     device=device)
 
         if (self.n_addon_gp_ > 0):
             gp_types = ["masked", "addon"]
@@ -1245,23 +1251,27 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         for gp_type in gp_types:
             gp_weights = self.get_gp_weights(only_masked_features=False,
                                              gp_type=gp_type)[0]
-
+            
             # Get index of gps based on ´gp_type´
             if gp_type == "masked":
                 gp_idx = slice(None, self.n_prior_gp_)
             elif gp_type == "addon":
                 gp_idx = slice(self.n_prior_gp_, None)
-
+            
+            # Normalize gp weights with feature scales
+            gp_weights_normalized = (gp_weights /
+                                     self.features_scale_factors_[:, None].to(device))
+            
             # Normalize gp weights with running mean absolute gp scores
             gp_weights_normalized = (self.running_mean_abs_mu[gp_idx] *
-                                     gp_weights)
-            
+                                     gp_weights_normalized)
+
             # Aggregate absolute normalized gp weights based on
             # ´abs_gp_weights_agg_mode´ and calculate thresholds of aggregated
             # absolute normalized gp weights and get active gp mask and (optionally)
             # active gp weights
             abs_gp_weights_sums = gp_weights_normalized.norm(p=1, dim=0)
-            if abs_gp_weights_agg_mode in ["sum", "sum+nzmeans"]:
+            if abs_gp_weights_agg_mode in ["sum", "sum+nzmeans", "sum+nzmedians"]:
                 max_abs_gp_weights_sum = max(abs_gp_weights_sums)
                 min_abs_gp_weights_sum_thresh = (self.active_gp_thresh_ratio_ * 
                                                 max_abs_gp_weights_sum)
@@ -1285,6 +1295,23 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     active_gp_mask[gp_idx] = active_gp_mask[gp_idx] | (
                         abs_gp_weights_nzmeans >=
                         min_abs_gp_weights_nzmean_thresh)
+            if abs_gp_weights_agg_mode in ["nzmedians", "sum+nzmedians"]:
+                zero_mask = (gp_weights_normalized == 0)
+                abs_gp_weights_normalized_with_nan = torch.where(zero_mask, torch.tensor(float('nan')), torch.abs(gp_weights_normalized))
+                abs_gp_weights_nzmedians = torch.nanmedian(abs_gp_weights_normalized_with_nan, dim=0).values
+                abs_gp_weights_nzmedians = torch.nan_to_num(abs_gp_weights_nzmedians)
+                max_abs_gp_weights_nzmedian = torch.max(abs_gp_weights_nzmedians)
+                min_abs_gp_weights_nzmedian_thresh = (0.01 *
+                                                      max_abs_gp_weights_nzmedian)
+                if abs_gp_weights_agg_mode == "nzmedians":
+                    active_gp_mask[gp_idx] = active_gp_mask[gp_idx] | (
+                        abs_gp_weights_nzmedians >= 
+                        min_abs_gp_weights_nzmedian_thresh)
+                elif abs_gp_weights_agg_mode == "sum+nzmedians":
+                    # Combine active gp mask
+                    active_gp_mask[gp_idx] = active_gp_mask[gp_idx] | (
+                        abs_gp_weights_nzmedians >=
+                        min_abs_gp_weights_nzmedian_thresh)
         if return_gp_weights:
             active_gp_weights = gp_weights[:, active_gp_mask]
             return active_gp_mask, active_gp_weights
