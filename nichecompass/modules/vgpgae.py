@@ -1201,8 +1201,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                              "nzmeans",
                                              "sum+nzmeans",
                                              "nzmedians",
-                                             "sum+nzmedians"]="sum+nzmedians",
+                                             "sum+nzmedians"]="sum+nzmeans",
             return_gp_weights: bool=False,
+            normalize_gp_weights_with_features_scale_factors: bool=False,
             ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Get a mask of active gene programs based on the rna decoder gene weights
@@ -1258,9 +1259,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             elif gp_type == "addon":
                 gp_idx = slice(self.n_prior_gp_, None)
             
-            # Normalize gp weights with feature scales
-            gp_weights_normalized = (gp_weights /
-                                     self.features_scale_factors_[:, None].to(device))
+            # Normalize gp weights with features scale factors
+            if normalize_gp_weights_with_features_scale_factors:
+                gp_weights_normalized = (gp_weights /
+                                         self.features_scale_factors_[:, None].to(device))
+            else:
+                gp_weights_normalized = gp_weights
             
             # Normalize gp weights with running mean absolute gp scores
             gp_weights_normalized = (self.running_mean_abs_mu[gp_idx] *

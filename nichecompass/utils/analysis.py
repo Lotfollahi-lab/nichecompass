@@ -5,7 +5,7 @@ model.
 
 from typing import Optional, Tuple
 
-import holoviews as hv
+#import holoviews as hv
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -853,6 +853,8 @@ def compute_communication_gp_network(
     gp_list: list,
     model: NicheCompass,
     group_key: str="niche",
+    filter_key: Optional[str]=None,
+    filter_cat: Optional[str]=None,
     n_neighbors: int=90):
     """
     Compute network of communication gene program strengths.
@@ -927,8 +929,11 @@ def compute_communication_gp_network(
             adata=model.adata,
             obsp_key=f"{gp}_connectivities",
             cell_type_key=group_key,
-            group_key=None,
+            group_key=filter_key,
             agg_rows=True)
+
+        if filter_key is not None:
+            gp_network_df_pivoted = gp_network_df_pivoted.loc[filter_cat, :]
 
         gp_network_df = gp_network_df_pivoted.melt(var_name="source", value_name="gp_score", ignore_index=False).reset_index()
         gp_network_df.columns = ["source", "target", "strength"]
@@ -955,8 +960,10 @@ def visualize_communication_gp_network(
     cat_colors,
     edge_type_colors: Optional[dict]=None,
     edge_width_scale: int=20.0,
+    node_size: int=500,
     fontsize: int=14,
     figsize: Tuple[int, int]=(18, 16),
+    plot_legend: bool=True,
     save: bool=False,
     save_path: str="communication_gp_network.svg",
     show: bool=True,
@@ -1028,7 +1035,7 @@ def visualize_communication_gp_network(
         G,
         pos,
         with_labels=False,
-        node_size=500,
+        node_size=node_size,
         edgelist=edgelist,
         width=width,
         edge_vmin=0.0,
@@ -1052,7 +1059,9 @@ def visualize_communication_gp_network(
     # generate proxies with the above function
     proxies = [make_proxy(clr, h2, lw=5) for clr in set(edge_colors)]
     labels = [edge.split("_")[0] + " GP" for edge in edge_types[::-1]]
-    lgd = plt.legend(proxies, labels, loc="lower left")
+
+    if plot_legend:
+        lgd = plt.legend(proxies, labels, loc="lower left")
 
     edgelist = [(u, v) for u, v, e in G.edges(data=True) if ((u == v))] + [(u, v) for u, v, e in G.edges(data=True) if ((u != v))]
     edge_colors = [edge_type_color_dict[edge_data['edge_type']] for u, v, edge_data in G.edges(data=True) if u == v]
@@ -1060,7 +1069,7 @@ def visualize_communication_gp_network(
     nx.draw_networkx_edges(
         G,
         pos,
-        node_size=500,
+        node_size=node_size,
         edgelist=edgelist, 
         width=width,
         edge_vmin=0.0,
