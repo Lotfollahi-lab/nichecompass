@@ -1,3 +1,48 @@
 {
-    "test": "hello"
+    "dataset": "starmap_plus_mouse_cns",
+    "species": "mouse",
+    "spatial_key": "spatial",
+    "n_neighbors": 12,
+    "filter_genes": false,
+    "n_hvg": 3000,
+
+    "counts_key": "counts",
+    "adj_key": "spatial_connectivities",
+    "gp_names_key": "nichecompass_gp_names",
+    "active_gp_names_key": "nichecompass_active_gp_names",
+    "gp_targets_mask_key": "nichecompass_gp_targets",
+    "gp_targets_categories_mask_key": "nichecompass_gp_targets_categories",
+    "gp_sources_mask_key": "nichecompass_gp_sources",
+    "gp_sources_categories_mask_key": "nichecompass_gp_sources_categories",
+    "latent_key": "nichecompass_latent",
+
+    "active_gp_thresh_ratio": 0.05,
+    "node_label_method": "one-hop-norm",
+
+    "n_epochs": 100,
+    "n_epochs_all_gps": 25,
+    "lr": 0.001,
+    "lambda_edge_recon": 500000,
+    "lambda_gene_expr_recon": 300,
+    "lambda_l1_masked": 0,
+    "l1_targets_categories": ["target_gene"],
+    "l1_sources_categories": ["enzyme"],
+    "edge_batch_size": 1028,
+    "use_cuda_if_available": true,
+
+    "cell_type_key": "Main_molecular_cell_type",
+    "latent_leiden_resolution": 0.2,
+    "latent_cluster_key": "latent_leiden_0.2",
+    "sample_key": "batch",
+    "spot_size": 0.2,
+    "agg_weights_key": "agg_weights",
+    "differential_gp_test_results_key": "nichecompass_differential_gp_test_results",
+
+    "omnipath_lr_network_file_path": "data/gene_programs/omnipath_lr_network.csv",
+    "nichenet_lr_network_file_path": "data/gene_programs/nichenet_lr_network_v2_mouse.csv",
+    "nichenet_ligand_target_matrix_file_path": "data/gene_programs/nichenet_ligand_target_matrix_v2_mouse.csv",
+    "mebocost_enzyme_sensor_interactions_folder_path": "data/gene_programs/metabolite_enzyme_sensor_gps",
+    "gene_orthologs_mapping_file_path": "data/gene_annotations/human_mouse_gene_orthologs.csv",
+    "artifacts_folder_path": "artifacts",
+    "model_folder_path": "artifacts/single_sample/model"
 }
