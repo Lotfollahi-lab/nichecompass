@@ -18,6 +18,8 @@ from nichecompass.utils import (add_gps_from_gp_dict_to_adata,
                                 filter_and_combine_gp_dict_gps,
                                 generate_enriched_gp_info_plots,
                                 get_unique_genes_from_gp_dict)
+import nichecompass.report
+
 
 def main():
     print("Running NicheCompass with configuration:")
@@ -77,8 +79,8 @@ def main():
         overlap_thresh_source_genes=0.9,
         overlap_thresh_target_genes=0.9,
         overlap_thresh_genes=0.9)
-    print(f"{len(combined_gp_dict)} gene programs before combining and filtering")
-    print(f"{len(combined_new_gp_dict)} gene programs after combining and filtering")
+    print(f"..{len(combined_gp_dict)} gene programs before combining and filtering")
+    print(f"..{len(combined_new_gp_dict)} gene programs after combining and filtering")
 
     # load dataset
     print("Reading dataset")
@@ -94,6 +96,75 @@ def main():
     adata.obsp[config_object.options["adj_key"]] = (
         adata.obsp[config_object.options["adj_key"]].maximum(
             adata.obsp[config_object.options["adj_key"]].T))
+
+    print("Filtering genes")
+    if config_object.options["filter_genes"]:
+        gp_dict_genes = get_unique_genes_from_gp_dict(
+            gp_dict=combined_new_gp_dict,
+            retrieved_gene_entities=["sources", "targets"])
+        print(f"..starting with {len(adata.var_names)} genes")
+
+        sc.pp.filter_genes(
+            adata,
+            min_cells=0)
+        print(f"..retaining {len(adata.var_names)} genes expressed in >0 cell(s)")
+
+        sc.pp.highly_variable_genes(
+            adata,
+            layer=config_object.options["counts_key"],
+            n_top_genes=config_object.options["n_hvg"],
+            flavor="seurat_v3",
+            subset=False)
+        gp_relevant_genes = [gene.upper() for gene in list(set(
+            omnipath_genes + nichenet_source_genes + mebocost_genes))]
+        adata.var["gp_relevant"] = (adata.var.index.str.upper().isin(gp_relevant_genes))
+        adata.var["keep_gene"] = (adata.var["gp_relevant"] | adata.var["highly_variable"])
+        adata = adata[:, adata.var["keep_gene"] == True]
+        print(f"..retaining {len(adata.var_names)} highly variable or gene program relevant genes")
+
+        adata = (adata[:, adata.var_names[adata.var_names.str.upper().isin(
+            [gene.upper() for gene in gp_dict_genes])].sort_values()])
+        print(f"..retaining {len(adata.var_names)} genes included in >0 gene program(s)")
+
+    print("Adding gene program dictionary as binary mask to adata")
+    add_gps_from_gp_dict_to_adata(
+        gp_dict=combined_new_gp_dict,
+        adata=adata,
+        gp_targets_mask_key=config_object.options["gp_targets_mask_key"],
+        gp_targets_categories_mask_key=config_object.options["gp_targets_categories_mask_key"],
+        gp_sources_mask_key=config_object.options["gp_sources_mask_key"],
+        gp_sources_categories_mask_key=config_object.options["gp_sources_categories_mask_key"],
+        gp_names_key=config_object.options["gp_names_key"],
+        min_genes_per_gp=1,
+        min_source_genes_per_gp=0,
+        min_target_genes_per_gp=0,
+        max_genes_per_gp=None,
+        max_source_genes_per_gp=None,
+        max_target_genes_per_gp=None)
+
+    print("Generating visualisation of cell-level annotated data in physical space")
+
+    cell_type_colors = create_new_color_dict(
+        adata=adata,
+        cat_key=config_object.options["cell_type_key"])
+
+    print(f"..number of nodes (observations): {adata.layers['counts'].shape[0]}")
+    print(f"..number of node features (genes): {adata.layers['counts'].shape[1]}")
+
+    fig = sc.pl.spatial(adata,
+                        color=config_object.options["cell_type_key"],
+                        palette=cell_type_colors,
+                        spot_size=config_object.options["spot_size"],
+                        return_fig=True)
+
+    report_image = nichecompass.report.ReportItemImage(fig=fig, alt="Spatial map", caption="A spatial map")
+    report_section = nichecompass.report.ReportSection(title="Spatial map", description="A spatial map")
+    report_section.add_item(report_image)
+    report = nichecompass.report.Report()
+    report.add_section(report_section)
+
+    with open("report.html", "w") as report_file:
+        report_file.write(report.render())
 
     print("Done")
 
