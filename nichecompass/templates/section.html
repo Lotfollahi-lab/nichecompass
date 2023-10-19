@@ -1,0 +1,7 @@
+<div>
+    <h1>{{ section_title }}</h1>
+    <p>{{ section_description }}</p>
+    {% for rendered_item in rendered_items %}
+        {{ rendered_item|safe }}
+    {% endfor %}
+</div>

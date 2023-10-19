@@ -33,6 +33,8 @@ torch-scatter = {version = "2.1.1", source = "torch-scatter"}
 torch-sparse = {version = "0.6.17", source = "torch-sparse"}
 jax = {version = "0.4.7", source = "pypi"}
 jaxlib = {version = "0.4.7+cuda11.cudnn82", source = "jaxlib"}
+jinja2 = "^3.1.2"
+pytest = "^7.4.2"
 
 [[tool.poetry.source]]
 name = "torch"

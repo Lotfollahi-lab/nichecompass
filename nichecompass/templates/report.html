@@ -1,0 +1,9 @@
+<html>
+<head>
+    <title>{{ report_title }}</title>
+</head>
+<body>
+    {% for rendered_section in rendered_sections %}
+        {{ rendered_section|safe }}
+    {% endfor %}</body>
+</html>
