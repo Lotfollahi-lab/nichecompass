@@ -5,9 +5,15 @@
 
 It is recommended to use `devcontainers` to create a reproducible development environment. Within the development container, install poetry and package dependencies.
 
-```
+```bash
 pipx install poetry==1.4.2
 poetry install
+```
+
+Run with
+
+```bash
+poetry run python -m nichecompass
 ```
 
 ## Tutorials

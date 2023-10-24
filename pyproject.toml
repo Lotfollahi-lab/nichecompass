@@ -35,6 +35,9 @@ jax = {version = "0.4.7", source = "pypi"}
 jaxlib = {version = "0.4.7+cuda11.cudnn82", source = "jaxlib"}
 jinja2 = "^3.1.2"
 pytest = "^7.4.2"
+typer = "^0.9.0"
+rich = "^13.6.0"
+shellingham = "^1.5.4"
 
 [[tool.poetry.source]]
 name = "torch"

@@ -38,11 +38,12 @@
     "agg_weights_key": "agg_weights",
     "differential_gp_test_results_key": "nichecompass_differential_gp_test_results",
 
-    "omnipath_lr_network_file_path": "data/gene_programs/omnipath_lr_network.csv",
+    "omnipath_lr_network_file_path": "data/gene_programs/omnipath_lr_interactions.csv",
     "nichenet_lr_network_file_path": "data/gene_programs/nichenet_lr_network_v2_mouse.csv",
     "nichenet_ligand_target_matrix_file_path": "data/gene_programs/nichenet_ligand_target_matrix_v2_mouse.csv",
     "mebocost_enzyme_sensor_interactions_folder_path": "data/gene_programs/metabolite_enzyme_sensor_gps",
     "gene_orthologs_mapping_file_path": "data/gene_annotations/human_mouse_gene_orthologs.csv",
     "artifacts_folder_path": "artifacts",
-    "model_folder_path": "artifacts/single_sample/model"
+    "model_folder_path": "artifacts/single_sample/model",
+    "data_path": "data/starmap_plus_mouse_cns_batch1.h5ad"
 }
