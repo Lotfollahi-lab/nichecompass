@@ -1203,6 +1203,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                              "nzmedians",
                                              "sum+nzmedians"]="sum+nzmeans",
             return_gp_weights: bool=False,
+            mix_addon_masked: bool=True,
             normalize_gp_weights_with_features_scale_factors: bool=False,
             ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
@@ -1244,7 +1245,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                      dtype=torch.bool,
                                      device=device)
 
-        if (self.n_addon_gp_ > 0):
+        if mix_addon_masked:
+            gp_types = ["all"]
+        elif (self.n_addon_gp_ > 0):
             gp_types = ["masked", "addon"]
         else:
             gp_types = ["masked"]
@@ -1258,6 +1261,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                 gp_idx = slice(None, self.n_prior_gp_)
             elif gp_type == "addon":
                 gp_idx = slice(self.n_prior_gp_, None)
+            elif gp_type == "all":
+                gp_idx = slice(None, None)
             
             # Normalize gp weights with features scale factors
             if normalize_gp_weights_with_features_scale_factors:

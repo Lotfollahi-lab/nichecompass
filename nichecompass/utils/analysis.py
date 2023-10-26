@@ -968,6 +968,7 @@ def visualize_communication_gp_network(
     save_path: str="communication_gp_network.svg",
     show: bool=True,
     text_space: float=1.3,
+    connection_style="arc3, rad = 0.1",
     cat_key: str="niche",
     edge_attr: str="strength"):
     """
@@ -1049,7 +1050,7 @@ def visualize_communication_gp_network(
         cmap=plt.cm.binary,  # Use a colormap for node colors if needed
         node_color=list(node_color.values()),
         ax=ax,
-        connectionstyle="arc3, rad = 0.1",
+        connectionstyle=connection_style,
     )
 
     #https://stackoverflow.com/questions/19877666/add-legends-to-linecollection-plot - uses plotted data to define the color but here we already have colors defined, so just need a Line2D object.
@@ -1079,7 +1080,7 @@ def visualize_communication_gp_network(
         arrowstyle="-|>",
         arrowsize=20,
         ax=ax,
-        connectionstyle="arc3",)
+        connectionstyle=connection_style)
     plt.tight_layout()
     if save:
         plt.savefig(save_path)
