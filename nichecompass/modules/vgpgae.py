@@ -1203,7 +1203,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                              "nzmedians",
                                              "sum+nzmedians"]="sum+nzmeans",
             return_gp_weights: bool=False,
-            mix_addon_masked: bool=True,
+            mix_addon_masked: bool=False,
             normalize_gp_weights_with_features_scale_factors: bool=False,
             ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
