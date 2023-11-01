@@ -3,6 +3,7 @@ This module contains the Trainer to train an NicheCompass model.
 """
 
 import copy
+import inspect
 import itertools
 import math
 import time
@@ -17,7 +18,6 @@ import torch.nn as nn
 from anndata import AnnData
 
 from nichecompass.data import initialize_dataloaders, prepare_data
-from .basetrainermixin import BaseTrainerMixin
 from .metrics import eval_metrics, plot_eval_metrics
 from .utils import (_cycle_iterable,
                     plot_loss_curves,
@@ -25,15 +25,15 @@ from .utils import (_cycle_iterable,
                     EarlyStopping)
 
 
-class Trainer(BaseTrainerMixin):
+class Trainer:
     """
-    Trainer class. Encapsulates all logic for NicheCompass model training 
+    Trainer class. Encapsulates all logic for NicheCompass model training
     preparation and model training.
-    
-    Parts of the implementation are inspired by 
+
+    Parts of the implementation are inspired by
     https://github.com/theislab/scarches/blob/master/scarches/trainers/trvae/trainer.py#L13
     (01.10.2022)
-    
+
     Parameters
     ----------
     adata:
@@ -52,11 +52,11 @@ class Trainer(BaseTrainerMixin):
     cat_covariates_keys:
         Keys under which the categorical covariates are stored in ´adata.obs´.
     gp_targets_mask_key:
-        Key under which the gene program targets mask is stored in ´model.adata.varm´. 
+        Key under which the gene program targets mask is stored in ´model.adata.varm´.
         This mask will only be used if no ´gp_targets_mask´ is passed explicitly
         to the model.
     gp_sources_mask_key:
-        Key under which the gene program sources mask is stored in ´model.adata.varm´. 
+        Key under which the gene program sources mask is stored in ´model.adata.varm´.
         This mask will only be used if no ´gp_sources_mask´ is passed explicitly
         to the model.
     edge_val_ratio:
@@ -96,7 +96,7 @@ class Trainer(BaseTrainerMixin):
                  adj_key: str="spatial_connectivities",
                  cat_covariates_keys: Optional[List[str]]=None,
                  gp_targets_mask_key: str="nichecompass_gp_targets",
-                 gp_sources_mask_key: str="nichecompass_gp_sources",                 
+                 gp_sources_mask_key: str="nichecompass_gp_sources",
                  edge_val_ratio: float=0.1,
                  node_val_ratio: float=0.1,
                  edge_batch_size: int=512,
@@ -131,7 +131,7 @@ class Trainer(BaseTrainerMixin):
         self.n_sampled_neighbors_ = n_sampled_neighbors
         self.use_early_stopping_ = use_early_stopping
         self.reload_best_model_ = reload_best_model
-        self.early_stopping_kwargs_ = (early_stopping_kwargs if 
+        self.early_stopping_kwargs_ = (early_stopping_kwargs if
             early_stopping_kwargs else {})
         if not "early_stopping_metric" in self.early_stopping_kwargs_:
             if edge_val_ratio > 0 and node_val_ratio > 0:
@@ -153,7 +153,7 @@ class Trainer(BaseTrainerMixin):
         self.best_model_state_dict = None
 
         print("\n--- INITIALIZING TRAINER ---")
-        
+
         # Set seed and use GPU if available
         if use_cuda_if_available & torch.cuda.is_available():
             torch.cuda.manual_seed(self.seed_)
@@ -192,7 +192,7 @@ class Trainer(BaseTrainerMixin):
         if self.node_batch_size_ is None:
             self.node_batch_size_ = int(self.edge_batch_size_ / math.floor(
                 self.n_edges_train / self.n_nodes_train))
-        
+
         print(f"Edge batch size: {edge_batch_size}")
         print(f"Node batch size: {node_batch_size}")
 
@@ -324,7 +324,7 @@ class Trainer(BaseTrainerMixin):
         self.mlflow_experiment_id = mlflow_experiment_id
 
         print("\n--- MODEL TRAINING ---")
-        
+
         # Log hyperparameters
         if self.mlflow_experiment_id is not None:
             for attr, attr_value in self._get_public_attributes().items():
@@ -356,7 +356,7 @@ class Trainer(BaseTrainerMixin):
             self.iter_logs = defaultdict(list)
             self.iter_logs["n_train_iter"] = 0
             self.iter_logs["n_val_iter"] = 0
-            
+
             # Jointly loop through edge- and node-level batches, repeating node-
             # level batches until edge-level batches are complete
             for edge_train_data_batch, node_train_data_batch in zip(
@@ -395,7 +395,7 @@ class Trainer(BaseTrainerMixin):
                     lambda_l1_addon=self.lambda_l1_addon_,
                     edge_recon_active=self.edge_recon_active,
                     cat_covariates_contrastive_active=self.cat_covariates_contrastive_active)
-                
+
                 train_global_loss = train_loss_dict["global_loss"]
                 train_optim_loss = train_loss_dict["optim_loss"]
 
@@ -404,13 +404,13 @@ class Trainer(BaseTrainerMixin):
                         self.iter_logs[f"train_{key}"].append(value.item())
                 else:
                     self.iter_logs["train_global_loss"].append(
-                        train_global_loss.item())   
+                        train_global_loss.item())
                     self.iter_logs["train_optim_loss"].append(
                         train_optim_loss.item())
                 self.iter_logs["n_train_iter"] += 1
                 # Optimize for training loss
                 self.optimizer.zero_grad()
-                
+
                 train_optim_loss.backward()
                 # Clip gradients
                 if self.grad_clip_value_ > 0:
@@ -419,23 +419,23 @@ class Trainer(BaseTrainerMixin):
                 self.optimizer.step()
 
             # Validate model
-            if (self.edge_val_loader is not None and 
+            if (self.edge_val_loader is not None and
                 self.node_val_loader is not None):
                     self.eval_epoch()
-            elif (self.edge_val_loader is None and 
+            elif (self.edge_val_loader is None and
             self.node_val_loader is not None):
                 warnings.warn("You have specified a node validation set but no "
                               "edge validation set. Skipping validation...")
-            elif (self.edge_val_loader is not None and 
+            elif (self.edge_val_loader is not None and
             self.node_val_loader is None):
                 warnings.warn("You have specified an edge validation set but no"
                               " node validation set. Skipping validation...")
-    
+
             # Convert iteration level logs into epoch level logs
             for key in self.iter_logs:
                 if key.startswith("train"):
                     self.epoch_logs[key].append(
-                        np.array(self.iter_logs[key]).sum() / 
+                        np.array(self.iter_logs[key]).sum() /
                         self.iter_logs["n_train_iter"])
                 if key.startswith("val"):
                     self.epoch_logs[key].append(
@@ -478,7 +478,7 @@ class Trainer(BaseTrainerMixin):
         fig = plot_loss_curves(losses)
         if self.mlflow_experiment_id is not None:
             mlflow.log_figure(fig, "loss_curves.png")
-        fig = plot_eval_metrics(val_eval_metrics_over_epochs) 
+        fig = plot_eval_metrics(val_eval_metrics_over_epochs)
         if self.mlflow_experiment_id is not None:
             mlflow.log_figure(fig, "val_eval_metrics.png")
         """
@@ -542,9 +542,9 @@ class Trainer(BaseTrainerMixin):
                     self.iter_logs[f"val_{key}"].append(value.item())
             else:
                 self.iter_logs["val_global_loss"].append(val_global_loss.item())
-                self.iter_logs["val_optim_loss"].append(val_optim_loss.item())  
+                self.iter_logs["val_optim_loss"].append(val_optim_loss.item())
             self.iter_logs["n_val_iter"] += 1
-            
+
             # Calculate evaluation metrics
             edge_recon_probs_val = torch.sigmoid(
                 edge_val_model_output["edge_recon_logits"])
@@ -583,7 +583,7 @@ class Trainer(BaseTrainerMixin):
                 val_eval_dict["best_acc_score"])
             self.epoch_logs["val_best_f1_score"].append(
                 val_eval_dict["best_f1_score"])
-        
+
         self.model.train()
 
     @torch.no_grad()
@@ -606,7 +606,7 @@ class Trainer(BaseTrainerMixin):
                 data_batch=edge_val_data_batch,
                 decoder="graph",
                 use_only_active_gps=True)
-    
+
             # Calculate evaluation metrics
             edge_recon_probs_val = torch.sigmoid(
                 edge_val_model_output["edge_recon_logits"])
@@ -674,7 +674,7 @@ class Trainer(BaseTrainerMixin):
             if f"cat_covariate{i}_mean_sim_diff" in val_eval_dict.keys():
                 print(f"Val cat covariate{i} mean sim diff: "
                       f"{val_eval_dict[f'cat_covariate{i}_mean_sim_diff']:.4f}")
-            
+
         # Log evaluation metrics
         if self.mlflow_experiment_id is not None:
             for key, value in val_eval_dict.items():
@@ -682,7 +682,7 @@ class Trainer(BaseTrainerMixin):
 
     def is_early_stopping(self) -> bool:
         """
-        Check whether to apply early stopping, update learning rate and save 
+        Check whether to apply early stopping, update learning rate and save
         best model state.
 
         Returns
@@ -703,3 +703,33 @@ class Trainer(BaseTrainerMixin):
             print(f"New learning rate is {param_group['lr']}.\n")
         stop_training = not continue_training
         return stop_training
+
+    def _get_user_attributes(self) -> list:
+        """
+        Get all the attributes defined in a trainer instance.
+
+        Returns
+        ----------
+        attributes:
+            Attributes defined in a trainer instance.
+        """
+        attributes = inspect.getmembers(
+            self, lambda a: not (inspect.isroutine(a)))
+        attributes = [a for a in attributes if not (
+            a[0].startswith("__") and a[0].endswith("__"))]
+        return attributes
+
+    def _get_public_attributes(self) -> dict:
+        """
+        Get only public attributes defined in a trainer instance. By convention
+        public attributes have a trailing underscore.
+
+        Returns
+        ----------
+        public_attributes:
+            Public attributes defined in a trainer instance.
+        """
+        public_attributes = self._get_user_attributes()
+        public_attributes = {a[0]: a[1] for a in public_attributes if
+                             a[0][-1] == "_"}
+        return public_attributes

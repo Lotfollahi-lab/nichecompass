@@ -1,5 +1,5 @@
 """
-This module contains all loss functions used by the Variational Gene Program 
+This module contains all loss functions used by the Variational Gene Program
 Graph Autoencoder module.
 """
 
@@ -10,6 +10,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+#FIXME these should inherit from torch.nn.modules.loss._Loss
 
 
 def compute_cat_covariates_contrastive_loss(
@@ -66,10 +69,10 @@ def compute_cat_covariates_contrastive_loss(
         (contrastive_logits_pos_ratio == 0) &
         (contrastive_logits_neg_ratio == 0)):
         return torch.tensor(0.)
-    
+
     cat_covariates_contrastive_loss = torch.tensor(0.).to(
                 edge_recon_logits.device)
-    
+
     # Compute categorical covariate contrastive loss for each categorical
     # covariate and add to accumulated loss
     for edge_same_cat_covariate_cat in edge_same_cat_covariates_cat:
@@ -85,7 +88,7 @@ def compute_cat_covariates_contrastive_loss(
         else:
             pos_thresh = torch.topk(
                 edge_recon_logits_diff_cat_covariate_cat.detach().clone(),
-                pos_n_top).values[-1]            
+                pos_n_top).values[-1]
         neg_n_top = math.ceil(contrastive_logits_neg_ratio *
                               len(edge_recon_logits_diff_cat_covariate_cat))
         if neg_n_top == 0:
@@ -126,7 +129,7 @@ def compute_edge_recon_loss(
         edge_incl: Optional[torch.Tensor]=None
         ) -> torch.Tensor:
     """
-    Compute edge reconstruction weighted binary cross entropy loss with logits 
+    Compute edge reconstruction weighted binary cross entropy loss with logits
     using ground truth edge labels and predicted edge logits.
 
     Parameters
@@ -209,7 +212,7 @@ def compute_omics_recon_nb_loss(x: torch.Tensor,
         - torch.lgamma(theta)
         - torch.lgamma(x + 1))
     nb_loss = torch.mean(-log_likelihood_nb.sum(-1))
-    return nb_loss 
+    return nb_loss
 
 
 def compute_gp_group_lasso_reg_loss(model: nn.Module) -> torch.Tensor:
@@ -217,7 +220,7 @@ def compute_gp_group_lasso_reg_loss(model: nn.Module) -> torch.Tensor:
     Compute group lasso regularization loss for the masked decoder layer weights
     to enforce gene program sparsity (each gene program is a group; groups are
     normalized by the number of non-masked weights per group).
-    
+
     Check https://leimao.github.io/blog/Group-Lasso/ for more information about
     group lasso regularization.
 
@@ -229,7 +232,7 @@ def compute_gp_group_lasso_reg_loss(model: nn.Module) -> torch.Tensor:
     Returns
     ----------
     group_lasso_reg_loss:
-        Group lasso regularization loss for the decoder layer weights.    
+        Group lasso regularization loss for the decoder layer weights.
     """
     # Compute L2 norm per group / gene program, normalize by number of weights
     # and sum across all gene programs
@@ -255,12 +258,12 @@ def compute_gp_group_lasso_reg_loss(model: nn.Module) -> torch.Tensor:
 def compute_kl_reg_loss(mu: torch.Tensor,
                         logstd: torch.Tensor) -> torch.Tensor:
     """
-    Compute Kullback-Leibler divergence as per Kingma, D. P. & Welling, M. 
+    Compute Kullback-Leibler divergence as per Kingma, D. P. & Welling, M.
     Auto-Encoding Variational Bayes. arXiv [stat.ML] (2013). Equation (10).
     This will encourage encodings to distribute evenly around the center of
     a continuous and complete latent space, producing similar (for points close
     in latent space) and meaningful content after decoding.
-    
+
     For detailed derivation, see
     https://stats.stackexchange.com/questions/318748/deriving-the-kl-divergence-loss-for-vaes.
 
@@ -326,9 +329,9 @@ def compute_gp_l1_reg_loss(
     # - the absolute weights and thus the L1 loss will be higher for highly
     #   expressed genes
     # - the model will keep weights non-zero for gps with very high scores and
-    #   turn off weights for gps with low scores 
+    #   turn off weights for gps with low scores
     decoder_layerwise_param_sum = torch.stack(
-        [torch.linalg.vector_norm(param[l1_targets_mask if 
+        [torch.linalg.vector_norm(param[l1_targets_mask if
                                         "target" in param_name else
                                         l1_sources_mask],
                                   ord=1) for

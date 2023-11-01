@@ -1,12 +1,44 @@
-"""
-This module contains the encoder used by the NicheCompass model.
-"""
-
 from typing import Literal, Optional, Tuple
-
 import torch
 import torch.nn as nn
-from torch_geometric.nn import GATv2Conv, GCNConv
+import torch_geometric
+
+#FIXME represent this as a sequence of modules
+#FIXME need to handle injection of covariates in the input by concatenation
+
+Encoder = torch_geometric.nn.Sequ, [
+    (torch.nn.Linear(dataset.num_features, 1000), "x -> x"),
+    torch_geometric.nn.Sequential("x, edge_index -> x_mean",
+        (torch_geometric.nn.GATv2Conv(1000, 100, 4, concat=False), "x, edge_index -> x_mean"),
+        torch.nn.ReLU(),
+        torch.nn.Dropout(0)
+    ),
+    torch_geometric.nn.Sequential("x, edge_index -> x_logstd",
+        (torch_geometric.nn.GATv2Conv(1000, 100, 4, concat=False), "x, edge_index -> x_logstd"),
+        torch.nn.ReLU(),
+        torch.nn.Dropout(0)
+    ),
+    (lambda: x_mean, x_logstd: (x_mean, x_logstd), "x_mean, x_std -> x_latent")
+])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 class Encoder(nn.Module):
@@ -14,7 +46,7 @@ class Encoder(nn.Module):
     Encoder class.
 
     Takes the input space features x and the edge indices as input, first computes
-    fully connected layers and then uses message passing layers to output mu and 
+    fully connected layers and then uses message passing layers to output mu and
     logstd of the latent space normal distribution.
 
     Parameters
@@ -67,38 +99,24 @@ class Encoder(nn.Module):
                  activation: nn.Module=nn.ReLU,
                  use_bn: bool=True):
         super().__init__()
-        print("ENCODER -> "
-              f"n_input: {n_input}, "
-              f"n_cat_covariates_embed_input: {n_cat_covariates_embed_input}, "
-              f"n_hidden: {n_hidden}, "
-              f"n_latent: {n_latent}, "
-              f"n_addon_latent: {n_addon_latent}, "
-              f"n_fc_layers: {n_fc_layers}, "
-              f"n_layers: {n_layers}, "
-              f"conv_layer: {conv_layer}, "
-              f"n_attention_heads: "
-              f"{n_attention_heads if conv_layer == 'gatv2conv' else '0'}, "
-              f"dropout_rate: {dropout_rate}, "
-              f"use_bn: {use_bn}")
-
         self.n_addon_latent = n_addon_latent
         self.n_layers = n_layers
         self.n_fc_layers = n_fc_layers
         self.cat_covariates_embed_mode = cat_covariates_embed_mode
         self.use_bn = use_bn
-        
+
         if ((cat_covariates_embed_mode == "input") &
             (n_cat_covariates_embed_input != 0)):
             # Add categorical covariates embedding to input
             n_input += n_cat_covariates_embed_input
-        
+
         if n_fc_layers == 2:
             self.fc_l1 = nn.Linear(n_input, int(n_input / 2))
             self.fc_l2 = nn.Linear(int(n_input / 2), n_hidden)
             self.fc_l2_bn = nn.BatchNorm1d(n_hidden)
         elif n_fc_layers == 1:
             self.fc_l1 = nn.Linear(n_input, n_hidden)
-        
+
         if ((cat_covariates_embed_mode == "hidden") &
             (n_cat_covariates_embed_input != 0)):
             # Add categorical covariates embedding to hidden after fc_l
@@ -106,37 +124,37 @@ class Encoder(nn.Module):
 
         if conv_layer == "gcnconv":
             if n_layers == 2:
-                self.conv_l1 = GCNConv(n_hidden,
+                self.conv_l1 = torch_geometric.nn.GCNConv(n_hidden,
                                        n_hidden)
-            self.conv_mu = GCNConv(n_hidden,
+            self.conv_mu = torch_geometric.nn.GCNConv(n_hidden,
                                    n_latent)
-            self.conv_logstd = GCNConv(n_hidden,
+            self.conv_logstd = torch_geometric.nn.GCNConv(n_hidden,
                                        n_latent)
             if n_addon_latent != 0:
-                self.addon_conv_mu = GCNConv(n_hidden,
+                self.addon_conv_mu = torch_geometric.nn.GCNConv(n_hidden,
                                              n_addon_latent)
-                self.addon_conv_logstd = GCNConv(n_hidden,
-                                                 n_addon_latent)           
+                self.addon_conv_logstd = torch_geometric.nn.GCNConv(n_hidden,
+                                                 n_addon_latent)
         elif conv_layer == "gatv2conv":
             if n_layers == 2:
-                self.conv_l1 = GATv2Conv(n_hidden,
+                self.conv_l1 = torch_geometric.nn.GATv2Conv(n_hidden,
                                          n_hidden,
                                          heads=n_attention_heads,
                                          concat=False)
-            self.conv_mu = GATv2Conv(n_hidden,
+            self.conv_mu = torch_geometric.nn.GATv2Conv(n_hidden,
                                      n_latent,
                                      heads=n_attention_heads,
                                      concat=False)
-            self.conv_logstd = GATv2Conv(n_hidden,
+            self.conv_logstd = torch_geometric.nn.GATv2Conv(n_hidden,
                                          n_latent,
                                          heads=n_attention_heads,
                                          concat=False)
             if n_addon_latent != 0:
-                self.addon_conv_mu = GATv2Conv(n_hidden,
+                self.addon_conv_mu = torch_geometric.nn.GATv2Conv(n_hidden,
                                                n_addon_latent,
                                                heads=n_attention_heads,
                                                concat=False)
-                self.addon_conv_logstd = GATv2Conv(n_hidden,
+                self.addon_conv_logstd = torch_geometric.nn.GATv2Conv(n_hidden,
                                                    n_addon_latent,
                                                    heads=n_attention_heads,
                                                    concat=False)
@@ -163,11 +181,11 @@ class Encoder(nn.Module):
         cat_covariates_embed:
             Tensor containing the categorical covariates embedding (all
             categorical covariates embeddings concatenated into one embedding).
-        
+
         Returns
         ----------
         mu:
-            Tensor containing the expected values of the latent space normal 
+            Tensor containing the expected values of the latent space normal
             distribution.
         logstd:
             Tensor containing the log standard deviations of the latent space
@@ -180,20 +198,20 @@ class Encoder(nn.Module):
                 x = torch.cat((x,
                                cat_covariates_embed),
                               axis=1)
-        
+
         # FC forward pass shared across all nodes
         hidden = self.dropout(self.activation(self.fc_l1(x)))
         if self.n_fc_layers == 2:
             hidden = self.dropout(self.activation(self.fc_l2(hidden)))
             hidden = self.fc_l2_bn(hidden)
-        
+
         if ((self.cat_covariates_embed_mode == "hidden") &
             (cat_covariates_embed is not None)):
             # Add categorical covariates embedding to hidden vector
             hidden = torch.cat((hidden,
                                 cat_covariates_embed),
                                axis=1)
-        
+
         if self.n_layers == 2:
             # Part of forward pass shared across all nodes
             hidden = self.dropout(self.activation(
@@ -202,7 +220,7 @@ class Encoder(nn.Module):
         # Part of forward pass only for maskable latent nodes
         mu = self.conv_mu(hidden, edge_index)
         logstd = self.conv_logstd(hidden, edge_index)
-        
+
         # Part of forward pass only for unmaskable add-on latent nodes
         if self.n_addon_latent != 0:
             mu = torch.cat(
@@ -215,4 +233,3 @@ class Encoder(nn.Module):
             mu = self.bn_mu(mu)
         #mu = self.final_activation(mu)
         return mu, logstd
-    

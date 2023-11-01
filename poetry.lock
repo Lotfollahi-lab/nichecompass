@@ -158,28 +158,31 @@ tz = ["python-dateutil"]
 
 [[package]]
 name = "anndata"
-version = "0.9.1"
+version = "0.10.2"
 description = "Annotated data."
 category = "main"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "anndata-0.9.1-py3-none-any.whl", hash = "sha256:6666a39f9d6c4645a70115f38c17ccc2e2ffd9c0d08a1636c395253d73de26f1"},
-    {file = "anndata-0.9.1.tar.gz", hash = "sha256:1f28f2c427e67b0b99bdd2b281717c92a12660dfd23e0694939b6e733f0eb2c4"},
+    {file = "anndata-0.10.2-py3-none-any.whl", hash = "sha256:2a1724a89f7c8132b19ba78bc15c4abb31059897256aa0f1aca334b802587cd2"},
+    {file = "anndata-0.10.2.tar.gz", hash = "sha256:e82e7a79bc41493be47655d3e3376e08597a00a7315c0a03eeffcc3c5e8b288f"},
 ]
 
 [package.dependencies]
+array-api-compat = "*"
+exceptiongroup = {version = "*", markers = "python_version < \"3.11\""}
 h5py = ">=3"
 natsort = "*"
 numpy = ">=1.16.5"
 packaging = ">=20"
-pandas = ">=1.1.1"
+pandas = ">=1.1.1,<2.1.0rc0 || >2.1.0rc0"
 scipy = ">1.4"
 
 [package.extras]
-dev = ["black (>=20.8b1)", "docutils", "setuptools_scm"]
-doc = ["IPython", "awkward (>=2.0.7)", "myst_parser", "nbsphinx", "scanpydoc (>=0.7.7)", "sphinx (>=4.4)", "sphinx-autodoc-typehints (>=1.11.0)", "sphinx-rtd-theme (>=1.1.1)", "sphinx_issues", "sphinxext.opengraph", "zarr"]
-test = ["awkward (>=2.0.6)", "boltons", "dask[array]", "joblib", "loompy (>=3.0.5)", "matplotlib", "openpyxl", "pytest (>=6.0)", "pytest-cov (>=2.10)", "pytest_memray", "scanpy", "scikit-learn", "zarr"]
+dev = ["pytest-xdist", "setuptools-scm"]
+doc = ["awkward (>=2.0.7)", "ipython", "myst-parser", "nbsphinx", "scanpydoc (>=0.9)", "sphinx (>=4.4)", "sphinx-autodoc-typehints (>=1.11.0)", "sphinx-book-theme (>=1.0.1)", "sphinx-copybutton", "sphinx-design (>=0.5.0)", "sphinx-issues", "sphinxext-opengraph", "zarr"]
+gpu = ["cupy"]
+test = ["awkward (>=2.3)", "boltons", "dask[array,distributed]", "httpx", "joblib", "loompy (>=3.0.5)", "matplotlib", "openpyxl", "pytest (>=6.0)", "pytest-cov (>=2.10)", "pytest-memray", "scanpy", "scikit-learn", "zarr"]
 
 [[package]]
 name = "annotated-types"
@@ -192,6 +195,22 @@ files = [
     {file = "annotated_types-0.5.0-py3-none-any.whl", hash = "sha256:58da39888f92c276ad970249761ebea80ba544b77acddaa1a4d6cf78287d45fd"},
     {file = "annotated_types-0.5.0.tar.gz", hash = "sha256:47cdc3490d9ac1506ce92c7aaa76c579dc3509ff11e098fc867e5130ab7be802"},
 ]
+
+[[package]]
+name = "array-api-compat"
+version = "1.4"
+description = "A wrapper around NumPy and other array libraries to make them compatible with the Array API standard"
+category = "main"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "array_api_compat-1.4-py3-none-any.whl", hash = "sha256:326383f5423716922724199988084250ca41074c7938bed6f9cea95d8d70f833"},
+    {file = "array_api_compat-1.4.tar.gz", hash = "sha256:d49f00eb66b436cf3a6026d6f43c115d3e058a3a9936536b0bac33dd470e8b4d"},
+]
+
+[package.extras]
+cupy = ["cupy"]
+numpy = ["numpy"]
 
 [[package]]
 name = "asciitree"
@@ -2114,8 +2133,8 @@ files = [
 [package.dependencies]
 numpy = [
     {version = ">1.20", markers = "python_version <= \"3.9\""},
-    {version = ">=1.23.3", markers = "python_version > \"3.10\""},
     {version = ">=1.21.2", markers = "python_version > \"3.9\""},
+    {version = ">=1.23.3", markers = "python_version > \"3.10\""},
 ]
 
 [package.extras]
@@ -4853,4 +4872,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "9b78d8b8f6d6426a73234559f0e0997a358e87b718d31cb15beaa478f60bc66c"
+content-hash = "a07aae36db8a52c8f0529c0ec266a37ba9c32bf1cfd94b8b6b0b6e619ee8078d"

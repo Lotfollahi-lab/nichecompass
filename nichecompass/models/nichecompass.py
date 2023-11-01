@@ -2,6 +2,10 @@
 This module contains the NicheCompass model. Different analysis capabilities are
 integrated directly into the model API for easy use.
 """
+import inspect
+import os
+import pickle
+import warnings
 
 from typing import Literal, List, Optional, Tuple, Union
 
@@ -12,6 +16,7 @@ import scanpy as sc
 import scipy.sparse as sp
 import torch
 from anndata import AnnData
+from scipy import sparse as sp
 from scipy.special import erfc
 
 from nichecompass.data import (initialize_dataloaders,
@@ -19,10 +24,10 @@ from nichecompass.data import (initialize_dataloaders,
                                SpatialAnnTorchDataset)
 from nichecompass.modules import VGPGAE
 from nichecompass.train import Trainer
-from .basemodelmixin import BaseModelMixin
+from .utils import load_saved_files, validate_var_names, initialize_model
 
 
-class NicheCompass(BaseModelMixin):
+class NicheCompass:
     """
     NicheCompass model class.
 
@@ -43,13 +48,13 @@ class NicheCompass(BaseModelMixin):
         ´adata_atac.varm[ca_sources_mask_key]´ respectively.
     counts_key:
         Key under which the gene expression raw counts are stored in
-        ´adata.layer´. If ´None´, uses ´adata.X´ as counts. 
+        ´adata.layer´. If ´None´, uses ´adata.X´ as counts.
     adj_key:
         Key under which the sparse adjacency matrix is stored in ´adata.obsp´.
     gp_names_key:
         Key under which the gene program names are stored in ´adata.uns´.
     active_gp_names_key:
-        Key under which the active gene program names will be stored in 
+        Key under which the active gene program names will be stored in
         ´adata.uns´.
     gp_targets_mask_key:
         Key under which the gene program targets mask is stored in ´adata.varm´.
@@ -79,7 +84,7 @@ class NicheCompass(BaseModelMixin):
         are injected.
     genes_idx_key:
         Key in ´adata.uns´ where the index of a concatenated vector of target
-        and source genes that are in the gene program masks are stored.    
+        and source genes that are in the gene program masks are stored.
     target_genes_idx_key:
         Key in ´adata.uns´ where the index of target genes that are in the gene
         program masks are stored.
@@ -89,7 +94,7 @@ class NicheCompass(BaseModelMixin):
     peaks_idx_key:
         Key in ´adata_atac.uns´ where the index of a concatenated vector of
         target and source peaks that are in the chromatin accessibility masks
-        are stored.          
+        are stored.
     target_peaks_idx_key:
         Key in ´adata_atac.uns´ where the index of target peaks that are in the
         chromatin accessibility masks are stored.
@@ -97,7 +102,7 @@ class NicheCompass(BaseModelMixin):
         Key in ´adata_atac.uns´ where the index of source peaks that are in the
         chromatin accessibility masks are stored.
     gene_peaks_mask_key:
-        Key in ´adata.varm´ where the gene peak mapping mask is stored.    
+        Key in ´adata.varm´ where the gene peak mapping mask is stored.
     recon_adj_key:
         Key in ´adata.obsp´ where the reconstructed adjacency matrix edge
         probabilities will be stored.
@@ -120,7 +125,7 @@ class NicheCompass(BaseModelMixin):
         a negative binomial distribution. If `zinb`, uses a zero-inflated
         negative binomial distribution.
     log_variational:
-        If ´True´, transforms x by log(x+1) prior to encoding for numerical 
+        If ´True´, transforms x by log(x+1) prior to encoding for numerical
         stability (not for normalization).
     node_label_method:
         Node label method that will be used for omics reconstruction. If ´self´,
@@ -144,7 +149,7 @@ class NicheCompass(BaseModelMixin):
         aggregated value will be used as a benchmark and all gene programs whose
         aggregated value is smaller than ´active_gp_thresh_ratio´ times this
         maximum value will be set to inactive. If ´==0´, all gene programs will
-        be considered active. More information can be found in 
+        be considered active. More information can be found in
         ´self.model.get_active_gp_mask()´.
     n_fc_layers_encoder:
         Number of fully connected layers in the encoder before message passing
@@ -165,7 +170,7 @@ class NicheCompass(BaseModelMixin):
     dropout_rate_encoder:
         Probability that nodes will be dropped in the encoder during training.
     dropout_rate_graph_decoder:
-        Probability that nodes will be dropped in the graph decoder during 
+        Probability that nodes will be dropped in the graph decoder during
         training.
     cat_covariates_cats:
         List of category lists for each categorical covariate to get the right
@@ -299,7 +304,7 @@ class NicheCompass(BaseModelMixin):
             self.gp_sources_mask_ = torch.tensor(
                 adata.varm[gp_sources_mask_key].T,
                 dtype=torch.bool)
-                                           
+
         else:
             raise ValueError("Please specify an adequate "
                              "´gp_sources_mask_key´ for your adata object. "
@@ -309,12 +314,12 @@ class NicheCompass(BaseModelMixin):
                              "reconstruction, you can create a mask of 1s "
                              " that allows all gene program latent nodes to"
                              " reconstruct all genes.")
-            
+
         # Determine features scale factors
         self.features_scale_factors_ = torch.concat(
             (torch.tensor(self.adata.X.sum(0))[0],
              torch.tensor(self.adata.X.sum(0))[0]))
-    
+
         # Retrieve chromatin accessibility masks
         if adata_atac is None:
             self.ca_targets_mask_ = None
@@ -380,13 +385,13 @@ class NicheCompass(BaseModelMixin):
         self.features_idx_dict_["source_unmasked_rna_idx"] = [
             i for i in range(len(adata.var_names))
             if i not in self.features_idx_dict_["source_masked_rna_idx"]]
-        
+
         # Retrieve index of peaks in ca mask and index of peaks not in ca mask
         if adata_atac is not None:
             self.peaks_idx_ = adata_atac.uns[peaks_idx_key]
             self.target_peaks_idx_ = adata_atac.uns[target_peaks_idx_key]
             self.source_peaks_idx_ = adata_atac.uns[source_peaks_idx_key]
-            
+
             self.features_idx_dict_["masked_atac_idx"] = adata_atac.uns[
                 peaks_idx_key]
             self.features_idx_dict_["unmasked_atac_idx"] = [
@@ -430,7 +435,7 @@ class NicheCompass(BaseModelMixin):
         self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
         self.n_prior_gp_ = len(self.gp_targets_mask_)
         self.n_addon_gp_ = n_addon_gp
-        
+
         if n_addon_gp > 0:
             # Add add-on gps to adata
             gp_list = list(self.adata.uns[self.gp_names_key_])
@@ -450,13 +455,13 @@ class NicheCompass(BaseModelMixin):
         if cat_covariates_cats is None:
             if cat_covariates_keys is not None:
                 self.cat_covariates_cats_ = [
-                    adata.obs[cat_covariate_key].unique().tolist() 
+                    adata.obs[cat_covariate_key].unique().tolist()
                     for cat_covariate_key in cat_covariates_keys]
             else:
                 self.cat_covariates_cats_ = []
         else:
             self.cat_covariates_cats_ = cat_covariates_cats
-        
+
         # Define dimensionality of categorical covariates embeddings as
         # number of categories of each categorical covariate respectively
         # if not provided explicitly
@@ -473,7 +478,7 @@ class NicheCompass(BaseModelMixin):
             else:
                 n_hidden_encoder = len(adata.var)
         self.n_hidden_encoder_ = n_hidden_encoder
-            
+
         # Define categorical covariates no edges as all 'True' if not
         # explicitly provided, so that they are excluded from the edge
         # reconstruction loss
@@ -483,7 +488,7 @@ class NicheCompass(BaseModelMixin):
                 [True] * len(self.cat_covariates_cats_))
         else:
             self.cat_covariates_no_edges_ = cat_covariates_no_edges
-        
+
         # Validate counts layer key and counts values
         if counts_key is not None and counts_key not in adata.layers:
             raise ValueError("Please specify an adequate ´counts_key´. By "
@@ -523,8 +528,8 @@ class NicheCompass(BaseModelMixin):
                     raise ValueError(
                         "Please specify adequate ´cat_covariates_keys´. "
                         f"The key {cat_covariate_key} was not found in adata.")
-        
-        # Initialize model with Variational Gene Program Graph Autoencoder 
+
+        # Initialize model with Variational Gene Program Graph Autoencoder
         # neural network module
         self.model = VGPGAE(
             n_input=self.n_input_,
@@ -597,7 +602,7 @@ class NicheCompass(BaseModelMixin):
               **trainer_kwargs):
         """
         Train the NicheCompass model.
-        
+
         Parameters
         ----------
         n_epochs:
@@ -714,7 +719,7 @@ class NicheCompass(BaseModelMixin):
             use_cuda_if_available=use_cuda_if_available,
             n_sampled_neighbors=n_sampled_neighbors,
             **trainer_kwargs)
-        
+
         if lambda_l1_masked > 0.:
             # Create mask for l1 regularization loss
             if l1_targets_categories is None:
@@ -764,9 +769,9 @@ class NicheCompass(BaseModelMixin):
             l1_sources_mask=l1_sources_mask,
             lambda_l1_addon=lambda_l1_addon,
             mlflow_experiment_id=mlflow_experiment_id)
-        
+
         self.node_batch_size_ = self.trainer.node_batch_size_
-        
+
         self.is_trained_ = True
         self.model.eval()
 
@@ -778,7 +783,7 @@ class NicheCompass(BaseModelMixin):
            only_active_gps=True,
            return_mu_std=True,
            node_batch_size=self.node_batch_size_)
-        
+
         self.adata.uns[self.active_gp_names_key_] = self.get_active_gps()
 
         if ((len(self.cat_covariates_cats_) > 0) &
@@ -940,7 +945,7 @@ class NicheCompass(BaseModelMixin):
             if comparison_cats == "rest":
                 comparison_cat_mask = ~cat_mask
             else:
-                comparison_cat_mask = cat_values.isin(comparison_cats)          
+                comparison_cat_mask = cat_values.isin(comparison_cats)
 
             mu_selected_gps_cat = mu_selected_gps[cat_mask]
             std_selected_gps_cat = std_selected_gps[cat_mask]
@@ -972,7 +977,7 @@ class NicheCompass(BaseModelMixin):
             epsilon = 1e-12
             log_bayes_factor = np.log(p_h0 + epsilon) - np.log(p_h1 + epsilon)
             zeros_mask = (
-                (np.abs(mu_selected_gps_cat_sample).sum(0) == 0) | 
+                (np.abs(mu_selected_gps_cat_sample).sum(0) == 0) |
                 (np.abs(mu_selected_gps_comparison_cat_sample).sum(0) == 0))
             p_h0[zeros_mask] = 0
             p_h1[zeros_mask] = 0
@@ -1009,7 +1014,7 @@ class NicheCompass(BaseModelMixin):
         # Retrieve enriched gene programs
         enriched_gps = results["gene_program"].unique().tolist()
         enriched_gps_idx = [selected_gps.index(gp) for gp in enriched_gps]
-        
+
         # Add gene program scores of enriched gene programs to adata
         enriched_gps_gp_scores = pd.DataFrame(
             mu_selected_gps[:, enriched_gps_idx],
@@ -1036,7 +1041,7 @@ class NicheCompass(BaseModelMixin):
         selected_gp:
             Name of the gene program for which the gene importances should be
             retrieved.
-     
+
         Returns
         ----------
         gp_gene_importances_df:
@@ -1076,7 +1081,7 @@ class NicheCompass(BaseModelMixin):
                                            inplace=True)
         gp_gene_importances_df.reset_index(drop=True, inplace=True)
         return gp_gene_importances_df
-    
+
     def compute_gp_peak_importances(
             self,
             selected_gp: str) -> pd.DataFrame:
@@ -1090,7 +1095,7 @@ class NicheCompass(BaseModelMixin):
         selected_gp:
             Name of the gene program for which the peak importances should be
             retrieved.
-     
+
         Returns
         ----------
         gp_peak_importances_df:
@@ -1175,7 +1180,7 @@ class NicheCompass(BaseModelMixin):
         selected_gps_rna_decoder_weights = (
             all_gps_rna_decoder_weights[:, selected_gps_idx]
             .cpu().detach().numpy())
-        
+
         if "atac" in self.modalities_:
             all_gps_atac_decoder_weights = self.model.get_gp_weights()[1]
             selected_gps_atac_decoder_weights = (
@@ -1198,7 +1203,7 @@ class NicheCompass(BaseModelMixin):
             Categorical covariates embeddings.
         """
         self._check_if_trained(warn=True)
-        
+
         cat_covariates_embeds = []
         for cat_covariate_embedder in self.model.cat_covariates_embedders:
             cat_covariates_embeds.append(
@@ -1211,7 +1216,7 @@ class NicheCompass(BaseModelMixin):
         weights of gene programs. Active gene programs are gene programs
         whose absolute gene weights aggregated over all genes are greater than
         ´self.active_gp_thresh_ratio_´ times the absolute gene weights
-        aggregation of the gene program with the maximum value across all gene 
+        aggregation of the gene program with the maximum value across all gene
         programs.
 
         Parameters
@@ -1226,7 +1231,7 @@ class NicheCompass(BaseModelMixin):
             Gene program names of active gene programs (dim: n_active_gps,)
         """
         self._check_if_trained(warn=True)
-        
+
         device = next(self.model.parameters()).device
 
         active_gp_mask = self.model.get_active_gp_mask()
@@ -1235,7 +1240,7 @@ class NicheCompass(BaseModelMixin):
         return active_gps
 
     def get_latent_representation(
-            self, 
+            self,
             adata: Optional[AnnData]=None,
             adata_atac: Optional[AnnData]=None,
             counts_key: Optional[str]="counts",
@@ -1255,14 +1260,14 @@ class NicheCompass(BaseModelMixin):
             the adata object stored in the model instance.
         counts_key:
             Key under which the counts are stored in ´adata.layer´. If ´None´,
-            uses ´adata.X´ as counts. 
+            uses ´adata.X´ as counts.
         adj_key:
-            Key under which the sparse adjacency matrix is stored in 
+            Key under which the sparse adjacency matrix is stored in
             ´adata.obsp´.
         cat_covariates_keys:
             Keys under which the categorical covariates are stored in ´adata.obs´.
         only_active_gps:
-            If ´True´, return only the latent representation of active gps.              
+            If ´True´, return only the latent representation of active gps.
         return_mu_std:
             If `True`, return ´mu´ and ´std´ instead of latent features ´z´.
 
@@ -1271,14 +1276,14 @@ class NicheCompass(BaseModelMixin):
         z:
             Latent space features (dim: n_obs x n_active_gps or n_obs x n_gps).
         mu:
-            Expected values of the latent posterior (dim: n_obs x n_active_gps 
+            Expected values of the latent posterior (dim: n_obs x n_active_gps
             or n_obs x n_gps).
         std:
-            Standard deviations of the latent posterior (dim: n_obs x 
+            Standard deviations of the latent posterior (dim: n_obs x
             n_active_gps or n_obs x n_gps).
         """
         self._check_if_trained(warn=False)
-        
+
         device = next(self.model.parameters()).device
 
         if adata is None:
@@ -1347,9 +1352,9 @@ class NicheCompass(BaseModelMixin):
             return mu, std
         else:
             return z
-        
+
     def get_omics_decoder_outputs(
-                self, 
+                self,
                 adata: Optional[AnnData]=None,
                 adata_atac: Optional[AnnData]=None,
                 only_active_gps: bool=True,
@@ -1365,9 +1370,9 @@ class NicheCompass(BaseModelMixin):
                 the adata object stored in the model instance.
             counts_key:
                 Key under which the counts are stored in ´adata.layer´. If ´None´,
-                uses ´adata.X´ as counts. 
+                uses ´adata.X´ as counts.
             adj_key:
-                Key under which the sparse adjacency matrix is stored in 
+                Key under which the sparse adjacency matrix is stored in
                 ´adata.obsp´.
             cat_covariates_keys:
                 Keys under which the categorical covariates are stored in ´adata.obs´.
@@ -1409,8 +1414,8 @@ class NicheCompass(BaseModelMixin):
                 node_batch_size=node_batch_size,
                 shuffle=False)
             node_loader = loader_dict["node_train_loader"]
-            
-            output = {}    
+
+            output = {}
             output["target_rna_nb_means"] = np.empty(shape=(adata.shape[0], self.n_output_genes_))
             output["source_rna_nb_means"] = np.empty(shape=(adata.shape[0], self.n_output_genes_))
             if "atac" in self.modalities_:
@@ -1436,9 +1441,9 @@ class NicheCompass(BaseModelMixin):
                     output["source_atac_nb_means"][n_obs_before_batch:n_obs_after_batch, :] = (
                         output_batch["source_atac_nb_means"].detach().cpu().numpy())
             return output
-    
+
     @torch.no_grad()
-    def get_recon_edge_probs(self,      
+    def get_recon_edge_probs(self,
                              node_batch_size: int=2048,
                              device: Optional[str]=None,
                              edge_thresh: Optional[float]=None,
@@ -1446,7 +1451,7 @@ class NicheCompass(BaseModelMixin):
                              return_edge_probs: bool=False
                              ) -> Union[sp.csr_matrix, torch.Tensor]:
         """
-        Get the reconstructed adjacency matrix (or edge probability matrix if 
+        Get the reconstructed adjacency matrix (or edge probability matrix if
         ´return_edge_probs == True´ from a trained NicheCompass model.
 
         Parameters
@@ -1469,7 +1474,7 @@ class NicheCompass(BaseModelMixin):
             ´None´, the number of neighbors in the original (symmetric) spatial
             graph stored in ´adata.obsp[self.adj_key_]´ are used to compute an
             independent edge threshold for each observation (in this case the
-            adjacency matrix is not made symmetric). 
+            adjacency matrix is not made symmetric).
         return_edge_probs:
             If ´True´, return a matrix of edge probabilities instead of the
             reconstructed adjacency matrix. This will require a lot of memory
@@ -1493,7 +1498,7 @@ class NicheCompass(BaseModelMixin):
 
         if edge_thresh is None:
             compute_edge_thresh = True
-        
+
         # Get the latent representation for each observation
         if self.latent_key_ not in self.adata.obsm:
             raise ValueError("Please first store the latent representations in "
@@ -1566,12 +1571,12 @@ class NicheCompass(BaseModelMixin):
 
     @torch.no_grad()
     def get_neighbor_importances(
-            self,      
+            self,
             node_batch_size: Optional[int]=None) -> sp.csr_matrix:
         """
         Get the aggregation weights of the node label aggregator. The
         aggregation weights indicate how much importance each node / observation
-        has attributed to its neighboring nodes / observations for the omics 
+        has attributed to its neighboring nodes / observations for the omics
         reconstruction tasks. If ´one-hop-attention´ is used as node label
         method, the mean over all attention heads is used as aggregation
         weights.
@@ -1636,7 +1641,7 @@ class NicheCompass(BaseModelMixin):
             # Filter global edge index and aggregation weights for nodes in
             # current batch (exclude sampled neighbors across dim 1)
             global_edge_index = node_batch.edge_attr.t()
-            batch_mask = ((global_edge_index[1] >= n_obs_before_batch) & 
+            batch_mask = ((global_edge_index[1] >= n_obs_before_batch) &
                           (global_edge_index[1] < n_obs_after_batch))
             global_edge_index = global_edge_index[:, batch_mask]
             if alpha.ndim > 1:
@@ -1652,19 +1657,19 @@ class NicheCompass(BaseModelMixin):
                         global_edge_index[0, :]] = alpha
         agg_weights = agg_weights.tocsr(copy=False)
         return agg_weights
-    
+
 
     def get_gp_summary(self) -> pd.DataFrame:
         """
         Get summary information of gene programs and return it as a DataFrame.
-        
+
         Returns
         ----------
         gp_summary_df:
             DataFrame with gene program summary information.
         """
         device = next(self.model.parameters()).device
-        
+
         # Get source and target omics decoder weights
         _, gp_gene_weights, gp_peak_weights = self.get_gp_data()
 
@@ -1672,7 +1677,7 @@ class NicheCompass(BaseModelMixin):
         gp_gene_importances = np.where(
             np.abs(gp_gene_weights).sum(0) != 0,
             np.abs(gp_gene_weights) / np.abs(gp_gene_weights).sum(0),
-            0)      
+            0)
 
         # Split gene weights and importances into source and target part
         gp_gene_weights = np.transpose(gp_gene_weights)
@@ -1685,13 +1690,13 @@ class NicheCompass(BaseModelMixin):
             :, (gp_gene_weights.shape[1] // 2):]
         gp_gene_importances_target = gp_gene_importances[
             :, :(gp_gene_weights.shape[1] // 2)]
-        
+
         # Get source and target gene masks
         gp_gene_mask_source = np.transpose(
             np.array(self.model.source_rna_decoder_mask).T != 0)
         gp_gene_mask_target = np.transpose(
             np.array(self.model.target_rna_decoder_mask).T != 0)
-        
+
         # Add entries to gp mask for addon gps
         if self.n_addon_gp_ > 0:
             gp_gene_addon_mask_source = np.transpose(
@@ -1753,12 +1758,12 @@ class NicheCompass(BaseModelMixin):
                 np.around(gene_weights_source[gene_mask_source],
                           decimals=4),
                 np.around(gene_importances_source[gene_mask_source],
-                          decimals=4),        
+                          decimals=4),
                 self.adata.var_names[gene_mask_source].tolist()), reverse=True):
                     genes_source_sorted.append(genes)
                     gene_weights_source_sorted.append(weights)
                     gene_importances_source_sorted.append(importances)
-            
+
             # Sort target genes according to absolute weights
             geme_weights_target_sorted = []
             gene_importances_target_sorted = []
@@ -1767,14 +1772,14 @@ class NicheCompass(BaseModelMixin):
                 np.abs(np.around(gene_weights_target[gene_mask_target],
                                  decimals=4)), # just for sorting
                 np.around(gene_weights_target[gene_mask_target],
-                          decimals=4),                 
+                          decimals=4),
                 np.around(gene_importances_target[gene_mask_target],
                           decimals=4),
                 self.adata.var_names[gene_mask_target].tolist()), reverse=True):
                     genes_target_sorted.append(genes)
                     geme_weights_target_sorted.append(weights)
-                    gene_importances_target_sorted.append(importances)                 
-                
+                    gene_importances_target_sorted.append(importances)
+
             n_source_genes.append(len(genes_source_sorted))
             n_non_zero_source_genes.append(len(np.array(
                 gene_weights_source_sorted).nonzero()[0]))
@@ -1787,7 +1792,7 @@ class NicheCompass(BaseModelMixin):
             gp_target_genes_weights.append(geme_weights_target_sorted)
             gp_source_genes_importances.append(gene_importances_source_sorted)
             gp_target_genes_importances.append(gene_importances_target_sorted)
-   
+
         gp_summary_df = pd.DataFrame(
             {"gp_name": gp_names,
              "all_gp_idx": all_gp_idx,
@@ -1803,19 +1808,19 @@ class NicheCompass(BaseModelMixin):
              "gp_target_genes_weights": gp_target_genes_weights,
              "gp_source_genes_importances": gp_source_genes_importances,
              "gp_target_genes_importances": gp_target_genes_importances})
-        
+
         gp_summary_df["active_gp_idx"] = (
             gp_summary_df["active_gp_idx"].astype("Int64"))
-        
+
         if "atac" in self.modalities_:
             # Add peak info for each gp
-            
+
             # Normalize gp weights to get gene importances
             gp_peak_importances = np.where(
                 np.abs(gp_peak_weights).sum(0) != 0,
                 np.abs(gp_peak_weights) / np.abs(gp_peak_weights).sum(0),
                 0)
-        
+
             # Split peak weights and importances into source and target part
             gp_peak_weights = np.transpose(gp_peak_weights)
             gp_peak_importances = np.transpose(gp_peak_importances)
@@ -1880,12 +1885,12 @@ class NicheCompass(BaseModelMixin):
                     np.around(gp_source_peaks_weights_arr[gp_source_peaks_idx],
                             decimals=4),
                     np.around(gp_source_peaks_importances_arr[gp_source_peaks_idx],
-                            decimals=4),        
+                            decimals=4),
                     self.adata_atac.var_names[gp_source_peaks_idx].tolist()),reverse=True):
                         peaks_source_sorted.append(peaks)
                         peak_weights_source_sorted.append(weights)
                         peak_importances_source_sorted.append(importances)
-                
+
                 # Sort target peaks according to absolute weights
                 peak_weights_target_sorted = []
                 peak_importances_target_sorted = []
@@ -1894,14 +1899,14 @@ class NicheCompass(BaseModelMixin):
                     np.abs(np.around(gp_target_peaks_weights_arr[gp_target_peaks_idx],
                                     decimals=4)),
                     np.around(gp_target_peaks_weights_arr[gp_target_peaks_idx],
-                            decimals=4),                 
+                            decimals=4),
                     np.around(gp_target_peaks_importances_arr[gp_target_peaks_idx],
                             decimals=4),
                     self.adata_atac.var_names[gp_target_peaks_idx].tolist()), reverse=True):
                         peaks_target_sorted.append(peaks)
                         peak_weights_target_sorted.append(weights)
-                        peak_importances_target_sorted.append(importances)                 
-                    
+                        peak_importances_target_sorted.append(importances)
+
                 n_source_peaks.append(len(peaks_source_sorted))
                 n_non_zero_source_peaks.append(len(np.array(
                     peak_weights_source_sorted).nonzero()[0]))
@@ -1931,15 +1936,15 @@ class NicheCompass(BaseModelMixin):
                 gp_summary_df["gp_target_peaks_importances"].replace(np.nan, 0.))
 
         return gp_summary_df
-    
+
 
     def add_active_gp_scores_to_obs(self) -> None:
         """
-        Add the expression of all active gene programs to ´adata.obs´.      
+        Add the expression of all active gene programs to ´adata.obs´.
         """
         # Get active gene program names
         active_gp_names = self.get_active_gps()
-        
+
         # Create active gene program df
         active_gp_df = pd.DataFrame(self.adata.obsm[self.latent_key_],
                                     columns=active_gp_names)
@@ -1952,4 +1957,297 @@ class NicheCompass(BaseModelMixin):
 
         # Concatenate active gene program df horizontally to ´adata.obs´
         self.adata.obs = pd.concat([self.adata.obs, active_gp_df], axis=1)
-        
+
+    def _get_user_attributes(self) -> list:
+        """
+        Get all the attributes defined in a model instance, for example
+        self.is_trained_.
+
+        Returns
+        ----------
+        attributes:
+            Attributes defined in a model instance.
+        """
+        attributes = inspect.getmembers(
+            self, lambda a: not (inspect.isroutine(a)))
+        attributes = [a for a in attributes if not (
+            a[0].startswith("__") and a[0].endswith("__"))]
+        return attributes
+
+    def _get_public_attributes(self) -> dict:
+        """
+        Get only public attributes defined in a model instance. By convention
+        public attributes have a trailing underscore.
+
+        Returns
+        ----------
+        public_attributes:
+            Public attributes defined in a model instance.
+        """
+        public_attributes = self._get_user_attributes()
+        public_attributes = {a[0]: a[1] for a in public_attributes if
+                             a[0][-1] == "_"}
+        return public_attributes
+
+    def _get_init_params(self, locals: dict) -> dict:
+        """
+        Get the model init signature with associated passed in values from
+        locals (except the AnnData object passed in).
+
+        Parameters
+        ----------
+        locals:
+            Dictionary returned by calling the ´locals()´ method.
+
+        Returns
+        ----------
+        user_params:
+            Model initialization attributes defined in a model instance.
+        """
+        init = self.__init__
+        sig = inspect.signature(init)
+        init_params = [p for p in sig.parameters]
+        user_params = {p: locals[p] for p in locals if p in init_params}
+        user_params = {k: v for (k, v) in user_params.items() if not
+                       isinstance(v, AnnData)}
+        return user_params
+
+    def save(self,
+             dir_path: str,
+             overwrite: bool=False,
+             save_adata: bool=False,
+             adata_file_name: str="adata.h5ad",
+             save_adata_atac: bool=False,
+             adata_atac_file_name: str="adata_atac.h5ad",
+             **anndata_write_kwargs):
+        """
+        Save model to disk (the Trainer optimizer state is not saved).
+
+        Parameters
+        ----------
+        dir_path:
+            Path of the directory where the model will be saved.
+        overwrite:
+            If `True`, overwrite existing data. If `False` and directory
+            already exists at `dir_path`, error will be raised.
+        save_adata:
+            If `True`, also saves the AnnData object.
+        adata_file_name:
+            File name under which the AnnData object will be saved.
+        save_adata_atac:
+            If `True`, also saves the ATAC AnnData object.
+        adata_atac_file_name:
+            File name under which the ATAC AnnData object will be saved.
+        adata_write_kwargs:
+            Kwargs for adata write function.
+        """
+        if not os.path.exists(dir_path) or overwrite:
+            os.makedirs(dir_path, exist_ok=overwrite)
+        else:
+            raise ValueError(f"Directory '{dir_path}' already exists."
+                             "Please provide another directory for saving.")
+
+        model_save_path = os.path.join(dir_path, "model_params.pt")
+        attr_save_path = os.path.join(dir_path, "attr.pkl")
+        var_names_save_path = os.path.join(dir_path, "var_names.csv")
+
+        if save_adata:
+            # Convert storage format of adjacency matrix to be writable by
+            # adata.write()
+            if self.adata.obsp["spatial_connectivities"] is not None:
+                self.adata.obsp["spatial_connectivities"] = sp.csr_matrix(
+                    self.adata.obsp["spatial_connectivities"])
+            self.adata.write(
+                os.path.join(dir_path, adata_file_name), **anndata_write_kwargs)
+
+        if save_adata_atac:
+            self.adata_atac.write(
+                os.path.join(dir_path, adata_atac_file_name))
+
+        var_names = self.adata.var_names.astype(str).to_numpy()
+        public_attributes = self._get_public_attributes()
+
+        torch.save(self.model.state_dict(), model_save_path)
+        np.savetxt(var_names_save_path, var_names, fmt="%s")
+        with open(attr_save_path, "wb") as f:
+            pickle.dump(public_attributes, f)
+
+    @classmethod
+    def load(cls,
+             dir_path: str,
+             adata: Optional[AnnData]=None,
+             adata_atac: Optional[AnnData]=None,
+             adata_file_name: str="adata.h5ad",
+             adata_atac_file_name: Optional[str]=None,
+             use_cuda: bool=False,
+             n_addon_gps: int=0,
+             gp_names_key: Optional[str]=None,
+             genes_idx_key: Optional[str]=None,
+             unfreeze_all_weights: bool=False,
+             unfreeze_addon_gp_weights: bool=False,
+             unfreeze_cat_covariates_embedder_weights: bool=False
+             ) -> torch.nn.Module:
+        """
+        Instantiate a model from saved output. Can be used for transfer learning
+        scenarios and to learn de-novo gene programs by adding add-on gene
+        programs and freezing non add-on weights.
+
+        Parameters
+        ----------
+        dir_path:
+            Path to saved outputs.
+        adata:
+            AnnData organized in the same way as data used to train the model.
+            If ´None´, will check for and load adata saved with the model.
+        adata_atac:
+            ATAC AnnData organized in the same way as data used to train the
+            model. If ´None´ and ´adata_atac_file_name´ is not ´None´, will
+            check for and load adata_atac saved with the model.
+        adata_file_name:
+            File name of the AnnData object to be loaded.
+        adata_atac_file_name:
+            File name of the ATAC AnnData object to be loaded.
+        use_cuda:
+            If `True`, load model on GPU.
+        n_addon_gps:
+            Number of (new) add-on gene programs to be added to the model's
+            architecture.
+        gp_names_key:
+            Key under which the gene program names are stored in ´adata.uns´.
+        unfreeze_all_weights:
+            If `True`, unfreeze all weights.
+        unfreeze_addon_gp_weights:
+            If `True`, unfreeze addon gp weights.
+        unfreeze_cat_covariates_embedder_weights:
+            If `True`, unfreeze categorical covariates embedder weights.
+
+        Returns
+        -------
+        model:
+            Model with loaded state dictionaries and, if specified, frozen non
+            add-on weights.
+        """
+        load_adata = adata is None
+        load_adata_atac = ((adata_atac is None) &
+                           (adata_atac_file_name is not None))
+        use_cuda = use_cuda and torch.cuda.is_available()
+        map_location = torch.device("cpu") if use_cuda is False else None
+
+        model_state_dict, var_names, attr_dict, new_adata, new_adata_atac = (
+            load_saved_files(dir_path,
+                             load_adata,
+                             adata_file_name,
+                             load_adata_atac,
+                             adata_atac_file_name,
+                             map_location=map_location))
+        adata = new_adata if new_adata is not None else adata
+        adata_atac = (new_adata_atac if new_adata_atac is not None else
+                      adata_atac)
+
+        validate_var_names(adata, var_names)
+
+        # Include all genes in gene expression reconstruction if addon nodes
+        # are present
+        if n_addon_gps != 0:
+            if genes_idx_key not in adata.uns:
+                raise ValueError("Please specifiy a valid 'genes_idx_key' if "
+                                 "'n_addon_gps' > 0, so that all genes can be "
+                                 "included in the genes idx.")
+            adata.uns[genes_idx_key] = np.arange(adata.n_vars * 2)
+
+        # Add new categorical covariates categories from query data
+        cat_covariates_cats = attr_dict["cat_covariates_cats_"]
+        cat_covariates_keys = attr_dict["init_params_"]["cat_covariates_keys"]
+        new_cat_covariates_cats = []
+        if cat_covariates_keys is not None:
+            for i, cat_covariate_key in enumerate(cat_covariates_keys):
+                new_cat_covariate_cats = []
+                adata_cat_covariate_cats = adata.obs[cat_covariate_key].unique().tolist()
+                for cat_covariate_cat in adata_cat_covariate_cats:
+                    if cat_covariate_cat not in cat_covariates_cats[i]:
+                        new_cat_covariate_cats.append(cat_covariate_cat)
+                for cat_covariate_cat in new_cat_covariate_cats:
+                    new_cat_covariates_cats.append(cat_covariate_cat)
+                    cat_covariates_cats[i].append(cat_covariate_cat)
+        attr_dict["init_params_"]["cat_covariates_cats"] = cat_covariates_cats
+
+        if n_addon_gps != 0:
+            attr_dict["n_addon_gps_"] += n_addon_gps
+            attr_dict["init_params_"]["n_addon_gps"] += n_addon_gps
+
+            if gp_names_key is None:
+                raise ValueError("Please specify 'gp_names_key' so that addon "
+                                 "gps can be added to the gene program list.")
+
+            gps = list(adata.uns[gp_names_key])
+
+            if any("addon_GP_" in gp for gp in gps):
+                addon_gp_idx = int(gps[-1][-1]) + 1
+                adata.uns[gp_names_key] = np.array(
+                    gps + ["addon_GP_" + str(addon_gp_idx + i) for i in
+                    range(n_addon_gps)])
+            else:
+                adata.uns[gp_names_key] = np.array(
+                    gps + ["addon_GP_" + str(i) for i in range(n_addon_gps)])
+
+        model = initialize_model(cls, adata, attr_dict, adata_atac)
+
+        # set saved attrs for loaded model
+        for attr, val in attr_dict.items():
+            setattr(model, attr, val)
+
+        if n_addon_gps != 0 or len(new_cat_covariates_cats) > 0:
+            model.model.load_and_expand_state_dict(model_state_dict)
+        else:
+            model.model.load_state_dict(model_state_dict)
+
+        if use_cuda:
+            model.model.cuda()
+        model.model.eval()
+
+        # First freeze all parameters and then subsequently unfreeze based on
+        # load settings
+        for param_name, param in model.model.named_parameters():
+            param.requires_grad = False
+            model.freeze_ = True
+        if unfreeze_all_weights:
+            for param_name, param in model.model.named_parameters():
+                param.requires_grad = True
+            model.freeze_ = False
+        if unfreeze_addon_gp_weights:
+             # allow updates of addon gp weights
+            for param_name, param in model.model.named_parameters():
+                if "addon" in param_name or \
+                "theta" in param_name or \
+                "aggregator" in param_name:
+                    param.requires_grad = True
+        if unfreeze_cat_covariates_embedder_weights:
+            # Allow updates of categorical covariates embedder weights
+            for param_name, param in model.model.named_parameters():
+                if ("cat_covariate" in param_name) & ("embedder" in param_name):
+                    param.requires_grad = True
+
+        if model.freeze_ and not model.is_trained_:
+            raise ValueError("The model has not been pre-trained and therefore "
+                             "weights should not be frozen.")
+
+        return model
+
+    def _check_if_trained(self,
+                          warn: bool=True):
+        """
+        Check if the model is trained.
+
+        Parameters
+        -------
+        warn:
+             If not trained and `warn` is True, raise a warning, else raise a
+             RuntimeError.
+        """
+        message = ("Trying to query inferred values from an untrained model. "
+                   "Please train the model first.")
+        if not self.is_trained_:
+            if warn:
+                warnings.warn(message)
+            else:
+                raise RuntimeError(message)

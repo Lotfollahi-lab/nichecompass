@@ -1,4 +1,3 @@
-from .basemodulemixin import BaseModuleMixin
 from .losses import (compute_cat_covariates_contrastive_loss,
                      compute_edge_recon_loss,
                      compute_gp_group_lasso_reg_loss,
