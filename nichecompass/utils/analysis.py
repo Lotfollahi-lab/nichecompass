@@ -859,20 +859,11 @@ def compute_communication_gp_network(
     """
     Compute network of communication gene program strengths.
     """
-    
-    if filter_key is not None:
-        model.adata = model.adata[model.adata.obs[filter_key]==filter_cat]
-    
     # Compute neighborhood graph
-    compute_nn = True
-    if 'spatial_cci' in model.adata.uns.keys():
-        if model.adata.uns['spatial_cci']['params']['n_neighbors'] == n_neighbors:
-            compute_nn = False
-    if compute_nn:
-        sc.pp.neighbors(model.adata,
-                        n_neighbors=n_neighbors,
-                        use_rep="spatial",
-                        key_added="spatial_cci")
+    sc.pp.neighbors(model.adata,
+                    n_neighbors=n_neighbors,
+                    use_rep="spatial",
+                    key_added="spatial_cci")
     
     gp_network_dfs = []
     gp_summary_df = model.get_gp_summary()
@@ -938,7 +929,11 @@ def compute_communication_gp_network(
             adata=model.adata,
             obsp_key=f"{gp}_connectivities",
             cell_type_key=group_key,
+            group_key=filter_key,
             agg_rows=True)
+
+        if filter_key is not None:
+            gp_network_df_pivoted = gp_network_df_pivoted.loc[filter_cat, :]
 
         gp_network_df = gp_network_df_pivoted.melt(var_name="source", value_name="gp_score", ignore_index=False).reset_index()
         gp_network_df.columns = ["source", "target", "strength"]
@@ -948,7 +943,6 @@ def compute_communication_gp_network(
         # Normalize strength
         min_value = gp_network_df["strength"].min()
         max_value = gp_network_df["strength"].max()
-        gp_network_df["strength_unscaled"] = gp_network_df["strength"]
         gp_network_df["strength"] = (gp_network_df["strength"] - min_value) / (max_value - min_value)
         gp_network_df["strength"] = np.round(gp_network_df["strength"], 2)
         gp_network_df = gp_network_df[gp_network_df["strength"] > 0]
