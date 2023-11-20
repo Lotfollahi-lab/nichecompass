@@ -8,6 +8,7 @@ correction.
 
 import time
 from typing import Optional, Union
+import gc
 
 import mlflow
 import numpy as np
@@ -86,6 +87,8 @@ def compute_benchmarking_metrics(
         n_neighbors_list.append(50) # kbet-specific k
     if any(metric in ["clisis", "clisi", "blisi"] for metric in metrics):
         n_neighbors_list.append(90) # lisi-specific k
+        
+    print(n_neighbors_list)
     
     benchmarking_dict = {}
     
@@ -116,19 +119,14 @@ def compute_benchmarking_metrics(
                 not in adata.obsp):
                 print("Computing latent nearest neighbor graph with "
                       f"{n_neighbors} neighbors for entire dataset...")
-                try:
-                    compute_knn_graph_connectivities_and_distances(
-                            adata=adata,
-                            feature_key=latent_key,
-                            knng_key=f"{latent_key}_{n_neighbors}knng",
-                            n_neighbors=n_neighbors,
-                            random_state=seed,
-                            n_jobs=n_jobs)
-                except ValueError:
-                    print("Could not compute latent nearest neighbor graph "
-                          f"with {n_neighbors} neighbors for entire "
-                          "dataset...")
-                    continue
+                compute_knn_graph_connectivities_and_distances(
+                        adata=adata,
+                        feature_key=latent_key,
+                        knng_key=f"{latent_key}_{n_neighbors}knng",
+                        n_neighbors=n_neighbors,
+                        random_state=seed,
+                        n_jobs=n_jobs) # pynndescent has to be version 0.5.8 
+                                       # otherwise this can throw errors for some random seeds and big latents
             else:
                 print(f"Using precomputed latent nearest neighbor graph "
                       f"with {n_neighbors} neighbors...")

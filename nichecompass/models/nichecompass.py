@@ -222,7 +222,7 @@ class NicheCompass(BaseModelMixin):
                     "one-hop-sum",
                     "one-hop-norm",
                     "one-hop-attention"]="one-hop-norm",
-                 active_gp_thresh_ratio: float=0.05,
+                 active_gp_thresh_ratio: float=0.001,
                  n_fc_layers_encoder: int=1,
                  n_layers_encoder: int=1,
                  n_hidden_encoder: Optional[int]=None,
