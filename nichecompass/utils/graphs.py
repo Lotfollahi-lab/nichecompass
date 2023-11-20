@@ -45,6 +45,17 @@ def compute_knn_graph_connectivities_and_distances(
         random_state=random_state,
         n_jobs=n_jobs)
     indices, distances = neigh_output.indices, neigh_output.distances
+    
+    # This is a trick to get lisi metrics to work by adding the tiniest possible value
+    # to 0 distance neighbors so that each cell has the same amount of neighbors 
+    # (otherwise some cells lose neighbors with distance 0 due to sparse representation)
+    row_idx = np.where(distances == 0)[0]
+    col_idx = np.where(distances == 0)[1]
+    new_row_idx = row_idx[np.where(row_idx != indices[row_idx, col_idx])[0]]
+    new_col_idx = col_idx[np.where(row_idx != indices[row_idx, col_idx])[0]]
+    distances[new_row_idx, new_col_idx] = (distances[new_row_idx, new_col_idx] +
+                                           np.nextafter(0, 1, dtype=np.float32))
+
     sp_distances, sp_conns = sc.neighbors._compute_connectivities_umap(
             indices[:, :n_neighbors],
             distances[:, :n_neighbors],
