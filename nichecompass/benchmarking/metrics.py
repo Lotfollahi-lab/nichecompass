@@ -87,8 +87,6 @@ def compute_benchmarking_metrics(
         n_neighbors_list.append(50) # kbet-specific k
     if any(metric in ["clisis", "clisi", "blisi"] for metric in metrics):
         n_neighbors_list.append(90) # lisi-specific k
-        
-    print(n_neighbors_list)
     
     benchmarking_dict = {}
     
