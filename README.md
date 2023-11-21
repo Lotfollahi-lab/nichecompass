@@ -3,10 +3,23 @@
 
 ## Contributing
 
-It is recommended to use `devcontainers` to create a reproducible development environment. Within the development container, install poetry and package dependencies.
+### Devcontainer
 
-```
+It is recommended to use a `devcontainer` to create a reproducible development environment. Within the development container, install poetry and package dependencies.
+
+```bash
 pipx install poetry==1.4.2
+poetry install
+```
+
+### Conda
+
+To create a development environment using Conda.
+
+```bash
+export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
+conda env create -f environment.yml
+conda activate nichecompass
 poetry install
 ```
 
