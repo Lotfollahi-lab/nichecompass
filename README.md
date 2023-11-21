@@ -1,15 +1,27 @@
 # NicheCompass
 **N**iche **I**dentification based on **C**ellular grap**H** **E**mbeddings of **COM**munication **P**rograms **A**ligned across **S**patial **S**amples.
 
-## Installation
-1) Create the nichecompass conda environment:
-```conda env create -f environment.yml```
+## Contributing
 
-2) Activate the nichecompass conda environment:
-```conda activate nichecompass```
+### Devcontainer
 
-4) Install all Python dependencies via Poetry:
-```poetry install``` (you might have to run ```export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring``` in your shell before)
+It is recommended to use a `devcontainer` to create a reproducible development environment. Within the development container, install poetry and package dependencies.
+
+```bash
+pipx install poetry==1.4.2
+poetry install
+```
+
+### Conda
+
+To create a development environment using Conda.
+
+```bash
+export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
+conda env create -f environment.yml
+conda activate nichecompass
+poetry install
+```
 
 ## Tutorials
 Tutorial notebooks are available in the notebooks folder.
