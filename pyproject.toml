@@ -13,6 +13,9 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
 ]
 
+[tool.poetry.scripts]
+nichecompass = "nichecompass.main:app"
+
 [tool.poetry.dependencies]
 python = "^3.9"
 bokeh = {version = "2.4.3", source = "pypi"}
@@ -33,6 +36,7 @@ torch-scatter = {version = "2.1.1", source = "torch-scatter"}
 torch-sparse = {version = "0.6.17", source = "torch-sparse"}
 jax = {version = "0.4.7", source = "pypi"}
 jaxlib = {version = "0.4.7+cuda11.cudnn82", source = "jaxlib"}
+typer = "0.9.0"
 
 [[tool.poetry.source]]
 name = "torch"
