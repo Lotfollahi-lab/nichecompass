@@ -4422,6 +4422,21 @@ MarkupSafe = ">=2.1.1"
 watchdog = ["watchdog (>=2.3)"]
 
 [[package]]
+name = "wonderwords"
+version = "2.2.0"
+description = "A python package for random words and sentences in the english language"
+category = "main"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "wonderwords-2.2.0-py3-none-any.whl", hash = "sha256:65fc665f1f5590e98f6d9259414ea036bf1b6dd83e51aa6ba44473c99ca92da1"},
+    {file = "wonderwords-2.2.0.tar.gz", hash = "sha256:0b7ec6f591062afc55603bfea71463afbab06794b3064d9f7b04d0ce251a13d0"},
+]
+
+[package.extras]
+cli = ["rich (==9.10.0)"]
+
+[[package]]
 name = "wrapt"
 version = "1.16.0"
 description = "Module for decorators, wrappers and monkey patching."
@@ -4685,4 +4700,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "c479dc72321c931004eb1eeb360dce8752fe7ef774b0f7da4d56f1175fe6d9f3"
+content-hash = "3303d05ba6cd30e4cbcb209b9cea506fe86b48e206523f975486fefb8d306073"

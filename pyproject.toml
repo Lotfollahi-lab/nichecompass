@@ -37,6 +37,7 @@ torch-sparse = {version = "0.6.17", source = "torch-sparse"}
 jax = {version = "0.4.7", source = "pypi"}
 jaxlib = {version = "0.4.7+cuda11.cudnn82", source = "jaxlib"}
 typer = "0.9.0"
+wonderwords = "2.2.0"
 
 [[tool.poetry.source]]
 name = "torch"
