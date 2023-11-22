@@ -44,14 +44,6 @@ conda activate nichecompass
 poetry install
 ```
 
-### Tests
-
-Run integration tests.
-
-```bash
-poetry run pytest tests/integration/training.py
-```
-
 ## Tutorials
 Tutorial notebooks are available in the notebooks folder.
 
