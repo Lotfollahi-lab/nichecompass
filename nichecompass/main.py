@@ -3,6 +3,8 @@ import json
 import pickle
 from pprint import pprint
 from datetime import datetime
+from wonderwords import RandomWord
+import os
 
 import anndata as ad
 import mlflow
@@ -61,64 +63,27 @@ def skeleton(output: str):
         },
         "graph": {
             "n_neighbors": 12,
-
-        }
-    }
-
-    with open(output, 'w') as file:
-        json.dump(default_config, file, indent=4)
-
-
-
-
-
-"""
-        "data": {
-            "dataset": None,
-            "reference_batches": None, # could just assume using all in adata, note cannot be a list
-            "counts_key": None # shouldn't it just assume the raw data?
-            "condition_key": "batch", # these could be aggregated
-            "cat_covariates_keys": None, # ^ # cannot be a list of [None]
-            "cat_covariates_no_edges": None, # don't even know what this does?, cannot be a list of [None]
-            "n_neighbors": 12,
-            "spatial_key": "spatial", # could just be set
-            "adj_key": "spatial_connectivities", # could just be set
-            "mapping_entity_key": "mapping_entity", # could just be set
-            "filter_genes": False, # could be moved over
-            "n_hvg": 0, # could be moved over
-            "n_svg": 3000, # could be moved over
-            "n_svp": 3000, # could be moved over
-            "gp_targets_mask_key": "nichecompass_gp_targets", # could just be set
-            "gp_sources_mask_key": "nichecompass_gp_sources", # could just be set
-            "gp_names_key": "nichecompass_gp_names", # could just be set
-            "include_atac_modality": False, # could be removed for this cli function
-            "filter_peaks": False, # ^
-            "min_cell_peak_thresh_ratio": 0.0005, # ^
-            "min_cell_gene_thresh_ratio": 0.0005 # don't even know what this does?
         },
         "model": {
-            "model_label": "reference",
-            "active_gp_names_key": "nichecompass_active_gp_names",
-            "latent_key": "nichecompass_latent",
-            "active_gp_thresh_ratio": 0.05,
+            "cat_covariates_embeds_injection": ["gene_expr_decoder"],
+            "cat_covariates_keys": None,
+            "cat_covariates_no_edges": None,
+            "cat_covariates_embeds_nums": None,
             "n_addon_gp": 10,
             "active_gp_thresh_ratio": 0.05,
-            "gene_expr_recon_dist": "nb",
-            "cat_covariates_embeds_injection": ["gene_expr_decoder"], # note must be an empty list and not null
-            "cat_covariates_embeds_nums": None, # cannot be a list of [None]
-            "log_variational": True,
-            "node_label_method": "one-hop-norm",
-            "n_layers_encoder": 1,
             "n_fc_layers_encoder": 1,
+            "n_layers_encoder": 1,
             "conv_layer_encoder": "gcnconv",
             "n_hidden_encoder": None,
+            "node_label_method": "one-hop-norm",
+        },
+        "training": {
             "n_epochs": 400,
             "n_epochs_all_gps": 25,
             "n_epochs_no_cat_covariates_contrastive": 5,
             "lr": 0.001,
             "lambda_edge_recon": 5000000,
             "lambda_gene_expr_recon": 3000,
-            "lambda_chrom_access_recon": 1000,
             "lambda_cat_covariates_contrastive": 0,
             "contrastive_logits_pos_ratio": 0,
             "contrastive_logits_neg_ratio": 0,
@@ -127,13 +92,14 @@ def skeleton(output: str):
             "lambda_l1_addon": 0,
             "edge_batch_size": 256,
             "node_batch_size": None,
-            "n_sampled_neighbors": 1
-        },
-        "timestamp_suffix": "" # not really needed
+            "n_sampled_neighbors": 1,
+            "artefact_directory": "artefacts"
+        }
     }
-    # should add local: {artefact_directory}
 
-"""
+    with open(output, 'w') as file:
+        json.dump(default_config, file, indent=4)
+
 
 
 @app.command()
@@ -167,7 +133,7 @@ def build_gene_programs(config: str):
 
     if "mebocost" in config["gene_programs"]["sources"]:
         mebocost_gene_programs = extract_gp_dict_from_mebocost_es_interactions(
-            dir_path=config["gene_programs"]["mebocost"]["metabolite_enzyme_sensor_directory_path"], #fixme remove dependency on file
+            dir_path=config["gene_programs"]["mebocost"]["metabolite_enzyme_sensor_directory_path"],
             species=config["gene_programs"]["species"],
             plot_gp_gene_count_distributions=False)
         gene_programs.update(mebocost_gene_programs)
@@ -178,10 +144,10 @@ def build_gene_programs(config: str):
             plot_gp_gene_count_distributions=False)
         gene_programs.update(collectri_gene_programs)
 
-    if "brain_marker" in config["gene_programs"]["sources"]: #fixme this should be moved to another function
+    if "brain_marker" in config["gene_programs"]["sources"]:
         # Add spatial layer marker gene GPs
         # Load experimentially validated marker genes
-        validated_marker_genes_df = pd.read_csv(f"marker_gps/Validated_markers_MM_layers.tsv", #fixme
+        validated_marker_genes_df = pd.read_csv(f"marker_gps/Validated_markers_MM_layers.tsv",
                                                 sep="\t",
                                                 header=None,
                                                 names=["gene_name", "ensembl_id", "layer"])
@@ -221,7 +187,7 @@ def build_gene_programs(config: str):
         gp_filter_mode=config["gene_programs"]["filter_mode"],
         overlap_thresh_source_genes=0.9,
         overlap_thresh_target_genes=0.9,
-        overlap_thresh_genes=0.9) #FIXME these should be defaults in the fun rather than here
+        overlap_thresh_genes=0.9)
 
     print("Exporting gene programs...")
     with open(config["gene_programs"]["export_file_path"], "wb") as file:
@@ -293,84 +259,70 @@ def build_dataset(config: str):
 
 
 @app.command()
-def train():
-    pass
+def train(config: str):
 
-    current_timestamp = datetime.now().strftime("%d%m%Y_%H%M%S")
-    print(f"Run timestamp: {current_timestamp}")
+    run_timestamp = datetime.now().strftime("%d%m%Y_%H%M%S")
+    run_label = RandomWord().word(word_min_length=3, word_max_length=8, include_parts_of_speech=["adjectives"]) \
+                + "_" \
+                + RandomWord().word(word_min_length=3, word_max_length=8, include_parts_of_speech=["nouns"])
+    print(f"Starting run {run_label} at {run_timestamp}...")
 
+    print("Loading run configuration...")
+    with open(config) as file:
+        config = json.load(file)
+    pprint(config)
 
-
-"""
-
+    print("Reading dataset...")
+    with open(config["dataset"]["export_file_path"], "rb") as file:
+        adata = pickle.load(file)
 
     print("Initializing model...")
     model = NicheCompass(adata,
-                         adata_atac,
-                         counts_key=args.counts_key,
-                         adj_key=args.adj_key,
-                         cat_covariates_embeds_injection=args.cat_covariates_embeds_injection,
-                         cat_covariates_keys=args.cat_covariates_keys,
-                         cat_covariates_no_edges=args.cat_covariates_no_edges,
-                         cat_covariates_embeds_nums=args.cat_covariates_embeds_nums,
-                         gp_names_key=args.gp_names_key,
-                         active_gp_names_key=args.active_gp_names_key,
-                         gp_targets_mask_key=args.gp_targets_mask_key,
-                         gp_sources_mask_key=args.gp_sources_mask_key,
-                         latent_key=args.latent_key,
-                         n_addon_gp=args.n_addon_gp,
-                         active_gp_thresh_ratio=args.active_gp_thresh_ratio,
-                         gene_expr_recon_dist=args.gene_expr_recon_dist,
-                         n_fc_layers_encoder=args.n_fc_layers_encoder,
-                         n_layers_encoder=args.n_layers_encoder,
-                         conv_layer_encoder=args.conv_layer_encoder,
-                         n_hidden_encoder=args.n_hidden_encoder,
-                         log_variational=args.log_variational,
-                         node_label_method=args.node_label_method)
+                         counts_key=None,
+                         cat_covariates_embeds_injection=config["model"]["cat_covariates_embeds_injection"],
+                         cat_covariates_keys=config["model"]["cat_covariates_keys"],
+                         cat_covariates_no_edges=config["model"]["cat_covariates_no_edges"],
+                         cat_covariates_embeds_nums=config["model"]["cat_covariates_embeds_nums"],
+                         n_addon_gp=config["model"]["n_addon_gp"],
+                         active_gp_thresh_ratio=config["model"]["active_gp_thresh_ratio"],
+                         n_fc_layers_encoder=config["model"]["n_fc_layers_encoder"],
+                         n_layers_encoder=config["model"]["n_layers_encoder"],
+                         conv_layer_encoder=config["model"]["conv_layer_encoder"],
+                         n_hidden_encoder=config["model"]["n_hidden_encoder"],
+                         node_label_method=config["model"]["node_label_method"])
 
     print("Training model...")
-    model.train(n_epochs=args.n_epochs,
-                n_epochs_all_gps=args.n_epochs_all_gps,
-                n_epochs_no_cat_covariates_contrastive=args.n_epochs_no_cat_covariates_contrastive,
-                lr=args.lr,
-                lambda_edge_recon=args.lambda_edge_recon,
-                lambda_gene_expr_recon=args.lambda_gene_expr_recon,
-                lambda_chrom_access_recon=args.lambda_chrom_access_recon,
-                lambda_cat_covariates_contrastive=args.lambda_cat_covariates_contrastive,
-                contrastive_logits_pos_ratio=args.contrastive_logits_pos_ratio,
-                contrastive_logits_neg_ratio=args.contrastive_logits_neg_ratio,
-                lambda_group_lasso=args.lambda_group_lasso,
-                lambda_l1_masked=args.lambda_l1_masked,
-                lambda_l1_addon=args.lambda_l1_addon,
-                edge_batch_size=args.edge_batch_size,
-                node_batch_size=args.node_batch_size,
-                n_sampled_neighbors=args.n_sampled_neighbors,
-                mlflow_experiment_id=mlflow_experiment_id,
+    model.train(n_epochs=config["training"]["n_epochs"],
+                n_epochs_all_gps=config["training"]["n_epochs_all_gps"],
+                n_epochs_no_cat_covariates_contrastive=config["training"]["n_epochs_no_cat_covariates_contrastive"],
+                lr=config["training"]["lr"],
+                lambda_edge_recon=config["training"]["lambda_edge_recon"],
+                lambda_gene_expr_recon=config["training"]["lambda_gene_expr_recon"],
+                lambda_cat_covariates_contrastive=config["training"]["lambda_cat_covariates_contrastive"],
+                contrastive_logits_pos_ratio=config["training"]["contrastive_logits_pos_ratio"],
+                contrastive_logits_neg_ratio=config["training"]["contrastive_logits_neg_ratio"],
+                lambda_group_lasso=config["training"]["lambda_group_lasso"],
+                lambda_l1_masked=config["training"]["lambda_l1_masked"],
+                lambda_l1_addon=config["training"]["lambda_l1_addon"],
+                edge_batch_size=config["training"]["edge_batch_size"],
+                node_batch_size=config["training"]["node_batch_size"],
+                n_sampled_neighbors=config["training"]["n_sampled_neighbors"],
                 verbose=True)
 
     print("Computing neighbor graph...")
-    sc.pp.neighbors(model.adata,
-                    use_rep=args.latent_key,
-                    key_added=args.latent_key)
+    sc.pp.neighbors(model.adata, use_rep="nichecompass_latent", key_added="nichecompass_latent")
 
-    print("Computing UMAP embedding...")
-    sc.tl.umap(model.adata,
-               neighbors_key=args.latent_key)
-
-    print("Exporting dataset...")
-    model.adata.write(
-        f"{result_folder_path}/{args.dataset}_{args.model_label}.h5ad")
+    print("Computing latent umap embedding...")
+    sc.tl.umap(model.adata, neighbors_key="nichecompass_latent")
 
     print("Exporting trained model...")
-    model.save(dir_path=model_folder_path,
-               overwrite=True,
-               save_adata=True,
-               adata_file_name=f"{args.dataset}_{args.model_label}.h5ad",
-               save_adata_atac=save_adata_atac,
-               adata_atac_file_name=f"{args.dataset}_{args.model_label}_atac.h5ad")
-
-
-"""
+    model.save(
+        dir_path=os.path.join(config["training"]["artefact_directory"], run_label),
+        adata_file_name=os.path.splitext(os.path.basename(config["dataset"]["export_file_path"]))[0] + ".h5ad",
+        overwrite = True,
+        save_adata = True)
+    with open(os.path.join(config["training"]["artefact_directory"], run_label, "run-config.yml"), 'w') as file:
+        json.dump(config, file, indent=4)
 
 
 if __name__ == "__main__":
