@@ -1,6 +1,27 @@
 # NicheCompass
 **N**iche **I**dentification based on **C**ellular grap**H** **E**mbeddings of **COM**munication **P**rograms **A**ligned across **S**patial **S**amples.
 
+## Usage
+
+NicheCompass can be run from the command line using a configuration file. It expects an `AnnData` object as input, with raw counts. Start by creating a skeleton configuration file, and customising this to your dataset and run parameters.
+
+```bash
+nichecompass skeleton run-config.yml
+```
+
+Build the gene programs and datasets required for a NicheCompass run.
+
+```bash
+nichecompass build-gene-programs run-config.yml
+nichecompass build-dataset run-config.yml
+```
+
+Train a NicheCompass model. Model training is computationally intensive, and will automatically use GPU resources if available.
+
+```bash
+nichecompass train run-config.yml
+```
+
 ## Contributing
 
 ### Devcontainer
