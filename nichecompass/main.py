@@ -48,7 +48,21 @@ def skeleton(output: str):
                 "metabolite_enzyme_sensor_directory_path": "metabolite_enzyme_sensor_gps"
             },
         },
+        "dataset": {
+            "file_path": "spatial_dataset.h5ad",
+            "library_key": "",
+            "spatial_key": "",
+            "export_file_path": "spatial_dataset.pkl",
+        },
+        "gene_filters": {
+            "n_highly_variable": 0,
+            "n_spatially_variable": 0,
+            "min_cell_gene_thresh_ratio": 0.1
+        },
+        "graph": {
+            "n_neighbors": 12,
 
+        }
     }
 
     with open(output, 'w') as file:
@@ -120,7 +134,6 @@ def skeleton(output: str):
     # should add local: {artefact_directory}
 
 """
-
 
 
 @app.command()
@@ -216,10 +229,7 @@ def build_gene_programs(config: str):
 
 
 @app.command()
-def train(config: str):
-
-    current_timestamp = datetime.now().strftime("%d%m%Y_%H%M%S")
-    print(f"Run timestamp: {current_timestamp}")
+def build_dataset(config: str):
 
     print("Loading run configuration...")
     with open(config) as file:
@@ -228,103 +238,71 @@ def train(config: str):
 
     print("Loading gene programs...")
     with open(config["gene_programs"]["export_file_path"], "rb") as file:
-        filtered_gene_programs = pickle.load(file)
+        gene_programs = pickle.load(file)
 
     print("Reading dataset...")
-    adata = ad.read_h5ad("dataset.h5ad")
-    sq.gr.spatial_neighbors(adata_batch,
+    adata = ad.read_h5ad(config["dataset"]["file_path"])
+    sq.gr.spatial_neighbors(adata,
                             coord_type="generic",
-                            spatial_key=args.spatial_key,
-                            library_key=args.batch_key, #FIXME need to check this works as expected
-                            n_neighs=args.n_neighbors) #FIXME stratify this by the batch code
-    adjacency = adata_batch.obsp[args.adj_key]
+                            spatial_key=config["dataset"]["spatial_key"],
+                            library_key=config["dataset"]["library_key"],
+                            n_neighs=config["graph"]["n_neighbors"])
+    adjacency = adata.obsp["spatial_connectivities"]
     symmetrical_adjacency = adjacency.maximum(adjacency.T)
-    adata_batch.obsp[args.adj_key] = symmetrical_adjacency
-    adata.obs[args.mapping_entity_key] = "reference" #FIXME is this needed?
+    adata.obsp["spatial_connectivities"] = symmetrical_adjacency
 
     print("Filtering genes...")
 
     gene_program_genes = get_unique_genes_from_gp_dict(
-        gp_dict=filtered_gene_programs,
+        gp_dict=gene_programs,
         retrieved_gene_entities=["sources", "targets"])
 
-    if args.filter_genes:
+    print(f"Annotating based on expression in at least {config['gene_filters']['min_cell_gene_thresh_ratio'] * 100}% of cells...")
+    min_cells = int(adata.shape[0] * config["gene_filters"]["min_cell_gene_thresh_ratio"])
+    adata.var["expressed"] = sc.pp.filter_genes(adata, min_cells=min_cells, inplace=False)[0]
 
-        print("Filtering based on expression...")
+    print(f"Annotating {config['gene_filters']['n_highly_variable']} highly variable genes...")
+    sc.pp.highly_variable_genes(
+        adata,
+        n_top_genes=config["gene_filters"]["n_highly_variable"],
+        flavor="seurat_v3",
+        batch_key=config["dataset"]["library_key"])
 
-        print(f"Starting with {len(adata.var_names)} genes.")
-        min_cells = int(adata.shape[0] * args.min_cell_gene_thresh_ratio)
-        sc.pp.filter_genes(adata, min_cells=min_cells)
-        print(f"Retaining {len(adata.var_names)} genes based on expression in at least {min_cells} cells.")
+    print(f"Annotating {config['gene_filters']['n_spatially_variable']} spatially variable genes...")
+    sq.gr.spatial_autocorr(adata, mode="moran", genes=adata.var_names)
+    sv_genes = adata.uns["moranI"].index[:config["gene_filters"]["n_spatially_variable"]].tolist()
+    adata.var["spatially_variable"] = adata.var_names.isin(sv_genes)
 
-        print("Filtering based on highly variable genes...")
+    print(f"Annotating genes present in gene programs...")
+    adata.var["gene_program_relevant"] = adata.var.index.str.upper().isin(gene_program_genes)
 
-        # assume raw counts
-        hvg_layer = None
-        hvg_flavor = "seurat_v3"
-        args.counts_key = None
-
-        if args.n_hvg != 0:
-            sc.pp.highly_variable_genes(
-                adata,
-                layer=hvg_layer,
-                n_top_genes=args.n_hvg,
-                flavor=hvg_flavor,
-                batch_key=args.condition_key,
-                subset=False)
-        else:
-            adata.var["highly_variable"] = False
-
-        print("Filtering based on spatially variable genes...")
-
-        # Filter spatially variable genes
-        if args.n_svg != 0:
-            sq.gr.spatial_autocorr(adata, mode="moran", genes=adata.var_names)
-            sv_genes = adata.uns["moranI"].index[:args.n_svg].tolist()
-            adata.var["spatially_variable"] = adata.var_names.isin(sv_genes)
-        else:
-            adata.var["spatially_variable"] = False
-
-        print("Filtering based on genes present in gene programs...")
-
-        gp_relevant_genes = []
-        adata.var["gp_relevant"] = (
-            adata.var.index.str.upper().isin(gp_relevant_genes))
-
-        print("Applying filtering...")
-
-
-        adata.var["keep_gene"] = (adata.var["gp_relevant"] |
-                                  adata.var["highly_variable"] |
-                                  adata.var["spatially_variable"])
-
-        adata = adata[:, adata.var["keep_gene"] == True]
-
-        print(f"Retaining {len(adata.var_names)} genes.")
-
-
-
-
-
-
-
+    print("Applying filtering...")
+    adata.var["keep_gene"] = (adata.var["expressed"] &
+                              (adata.var["gene_program_relevant"] |
+                              adata.var["highly_variable"] |
+                              adata.var["spatially_variable"]))
+    adata = adata[:, adata.var["keep_gene"] == True]
+    print(f"Retaining {len(adata.var_names)} genes.")
 
     print("Adding gene programs to dataset...")
-    add_gps_from_gp_dict_to_adata(
-        gp_dict=combined_new_gp_dict,
-        adata=adata,
-        genes_uppercase=True,
-        gp_targets_mask_key=args.gp_targets_mask_key,
-        gp_sources_mask_key=args.gp_sources_mask_key,
-        gp_names_key=args.gp_names_key,
-        min_genes_per_gp=1,
-        min_source_genes_per_gp=0,
-        min_target_genes_per_gp=0,
-        max_genes_per_gp=None,
-        max_source_genes_per_gp=None,
-        max_target_genes_per_gp=None,
-        filter_genes_not_in_masks=False,
-        add_fc_gps_instead_of_gp_dict_gps=args.add_fc_gps_instead_of_gp_dict_gps)
+    add_gps_from_gp_dict_to_adata(gp_dict=gene_programs, adata=adata)
+
+    print("Exporting dataset...")
+    with open(config["dataset"]["export_file_path"], "wb") as file:
+        pickle.dump(adata, file, pickle.HIGHEST_PROTOCOL)
+
+
+@app.command()
+def train():
+    pass
+
+    current_timestamp = datetime.now().strftime("%d%m%Y_%H%M%S")
+    print(f"Run timestamp: {current_timestamp}")
+
+
+
+"""
+
 
     print("Initializing model...")
     model = NicheCompass(adata,
@@ -392,7 +370,7 @@ def train(config: str):
                adata_atac_file_name=f"{args.dataset}_{args.model_label}_atac.h5ad")
 
 
-
+"""
 
 
 if __name__ == "__main__":
