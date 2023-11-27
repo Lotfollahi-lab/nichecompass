@@ -52,7 +52,8 @@ def skeleton(output: str):
         "gene_filters": {
             "n_highly_variable": 0,
             "n_spatially_variable": 0,
-            "min_cell_gene_thresh_ratio": 0.1
+            "min_cell_gene_thresh_ratio": 0.1,
+            "gene_program_relevant": True
         },
         "graph": {
             "n_neighbors": 12,
@@ -218,12 +219,13 @@ def build_dataset(config: str):
 
     print(f"Annotating based on expression in at least {config['gene_filters']['min_cell_gene_thresh_ratio'] * 100}% of cells...")
     min_cells = int(adata.shape[0] * config["gene_filters"]["min_cell_gene_thresh_ratio"])
-    adata.var["expressed"] = sc.pp.filter_genes(adata, min_cells=min_cells, inplace=False)[0]
+    adata.var["expressed"] = sc.pp.filter_genes(adata, min_cells=min_cells, inplace=False)[0].tolist()
 
     print(f"Annotating {config['gene_filters']['n_highly_variable']} highly variable genes...")
+    n_top_genes = (0 if config["gene_filters"]["n_highly_variable"] is None else config["gene_filters"]["n_highly_variable"])
     sc.pp.highly_variable_genes(
         adata,
-        n_top_genes=config["gene_filters"]["n_highly_variable"],
+        n_top_genes=n_top_genes,
         flavor="seurat_v3",
         batch_key=config["dataset"]["library_key"])
 
@@ -233,31 +235,40 @@ def build_dataset(config: str):
     adata.var["spatially_variable"] = adata.var_names.isin(sv_genes)
 
     print(f"Annotating genes present in gene programs...")
-    adata.var["gene_program_relevant"] = adata.var.index.str.upper().isin(gene_program_genes)
+    adata.var["gene_program_relevant"] = adata.var.index.isin(gene_program_genes)
 
     print("Applying filtering...")
-    adata.var["keep_gene"] = (adata.var["expressed"] &
-                              (adata.var["gene_program_relevant"] |
-                              adata.var["highly_variable"] |
-                              adata.var["spatially_variable"]))
-    adata = adata[:, adata.var["keep_gene"] == True]
+    adata.var["retained_gene"] = [True] * adata.shape[1]
+
+    if config["gene_filters"]["min_cell_gene_thresh_ratio"] is not None:
+        adata.var["retained_gene"] = adata.var["retained_gene"] & adata.var["expressed"]
+
+    if config["gene_filters"]["n_highly_variable"] is not None:
+        adata.var["retained_gene"] = adata.var["retained_gene"] & adata.var["highly_variable"]
+
+    if config["gene_filters"]["n_spatially_variable"] is not None:
+        adata.var["retained_gene"] = adata.var["retained_gene"] & adata.var["spatially_variable"]
+
+    if config["gene_filters"]["gene_program_relevant"] is not None:
+        adata.var["retained_gene"] = adata.var["retained_gene"] & adata.var["gene_program_relevant"]
+
+    adata = adata[:, adata.var["retained_gene"] == True]
     print(f"Retaining {len(adata.var_names)} genes.")
 
     print("Adding gene programs to dataset...")
     add_gps_from_gp_dict_to_adata(gp_dict=gene_programs, adata=adata)
 
     print("Exporting dataset...")
-    with open(config["dataset"]["export_file_path"], "wb") as file:
-        pickle.dump(adata, file, pickle.HIGHEST_PROTOCOL)
+    adata.write_h5ad(config["dataset"]["export_file_path"])
 
 
 @app.command()
 def train(config: str):
 
-    run_timestamp = datetime.now().strftime("%d%m%Y_%H%M%S")
-    run_label = RandomWord().word(word_min_length=3, word_max_length=8, include_parts_of_speech=["adjectives"]) \
-                + "_" \
-                + RandomWord().word(word_min_length=3, word_max_length=8, include_parts_of_speech=["nouns"])
+    run_timestamp = datetime.now().strftime("%Y_%m_%d__%H_%M_%S")
+    adjective = RandomWord().word(word_min_length=3, word_max_length=8, include_categories=["adjectives"])
+    noun = RandomWord().word(word_min_length=3, word_max_length=8, include_categories=["nouns"])
+    run_label = adjective + "_" + noun
     print(f"Starting run {run_label} at {run_timestamp}...")
 
     print("Loading run configuration...")
@@ -266,8 +277,7 @@ def train(config: str):
     pprint(config)
 
     print("Reading dataset...")
-    with open(config["dataset"]["export_file_path"], "rb") as file:
-        adata = pickle.load(file)
+    adata = ad.read_h5ad(config["dataset"]["export_file_path"])
 
     print("Initializing model...")
     model = NicheCompass(adata,
