@@ -9,6 +9,7 @@ import anndata as ad
 import pandas as pd
 import scanpy as sc
 import squidpy as sq
+import scipy.sparse as sp
 
 from nichecompass.models import NicheCompass
 from nichecompass.utils import (add_gps_from_gp_dict_to_adata,
@@ -99,6 +100,12 @@ def skeleton(output: str):
 @app.command()
 def build_gene_programs(config: str):
 
+    run_timestamp = datetime.now().strftime("%Y_%m_%d__%H_%M_%S")
+    adjective = RandomWord().word(word_min_length=3, word_max_length=8, include_categories=["adjectives"])
+    noun = RandomWord().word(word_min_length=3, word_max_length=8, include_categories=["nouns"])
+    run_label = adjective + "_" + noun
+    print(f"Starting run {run_label} at {run_timestamp}...")
+
     print(f"Loading run configuration...")
     with open(config) as file:
         config = json.load(file)
@@ -184,12 +191,21 @@ def build_gene_programs(config: str):
         overlap_thresh_genes=0.9)
 
     print("Exporting gene programs...")
-    with open(config["gene_programs"]["export_file_path"], "wb") as file:
+    os.makedirs(os.path.join(config["artefact_directory"], run_label), exist_ok=True)
+    with open(os.path.join(config["artefact_directory"], run_label, "gene_programs.pkl"), "wb") as file:
         pickle.dump(filtered_gene_programs, file, pickle.HIGHEST_PROTOCOL)
+
+    return run_label
 
 
 @app.command()
 def build_dataset(config: str):
+
+    run_timestamp = datetime.now().strftime("%Y_%m_%d__%H_%M_%S")
+    adjective = RandomWord().word(word_min_length=3, word_max_length=8, include_categories=["adjectives"])
+    noun = RandomWord().word(word_min_length=3, word_max_length=8, include_categories=["nouns"])
+    run_label = adjective + "_" + noun
+    print(f"Starting run {run_label} at {run_timestamp}...")
 
     print("Loading run configuration...")
     with open(config) as file:
@@ -259,11 +275,15 @@ def build_dataset(config: str):
     add_gps_from_gp_dict_to_adata(gp_dict=gene_programs, adata=adata)
 
     print("Exporting dataset...")
-    adata.write_h5ad(config["dataset"]["export_file_path"])
+    os.makedirs(os.path.join(config["artefact_directory"], run_label), exist_ok=True)
+    adata_basename = os.path.basename(config["dataset"]["file_path"])
+    adata.write_h5ad(os.path.join(config["artefact_directory"], run_label, adata_basename))
+
+    return run_label
 
 
 @app.command()
-def train(config: str):
+def train_reference(config: str):
 
     run_timestamp = datetime.now().strftime("%Y_%m_%d__%H_%M_%S")
     adjective = RandomWord().word(word_min_length=3, word_max_length=8, include_categories=["adjectives"])
@@ -319,12 +339,173 @@ def train(config: str):
     sc.tl.umap(model.adata, neighbors_key="nichecompass_latent")
 
     print("Exporting trained model...")
+    os.makedirs(os.path.join(config["artefact_directory"], run_label), exist_ok=True)
     model.save(
         dir_path=os.path.join(config["training"]["artefact_directory"], run_label),
         adata_file_name=os.path.splitext(os.path.basename(config["dataset"]["export_file_path"]))[0] + ".h5ad",
         overwrite = True,
         save_adata = True)
     with open(os.path.join(config["training"]["artefact_directory"], run_label, "run-config.yml"), 'w') as file:
+        json.dump(config, file, indent=4)
+
+    return run_label
+
+
+@app.command()
+def train_query(config: str):
+
+    run_timestamp = datetime.now().strftime("%Y_%m_%d__%H_%M_%S")
+    adjective = RandomWord().word(word_min_length=3, word_max_length=8, include_categories=["adjectives"])
+    noun = RandomWord().word(word_min_length=3, word_max_length=8, include_categories=["nouns"])
+    run_label = adjective + "_" + noun
+    print(f"Starting run {run_label} at {run_timestamp}...")
+
+    print("Loading run configuration...")
+    with open(config) as file:
+        config = json.load(file)
+    pprint(config)
+
+    print("Retrieving reference model genes...")
+    print(config["train_query"]["reference_model"]["artefact_directory"])
+
+    reference_model = NicheCompass.load(
+        dir_path=os.path.join(config["train_query"]["reference_model"]["artefact_directory"]),
+        adata_file_name=os.path.splitext(os.path.basename(config["train_query"]["reference_model"]["file_path"]))[0] + ".h5ad",
+        gp_names_key="nichecompass_gp_names")
+    reference_adata = reference_model.adata
+    genes = reference_model.adata.var_names
+
+    print("Reading dataset...")
+    adata = ad.read_h5ad(config["train_query"]["dataset"]["file_path"])
+    sq.gr.spatial_neighbors(adata,
+                            coord_type="generic",
+                            spatial_key=config["train_query"]["dataset"]["spatial_key"],
+                            library_key=config["train_query"]["dataset"]["library_key"],
+                            n_neighs=config["train_query"]["graph"]["n_neighbors"])
+    adjacency = adata.obsp["spatial_connectivities"]
+    symmetrical_adjacency = adjacency.maximum(adjacency.T)
+    adata.obsp["spatial_connectivities"] = symmetrical_adjacency
+
+    print("Filtering for genes used in reference...")
+    adata = adata[:, genes]
+
+    print("Adding gene programs to dataset...")
+    adata.varm["nichecompass_gp_targets"] = reference_adata.varm["nichecompass_gp_targets"]
+    adata.varm["nichecompass_gp_sources"] = reference_adata.varm["nichecompass_gp_sources"]
+    adata.varm["nichecompass_gp_targets_categories"] = reference_adata.varm["nichecompass_gp_targets_categories"]
+    adata.varm["nichecompass_gp_sources_categories"] = reference_adata.varm["nichecompass_gp_sources_categories"]
+    adata.uns["nichecompass_targets_categories_label_encoder"] = reference_adata.uns["nichecompass_targets_categories_label_encoder"]
+    adata.uns["nichecompass_sources_categories_label_encoder"] = reference_adata.uns["nichecompass_sources_categories_label_encoder"]
+    adata.uns["nichecompass_gp_names"] = reference_adata.uns["nichecompass_gp_names"]
+    adata.uns["nichecompass_genes_idx"] = reference_adata.uns["nichecompass_genes_idx"]
+    adata.uns["nichecompass_target_genes_idx"] = reference_adata.uns["nichecompass_target_genes_idx"]
+    adata.uns["nichecompass_source_genes_idx"] = reference_adata.uns["nichecompass_source_genes_idx"]
+
+    print("Training model...")
+    model = NicheCompass.load(
+        dir_path=os.path.join(config["train_query"]["reference_model"]["artefact_directory"]),
+        adata=adata,
+        adata_file_name=os.path.splitext(os.path.basename(config["train_query"]["reference_model"]["file_path"]))[0] + ".h5ad",
+        gp_names_key="nichecompass_gp_names",
+        unfreeze_all_weights=False,
+        unfreeze_cat_covariates_embedder_weights=True)
+
+    model.train(n_epochs=config["train_query"]["training"]["n_epochs"],
+                n_epochs_all_gps=config["train_query"]["training"]["n_epochs_all_gps"],
+                n_epochs_no_cat_covariates_contrastive=config["train_query"]["training"]["n_epochs_no_cat_covariates_contrastive"],
+                lr=config["train_query"]["training"]["lr"],
+                lambda_edge_recon=config["train_query"]["training"]["lambda_edge_recon"],
+                lambda_gene_expr_recon=config["train_query"]["training"]["lambda_gene_expr_recon"],
+                lambda_cat_covariates_contrastive=config["train_query"]["training"]["lambda_cat_covariates_contrastive"],
+                contrastive_logits_pos_ratio=config["train_query"]["training"]["contrastive_logits_pos_ratio"],
+                contrastive_logits_neg_ratio=config["train_query"]["training"]["contrastive_logits_neg_ratio"],
+                lambda_group_lasso=config["train_query"]["training"]["lambda_group_lasso"],
+                lambda_l1_masked=config["train_query"]["training"]["lambda_l1_masked"],
+                edge_batch_size=config["train_query"]["training"]["edge_batch_size"],
+                node_batch_size=config["train_query"]["training"]["node_batch_size"],
+                n_sampled_neighbors=config["train_query"]["training"]["n_sampled_neighbors"],
+                verbose=True)
+
+    print("Exporting trained model...")
+    model.save(
+        dir_path=os.path.join(config["artefact_directory"], run_label),
+        adata_file_name=os.path.splitext(os.path.basename(config["train_query"]["dataset"]["file_path"]))[0] + ".h5ad",
+        overwrite=True,
+        save_adata=True)
+    with open(os.path.join(config["artefact_directory"], run_label, "run-config.yml"), 'w') as file:
+        json.dump(config, file, indent=4)
+
+    print("Integrating reference and query adata...")
+
+    adata_batch_list = [reference_adata, model.adata]
+    reference_query_adata = ad.concat(adata_batch_list, join="inner")
+
+    batch_connectivities = []
+    len_before_batch = 0
+    for i in range(len(adata_batch_list)):
+        if i == 0: # first batch
+            after_batch_connectivities_extension = sp.csr_matrix(
+                (adata_batch_list[0].shape[0],
+                (reference_query_adata.shape[0] -
+                adata_batch_list[0].shape[0])))
+            batch_connectivities.append(sp.hstack(
+                (adata_batch_list[0].obsp["spatial_connectivities"],
+                after_batch_connectivities_extension)))
+        elif i == (len(adata_batch_list) - 1): # last batch
+            before_batch_connectivities_extension = sp.csr_matrix(
+                (adata_batch_list[i].shape[0],
+                (reference_query_adata.shape[0] -
+                adata_batch_list[i].shape[0])))
+            batch_connectivities.append(sp.hstack(
+                (before_batch_connectivities_extension,
+                adata_batch_list[i].obsp["spatial_connectivities"])))
+        else: # middle batches
+            before_batch_connectivities_extension = sp.csr_matrix(
+                (adata_batch_list[i].shape[0], len_before_batch))
+            after_batch_connectivities_extension = sp.csr_matrix(
+                (adata_batch_list[i].shape[0],
+                (reference_query_adata.shape[0] -
+                adata_batch_list[i].shape[0] -
+                len_before_batch)))
+            batch_connectivities.append(sp.hstack(
+                (before_batch_connectivities_extension,
+                adata_batch_list[i].obsp["spatial_connectivities"],
+                after_batch_connectivities_extension)))
+        len_before_batch += adata_batch_list[i].shape[0]
+    connectivities = sp.vstack(batch_connectivities)
+    reference_query_adata.obsp["spatial_connectivities"] = connectivities
+
+    model.adata = reference_query_adata
+
+    model.adata.varm["nichecompass_gp_targets"] = reference_adata.varm["nichecompass_gp_targets"]
+    model.adata.varm["nichecompass_gp_sources"] = reference_adata.varm["nichecompass_gp_sources"]
+    model.adata.uns["nichecompass_gp_names"] = reference_adata.uns["nichecompass_gp_names"]
+    model.adata.uns["nichecompass_genes_idx"] = reference_adata.uns["nichecompass_genes_idx"]
+    model.adata.uns["nichecompass_target_genes_idx"] = reference_adata.uns["nichecompass_target_genes_idx"]
+    model.adata.uns["nichecompass_source_genes_idx"] = reference_adata.uns["nichecompass_source_genes_idx"]
+
+    print("Computing reference query latent embedding...")
+    model.adata.obsm["nichecompass_latent"], _ = model.get_latent_representation(
+       adata=model.adata,
+       counts_key=None,
+       cat_covariates_keys=config["model"]["cat_covariates_keys"],
+       only_active_gps=True,
+       return_mu_std=True,
+       node_batch_size=config["training"]["node_batch_size"])
+
+    print("Computing neighbor graph...")
+    sc.pp.neighbors(model.adata, use_rep="nichecompass_latent", key_added="nichecompass_latent")
+
+    print("Computing latent umap embedding...")
+    sc.tl.umap(model.adata, neighbors_key="nichecompass_latent")
+
+    print("Exporting trained model...")
+    model.save(
+        dir_path=os.path.join(config["artefact_directory"], run_label, "joint"),
+        adata_file_name=os.path.splitext(os.path.basename(config["train_query"]["dataset"]["file_path"]))[0] + ".h5ad",
+        overwrite = True,
+        save_adata = True)
+    with open(os.path.join(config["artefact_directory"], run_label, "run-config.yml"), 'w') as file:
         json.dump(config, file, indent=4)
 
 
