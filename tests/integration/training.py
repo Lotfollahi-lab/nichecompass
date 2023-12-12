@@ -1,6 +1,6 @@
 from typer.testing import CliRunner
 from pprint import pprint
-from nichecompass.main import app
+from nichecompass.main import app, train_query, train_reference
 from nichecompass.utils import add_gps_from_gp_dict_to_adata
 import json
 import pickle
@@ -116,8 +116,7 @@ def test_train_reference(tmpdir):
     add_gps_from_gp_dict_to_adata(gp_dict=gene_programs, adata=adata)
     adata.write(str(tmpdir.join("spatial_dataset_built.h5ad")))
 
-    result_train = runner.invoke(app, ["train-reference", str(config_path)])
-    assert result_train.exit_code == 0
+    train_reference(str(config_path))
 
 
 def test_train_query(tmpdir):
@@ -196,8 +195,7 @@ def test_train_query(tmpdir):
     add_gps_from_gp_dict_to_adata(gp_dict=gene_programs, adata=adata_reference)
     adata_reference.write(str(tmpdir.join("spatial_dataset_built.h5ad")))
 
-    result_train_reference = runner.invoke(app, ["train-reference", str(reference_config_path)])
-    assert result_train_reference.exit_code == 0
+    train_reference(str(reference_config_path))
 
     # query model
 
@@ -304,5 +302,4 @@ def test_train_query(tmpdir):
     add_gps_from_gp_dict_to_adata(gp_dict=gene_programs, adata=adata_query)
     adata_query.write(str(tmpdir.join("spatial_dataset_query.h5ad")))
 
-    result_train_query = runner.invoke(app, ["train-query", str(query_config_path)])
-    assert result_train_query.exit_code == 0
+    train_query(str(query_config_path))
