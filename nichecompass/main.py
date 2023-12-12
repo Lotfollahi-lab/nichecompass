@@ -29,13 +29,13 @@ def skeleton(output: str):
     """Creates a skeleton configuration file with sensible defaults."""
 
     default_config = {
+        "artefact_directory": "artefacts",
         "gene_programs": {
             "sources": ["omnipath", "nichenet", "mebocost", "brain_marker"],
             "species": "mouse",
             "filter_mode": "subset",
             "gene_orthologs_mapping_file_path": "human_mouse_gene_orthologs.csv",
             "export_file_path": "gene_programs.pkl",
-            "genes_export_file_path": "relevant_genes.pkl",
             "nichenet": {
                 "keep_target_genes_ratio": 0.01,
                 "max_target_genes_per_gene_program": 100
@@ -48,18 +48,18 @@ def skeleton(output: str):
             "file_path": "spatial_dataset.h5ad",
             "library_key": "",
             "spatial_key": "",
-            "export_file_path": "spatial_dataset.pkl",
-        },
-        "gene_filters": {
-            "n_highly_variable": 0,
-            "n_spatially_variable": 0,
-            "min_cell_gene_thresh_ratio": 0.1,
-            "gene_program_relevant": True
-        },
-        "graph": {
+            "export_file_path": "spatial_dataset_built.h5ad",
+            "gene_programs": "gene_programs.pkl",
             "n_neighbors": 12,
+            "gene_filters": {
+                "n_highly_variable": 0,
+                "n_spatially_variable": 0,
+                "min_cell_gene_thresh_ratio": 0.1,
+                "gene_program_relevant": True
+            }
         },
         "model": {
+            "dataset_file_path": "spatial_dataset_built.h5ad",
             "cat_covariates_embeds_injection": ["gene_expr_decoder"],
             "cat_covariates_keys": None,
             "cat_covariates_no_edges": None,
@@ -86,9 +86,41 @@ def skeleton(output: str):
             "lambda_l1_masked": 0,
             "lambda_l1_addon": 0,
             "edge_batch_size": 256,
-            "node_batch_size": None,
+            "node_batch_size": 256,
             "n_sampled_neighbors": 1,
-            "artefact_directory": "artefacts"
+        },
+        "train_query": {
+            "reference_model": {
+                "artefact_directory": "",
+                "file_path": "spatial_dataset_built.h5ad",
+                "cat_covariates_keys": None
+            },
+            "dataset": {
+                "file_path": "",
+                "spatial_key": "spatial",
+                "library_key": "label"
+            },
+            "graph": {
+                "n_neighbors": 3
+            },
+            "training": {
+                "n_epochs": 400,
+                "n_epochs_all_gps": 25,
+                "n_epochs_no_cat_covariates_contrastive": 5,
+                "lr": 0.001,
+                "lambda_edge_recon": 5000000,
+                "lambda_gene_expr_recon": 3000,
+                "lambda_cat_covariates_contrastive": 0,
+                "contrastive_logits_pos_ratio": 0,
+                "contrastive_logits_neg_ratio": 0,
+                "lambda_group_lasso": 0,
+                "lambda_l1_masked": 0,
+                "lambda_l1_addon": 0,
+                "edge_batch_size": 256,
+                "node_batch_size": 256,
+                "n_sampled_neighbors": 1,
+                "artefact_directory": ""
+            }
         }
     }
 
@@ -213,7 +245,7 @@ def build_dataset(config: str):
     pprint(config)
 
     print("Loading gene programs...")
-    with open(config["gene_programs"]["export_file_path"], "rb") as file:
+    with open(config["dataset"]["gene_programs"], "rb") as file:
         gene_programs = pickle.load(file)
 
     print("Reading dataset...")
@@ -222,7 +254,7 @@ def build_dataset(config: str):
                             coord_type="generic",
                             spatial_key=config["dataset"]["spatial_key"],
                             library_key=config["dataset"]["library_key"],
-                            n_neighs=config["graph"]["n_neighbors"])
+                            n_neighs=config["dataset"]["n_neighbors"])
     adjacency = adata.obsp["spatial_connectivities"]
     symmetrical_adjacency = adjacency.maximum(adjacency.T)
     adata.obsp["spatial_connectivities"] = symmetrical_adjacency
@@ -233,21 +265,21 @@ def build_dataset(config: str):
         gp_dict=gene_programs,
         retrieved_gene_entities=["sources", "targets"])
 
-    print(f"Annotating based on expression in at least {config['gene_filters']['min_cell_gene_thresh_ratio'] * 100}% of cells...")
-    min_cells = int(adata.shape[0] * config["gene_filters"]["min_cell_gene_thresh_ratio"])
+    print(f"Annotating based on expression in at least {config['dataset']['gene_filters']['min_cell_gene_thresh_ratio'] * 100}% of cells...")
+    min_cells = int(adata.shape[0] * config["dataset"]["gene_filters"]["min_cell_gene_thresh_ratio"])
     adata.var["expressed"] = sc.pp.filter_genes(adata, min_cells=min_cells, inplace=False)[0].tolist()
 
-    print(f"Annotating {config['gene_filters']['n_highly_variable']} highly variable genes...")
-    n_top_genes = (0 if config["gene_filters"]["n_highly_variable"] is None else config["gene_filters"]["n_highly_variable"])
+    print(f"Annotating {config['dataset']['gene_filters']['n_highly_variable']} highly variable genes...")
+    n_top_genes = (0 if config["dataset"]["gene_filters"]["n_highly_variable"] is None else config["gene_filters"]["n_highly_variable"])
     sc.pp.highly_variable_genes(
         adata,
         n_top_genes=n_top_genes,
         flavor="seurat_v3",
         batch_key=config["dataset"]["library_key"])
 
-    print(f"Annotating {config['gene_filters']['n_spatially_variable']} spatially variable genes...")
+    print(f"Annotating {config['dataset']['gene_filters']['n_spatially_variable']} spatially variable genes...")
     sq.gr.spatial_autocorr(adata, mode="moran", genes=adata.var_names)
-    sv_genes = adata.uns["moranI"].index[:config["gene_filters"]["n_spatially_variable"]].tolist()
+    sv_genes = adata.uns["moranI"].index[:config["dataset"]["gene_filters"]["n_spatially_variable"]].tolist()
     adata.var["spatially_variable"] = adata.var_names.isin(sv_genes)
 
     print(f"Annotating genes present in gene programs...")
@@ -256,16 +288,16 @@ def build_dataset(config: str):
     print("Applying filtering...")
     adata.var["retained_gene"] = [True] * adata.shape[1]
 
-    if config["gene_filters"]["min_cell_gene_thresh_ratio"] is not None:
+    if config["dataset"]["gene_filters"]["min_cell_gene_thresh_ratio"] is not None:
         adata.var["retained_gene"] = adata.var["retained_gene"] & adata.var["expressed"]
 
-    if config["gene_filters"]["n_highly_variable"] is not None:
+    if config["dataset"]["gene_filters"]["n_highly_variable"] is not None:
         adata.var["retained_gene"] = adata.var["retained_gene"] & adata.var["highly_variable"]
 
-    if config["gene_filters"]["n_spatially_variable"] is not None:
+    if config["dataset"]["gene_filters"]["n_spatially_variable"] is not None:
         adata.var["retained_gene"] = adata.var["retained_gene"] & adata.var["spatially_variable"]
 
-    if config["gene_filters"]["gene_program_relevant"] is not None:
+    if config["dataset"]["gene_filters"]["gene_program_relevant"] is not None:
         adata.var["retained_gene"] = adata.var["retained_gene"] & adata.var["gene_program_relevant"]
 
     adata = adata[:, adata.var["retained_gene"] == True]
@@ -297,7 +329,7 @@ def train_reference(config: str):
     pprint(config)
 
     print("Reading dataset...")
-    adata = ad.read_h5ad(config["dataset"]["export_file_path"])
+    adata = ad.read_h5ad(config["model"]["dataset_file_path"])
 
     print("Initializing model...")
     model = NicheCompass(adata,
@@ -341,11 +373,11 @@ def train_reference(config: str):
     print("Exporting trained model...")
     os.makedirs(os.path.join(config["artefact_directory"], run_label), exist_ok=True)
     model.save(
-        dir_path=os.path.join(config["training"]["artefact_directory"], run_label),
-        adata_file_name=os.path.splitext(os.path.basename(config["dataset"]["export_file_path"]))[0] + ".h5ad",
+        dir_path=os.path.join(config["artefact_directory"], run_label),
+        adata_file_name=os.path.splitext(os.path.basename(config["model"]["dataset_file_path"]))[0] + ".h5ad",
         overwrite = True,
         save_adata = True)
-    with open(os.path.join(config["training"]["artefact_directory"], run_label, "run-config.yml"), 'w') as file:
+    with open(os.path.join(config["artefact_directory"], run_label, "run-config.yml"), 'w') as file:
         json.dump(config, file, indent=4)
 
     return run_label
@@ -488,10 +520,10 @@ def train_query(config: str):
     model.adata.obsm["nichecompass_latent"], _ = model.get_latent_representation(
        adata=model.adata,
        counts_key=None,
-       cat_covariates_keys=config["model"]["cat_covariates_keys"],
+       cat_covariates_keys=config["train_query"]["reference_model"]["cat_covariates_keys"],
        only_active_gps=True,
        return_mu_std=True,
-       node_batch_size=config["training"]["node_batch_size"])
+       node_batch_size=config["train_query"]["training"]["node_batch_size"])
 
     print("Computing neighbor graph...")
     sc.pp.neighbors(model.adata, use_rep="nichecompass_latent", key_added="nichecompass_latent")

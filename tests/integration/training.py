@@ -59,17 +59,17 @@ def test_train_reference(tmpdir):
             "library_key": "label",
             "spatial_key": "spatial",
             "export_file_path": str(tmpdir.join("spatial_dataset_built.h5ad")),
-        },
-        "gene_filters": {
-            "n_highly_variable": None,
-            "n_spatially_variable": None,
-            "min_cell_gene_thresh_ratio": 0.1,
-            "gene_program_relevant": True
-        },
-        "graph": {
+            "gene_programs": str(tmpdir.join("gene_programs.pkl")),
             "n_neighbors": 3,
+            "gene_filters": {
+                "n_highly_variable": None,
+                "n_spatially_variable": None,
+                "min_cell_gene_thresh_ratio": 0.1,
+                "gene_program_relevant": True
+            }
         },
         "model": {
+            "dataset_file_path": str(tmpdir.join("spatial_dataset_built.h5ad")),
             "cat_covariates_embeds_injection": ["gene_expr_decoder"],
             "cat_covariates_keys": None,
             "cat_covariates_no_edges": None,
@@ -97,8 +97,7 @@ def test_train_reference(tmpdir):
             "lambda_l1_addon": 0,
             "edge_batch_size": 256,
             "node_batch_size": None,
-            "n_sampled_neighbors": 1,
-            "artefact_directory": str(tmpdir.join("artefacts"))
+            "n_sampled_neighbors": 1
         }
     }
 
@@ -138,17 +137,17 @@ def test_train_query(tmpdir):
             "library_key": "label",
             "spatial_key": "spatial",
             "export_file_path": str(tmpdir.join("spatial_dataset_built.h5ad")),
-        },
-        "gene_filters": {
-            "n_highly_variable": None,
-            "n_spatially_variable": None,
-            "min_cell_gene_thresh_ratio": 0.1,
-            "gene_program_relevant": True
-        },
-        "graph": {
-            "n_neighbors": 12,
+            "gene_programs": str(tmpdir.join("gene_programs.pkl")),
+            "n_neighbors": 3,
+            "gene_filters": {
+                "n_highly_variable": None,
+                "n_spatially_variable": None,
+                "min_cell_gene_thresh_ratio": 0.1,
+                "gene_program_relevant": True
+            }
         },
         "model": {
+            "dataset_file_path": str(tmpdir.join("spatial_dataset_built.h5ad")),
             "cat_covariates_embeds_injection": ["gene_expr_decoder"],
             "cat_covariates_keys": ["label"],
             "cat_covariates_no_edges": None,
@@ -176,8 +175,7 @@ def test_train_query(tmpdir):
             "lambda_l1_addon": 0,
             "edge_batch_size": 256,
             "node_batch_size": 256,
-            "n_sampled_neighbors": 1,
-            "artefact_directory": str(tmpdir.join("artefacts"))
+            "n_sampled_neighbors": 1
         }
     }
 
@@ -215,17 +213,17 @@ def test_train_query(tmpdir):
             "library_key": "label",
             "spatial_key": "spatial",
             "export_file_path": str(tmpdir.join("spatial_dataset_built.h5ad")),
-        },
-        "gene_filters": {
-            "n_highly_variable": None,
-            "n_spatially_variable": None,
-            "min_cell_gene_thresh_ratio": 0.1,
-            "gene_program_relevant": True
-        },
-        "graph": {
+            "gene_programs": str(tmpdir.join("gene_programs.pkl")),
             "n_neighbors": 3,
+            "gene_filters": {
+                "n_highly_variable": None,
+                "n_spatially_variable": None,
+                "min_cell_gene_thresh_ratio": 0.1,
+                "gene_program_relevant": True
+            }
         },
         "model": {
+            "dataset_file_path": str(tmpdir.join("spatial_dataset_built.h5ad")),
             "cat_covariates_embeds_injection": ["gene_expr_decoder"],
             "cat_covariates_keys": ["label"],
             "cat_covariates_no_edges": None,
@@ -254,12 +252,12 @@ def test_train_query(tmpdir):
             "edge_batch_size": 256,
             "node_batch_size": 256,
             "n_sampled_neighbors": 1,
-            "artefact_directory": str(tmpdir.join("artefacts"))
         },
         "train_query": {
             "reference_model": {
                 "artefact_directory": str(tmpdir.join("artefacts", reference_run_label)),
-                "file_path": "spatial_dataset_built.h5ad"
+                "file_path": "spatial_dataset_built.h5ad",
+                "cat_covariates_keys": ["label"]
             },
             "dataset": {
                 "file_path": str(tmpdir.join("spatial_dataset_query.h5ad")),
@@ -283,7 +281,7 @@ def test_train_query(tmpdir):
                 "lambda_l1_masked": 0,
                 "lambda_l1_addon": 0,
                 "edge_batch_size": 256,
-                "node_batch_size": None,
+                "node_batch_size": 256,
                 "n_sampled_neighbors": 1,
                 "artefact_directory": str(tmpdir.join("artefacts"))
             }
