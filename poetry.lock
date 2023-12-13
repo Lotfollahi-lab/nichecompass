@@ -725,20 +725,6 @@ tqdm = "*"
 typing-extensions = "*"
 
 [[package]]
-name = "dill"
-version = "0.3.7"
-description = "serialize all of Python"
-optional = false
-python-versions = ">=3.7"
-files = [
-    {file = "dill-0.3.7-py3-none-any.whl", hash = "sha256:76b122c08ef4ce2eedcd4d1abd8e641114bfc6c2867f49f3c41facf65bf19f5e"},
-    {file = "dill-0.3.7.tar.gz", hash = "sha256:cc1c8b182eb3013e24bd475ff2e9295af86c1a38eb1aff128dac8962a9ce3c03"},
-]
-
-[package.extras]
-graph = ["objgraph (>=1.7.2)"]
-
-[[package]]
 name = "docker"
 version = "5.0.3"
 description = "A Python library for the Docker Engine API."
@@ -2445,17 +2431,6 @@ doc = ["aiohttp", "graphviz", "ipython (!=8.7.0)", "myst-nb (==0.12.2)", "myst-p
 tests = ["coverage", "flake8", "pytest"]
 
 [[package]]
-name = "parse"
-version = "1.19.1"
-description = "parse() is the opposite of format()"
-optional = false
-python-versions = "*"
-files = [
-    {file = "parse-1.19.1-py2.py3-none-any.whl", hash = "sha256:371ed3800dc63983832159cc9373156613947707bc448b5215473a219dbd4362"},
-    {file = "parse-1.19.1.tar.gz", hash = "sha256:cc3a47236ff05da377617ddefa867b7ba983819c664e1afe46249e5b469be464"},
-]
-
-[[package]]
 name = "partd"
 version = "1.4.1"
 description = "Appendable key-value storage"
@@ -2656,21 +2631,6 @@ files = [
     {file = "protobuf-4.25.1-py3-none-any.whl", hash = "sha256:a19731d5e83ae4737bb2a089605e636077ac001d18781b3cf489b9546c7c80d6"},
     {file = "protobuf-4.25.1.tar.gz", hash = "sha256:57d65074b4f5baa4ab5da1605c02be90ac20c8b40fb137d6a8df9f416b0d0ce2"},
 ]
-
-[[package]]
-name = "pybedtools"
-version = "0.9.1"
-description = "Wrapper around BEDTools for bioinformatics work"
-optional = false
-python-versions = "*"
-files = [
-    {file = "pybedtools-0.9.1.tar.gz", hash = "sha256:586a626895b1b7215aef877e985c03fd8a908fd6c636e5b9ff8a1a1d09a1d514"},
-]
-
-[package.dependencies]
-numpy = "*"
-pysam = "*"
-six = "*"
 
 [[package]]
 name = "pycparser"
@@ -2890,17 +2850,6 @@ scikit-learn = ">=0.18"
 scipy = ">=1.0"
 
 [[package]]
-name = "pynvml"
-version = "11.5.0"
-description = "Python Bindings for the NVIDIA Management Library"
-optional = false
-python-versions = ">=3.6"
-files = [
-    {file = "pynvml-11.5.0-py3-none-any.whl", hash = "sha256:5cce014ac01b098d08f06178f86c37be409b80b2e903a5a03ce15eed60f55e25"},
-    {file = "pynvml-11.5.0.tar.gz", hash = "sha256:d027b21b95b1088b9fc278117f9f61b7c67f8e33a787e9f83f735f0f71ac32d0"},
-]
-
-[[package]]
 name = "pyparsing"
 version = "3.1.1"
 description = "pyparsing module - Classes and methods to define and execute parsing grammars"
@@ -2942,42 +2891,6 @@ files = [
 
 [package.dependencies]
 pandas = ">=1.2.0"
-
-[[package]]
-name = "pysam"
-version = "0.22.0"
-description = "Package for reading, manipulating, and writing genomic data"
-optional = false
-python-versions = ">=3.6"
-files = [
-    {file = "pysam-0.22.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:116278a7caa122b2b8acc56d13b3599be9b1236f27a12488bffc306858ff0d57"},
-    {file = "pysam-0.22.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:da2f1af461e44d5c2c7210d458ee216f8ab98486adf1eea6c88eea5c1058a62f"},
-    {file = "pysam-0.22.0-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:021fbf6874ad998aba19be33828ad9d23d52273643793488ac4b12917d714c68"},
-    {file = "pysam-0.22.0-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:26199e403855b9da45341d25682e0df27013687d9cb1b4fd328136fbd506292b"},
-    {file = "pysam-0.22.0-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:9bfebf89b1dc2ff6f88d64b5f05d8630deb89562b22764f8ee7f6fa9e677bb91"},
-    {file = "pysam-0.22.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:942dd4a2263996bc2daa21200886e9fde027f32ce8820e7832b20bbdb97eb393"},
-    {file = "pysam-0.22.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:83776ba587eb9575a209efed1cedb49d69c5fa6cc520dd722a0a09d0bb4e9b87"},
-    {file = "pysam-0.22.0-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:4779a99d1ece17a98724d87a5c10c455cf212b3baa3a8399d3d072e4d0ae5ba0"},
-    {file = "pysam-0.22.0-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:bb61bf30c15f6767403b423b04c293e96fd7635457b506c849aafcf48fc13242"},
-    {file = "pysam-0.22.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:32042e0bf3c5dd8554769442c2e1f7b6ada902c33ee44c616d0403e7acd12ee3"},
-    {file = "pysam-0.22.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:f23b2f47528b94e8abe3b700103fb1214c623ae1c1b8125ecf22d4d33d76720f"},
-    {file = "pysam-0.22.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:cfd2b858c7405cf38c730cba779ddf9f8cff28b4842c6440e64781650dcb9a52"},
-    {file = "pysam-0.22.0-cp36-cp36m-macosx_10_9_x86_64.whl", hash = "sha256:87dbf72f3e61fd6d3f92b1b683d9a9e797b6cc213ffcd971899f24a16f9f6e8f"},
-    {file = "pysam-0.22.0-cp36-cp36m-manylinux_2_28_aarch64.whl", hash = "sha256:9af1cd3d07fd4c84e9b3d8a46c65b25f95278185bc6d44c4a48951679d5189ac"},
-    {file = "pysam-0.22.0-cp36-cp36m-manylinux_2_28_x86_64.whl", hash = "sha256:f73d7923c89618fb7024875ed8eddc5fb0c911f430e3495de482fcee48143e45"},
-    {file = "pysam-0.22.0-cp37-cp37m-macosx_10_9_x86_64.whl", hash = "sha256:6ffe5c98725fea54b1b2aa8f14a60ee9ceaed32c04460d1b861a62603dcd7153"},
-    {file = "pysam-0.22.0-cp37-cp37m-manylinux_2_28_aarch64.whl", hash = "sha256:34f5653a82138d28a8e86205785a0398eb6c89f776b4145ff42783168757323c"},
-    {file = "pysam-0.22.0-cp37-cp37m-manylinux_2_28_x86_64.whl", hash = "sha256:9d3ebb1515c2fd9b11823469e5b211ca3cc89e976c00c284a2190804c9f11726"},
-    {file = "pysam-0.22.0-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:9b8e18520e7a79bad91b44cf9199c7fa42cec5c3020024d7ef9a7161d0099bf8"},
-    {file = "pysam-0.22.0-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a98d1ddca64943f3ead507721e52466aea2f7303e549d4960a2eb1d9fff8e3d7"},
-    {file = "pysam-0.22.0-cp38-cp38-manylinux_2_28_aarch64.whl", hash = "sha256:6d6aa2346b11ad35e88c65eb0067321318c25c7f35f75c98061173eabefcf8b0"},
-    {file = "pysam-0.22.0-cp38-cp38-manylinux_2_28_x86_64.whl", hash = "sha256:4f6657a09c81333adb5545cf9a20d4c2ca1686acf8609ad58f13b3ec1b52a9cf"},
-    {file = "pysam-0.22.0-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:93eb12be3822fb387e5438811f62a0f5e56c1edd5c830aaa316fb50d3d0bc181"},
-    {file = "pysam-0.22.0-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:9ba53f9b0b2c5cb57908855cdb35a31b34c5211d215aa01bdb3e9b3d05c659cc"},
-    {file = "pysam-0.22.0-cp39-cp39-manylinux_2_28_aarch64.whl", hash = "sha256:1b84f99aa04e30bd1cc35c01bd41c2b7680131f56c71a740805aff8086f24b56"},
-    {file = "pysam-0.22.0-cp39-cp39-manylinux_2_28_x86_64.whl", hash = "sha256:481e4efbfbc07b6b92194a005cb9a98006c8378024f41c7b66c58b14f6e77f9c"},
-    {file = "pysam-0.22.0.tar.gz", hash = "sha256:ab7a46973cf0ab8c6ac327f4c3fb67698d7ccbeef8631a716898c6ba01ef3e45"},
-]
 
 [[package]]
 name = "pysocks"
@@ -3026,21 +2939,6 @@ files = [
 
 [package.dependencies]
 six = ">=1.5"
-
-[[package]]
-name = "pytorch-ignite"
-version = "0.4.13"
-description = "A lightweight library to help with training neural networks in PyTorch."
-optional = false
-python-versions = "*"
-files = [
-    {file = "pytorch-ignite-0.4.13.tar.gz", hash = "sha256:f334dd65161cc4f4a77da5d0ed3b1e8bc08235be832016515f8a33c249dac060"},
-    {file = "pytorch_ignite-0.4.13-py3-none-any.whl", hash = "sha256:b17959072af98b1494de603305588a81e22911a122a3ee444d88fc71153778f5"},
-]
-
-[package.dependencies]
-packaging = "*"
-torch = ">=1.3,<3"
 
 [[package]]
 name = "pytz"
@@ -3253,45 +3151,6 @@ skmisc = ["scikit-misc (>=0.1.3)"]
 test = ["scanpy[dask]", "scanpy[leiden]", "scanpy[test-min]", "zarr"]
 test-full = ["scanpy[harmony]", "scanpy[leiden]", "scanpy[magic]", "scanpy[scanorama]", "scanpy[scrublet]", "scanpy[skmisc]", "scanpy[test]"]
 test-min = ["profimp", "pytest (>=4.4)", "pytest-nunit"]
-
-[[package]]
-name = "scglue"
-version = "0.3.2"
-description = "Graph-linked unified embedding for unpaired single-cell multi-omics data integration"
-optional = false
-python-versions = ">=3.6"
-files = [
-    {file = "scglue-0.3.2-py3-none-any.whl", hash = "sha256:efec4e3f8cc3ffce362e180e4912327d4aacc2dd0a76a6cb06e851a426695d6d"},
-    {file = "scglue-0.3.2.tar.gz", hash = "sha256:fd57ebfa400233cbb1ab4fab4ad6a9dbf4db2c5ca715ba31c71c7a36cc931241"},
-]
-
-[package.dependencies]
-anndata = ">=0.7"
-dill = ">=0.2.3"
-h5py = ">=2.10"
-leidenalg = ">=0.7"
-matplotlib = ">=3.1.2"
-networkx = ">=2"
-numpy = ">=1.19"
-packaging = ">=16.8"
-pandas = ">=1.1"
-parse = ">=1.3.2"
-pybedtools = ">=0.8.1"
-pynvml = ">=8.0.1"
-pytorch-ignite = ">=0.4.1"
-scanpy = ">=1.5"
-scikit-learn = ">=0.21.2"
-scipy = ">=1.3"
-seaborn = ">=0.9"
-sparse = ">=0.3.1"
-statsmodels = ">=0.10"
-tensorboardX = ">=1.4"
-torch = ">=1.8"
-tqdm = ">=4.27"
-
-[package.extras]
-doc = ["ipython", "jinja2", "nbsphinx", "sphinx", "sphinx-autodoc-typehints", "sphinx-copybutton", "sphinx-intl", "sphinx-rtd-theme"]
-test = ["plotly", "pytest", "pytest-cov"]
 
 [[package]]
 name = "scib-metrics"
@@ -3621,28 +3480,6 @@ files = [
 ]
 
 [[package]]
-name = "sparse"
-version = "0.14.0"
-description = "Sparse n-dimensional arrays"
-optional = false
-python-versions = ">=3.8, <4"
-files = [
-    {file = "sparse-0.14.0-py2.py3-none-any.whl", hash = "sha256:77e3c32ace6184de29074db94901c63e113c7729b28c8b3f1885aaf5e1934323"},
-    {file = "sparse-0.14.0.tar.gz", hash = "sha256:5f5827a37f6cd6f6730a541f994c95c60a3ae2329e01f4ba21ced5339aea0098"},
-]
-
-[package.dependencies]
-numba = ">=0.49"
-numpy = ">=1.17"
-scipy = ">=0.19"
-
-[package.extras]
-all = ["dask[array]", "pytest (>=3.5)", "pytest-black", "pytest-cov", "sphinx", "sphinx-rtd-theme", "tox"]
-docs = ["sphinx", "sphinx-rtd-theme"]
-tests = ["dask[array]", "pytest (>=3.5)", "pytest-black", "pytest-cov"]
-tox = ["dask[array]", "pytest (>=3.5)", "pytest-black", "pytest-cov", "tox"]
-
-[[package]]
 name = "sqlalchemy"
 version = "1.4.50"
 description = "Database Abstraction Library"
@@ -3857,22 +3694,6 @@ files = [
 
 [package.extras]
 widechars = ["wcwidth"]
-
-[[package]]
-name = "tensorboardx"
-version = "2.6.2.2"
-description = "TensorBoardX lets you watch Tensors Flow without Tensorflow"
-optional = false
-python-versions = "*"
-files = [
-    {file = "tensorboardX-2.6.2.2-py2.py3-none-any.whl", hash = "sha256:160025acbf759ede23fd3526ae9d9bfbfd8b68eb16c38a010ebe326dc6395db8"},
-    {file = "tensorboardX-2.6.2.2.tar.gz", hash = "sha256:c6476d7cd0d529b0b72f4acadb1269f9ed8b22f441e87a84f2a3b940bb87b666"},
-]
-
-[package.dependencies]
-numpy = "*"
-packaging = "*"
-protobuf = ">=3.20"
 
 [[package]]
 name = "texttable"
@@ -4587,4 +4408,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "e227e4f6aea2d866b807bbcb1b961ca0636a5690c61133ce50d0edadbeadf3ea"
+content-hash = "7655b28095c1c8c7aed450c4956b1fe40af5ad42e451428dff5ab749ba5ffa67"

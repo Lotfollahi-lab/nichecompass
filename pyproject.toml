@@ -27,7 +27,6 @@ scanpy = {version = "1.9.3", source = "pypi"}
 scib-metrics = {version = "0.3.3", source = "pypi"}
 scikit-misc = {version = "0.3.0", source = "pypi"}
 squidpy = {version = "1.2.2", source = "pypi"}
-scglue = {version = "0.3.2", source = "pypi"}
 omnipath = {version = "1.0.7", source = "pypi"}
 decoupler = {version = "1.4.0", source = "pypi"}
 torch-geometric = {version = "2.1.0post1", source = "pypi"}
