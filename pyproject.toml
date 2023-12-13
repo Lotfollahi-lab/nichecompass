@@ -42,26 +42,22 @@ pytest = "^7.4.3"
 [[tool.poetry.source]]
 name = "torch"
 url = "https://download.pytorch.org/whl/cu117"
-default = false
-secondary = true
+priority = "explicit"
 
 [[tool.poetry.source]]
 name = "torch-scatter"
 url = "https://data.pyg.org/whl/torch-2.0.0+cu117.html"
-default = false
-secondary = true
+priority = "explicit"
 
 [[tool.poetry.source]]
 name = "torch-sparse"
 url = "https://data.pyg.org/whl/torch-2.0.0+cu117.html"
-default = false
-secondary = true
+priority = "explicit"
 
 [[tool.poetry.source]]
 name = "jaxlib"
 url = "https://storage.googleapis.com/jax-releases/jax_cuda_releases.html"
-default = false
-secondary = true
+priority = "explicit"
 
 
 [build-system]
