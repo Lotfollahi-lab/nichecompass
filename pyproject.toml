@@ -23,7 +23,7 @@ holoviews = {version = "1.15.4", source = "pypi"}
 mlflow = {version = "1.28.0", source = "pypi"}
 pyreadr = {version = "0.4.6", source = "pypi"}
 selenium = {version = "4.8.2", source = "pypi"}
-scanpy = {version = "1.9.3", source = "pypi"}
+scanpy = {extras = ["leiden"], version = "1.9.6", source = "pypi"}
 scib-metrics = {version = "0.3.3", source = "pypi"}
 scikit-misc = {version = "0.3.0", source = "pypi"}
 squidpy = {version = "1.2.2", source = "pypi"}
