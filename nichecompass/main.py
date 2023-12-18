@@ -541,5 +541,49 @@ def train_query(config: str):
         json.dump(config, file, indent=4)
 
 
+@app.command()
+def intersect_datasets(adata_reference_path: str, adata_query_path: str, species: str, artefact_directory: str):
+
+    run_timestamp = datetime.now().strftime("%Y_%m_%d__%H_%M_%S")
+    adjective = RandomWord().word(word_min_length=3, word_max_length=8, include_categories=["adjectives"])
+    noun = RandomWord().word(word_min_length=3, word_max_length=8, include_categories=["nouns"])
+    run_label = adjective + "_" + noun
+    print(f"Starting run {run_label} at {run_timestamp}...")
+
+    print("Loading run configuration...")
+    config = {
+        "adata_reference_path": adata_reference_path,
+        "adata_query_path": adata_query_path,
+        "species": species,
+        "artefact_directory": artefact_directory
+    }
+    pprint(config)
+
+    adata_reference_basename = os.path.basename(config["adata_reference_path"])
+    adata_query_basename = os.path.basename(config["adata_query_path"])
+
+    adata_reference = ad.read_h5ad(config["adata_reference_path"])
+    adata_query = ad.read_h5ad(config["adata_query_path"])
+
+    if config["species"] == "mouse":
+        # harmonise case, since many datasets uppercase mouse gene symbols
+        adata_reference.var_names = [var_name.capitalize() for var_name in adata_reference.var_names.tolist()]
+        adata_query.var_names = [var_name.capitalize() for var_name in adata_query.var_names.tolist()]
+
+    intersecting_genes = set(adata_reference.var_names.tolist()).intersection(set(adata_query.var_names.tolist()))
+
+    adata_reference = adata_reference[:, list(intersecting_genes)]
+    adata_query = adata_query[:, list(intersecting_genes)]
+
+    print("Exporting datasets...")
+
+    os.makedirs(os.path.join(config["artefact_directory"], run_label), exist_ok=True)
+    adata_reference.write(os.path.join(config["artefact_directory"], run_label, adata_reference_basename))
+    adata_query.write(os.path.join(config["artefact_directory"], run_label, adata_query_basename))
+
+    with open(os.path.join(config["artefact_directory"], run_label, "run-config.yml"), 'w') as file:
+        json.dump(config, file, indent=4)
+
+
 if __name__ == "__main__":
     app()
