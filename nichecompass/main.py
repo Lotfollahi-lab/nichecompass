@@ -575,6 +575,9 @@ def intersect_datasets(adata_reference_path: str, adata_query_path: str, species
     adata_reference = adata_reference[:, list(intersecting_genes)]
     adata_query = adata_query[:, list(intersecting_genes)]
 
+    adata_reference.obs["experiment"] = os.path.splitext(adata_reference_basename)[0]
+    adata_query.obs["experiment"] = os.path.splitext(adata_query_basename)[0]
+
     print("Exporting datasets...")
 
     os.makedirs(os.path.join(config["artefact_directory"], run_label), exist_ok=True)
