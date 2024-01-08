@@ -578,7 +578,7 @@ def intersect_datasets(adata_reference_path: str, adata_query_path: str, species
     adata_reference.obs["experiment"] = os.path.splitext(adata_reference_basename)[0]
     adata_query.obs["experiment"] = os.path.splitext(adata_query_basename)[0]
 
-    adata_joint = ad.concat(adata_batch_list, join="inner")
+    adata_joint = ad.concat([adata_reference, adata_query], join="inner")
 
     print("Exporting datasets...")
 
