@@ -578,11 +578,14 @@ def intersect_datasets(adata_reference_path: str, adata_query_path: str, species
     adata_reference.obs["experiment"] = os.path.splitext(adata_reference_basename)[0]
     adata_query.obs["experiment"] = os.path.splitext(adata_query_basename)[0]
 
+    adata_joint = ad.concat(adata_batch_list, join="inner")
+
     print("Exporting datasets...")
 
     os.makedirs(os.path.join(config["artefact_directory"], run_label), exist_ok=True)
     adata_reference.write(os.path.join(config["artefact_directory"], run_label, adata_reference_basename))
     adata_query.write(os.path.join(config["artefact_directory"], run_label, adata_query_basename))
+    adata_joint.write(os.path.join(config["artefact_directory"], run_label, f"{os.path.splitext(adata_reference_basename)[0]}_{os.path.splitext(adata_query_basename)[0]}.h5ad"))
 
     with open(os.path.join(config["artefact_directory"], run_label, "run-config.yml"), 'w') as file:
         json.dump(config, file, indent=4)
