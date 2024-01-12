@@ -591,5 +591,56 @@ def intersect_datasets(adata_reference_path: str, adata_query_path: str, species
         json.dump(config, file, indent=4)
 
 
+@app.command()
+def export_latent(model_directory, adata_filename, artefact_directory: str):
+
+    run_timestamp = datetime.now().strftime("%Y_%m_%d__%H_%M_%S")
+    adjective = RandomWord().word(word_min_length=3, word_max_length=8, include_categories=["adjectives"])
+    noun = RandomWord().word(word_min_length=3, word_max_length=8, include_categories=["nouns"])
+    run_label = adjective + "_" + noun
+    print(f"Starting run {run_label} at {run_timestamp}...")
+
+    print("Loading run configuration...")
+    config = {
+        "model_directory": model_directory,
+        "adata_filename": adata_filename,
+        "artefact_directory": artefact_directory
+    }
+
+    pprint(config)
+    model = NicheCompass.load(
+        dir_path=config["model_directory"],
+        adata_file_name=config["adata_filename"],
+        gp_names_key="nichecompass_gp_names")
+
+    adata = ad.read_h5ad(os.path.join(config["model_directory"], config["adata_filename"]))
+
+    active_gps = list(adata.uns[model.active_gp_names_key_])
+    mu, std = model.get_latent_representation(
+        adata=adata,
+        counts_key=model.counts_key_,
+        adj_key=model.adj_key_,
+        cat_covariates_keys=model.cat_covariates_keys_,
+        only_active_gps=False,
+        return_mu_std=True,
+        node_batch_size=model.node_batch_size_
+    )
+
+    latent = {
+        "mu": mu,
+        "std": std,
+        "active_gps": active_gps
+    }
+
+    print("Exporting latent...")
+
+    os.makedirs(os.path.join(config["artefact_directory"], run_label), exist_ok=True)
+    with open(os.path.join(config["artefact_directory"], run_label, "latent.pkl"), "wb") as file:
+        pickle.dump(latent, file, pickle.HIGHEST_PROTOCOL)
+
+    with open(os.path.join(config["artefact_directory"], run_label, "run-config.yml"), 'w') as file:
+        json.dump(config, file, indent=4)
+
+
 if __name__ == "__main__":
     app()
