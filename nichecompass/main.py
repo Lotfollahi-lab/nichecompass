@@ -626,10 +626,14 @@ def export_latent(model_directory, adata_filename, artefact_directory: str):
         node_batch_size=model.node_batch_size_
     )
 
+    active_gps_idx, active_gps_weights, _ = model.get_gp_data(selected_gps=active_gps)
+
     latent = {
         "mu": mu,
         "std": std,
-        "active_gps": active_gps
+        "active_gps": active_gps,
+        "active_gps_idx": active_gps_idx,
+        "active_gps_weights": active_gps_weights
     }
 
     print("Exporting latent...")
