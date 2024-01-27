@@ -121,6 +121,19 @@ def skeleton(output: str):
                 "n_sampled_neighbors": 1,
                 "artefact_directory": ""
             }
+        },
+        "clustering": {
+            "adata_directory": "",
+            "file_path": "",
+            "primary_cluster_resolution": 0.2,
+            "primary_cluster_min_cells": 10000,
+            "sub_cluster_resolution": 0.2,
+            "sub_cluster_min_cells": 2000
+        },
+        "gene_program_enrichment": {
+            "adata_directory": "",
+            "adata_file_path": "",
+            "latent_directory": ""
         }
     }
 
@@ -653,6 +666,180 @@ def export_latent(model_directory, adata_filename, artefact_directory: str):
 
     with open(os.path.join(config["artefact_directory"], run_label, "run-config.yml"), 'w') as file:
         json.dump(config, file, indent=4)
+
+
+@app.command()
+def cluster(config: str):
+
+    run_timestamp = datetime.now().strftime("%Y_%m_%d__%H_%M_%S")
+    adjective = RandomWord().word(word_min_length=3, word_max_length=8, include_categories=["adjectives"])
+    noun = RandomWord().word(word_min_length=3, word_max_length=8, include_categories=["nouns"])
+    run_label = adjective + "_" + noun
+    print(f"Starting run {run_label} at {run_timestamp}...")
+
+    print(f"Loading run configuration...")
+    with open(config) as file:
+        config = json.load(file)
+    pprint(config)
+
+    print(f"Loading anndata...")
+    adata = ad.read_h5ad(os.path.join(config["clustering"]["adata_directory"], config["clustering"]["file_path"]))
+
+    print(f"Performing primary clustering...")
+    sc.tl.leiden(adata=adata,
+                 resolution=config["clustering"]["primary_cluster_resolution"],
+                 key_added="nichecompass_latent_cluster",
+                 neighbors_key="nichecompass_latent")
+    niche_cell_frequency = adata.obs["nichecompass_latent_cluster"].value_counts()
+    high_population_niches = niche_cell_frequency[niche_cell_frequency > config["clustering"]["primary_cluster_min_cells"]].index.tolist()
+    adata.obs["nichecompass_latent_cluster"] = [
+        niche if is_high_population is True else "unassigned" for niche, is_high_population in zip(
+            adata.obs["nichecompass_latent_cluster"].tolist(),
+            adata.obs["nichecompass_latent_cluster"].isin(high_population_niches).tolist()
+        )
+    ]
+
+    print(f"Performing sub clustering...")
+    clustered_adata = []
+    for cluster in adata.obs["nichecompass_latent_cluster"].unique().tolist():
+        adata_sample = adata[adata.obs["nichecompass_latent_cluster"] == cluster]
+        if cluster == "unassigned":
+            adata_sample.obs["nichecompass_latent_sub_cluster"] = "unassigned"
+        if cluster != "unassigned":
+            sc.tl.leiden(adata=adata_sample,
+                         resolution=config["clustering"]["sub_cluster_resolution"],
+                         key_added="nichecompass_latent_sub_cluster",
+                         neighbors_key="nichecompass_latent")
+            niche_cell_frequency = adata_sample.obs["nichecompass_latent_sub_cluster"].value_counts()
+            high_population_niches = niche_cell_frequency[niche_cell_frequency > config["clustering"]["sub_cluster_min_cells"]].index.tolist()
+            adata_sample.obs["nichecompass_latent_sub_cluster"] = [
+                sub_cluster if is_high_population is True else "unassigned" for sub_cluster, is_high_population in zip(
+                    adata_sample.obs["nichecompass_latent_sub_cluster"].tolist(),
+                    adata_sample.obs["nichecompass_latent_sub_cluster"].isin(high_population_niches).tolist()
+                )
+            ]
+        adata_sample.obs["nichecompass_latent_sub_cluster_label"] = adata_sample.obs[
+                                                                        "nichecompass_latent_cluster"].astype(
+            str) + "_" + adata_sample.obs["nichecompass_latent_sub_cluster"].astype(str)
+        clustered_adata.append(adata_sample)
+        print(f"Completed cluster {cluster}")
+    adata = ad.concat(clustered_adata, uns_merge="same")
+
+    print(f"Saving dataset...")
+    adata.write(os.path.join(config["artefact_directory"], run_label, config["clustering"]["file_path"]))
+
+
+@app.command()
+def enrichment(config: str):
+
+    run_timestamp = datetime.now().strftime("%Y_%m_%d__%H_%M_%S")
+    adjective = RandomWord().word(word_min_length=3, word_max_length=8, include_categories=["adjectives"])
+    noun = RandomWord().word(word_min_length=3, word_max_length=8, include_categories=["nouns"])
+    run_label = adjective + "_" + noun
+    print(f"Starting run {run_label} at {run_timestamp}...")
+
+    print(f"Loading run configuration...")
+    with open(config) as file:
+        config = json.load(file)
+    pprint(config)
+
+    print(f"Loading anndata...")
+    adata = ad.read_h5ad(os.path.join(config["gene_program_enrichment"]["adata_directory"], config["gene_program_enrichment"]["adata_file_path"]))
+
+    print(f"Loading latent export...")
+    with open(os.path.join(config["gene_program_enrichment"]["latent_directory"], "latent.pkl")) as file:
+        latent = pickle.load(file)
+    active_gps = latent["active_gps"]
+    mu = latent["mu"]
+    std = latent["std"]
+    active_gps_idx = latent["active_gps_idx"]
+
+    mu_active_gps = mu[:, active_gps_idx]
+    std_active_gps = std[:, active_gps_idx]
+
+    print(f"Performing primary cluster enrichment...")
+    cat_values = adata.obs["nichecompass_latent_cluster"]
+    cats = cat_values.unique()
+    results_primary_clusters = []
+
+    for cat in cats:
+        cat_mask = (cat_values == cat)
+        comparison_cat_mask = ~cat_mask
+        mu_cat = mu_active_gps[cat_mask]
+        std_cat = std_active_gps[cat_mask]
+        mu_comparison_cat = mu_active_gps[comparison_cat_mask]
+        std_comparison_cat = std_active_gps[comparison_cat_mask]
+        cat_idx = np.random.choice(cat_mask.sum(), 10000)
+        comparison_cat_idx = np.random.choice(cat_mask.sum(), 10000)
+        mu_cat_sample = mu_cat[cat_idx]
+        std_cat_sample = std_cat[cat_idx]
+        mu_comparison_cat_sample = mu_comparison_cat[comparison_cat_idx]
+        std_comparison_cat_sample = std_comparison_cat[comparison_cat_idx]
+        to_reduce = (- (mu_cat_sample - mu_comparison_cat_sample) / np.sqrt(
+            2 * (std_cat_sample ** 2 + std_comparison_cat_sample ** 2)))
+        to_reduce = 0.5 * erfc(to_reduce)
+        p_h0 = np.mean(to_reduce, axis=0)
+        p_h1 = 1.0 - p_h0
+        epsilon = 1e-12
+        log_bayes_factor = np.log(p_h0 + epsilon) - np.log(p_h1 + epsilon)
+        zeros_mask = ((np.abs(mu_cat_sample).sum(0) == 0) | (np.abs(mu_comparison_cat_sample).sum(0) == 0))
+        p_h0[zeros_mask] = 0
+        p_h1[zeros_mask] = 0
+        log_bayes_factor[zeros_mask] = 0
+        zipped = zip(active_gps, p_h0, p_h1, log_bayes_factor)
+        cat_results = [
+            {"category": cat, "gene_program": gp, "p_h0": p_h0, "p_h1": p_h1, "log_bayes_factor": log_bayes_factor} for
+            gp, p_h0, p_h1, log_bayes_factor in zipped]
+        for result in cat_results:
+            results_primary_clusters.append(result)
+
+    results_primary_clusters = pd.DataFrame(results_primary_clusters)
+    results_primary_clusters["abs_log_bayes_factor"] = np.abs(results_primary_clusters["log_bayes_factor"])
+    results_primary_clusters["type"] = "primary_cluster"
+
+    print(f"Performing sub cluster enrichment...")
+    cat_values = adata.obs["nichecompass_latent_sub_cluster_label"]
+    cats = cat_values.unique()
+    results_sub_clusters = []
+
+    for cat in cats:
+        cat_mask = (cat_values == cat)
+        comparison_cat_mask = ~cat_mask
+        mu_cat = mu_active_gps[cat_mask]
+        std_cat = std_active_gps[cat_mask]
+        mu_comparison_cat = mu_active_gps[comparison_cat_mask]
+        std_comparison_cat = std_active_gps[comparison_cat_mask]
+        cat_idx = np.random.choice(cat_mask.sum(), 10000)
+        comparison_cat_idx = np.random.choice(cat_mask.sum(), 10000)
+        mu_cat_sample = mu_cat[cat_idx]
+        std_cat_sample = std_cat[cat_idx]
+        mu_comparison_cat_sample = mu_comparison_cat[comparison_cat_idx]
+        std_comparison_cat_sample = std_comparison_cat[comparison_cat_idx]
+        to_reduce = (- (mu_cat_sample - mu_comparison_cat_sample) / np.sqrt(
+            2 * (std_cat_sample ** 2 + std_comparison_cat_sample ** 2)))
+        to_reduce = 0.5 * erfc(to_reduce)
+        p_h0 = np.mean(to_reduce, axis=0)
+        p_h1 = 1.0 - p_h0
+        epsilon = 1e-12
+        log_bayes_factor = np.log(p_h0 + epsilon) - np.log(p_h1 + epsilon)
+        zeros_mask = ((np.abs(mu_cat_sample).sum(0) == 0) | (np.abs(mu_comparison_cat_sample).sum(0) == 0))
+        p_h0[zeros_mask] = 0
+        p_h1[zeros_mask] = 0
+        log_bayes_factor[zeros_mask] = 0
+        zipped = zip(active_gps, p_h0, p_h1, log_bayes_factor)
+        cat_results = [
+            {"category": cat, "gene_program": gp, "p_h0": p_h0, "p_h1": p_h1, "log_bayes_factor": log_bayes_factor} for
+            gp, p_h0, p_h1, log_bayes_factor in zipped]
+        for result in cat_results:
+            results_sub_clusters.append(result)
+
+    results_sub_clusters = pd.DataFrame(results_sub_clusters)
+    results_sub_clusters["abs_log_bayes_factor"] = np.abs(results_sub_clusters["log_bayes_factor"])
+    results_sub_clusters["type"] = "sub_cluster"
+
+    print(f"Exporting results...")
+    results = pd.concat([results_primary_clusters, results_sub_clusters])
+    results.to_csv(os.path.join(config["artefact_directory"], run_label, "enrichment_results.csv"))
 
 
 if __name__ == "__main__":
