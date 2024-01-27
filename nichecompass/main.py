@@ -10,6 +10,7 @@ import pandas as pd
 import scanpy as sc
 import squidpy as sq
 import scipy.sparse as sp
+from scipy.special import erfc
 
 from nichecompass.models import NicheCompass
 from nichecompass.utils import (add_gps_from_gp_dict_to_adata,
