@@ -9,6 +9,7 @@ import anndata as ad
 import pandas as pd
 import scanpy as sc
 import squidpy as sq
+import numpy as np
 import scipy.sparse as sp
 from scipy.special import erfc
 
