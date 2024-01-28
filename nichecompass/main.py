@@ -727,6 +727,7 @@ def cluster(config: str):
     adata = ad.concat(clustered_adata, uns_merge="same")
 
     print(f"Saving dataset...")
+    os.makedirs(os.path.join(config["artefact_directory"], run_label), exist_ok=True)
     adata.write(os.path.join(config["artefact_directory"], run_label, config["clustering"]["file_path"]))
 
 
@@ -840,6 +841,7 @@ def enrichment(config: str):
 
     print(f"Exporting results...")
     results = pd.concat([results_primary_clusters, results_sub_clusters])
+    os.makedirs(os.path.join(config["artefact_directory"], run_label), exist_ok=True)
     results.to_csv(os.path.join(config["artefact_directory"], run_label, "enrichment_results.csv"))
 
 
