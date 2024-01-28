@@ -749,7 +749,7 @@ def enrichment(config: str):
     adata = ad.read_h5ad(os.path.join(config["gene_program_enrichment"]["adata_directory"], config["gene_program_enrichment"]["adata_file_path"]))
 
     print(f"Loading latent export...")
-    with open(os.path.join(config["gene_program_enrichment"]["latent_directory"], "latent.pkl")) as file:
+    with open(os.path.join(config["gene_program_enrichment"]["latent_directory"], "latent.pkl"), "rb") as file:
         latent = pickle.load(file)
     active_gps = latent["active_gps"]
     mu = latent["mu"]
