@@ -642,6 +642,15 @@ def export_latent(model_directory, adata_filename, artefact_directory: str):
     with open(os.path.join(config["artefact_directory"], run_label, "latent.pkl"), "wb") as file:
         pickle.dump(latent, file, pickle.HIGHEST_PROTOCOL)
 
+    print("Loading gene program summary...")
+
+    gp_summary_df = model.get_gp_summary()
+
+    print("Exporting gene program summary...")
+
+    with open(os.path.join(config["artefact_directory"], run_label, "gene_program_summary.pkl"), "wb") as file:
+        pickle.dump(gp_summary_df, file, pickle.HIGHEST_PROTOCOL)
+
     with open(os.path.join(config["artefact_directory"], run_label, "run-config.yml"), 'w') as file:
         json.dump(config, file, indent=4)
 
