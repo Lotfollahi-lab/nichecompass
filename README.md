@@ -2,7 +2,7 @@
 
 NicheCompass (**N**iche **I**dentification based on **C**ellular grap**H** **E**mbeddings of **COM**munication **P**rograms **A**ligned across **S**patial **S**amples) is a package for end-to-end analysis of spatial multi-omics data, including spatial atlas building, niche identification & characterization, cell-cell communication inference and spatial reference mapping. It is built on top of [PyG](https://pytorch-geometric.readthedocs.io/en/latest/) and [AnnData](https://anndata.readthedocs.io/en/latest/).
 
-<img src="https://github.com/Lotfollahi-lab/nichecompass/blob/main/docs/_static/nichecompass_figure1.png" width="800" alt="nichecompass-overview">
+<img src="https://github.com/Lotfollahi-lab/nichecompass/blob/main/docs/_static/nichecompass_fig1.png" width="800" alt="nichecompass-overview">
 
 ## Installation
 1) Create the nichecompass conda environment:
