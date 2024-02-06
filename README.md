@@ -4,7 +4,7 @@ NicheCompass (**N**iche **I**dentification based on **C**ellular grap**H** **E**
 
 ## Installation
 1) Create the nichecompass conda environment:
-```conda env create -f environment.yml```
+```conda env create -f environment.yaml```
 
 2) Activate the nichecompass conda environment:
 ```conda activate nichecompass```
