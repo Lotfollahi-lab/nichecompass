@@ -57,9 +57,9 @@ class Encoder(nn.Module):
                  n_cat_covariates_embed_input: int,
                  n_hidden: int,
                  n_latent: int,
-                 n_addon_latent: int=10,
+                 n_addon_latent: int=100,
                  n_fc_layers: int=1,
-                 conv_layer: Literal["gcnconv", "gatv2conv"]="gcnconv",
+                 conv_layer: Literal["gcnconv", "gatv2conv"]="gatv2conv",
                  n_layers: int=1,
                  cat_covariates_embed_mode: Literal["input", "hidden"]="input",
                  n_attention_heads: int=4,
@@ -78,14 +78,12 @@ class Encoder(nn.Module):
               f"conv_layer: {conv_layer}, "
               f"n_attention_heads: "
               f"{n_attention_heads if conv_layer == 'gatv2conv' else '0'}, "
-              f"dropout_rate: {dropout_rate}, "
-              f"use_bn: {use_bn}")
+              f"dropout_rate: {dropout_rate}, ")
 
         self.n_addon_latent = n_addon_latent
         self.n_layers = n_layers
         self.n_fc_layers = n_fc_layers
         self.cat_covariates_embed_mode = cat_covariates_embed_mode
-        self.use_bn = use_bn
         
         if ((cat_covariates_embed_mode == "input") &
             (n_cat_covariates_embed_input != 0)):
@@ -142,9 +140,6 @@ class Encoder(nn.Module):
                                                    concat=False)
         self.activation = activation
         self.dropout = nn.Dropout(dropout_rate)
-        if use_bn:
-            self.bn_mu = nn.BatchNorm1d(n_hidden, affine=True)
-        #self.final_activation = nn.Tanh()
 
     def forward(self,
                 x: torch.Tensor,
@@ -176,10 +171,9 @@ class Encoder(nn.Module):
         if ((self.cat_covariates_embed_mode == "input") &
             (cat_covariates_embed is not None)):
             # Add categorical covariates embedding to input vector
-            if cat_covariates_embed is not None:
-                x = torch.cat((x,
-                               cat_covariates_embed),
-                              axis=1)
+            x = torch.cat((x,
+                           cat_covariates_embed),
+                          axis=1)
         
         # FC forward pass shared across all nodes
         hidden = self.dropout(self.activation(self.fc_l1(x)))
@@ -211,8 +205,5 @@ class Encoder(nn.Module):
             logstd = torch.cat(
                 (logstd, self.addon_conv_logstd(hidden, edge_index)),
                 dim=1)
-        if self.use_bn:
-            mu = self.bn_mu(mu)
-        #mu = self.final_activation(mu)
         return mu, logstd
     

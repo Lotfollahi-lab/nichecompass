@@ -146,6 +146,11 @@ class NicheCompass(BaseModelMixin):
         maximum value will be set to inactive. If ´==0´, all gene programs will
         be considered active. More information can be found in 
         ´self.model.get_active_gp_mask()´.
+    active_gp_type:
+        Type to determine active gene programs. Can be ´mixed´, in which case
+        active gene programs are determined across prior and add-on gene programs
+        jointly or ´separate´ in which case they are determined separately for
+        prior adn add-on gene programs.
     n_fc_layers_encoder:
         Number of fully connected layers in the encoder before message passing
         layers.
@@ -223,6 +228,7 @@ class NicheCompass(BaseModelMixin):
                     "one-hop-norm",
                     "one-hop-attention"]="one-hop-norm",
                  active_gp_thresh_ratio: float=0.01,
+                 active_gp_type: Literal["mixed", "separate"]="separate",
                  n_fc_layers_encoder: int=1,
                  n_layers_encoder: int=1,
                  n_hidden_encoder: Optional[int]=None,
@@ -275,6 +281,7 @@ class NicheCompass(BaseModelMixin):
         self.log_variational_ = log_variational
         self.node_label_method_ = node_label_method
         self.active_gp_thresh_ratio_ = active_gp_thresh_ratio
+        self.active_gp_type_ = active_gp_type
         self.include_edge_kl_loss_ = include_edge_kl_loss
 
         # Retrieve gene program masks
@@ -557,6 +564,7 @@ class NicheCompass(BaseModelMixin):
             rna_recon_loss=self.gene_expr_recon_dist_,
             node_label_method=self.node_label_method_,
             active_gp_thresh_ratio=self.active_gp_thresh_ratio_,
+            active_gp_type=self.active_gp_type_,
             log_variational=self.log_variational_,
             cat_covariates_embeds_injection=self.cat_covariates_embeds_injection_,
             include_edge_kl_loss=self.include_edge_kl_loss_)

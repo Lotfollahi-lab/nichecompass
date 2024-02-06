@@ -578,7 +578,8 @@ def extract_gp_dict_from_omnipath_lr_interactions(
         gene_orthologs_mapping_file_path: Optional[str]="../data/gene_" \
                                                         "annotations/human_" \
                                                         "mouse_gene_orthologs.csv",
-        plot_gp_gene_count_distributions: bool=True) -> dict:
+        plot_gp_gene_count_distributions: bool=True,
+        gp_gene_count_distributions_save_path: Optional[str]=None) -> dict:
     """
     Retrieve ligand receptor interactions from OmniPath and extract them into a 
     gene program dictionary. OmniPath is a database of molecular biology prior 
@@ -700,7 +701,8 @@ def extract_gp_dict_from_omnipath_lr_interactions(
         
     if plot_gp_gene_count_distributions:
         create_gp_gene_count_distribution_plots(gp_dict=gp_dict,
-                                                gp_plot_label="OmniPath")
+                                                gp_plot_label="OmniPath",
+                                                save_path=gp_gene_count_distributions_save_path)
     return gp_dict
 
 

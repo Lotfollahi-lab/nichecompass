@@ -736,7 +736,8 @@ def create_new_color_dict(
         cat_key,
         color_palette="default",
         cats="None",
-        overwrite_color_dict={"-1" : "#E1D9D1"}):
+        overwrite_color_dict={"-1" : "#E1D9D1"},
+        skip_default_colors=0):
     new_categories = adata.obs[cat_key].unique().tolist()
     if color_palette == "cell_type_30":
         # https://github.com/scverse/scanpy/blob/master/scanpy/plotting/palettes.py#L40
@@ -812,18 +813,14 @@ def create_new_color_dict(
         # sns.color_palette("colorblind").as_hex()
         new_color_dict = {key: value for key, value in zip(
             new_categories,
-            ['#0173b2',
-             '#d55e00',
-             '#ece133',
-             '#ca9161',
-             '#fbafe4',
-             '#949494',
-             '#de8f05',
-             '#029e73',
-             '#cc78bc',
-             '#56b4e9'])}
+            ['#0173b2', '#d55e00', '#ece133', '#ca9161', '#fbafe4',
+             '#949494', '#de8f05', '#029e73', '#cc78bc', '#56b4e9',
+             '#F0F8FF', '#FAEBD7', '#00FFFF', '#7FFFD4', '#F0FFFF',
+             '#F5F5DC', '#FFE4C4', '#000000', '#FFEBCD', '#0000FF',
+             '#8A2BE2', '#A52A2A', '#DEB887', '#5F9EA0', '#7FFF00',
+             '#D2691E', '#FF7F50', '#6495ED', '#FFF8DC', '#DC143C'])}
     elif color_palette == "default":
-        new_color_dict = {key: value for key, value in zip(new_categories, default_color_dict.values())}
+        new_color_dict = {key: value for key, value in zip(new_categories, list(default_color_dict.values())[skip_default_colors:])}
     for key, val in overwrite_color_dict.items():
         new_color_dict[key] = val
     return new_color_dict
@@ -857,7 +854,26 @@ def compute_communication_gp_network(
     filter_cat: Optional[str]=None,
     n_neighbors: int=90):
     """
-    Compute network of communication gene program strengths.
+    Compute a network of cell-pair communication strengths.
+    
+    First, compute cell-cell communication potential scores for each cell.
+    Then dot product them and take into account neighborhoods to compute
+    cell-pair communication strengths. Then, normalize cell-pair communication
+    strengths.
+    
+    Parameters
+    ----------
+    gp_list:
+    model:
+    group_key:
+    filter_key:
+    filter_cat:
+    n_neighbors:
+
+    Returns
+    ----------
+    network_df:
+        A pandas dataframe with normalized cell-pair communication strengths.
     """
     # Compute neighborhood graph
     sc.pp.neighbors(model.adata,
@@ -885,14 +901,16 @@ def compute_communication_gp_network(
             targets_cat_idx_dict[target_cat] = np.where(gp_targets_cats == target_cat_label)[0]
 
         # Get indices of all source and target genes
-        source_genes_idx = np.append(
-            sources_cat_idx_dict["ligand"],
-            sources_cat_idx_dict["enzyme"])
-        target_genes_idx = np.append(
-            np.append(targets_cat_idx_dict["receptor"],
-                      targets_cat_idx_dict["target_gene"]),
-            targets_cat_idx_dict["sensor"])
+        source_genes_idx = []
+        for key in sources_cat_idx_dict.keys():
+            source_genes_idx = np.append(source_genes_idx,
+                                         sources_cat_idx_dict[key])
+        target_genes_idx = []
+        for key in targets_cat_idx_dict.keys():
+            target_genes_idx = np.append(target_genes_idx,
+                                         targets_cat_idx_dict[key])
 
+        # Compute cell-cell communication potential scores
         gp_source_scores = np.zeros((len(model.adata.obs), len(source_genes_idx)))
         gp_target_scores = np.zeros((len(model.adata.obs), len(target_genes_idx)))
 
@@ -910,16 +928,21 @@ def compute_communication_gp_network(
                 gp_summary_df[gp_summary_df["gp_name"] == gp]["gp_target_genes_weights"].values[0][gp_summary_df[gp_summary_df["gp_name"] == gp]["gp_target_genes"].values[0].index(target_gene)] *
                 gp_scores)
 
-        agg_gp_source_score = gp_source_scores.mean(1)
-        agg_gp_target_score = gp_target_scores.mean(1)
+        agg_gp_source_score = gp_source_scores.mean(1).astype("float32")
+        agg_gp_target_score = gp_target_scores.mean(1).astype("float32")
         agg_gp_source_score[agg_gp_source_score < 0] = 0.
         agg_gp_target_score[agg_gp_target_score < 0] = 0.
 
         model.adata.obs[f"{gp}_source_score"] = agg_gp_source_score
         model.adata.obs[f"{gp}_target_score"] = agg_gp_target_score
+        
+        del(gp_target_scores)
+        del(gp_source_scores)
+        
+        agg_gp_source_score = sp.csr_matrix(agg_gp_source_score)
+        agg_gp_target_score = sp.csr_matrix(agg_gp_target_score)
 
-        score_matrix = sp.csr_matrix(agg_gp_source_score).T.dot(
-            sp.csr_matrix(agg_gp_target_score))
+        score_matrix = agg_gp_source_score.T.dot(agg_gp_target_score)
 
         model.adata.obsp[f"{gp}_connectivities"] = (model.adata.obsp["spatial_cci_connectivities"] > 0).multiply(
             score_matrix)

@@ -60,7 +60,8 @@ def create_gp_gene_count_distribution_plots(
         adata: Optional[AnnData]=None,
         gp_targets_mask_key: Optional[str]="nichecompass_gp_targets",
         gp_sources_mask_key: Optional[str]="nichecompass_gp_sources",
-        gp_plot_label: str=""):
+        gp_plot_label: str="",
+        save_path: Optional[str]=None):
     """
     Create distribution plots of the gene counts for sources and targets
     of all gene programs in either a gp dict or an adata object.
@@ -147,4 +148,6 @@ def create_gp_gene_count_distribution_plots(
                   sources_x_ticks_range),
         rotation=xticklabels_rotation)
     plt.subplots_adjust(wspace=0.35)
+    if save_path:
+        plt.savefig(save_path)
     plt.show()

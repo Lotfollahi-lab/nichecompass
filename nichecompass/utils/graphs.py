@@ -5,6 +5,7 @@ NicheCompass model.
 
 import scanpy as sc
 from anndata import AnnData
+import numpy as np
 from scib_metrics.nearest_neighbors import pynndescent
 
 

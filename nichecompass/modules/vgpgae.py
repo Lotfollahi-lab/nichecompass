@@ -126,6 +126,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         times this maximum value will be set to inactive. If ´==0´, all gene
         programs will be considered active. More information can be found in
         ´self.get_active_gp_mask()´.
+    active_gp_type:
+        Type to determine active gene programs. Can be ´mixed´, in which case
+        active gene programs are determined across prior and add-on gene programs
+        jointly or ´separate´ in which case they are determined separately for
+        prior adn add-on gene programs.
     log_variational:
         If ´True´, transforms x by log(x+1) prior to encoding for numerical 
         stability (not normalization).
@@ -173,6 +178,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     "one-hop-sum",
                     "one-hop-attention"]="one-hop-norm",
                  active_gp_thresh_ratio: float=0.03,
+                 active_gp_type: Literal["mixed", "separate"]="separate",
                  log_variational: bool=True,
                  cat_covariates_embeds_injection: Optional[List[
                      Literal["encoder",
@@ -242,6 +248,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.atac_recon_loss_ = atac_recon_loss
         self.node_label_method_ = node_label_method
         self.active_gp_thresh_ratio_ = active_gp_thresh_ratio
+        self.active_gp_type_ = active_gp_type
         self.log_variational_ = log_variational
         self.cat_covariates_embeds_injection_ = cat_covariates_embeds_injection
         self.freeze_ = False
@@ -1203,7 +1210,6 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                              "nzmedians",
                                              "sum+nzmedians"]="sum+nzmeans",
             return_gp_weights: bool=False,
-            mix_addon_masked: bool=False,
             normalize_gp_weights_with_features_scale_factors: bool=False,
             ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
@@ -1245,7 +1251,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                                      dtype=torch.bool,
                                      device=device)
 
-        if mix_addon_masked:
+        if self.active_gp_type_ == "mixed":
             gp_types = ["all"]
         elif (self.n_addon_gp_ > 0):
             gp_types = ["masked", "addon"]
