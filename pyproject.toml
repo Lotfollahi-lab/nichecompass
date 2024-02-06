@@ -1,9 +1,9 @@
 [tool.poetry]
 name = "nichecompass"
 version = "0.1.0"
-description = " Interpretable Niche Identification from Multi-Sample Spatial Omics Data."
+description = "End-to-end analysis of spatial multi-omics data."
 authors = ["sebastianbirk <sebastian.birk@outlook.com>"]
-license = "Apache2.0"
+license = "BSD 3-Clause"
 readme = "README.md"
 homepage = "https://github.com/sebastianbirk/nichecompass"
 repository = "https://github.com/sebastianbirk/nichecompass"
