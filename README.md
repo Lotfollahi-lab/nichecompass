@@ -1,4 +1,4 @@
-<img src="https://github.com/Lotfollahi-lab/nichecompass/blob/main/docs/_static/nichecompass_logo.png" width="800" alt="nichecompass-logo">
+<img src="https://github.com/Lotfollahi-lab/nichecompass/blob/main/docs/_static/nichecompass_logo_small.png" width="800" alt="nichecompass-logo">
 
 **N**iche **I**dentification based on **C**ellular grap**H** **E**mbeddings of **COM**munication **P**rograms **A**ligned across **S**patial **S**amples.
 
