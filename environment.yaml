@@ -1,0 +1,14 @@
+name: nichecompass
+channels:
+  - bioconda
+  - conda-forge
+  - nvidia
+dependencies:
+  - python=3.9
+  - pip
+  - poetry=1.4.2
+  - bedtools=2.30.0
+  - cuda-nvcc
+  - geckodriver=0.33.0
+  - pip:
+    - torch==2.0.0
