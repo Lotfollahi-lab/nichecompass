@@ -1,5 +1,3 @@
-# API
-
 ## Models
 
 ```{eval-rst}
