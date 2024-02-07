@@ -1,6 +1,53 @@
+# Documentation
+
+<img src="https://github.com/Lotfollahi-lab/nichecompass/blob/main/docs/_static/nichecompass_logo_readme.png" width="800" alt="nichecompass-logo">
+
+NicheCompass (**N**iche **I**dentification based on **C**ellular grap**H** **E**mbeddings of **COM**munication **P**rograms **A**ligned across **S**patial **S**amples) is a package for end-to-end analysis of spatial multi-omics data, including spatial atlas building, niche identification & characterization, cell-cell communication inference and spatial reference mapping. It is built on top of [PyG](https://pytorch-geometric.readthedocs.io/en/latest/) and [AnnData](https://anndata.readthedocs.io/en/latest/).
+The package is developed and maintained by the [Lotfollahi Lab](https://github.com/Lotfollahi-lab) at the Wellcome Sanger Institute.
+
+If you find NicheCompass useful for your research, please consider citing the NicheCompass manuscript.
+
+::::{grid} 1 2 3 3
+:gutter: 2
+
+:::{grid-item-card} Installation {octicon}`plug;1em;`
+:link: installation
+:link-type: doc
+
+Check out the installation guide.
+:::
+
+:::{grid-item-card} Tutorials {octicon}`play;1em;`
+:link: tutorials/index
+:link-type: doc
+
+Learn by following tutorial applications of NicheCompass.
+:::
+
+:::{grid-item-card} API {octicon}`info;1em;`
+:link: api/index
+:link-type: doc
+
+Find a detailed description of NicheCompass APIs.
+:::
+
+:::{grid-item-card} Release Notes {octicon}`book;1em;`
+:link: release_notes/index
+
+Follow the latest changes to NicheCompass.
+:::
+
+:::{grid-item-card} Contributing {octicon}`code;1em;`
+:link: contributing
+
+Help improve NicheCompass.
+:::
+::::
+
 ```{toctree}
 :hidden: true
-:maxdepth: 1
+:maxdepth: 3
+:titlesonly: true
 
 installation
 tutorials/index
