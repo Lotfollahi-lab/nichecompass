@@ -1,6 +1,6 @@
 # API
 
-Import nichecompass as:
+Import NicheCompass as:
 
 ```
 import nichecompass

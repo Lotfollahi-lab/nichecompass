@@ -13,7 +13,7 @@ import scipy.sparse as sp
 import squidpy as sq
 from anndata import AnnData
 
-from ..utils import compute_knn_graph_connectivities_and_distances
+from .utils import compute_knn_graph_connectivities_and_distances
 
 
 def compute_cas(

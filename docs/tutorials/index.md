@@ -1,6 +1,6 @@
 # Tutorials
 
-Get familiar with NicheCompass by following our tutorials.
+Get started with NicheCompass by following our tutorials.
 
 ```{toctree}
 :maxdepth: 2

@@ -65,6 +65,8 @@ benchmarking = [
     "pynndescent>=0.5.8",
     "scikit-misc>=0.3.0",
     "squidpy>=1.2.2",
+    "jax==0.4.7",
+    "jaxlib==0.4.7"
 ]
 tutorials = [
     "jupyter",
