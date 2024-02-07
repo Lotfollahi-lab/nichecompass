@@ -15,8 +15,7 @@ from anndata import AnnData
 from scipy.special import erfc
 
 from nichecompass.data import (initialize_dataloaders,
-                               prepare_data,
-                               SpatialAnnTorchDataset)
+                               prepare_data)
 from nichecompass.modules import VGPGAE
 from nichecompass.train import Trainer
 from .basemodelmixin import BaseModelMixin
@@ -220,7 +219,7 @@ class NicheCompass(BaseModelMixin):
                  include_edge_recon_loss: bool=True,
                  include_gene_expr_recon_loss: bool=True,
                  include_chrom_access_recon_loss: Optional[bool]=True,
-                 include_cat_covariates_contrastive_loss: bool=True,
+                 include_cat_covariates_contrastive_loss: bool=False,
                  gene_expr_recon_dist: Literal["nb"]="nb",
                  log_variational: bool=True,
                  node_label_method: Literal[
@@ -232,13 +231,13 @@ class NicheCompass(BaseModelMixin):
                  n_fc_layers_encoder: int=1,
                  n_layers_encoder: int=1,
                  n_hidden_encoder: Optional[int]=None,
-                 conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
+                 conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gatv2conv",
                  encoder_n_attention_heads: Optional[int]=4,
                  encoder_use_bn: bool=False,
                  dropout_rate_encoder: float=0.,
                  dropout_rate_graph_decoder: float=0.,
                  cat_covariates_cats: Optional[List[List]]=None,
-                 n_addon_gp: int=10,
+                 n_addon_gp: int=100,
                  cat_covariates_embeds_nums: Optional[List[int]]=None,
                  include_edge_kl_loss: bool=True,
                  **kwargs):

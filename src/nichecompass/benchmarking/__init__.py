@@ -1,9 +1,9 @@
 # This is a trick to make jax use the right cudnn version (needs to be executed
 # before importing scanpy)
-import jax.numpy as jnp
-temp_array = jnp.array([1, 2, 3])
-temp_idx = jnp.array([1])
-temp_array[temp_idx]
+#import jax.numpy as jnp
+#temp_array = jnp.array([1, 2, 3])
+#temp_idx = jnp.array([1])
+#temp_array[temp_idx]
 
 from .cas import compute_avg_cas, compute_cas
 from .clisis import compute_clisis
