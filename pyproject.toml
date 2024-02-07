@@ -18,12 +18,22 @@ maintainers = [
 urls.Documentation = "https://nichecompass.readthedocs.io/"
 urls.Source = "https://github.com/Lotfollahi-lab/nichecompass"
 urls.Home-page = "https://github.com/Lotfollahi-lab/nichecompass"
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Natural Language :: English",
+  "Programming Language :: Python :: 3.9",
+  "Operating System :: POSIX :: Linux",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
 dependencies = [
+    "mlflow>=1.28.0",
+    "pyreadr>=0.4.6",
     "scanpy>=1.9.3",
-    "torch>=2.0.0",
+    "scglue>=0.3.2",
     "torch-geometric>=2.2.0",
-    "torch-scatter>=2.1.1",
-    "torch-sparse>=0.6.17",
+    "omnipath>=1.0.7",
+    "decoupler>=1.4.0",
 ]
 
 [project.optional-dependencies]
@@ -31,7 +41,7 @@ dev = [
     "pre-commit",
     "twine>=4.0.2",
 ]
-doc = [
+docs = [
     "docutils>=0.8,!=0.18.*,!=0.19.*",
     "sphinx>=4",
     "sphinx-book-theme>=1.0.0",
@@ -45,13 +55,23 @@ doc = [
     "sphinx-copybutton",
     "pandas",
 ]
-test = [
+tests = [
     "pytest",
     "coverage",
 ]
 benchmarking = [
-    "scib-metrics>=0.3.3"
+    "scib-metrics>=0.3.3",
+    "pynndescent>=0.5.8",
+    "scikit-misc>=0.3.0",
+    "squidpy=1.2.2",
 ]
+tutorials = [
+    "jupyter",
+]
+all = ["nichecompass[dev,docs,test,benchmarking,tutorials]"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["nichecompass"]
 
 [tool.coverage.run]
 source = ["nichecompass"]
