@@ -1,4 +1,4 @@
-# Contributing guide
+# Contributing
 
 This will be added shortly.
 
