@@ -3,5 +3,5 @@ channels:
 dependencies:
   - pip:
     - torch==2.0.0
-    - torch-scatter=2.1.1
-    - torch-sparse=0.6.17
+    - torch-scatter==2.1.1
+    - torch-sparse==0.6.17
