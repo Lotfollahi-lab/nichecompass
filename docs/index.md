@@ -12,5 +12,5 @@ template_usage.md
 contributing.md
 references.md
 
-notebooks/example
+notebooks/nichecompass_single_sample_tutorial
 ```
