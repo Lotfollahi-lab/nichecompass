@@ -1,0 +1,5 @@
+## Pip
+
+```
+pip install nichecompass
+```
