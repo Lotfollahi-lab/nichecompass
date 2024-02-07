@@ -3,6 +3,10 @@ div.cell_output table.dataframe {
     font-size: 0.8em;
 }
 
+.wy-nav-side {
+    background: #242335;
+}
+
 .wy-side-nav-search {
     background-color: #242335;
 }
