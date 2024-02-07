@@ -1,4 +1,4 @@
-# Single Sample Tutorial
+# Single Sample Tutorials
 
 ```{toctree}
 :maxdepth: 1
