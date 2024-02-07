@@ -21,7 +21,7 @@ urls.Home-page = "https://github.com/Lotfollahi-lab/nichecompass"
 dependencies = [
     "scanpy>=1.9.3",
     "torch>=2.0.0",
-    "torch-geometric=2.1.0post1",
+    "torch-geometric>=2.2.0",
     "torch-scatter>=2.1.1",
     "torch-sparse>=0.6.17",
 ]
