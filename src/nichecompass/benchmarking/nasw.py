@@ -11,7 +11,7 @@ import scanpy as sc
 import scib_metrics
 from anndata import AnnData
 
-from ..utils import compute_knn_graph_connectivities_and_distances
+from .utils import compute_knn_graph_connectivities_and_distances
 
 
 def compute_nasw(

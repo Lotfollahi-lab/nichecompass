@@ -12,7 +12,7 @@ import scanpy as sc
 from anndata import AnnData
 from sklearn.metrics import adjusted_mutual_info_score
 
-from ..utils import compute_knn_graph_connectivities_and_distances
+from .utils import compute_knn_graph_connectivities_and_distances
 
 
 def compute_mlami(

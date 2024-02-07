@@ -12,7 +12,7 @@ import numpy as np
 from anndata import AnnData
 from scib_metrics import lisi_knn
 
-from ..utils import compute_knn_graph_connectivities_and_distances
+from .utils import compute_knn_graph_connectivities_and_distances
 
 
 def compute_clisis(

@@ -1,7 +1,14 @@
-name: nichecompass
+name: nichecompass-test7
 channels:
+  - pytorch
+  - nvidia
 dependencies:
+  - python=3.9
+  - pip
+  - pytorch=2.0.0
+  - pytorch-cuda=11.7
   - pip:
-    - torch==2.0.0
+    - --extra-index-url https://data.pyg.org/whl/torch-2.0.0+cu117.html
     - torch-scatter==2.1.1
+    - --extra-index-url https://data.pyg.org/whl/torch-2.0.0+cu117.html
     - torch-sparse==0.6.17
