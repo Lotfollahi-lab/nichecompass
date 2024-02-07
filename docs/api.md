@@ -2,7 +2,6 @@
 
 ## Models
 
-```{eval-rst}
 .. module:: nichecompass.models
 .. currentmodule:: nichecompass
 
@@ -10,4 +9,3 @@
     :toctree: generated
 
     models.NicheCompass
-```
