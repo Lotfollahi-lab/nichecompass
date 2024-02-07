@@ -68,7 +68,7 @@ benchmarking = [
 tutorials = [
     "jupyter",
 ]
-all = ["nichecompass[dev,docs,test,benchmarking,tutorials]"]
+all = ["nichecompass[dev,docs,tests,benchmarking,tutorials]"]
 
 [tool.coverage.run]
 source = ["nichecompass"]
