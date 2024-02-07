@@ -70,9 +70,6 @@ tutorials = [
 ]
 all = ["nichecompass[dev,docs,test,benchmarking,tutorials]"]
 
-[tool.hatch.build.targets.wheel]
-packages = ["nichecompass"]
-
 [tool.coverage.run]
 source = ["nichecompass"]
 omit = [
