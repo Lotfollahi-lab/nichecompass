@@ -63,7 +63,7 @@ benchmarking = [
     "scib-metrics>=0.3.3",
     "pynndescent>=0.5.8",
     "scikit-misc>=0.3.0",
-    "squidpy=1.2.2",
+    "squidpy>=1.2.2",
 ]
 tutorials = [
     "jupyter",
