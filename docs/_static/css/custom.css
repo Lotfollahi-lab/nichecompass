@@ -11,6 +11,7 @@ div.cell_output table.dataframe {
     background-color: #F3F4F7;
 }
 
-.icon.icon-home {
-    color: #000000;
+.icon.icon-home,
+.icon.icon-home .logo {
+    color: #000000; /* Black color */
 }
