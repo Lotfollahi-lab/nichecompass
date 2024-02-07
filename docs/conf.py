@@ -111,7 +111,8 @@ html_theme = "pyg_sphinx_theme"
 html_static_path = ["_static"]
 html_css_files = ["css/custom.css"]
 
-html_title = project_name
+html_title = "NicheCompass"
+html_logo = "_static/nichecompass_logo.png"
 
 html_theme_options = {
     "repository_url": repository_url,
