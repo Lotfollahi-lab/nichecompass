@@ -2,3 +2,16 @@
 div.cell_output table.dataframe {
     font-size: 0.8em;
 }
+
+.wy-nav-side {
+    background: #242335;
+}
+
+.wy-side-nav-search {
+    background-color: #F3F4F7;
+}
+
+.icon.icon-home,
+.icon.icon-home .logo {
+    color: #000000; /* Black color */
+}
