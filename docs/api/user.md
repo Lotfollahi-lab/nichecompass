@@ -74,3 +74,14 @@
 
     utils.create_new_color_dict
 ```
+
+## Data
+```{eval-rst}
+.. module:: nichecompass.data
+.. currentmodule:: nichecompass
+
+.. autosummary::
+    :toctree: generated
+
+    data.load_spatial_adata_from_csv
+```
