@@ -56,6 +56,10 @@ docs = [
     "sphinx-copybutton",
     "pandas",
 ]
+docsbuild = ["nichecompass[docs,optional]"]  # docs build dependencies
+optional = [
+    "nichecompass[benchmarking]"
+]  # all optional user functionality
 tests = [
     "pytest",
     "coverage",
