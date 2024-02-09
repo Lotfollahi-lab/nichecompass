@@ -863,7 +863,7 @@ def compute_communication_gp_network(
     
     Parameters
     ----------
-    gp_list:
+    gp_list: List of GPs for which the cell 
     model:
     group_key:
     filter_key:
@@ -876,10 +876,15 @@ def compute_communication_gp_network(
         A pandas dataframe with normalized cell-pair communication strengths.
     """
     # Compute neighborhood graph
-    sc.pp.neighbors(model.adata,
-                    n_neighbors=n_neighbors,
-                    use_rep="spatial",
-                    key_added="spatial_cci")
+    compute_knn = True
+    if 'spatial_cci' in model.adata.uns.keys():
+        if model.adata.uns['spatial_cci']['params']['n_neighbors'] == n_neighbors:
+            compute_knn = False
+    if compute_knn:
+        sc.pp.neighbors(model.adata,
+                        n_neighbors=n_neighbors,
+                        use_rep="spatial",
+                        key_added="spatial_cci")
     
     gp_network_dfs = []
     gp_summary_df = model.get_gp_summary()
@@ -901,11 +906,11 @@ def compute_communication_gp_network(
             targets_cat_idx_dict[target_cat] = np.where(gp_targets_cats == target_cat_label)[0]
 
         # Get indices of all source and target genes
-        source_genes_idx = []
+        source_genes_idx = np.array([], dtype=np.int64)
         for key in sources_cat_idx_dict.keys():
             source_genes_idx = np.append(source_genes_idx,
                                          sources_cat_idx_dict[key])
-        target_genes_idx = []
+        target_genes_idx = np.array([], dtype=np.int64)
         for key in targets_cat_idx_dict.keys():
             target_genes_idx = np.append(target_genes_idx,
                                          targets_cat_idx_dict[key])
@@ -938,14 +943,12 @@ def compute_communication_gp_network(
         
         del(gp_target_scores)
         del(gp_source_scores)
-        
+
         agg_gp_source_score = sp.csr_matrix(agg_gp_source_score)
         agg_gp_target_score = sp.csr_matrix(agg_gp_target_score)
 
-        score_matrix = agg_gp_source_score.T.dot(agg_gp_target_score)
-
         model.adata.obsp[f"{gp}_connectivities"] = (model.adata.obsp["spatial_cci_connectivities"] > 0).multiply(
-            score_matrix)
+            agg_gp_source_score.T.dot(agg_gp_target_score))
 
         # Aggregate gp connectivities for each group
         gp_network_df_pivoted = aggregate_obsp_matrix_per_cell_type(
@@ -966,6 +969,7 @@ def compute_communication_gp_network(
         # Normalize strength
         min_value = gp_network_df["strength"].min()
         max_value = gp_network_df["strength"].max()
+        gp_network_df["strength_unscaled"] = gp_network_df["strength"]
         gp_network_df["strength"] = (gp_network_df["strength"] - min_value) / (max_value - min_value)
         gp_network_df["strength"] = np.round(gp_network_df["strength"], 2)
         gp_network_df = gp_network_df[gp_network_df["strength"] > 0]

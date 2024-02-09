@@ -17,7 +17,7 @@ Check out the installation guide.
 :link: tutorials/index
 :link-type: doc
 
-Learn by following tutorial applications of NicheCompass.
+Learn by following example applications of NicheCompass.
 :::
 
 :::{grid-item-card} API {octicon}`info;1em;`
