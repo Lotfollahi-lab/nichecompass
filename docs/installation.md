@@ -17,19 +17,17 @@ To use NicheCompass, you need to install some external libraries. These include:
 - [bedtools]
 
 We recommend to install the PyTorch libraries with GPU support. If you have
-CUDA, this can be done like:
+CUDA, this can be done as:
 
 ```
-pip install pyg_lib torch_scatter torch_sparse -f
-https://data.pyg.org/whl/torch-${TORCH}+${CUDA}.html
+pip install pyg_lib torch_scatter torch_sparse -f https://data.pyg.org/whl/torch-${TORCH}+${CUDA}.html
 ```
-where ${TORCH} and ${CUDA} should be replaced by the specific PyTorch and CUDA
-versions, respectively
+where `${TORCH}` and `${CUDA}` should be replaced by the specific PyTorch and
+CUDA versions, respectively.
 
 For example, for PyTorch 2.0.0 and CUDA 11.7, type:
 ```
-pip install pyg_lib torch_scatter torch_sparse -f
-https://data.pyg.org/whl/torch-2.0.0+cu117.html
+pip install pyg_lib torch_scatter torch_sparse -f https://data.pyg.org/whl/torch-2.0.0+cu117.html
 ```
 
 To install bedtools, you can use conda:
@@ -37,9 +35,9 @@ To install bedtools, you can use conda:
 conda install bedtools=2.30.0
 ```
 
-Alternatively, we have provided a conda environment file with these libraries,
-which you can use as:
-'''
+Alternatively, we have provided a conda environment file with all required
+external libraries, which you can use as:
+```
 conda create -f environment.yaml
 ```
 
