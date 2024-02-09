@@ -54,6 +54,7 @@ docs = [
     "ipykernel",
     "ipython",
     "sphinx-copybutton",
+    "sphinx_design",
     "pandas",
 ]
 docsbuild = ["nichecompass[docs,optional]"]  # docs build dependencies
