@@ -51,7 +51,6 @@ extensions = [
     "sphinx_copybutton",
     "sphinx.ext.autodoc",
     "sphinx.ext.intersphinx",
-    "sphinx.ext.linkcode",
     "sphinx.ext.autosummary",
     "sphinx.ext.extlinks",
     "sphinx.ext.napoleon",
