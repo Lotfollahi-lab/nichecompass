@@ -43,18 +43,20 @@ dev = [
 ]
 docs = [
     "docutils>=0.8,!=0.18.*,!=0.19.*",
-    "sphinx>=4",
+    "sphinx>=4.1",
     "sphinx-book-theme>=1.0.0",
     "myst-nb",
+    "myst-parser",
     "sphinxcontrib-bibtex>=1.0.0",
     "sphinx-autodoc-typehints",
     "sphinx_rtd_theme",
     "sphinxext-opengraph",
+    "sphinx-copybutton",
+    "sphinx-design",
+    "sphinx-hoverxref",
     # For notebooks
     "ipykernel",
     "ipython",
-    "sphinx-copybutton",
-    "sphinx_design",
     "pandas",
 ]
 docsbuild = ["nichecompass[docs,optional]"]  # docs build dependencies
