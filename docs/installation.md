@@ -1,7 +1,6 @@
 # Installation
 
-NicheCompass is available for Python 3.9. to Python 3.12. It does not support
-Apple silicon.
+NicheCompass is available for Python 3.9. It does yet not support Apple silicon.
 
 
 We do not recommend installation on your system Python. Please setup a virtual
