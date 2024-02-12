@@ -29,15 +29,14 @@ def compute_mlami(
         n_jobs: int=1,
         seed: int=0) -> float:
     """
-    Compute the Maximum Leiden Adjusted Mutual Info (MLAMI) between the latent
-    nearest neighbor graph and the spatial nearest neighbor graph. The MLAMI
-    ranges between '0' and '1' with higher values indicating that the latent
-    feature space more accurately preserves global spatial organization from the
-    spatial (ground truth) feature space. To compute the MLAMI, Leiden
-    clusterings with different resolutions are computed for both nearest
-    neighbor graphs. The Adjusted Mutual Info (AMI) between all clustering
-    resolution pairs is computed to quantify cluster overlap and the maximum
-    value is returned as metric for spatial organization preservation.
+    Compute the Maximum Leiden Adjusted Mutual Info (MLAMI). The MLAMI ranges
+    between '0' and '1' with higher values indicating that the latent feature
+    space more accurately preserves global spatial organization from the spatial
+    (ground truth) feature space. To compute the MLAMI, Leiden clusterings with
+    different resolutions are computed for both nearest neighbor graphs. The
+    Adjusted Mutual Info (AMI) between all clustering resolution pairs is
+    computed to quantify cluster overlap and the maximum value is returned as
+    metric for spatial organization preservation.
 
     If a ´batch_key´ is provided, the MLAMI will be computed on each batch
     separately (with latent Leiden clusters computed on the integrated latent

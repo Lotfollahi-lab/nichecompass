@@ -15,40 +15,40 @@ from torch_sparse import SparseTensor
 
 
 class OneHopAttentionNodeLabelAggregator(MessagePassing):
+    """
+    One-hop Attention Node Label Aggregator class that uses a weighted sum
+    of the omics features of a node's 1-hop neighbors to build an
+    aggregated neighbor omics feature vector for a node. The weights are
+    determined by an additivite attention mechanism with learnable weights.
+    It returns a concatenation of the node's own omics feature vector and
+    the attention-aggregated neighbor omics feature vector as node labels
+    for the omics reconstruction task. 
+    
+    Parts of the implementation are inspired by
+    https://github.com/pyg-team/pytorch_geometric/blob/master/torch_geometric/nn/conv/gatv2_conv.py#L16
+    (01.10.2022).
+
+    Parameters
+    ----------
+    modality:
+        Omics modality that is aggregated. Can be either `rna` or `atac`.
+    n_input:
+        Number of omics features used for the Node Label Aggregation.
+    n_heads:
+        Number of attention heads for multi-head attention.
+    leaky_relu_negative_slope:
+        Slope of the leaky relu activation function.
+    dropout_rate:
+        Dropout probability of the normalized attention coefficients which
+        exposes each node to a stochastically sampled neighborhood during 
+        training.
+    """
     def __init__(self,
                  modality: Literal["rna", "atac"],
                  n_input: int,
                  n_heads: int=4,
                  leaky_relu_negative_slope: float=0.2,
                  dropout_rate: float=0.):
-        """
-        One-hop Attention Node Label Aggregator class that uses a weighted sum
-        of the gene expression of a node's 1-hop neighbors to build an
-        aggregated neighbor omics feature vector for a node. The weights are
-        determined by an additivite attention mechanism with learnable weights.
-        It returns a concatenation of the node's own omics feature vector and
-        the attention-aggregated neighbor omics feature vector as node labels
-        for the omics reconstruction task. 
-        
-        Parts of the implementation are inspired by
-        https://github.com/pyg-team/pytorch_geometric/blob/master/torch_geometric/nn/conv/gatv2_conv.py#L16
-        (01.10.2022).
-
-        Parameters
-        ----------
-        modality:
-            Omics modality that is aggregated. Can be either `rna` or `atac`.
-        n_input:
-            Number of omics features used for the Node Label Aggregation.
-        n_heads:
-            Number of attention heads for multi-head attention.
-        leaky_relu_negative_slope:
-            Slope of the leaky relu activation function.
-        dropout_rate:
-            Dropout probability of the normalized attention coefficients which
-            exposes each node to a stochastically sampled neighborhood during 
-            training.
-        """
         super().__init__(node_dim=0)
         self.n_input = n_input
         self.n_heads = n_heads
@@ -159,10 +159,8 @@ class OneHopAttentionNodeLabelAggregator(MessagePassing):
 class OneHopGCNNormNodeLabelAggregator(nn.Module):
     """
     One-hop GCN Norm Node Label Aggregator class that uses a symmetrically
-    normalized sum (as introduced in Kipf, T. N. & Welling, M. Semi-Supervised 
-    Classification with Graph Convolutional Networks. arXiv [cs.LG] (2016)) of 
-    the omics feature vector of a node's 1-hop neighbors to build
-    an aggregated neighbor omics feature vector for a node. It returns a 
+    normalized sum of the omics feature vector of a node's 1-hop neighbors to
+    build an aggregated neighbor omics feature vector for a node. It returns a 
     concatenation of the node's own omics feature vector and the gcn-norm
     aggregated neighbor omics feature vector as node labels for the omics
     reconstruction task.

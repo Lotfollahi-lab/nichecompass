@@ -198,9 +198,9 @@ def add_multimodal_mask_to_adata(
         peaks_idx_key: str="nichecompass_peaks_idx") -> Tuple[AnnData, AnnData]:
     """
     Retrieve atac target and source gene program masks from the rna gene program
-    masks stored in ´adata´ by mapping the genes from the gene programs to the
-    peaks defined in the mapping dictionary. Only consider peaks that are in
-    ´adata_atac´ and store the results as sparse boolean matrices in
+    masks stored in ´adata´. This is achieved by mapping the genes from the gene
+    programs to the peaks defined in the mapping dictionary. Only consider peaks
+    that are in ´adata_atac´ and store the results as sparse boolean matrices in
     ´adata_atac.varm´. Also store a gene peak mapping mask in ´adata´.
 
     Parameters

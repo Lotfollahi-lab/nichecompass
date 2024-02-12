@@ -24,8 +24,7 @@ def compute_gcs(
         n_jobs: int=1,
         seed: int=0):
     """
-    Compute the graph connectivity similarity (GCS) between the latent nearest
-    neighbor graph and the spatial nearest neighbor graph. The GCS measures how
+    Compute the graph connectivity similarity (GCS). The GCS measures how
     accurately the latent nearest neighbor graph preserves edges and non-edges
     from the spatial (ground truth) nearest neighbor graph. A value of '1'
     indicates perfect graph similarity and a value of '0' indicates no graph

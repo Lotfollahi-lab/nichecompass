@@ -226,9 +226,9 @@ def generate_enriched_gp_info_plots(plot_label: str,
                                     file_format: str="png",
                                     spot_size: float=30.):
     """
-    Generate info plots of enriched gene programs, showing the enriched
-    category, the gp scores, as well as the counts (or log normalized counts) of
-    the top genes and/or peaks in a specified feature space.
+    Generate info plots of enriched gene programs. These show the enriched
+    category, the gp activities, as well as the counts (or log normalized
+    counts) of the top genes and/or peaks in a specified feature space.
     
     Parameters
     ----------
@@ -735,9 +735,31 @@ def create_new_color_dict(
         adata,
         cat_key,
         color_palette="default",
-        cats="None",
         overwrite_color_dict={"-1" : "#E1D9D1"},
         skip_default_colors=0):
+    """
+    Create a dictionary of color hexcodes for a specified category.
+
+    Parameters
+    ----------
+    adata:
+        AnnData object.
+    cat_key:
+        Key in ´adata.obs´ where the categories are stored for which color
+        hexcodes will be created.
+    color_palette:
+        Type of color palette.
+    overwrite_color_dict:
+        Dictionary with overwrite values that will take precedence over the
+        automatically created dictionary.
+    skip_default_colors:
+        Number of colors to skip from the default color dict.
+
+    Returns
+    ----------
+    new_color_dict:
+        The color dictionary with a hexcode for each category.
+    """
     new_categories = adata.obs[cat_key].unique().tolist()
     if color_palette == "cell_type_30":
         # https://github.com/scverse/scanpy/blob/master/scanpy/plotting/palettes.py#L40

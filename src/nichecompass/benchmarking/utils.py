@@ -18,8 +18,7 @@ def compute_knn_graph_connectivities_and_distances(
         random_state: int=0,
         n_jobs: int=1) -> None:
     """
-    Compute approximate k-nearest-neighbors graph, and add connectivities and
-    distances to the adata object.
+    Compute approximate k-nearest-neighbors graph.
 
     Parameters
     ----------

@@ -25,9 +25,9 @@ def compute_nasw(
         n_jobs: int=1,
         seed: int=0) -> float:
     """
-    Compute the Niche Average Silhouette Width (NASW) of the latent feature
-    space. The NASW ranges between '0' and '1' with higher values indicating
-    more distinct and compact clusters. To compute the NASW, Leiden
+    Compute the Niche Average Silhouette Width (NASW). The NASW ranges between
+    '0' and '1' with higher values indicating more distinct and compact
+    clusters in the latent feature space. To compute the NASW, Leiden
     clusterings with different resolutions are computed for the latent nearest
     neighbor graph. The NASW for all clustering resolutions is computed and the
     average value is returned as metric for clusterability.

@@ -19,8 +19,7 @@ def initialize_dataloaders(node_masked_data: Data,
                            edges_directed: bool=False,
                            neg_edge_sampling_ratio: float=1.) -> dict:
     """
-    Initialize edge-level (for edge reconstruction) and node-level (for gene
-    expression reconstruction) training and validation dataloaders.
+    Initialize edge-level and node-level training and validation dataloaders.
 
     Parameters
     ----------

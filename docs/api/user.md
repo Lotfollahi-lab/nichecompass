@@ -1,17 +1,5 @@
 # User
 
-## Models
-
-```{eval-rst}
-.. module:: nichecompass.models
-.. currentmodule:: nichecompass
-
-.. autosummary::
-    :toctree: generated
-
-    models.NicheCompass
-```
-
 ## Benchmarking
 
 ```{eval-rst}
@@ -27,6 +15,29 @@
     benchmarking.compute_gcs
     benchmarking.compute_mlami
     benchmarking.compute_nasw
+```
+
+## Data
+```{eval-rst}
+.. module:: nichecompass.data
+.. currentmodule:: nichecompass
+
+.. autosummary::
+    :toctree: generated
+
+    data.load_spatial_adata_from_csv
+```
+
+## Models
+
+```{eval-rst}
+.. module:: nichecompass.models
+.. currentmodule:: nichecompass
+
+.. autosummary::
+    :toctree: generated
+
+    models.NicheCompass
 ```
 
 ## Gene Program Utilities
@@ -73,15 +84,4 @@
     :toctree: generated
 
     utils.create_new_color_dict
-```
-
-## Data
-```{eval-rst}
-.. module:: nichecompass.data
-.. currentmodule:: nichecompass
-
-.. autosummary::
-    :toctree: generated
-
-    data.load_spatial_adata_from_csv
 ```

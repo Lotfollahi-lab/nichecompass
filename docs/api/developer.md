@@ -1,39 +1,5 @@
 # Developer
 
-## Modules
-
-```{eval-rst}
-.. module:: nichecompass.modules
-.. currentmodule:: nichecompass
-
-.. autosummary::
-    :toctree: generated
-
-    modules.VGPGAE
-    modules.VGAEModuleMixin
-    modules.BaseModuleMixin
-    modules.compute_cat_covariates_contrastive_loss
-    modules.compute_edge_recon_loss
-    modules.compute_gp_group_lasso_reg_loss
-    modules.compute_gp_l1_reg_loss
-    modules.compute_kl_reg_loss
-    modules.compute_omics_recon_nb_loss
-```
-
-## Train
-
-```{eval-rst}
-.. module:: nichecompass.train
-.. currentmodule:: nichecompass
-
-.. autosummary::
-    :toctree: generated
-
-    train.Trainer
-    train.eval_metrics
-    train.plot_eval_metrics
-```
-
 ## Benchmarking
 
 ```{eval-rst}
@@ -76,6 +42,26 @@
     models.utils.initialize_model
 ```
 
+## Modules
+
+```{eval-rst}
+.. module:: nichecompass.modules
+.. currentmodule:: nichecompass
+
+.. autosummary::
+    :toctree: generated
+
+    modules.VGPGAE
+    modules.VGAEModuleMixin
+    modules.BaseModuleMixin
+    modules.compute_cat_covariates_contrastive_loss
+    modules.compute_edge_recon_loss
+    modules.compute_gp_group_lasso_reg_loss
+    modules.compute_gp_l1_reg_loss
+    modules.compute_kl_reg_loss
+    modules.compute_omics_recon_nb_loss
+```
+
 ## NN
 
 ```{eval-rst}
@@ -94,4 +80,18 @@
     nn.Encoder
     nn.MaskedLinear
     nn.AddOnMaskedLayer
+```
+
+## Train
+
+```{eval-rst}
+.. module:: nichecompass.train
+.. currentmodule:: nichecompass
+
+.. autosummary::
+    :toctree: generated
+
+    train.Trainer
+    train.eval_metrics
+    train.plot_eval_metrics
 ```

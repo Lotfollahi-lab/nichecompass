@@ -39,10 +39,10 @@ def add_gps_from_gp_dict_to_adata(
         add_fc_gps_instead_of_gp_dict_gps: bool=False,
         plot_gp_gene_count_distributions: bool=False):
     """
-    Add gene programs defined in a gene program dictionary to an AnnData object
-    by converting the gene program lists of gene program target and source genes
-    to binary masks and aligning the masks with genes for which gene expression
-    is available in the AnnData object.
+    Add gene programs defined in a gene program dictionary to an AnnData object.
+    This is done by converting the gene program lists of gene program target and
+    source genes to binary masks and aligning the masks with genes for which
+    gene expression is available in the AnnData object.
 
     Parts of the implementation are inspired by
     https://github.com/theislab/scarches/blob/master/scarches/utils/annotations.py#L5
@@ -811,6 +811,9 @@ def filter_and_combine_gp_dict_gps(
         overlap_thresh_genes: float=1.,
         verbose: bool=False) -> dict:
     """
+    Filter and combine the gene programs in a gene program dictionary based on
+    overlapping genes.
+
     Parameters
     ----------
     gp_dict:

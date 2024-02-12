@@ -46,6 +46,8 @@ def compute_benchmarking_metrics(
         seed: int=0,
         mlflow_experiment_id: Optional[str]=None) -> dict:
     """
+    Compute all specified benchmarking metrics.
+
     Parameters
     ----------
     adata:

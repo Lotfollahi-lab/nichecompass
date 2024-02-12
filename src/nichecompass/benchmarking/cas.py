@@ -29,8 +29,7 @@ def compute_cas(
         n_jobs: int=1,
         seed: int=0) -> float:
     """
-    Compute the Cell Type Affinity Similarity (CAS) between the latent nearest
-    neighbor graph and the spatial nearest neighbor graph. The CAS measures how
+    Compute the Cell Type Affinity Similarity (CAS). The CAS measures how
     accurately the latent nearest neighbor graph preserves cell-type-pair edges
     from the spatial (ground truth) nearest neighbor graph. A value of '1'
     indicates perfect cell-type-pair similarity and a value of '0' indicates no

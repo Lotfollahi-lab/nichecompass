@@ -22,8 +22,8 @@ def edge_level_split(data: Data,
                      neg_sampling_ratio: float=0.) -> Tuple[Data, Data, Data]:
     """
     Split a PyG Data object into training, validation and test PyG Data objects 
-    using an edge-level split, i.e. training split does not include edges in 
-    validation and test splits; and the validation split does not include edges
+    using an edge-level split. The training split does not include edges in the
+    validation and test splits and the validation split does not include edges
     in the test split. However, nodes will not be split and all node features 
     will be accessible from all splits.
 
@@ -141,9 +141,8 @@ def prepare_data(adata: AnnData,
                  node_val_ratio: float=0.1,
                  node_test_ratio: float=0.) -> dict:
     """
-    Prepare data for model training including edge-level (for edge
-    reconstruction) and node-level (for gene expression reconstruction) train, 
-    validation, test splits.
+    Prepare data for model training including edge-level and node-level train, 
+    validation, and test splits.
 
     Parameters
     ----------
