@@ -76,7 +76,7 @@
     models.utils.initialize_model
 ```
 
-# NN
+## NN
 
 ```{eval-rst}
 .. module:: nichecompass.nn

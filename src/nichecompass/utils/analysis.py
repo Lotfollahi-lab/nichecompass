@@ -854,7 +854,7 @@ def compute_communication_gp_network(
     filter_cat: Optional[str]=None,
     n_neighbors: int=90):
     """
-    Compute a network of cell-pair communication strengths.
+    Compute a network of category aggregated cell-pair communication strengths.
     
     First, compute cell-cell communication potential scores for each cell.
     Then dot product them and take into account neighborhoods to compute
@@ -863,17 +863,25 @@ def compute_communication_gp_network(
     
     Parameters
     ----------
-    gp_list: List of GPs for which the cell 
+    gp_list:
+        List of GPs for which the cell-pair communication strengths are computed.
     model:
+        A trained NicheCompass model.
     group_key:
+        Key in ´adata.obs´ where the groups are stored over which the cell-pair
+        communication strengths will be aggregated.
     filter_key:
+        Key in ´adata.obs´ that contains the category for which the results are
+        filtered.
     filter_cat:
+        Category for which the results are filtered.
     n_neighbors:
+        Number of neighbors for the gp-specific neighborhood graph.
 
     Returns
     ----------
     network_df:
-        A pandas dataframe with normalized cell-pair communication strengths.
+        A pandas dataframe with aggregated, normalized cell-pair communication strengths.
     """
     # Compute neighborhood graph
     compute_knn = True
