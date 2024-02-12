@@ -3,7 +3,7 @@
 NicheCompass is available for Python 3.9. It does yet not support Apple silicon.
 
 
-We do not recommend installation on your system Python. Please setup a virtual
+We do not recommend installation on your system Python. Please set up a virtual
 environment, e.g. via conda through the [Mambaforge] distribution, or create a
 [Docker] image.
 
