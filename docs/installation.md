@@ -33,7 +33,7 @@ pip install pyg_lib torch_scatter torch_sparse -f https://data.pyg.org/whl/torch
 
 To install bedtools, you can use conda:
 ```
-conda install bedtools=2.30.0
+conda install bedtools=2.30.0 -c bioconda
 ```
 
 Alternatively, we have provided a conda environment file with all required
