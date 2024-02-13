@@ -18,7 +18,7 @@ from scglue import genomics
 def get_gene_annotations(
         adata: AnnData,
         adata_atac: Optional[AnnData]=None,
-        gtf_file_path: Optional[os.PathLike]="../datasets/ga_data/gencode.vM32.chr_patch_hapl_scaff.annotation.gtf.gz",
+        gtf_file_path: Optional[os.PathLike]="../data/gene_annotations/gencode.vM25.chr_patch_hapl_scaff.annotation.gtf.gz",
         adata_join_col_name: Optional[str]=None,
         gtf_join_col_name: Optional[str]="gene_name",
         by_func: Optional[Callable]=None,
