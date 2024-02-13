@@ -19,6 +19,7 @@ We recommend to install the PyTorch libraries with GPU support. If you have
 CUDA, this can be done as:
 
 ```
+pip install torch==${TORCH}
 pip install pyg_lib torch_scatter torch_sparse -f https://data.pyg.org/whl/torch-${TORCH}+${CUDA}.html
 ```
 where `${TORCH}` and `${CUDA}` should be replaced by the specific PyTorch and
@@ -26,6 +27,7 @@ CUDA versions, respectively.
 
 For example, for PyTorch 2.0.0 and CUDA 11.7, type:
 ```
+pip install torch==2.0.0
 pip install pyg_lib torch_scatter torch_sparse -f https://data.pyg.org/whl/torch-2.0.0+cu117.html
 ```
 
