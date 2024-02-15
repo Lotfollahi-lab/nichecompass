@@ -5,6 +5,8 @@
 [![PyPI](https://img.shields.io/pypi/v/nichecompass.svg)](https://pypi.org/project/nichecompass)
 [![PyPIDownloads](https://static.pepy.tech/badge/nichecompass)](https://pepy.tech/project/nichecompass)
 [![Docs](https://readthedocs.org/projects/nichecompass/badge/?version=latest)](https://nichecompass.readthedocs.io/en/stable/?badge=stable)
+[![PyPI](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
+[![Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 NicheCompass (**N**iche **I**dentification based on **C**ellular grap**H** **E**mbeddings of **COM**munication **P**rograms **A**ligned across **S**patial **S**amples) is a package for end-to-end analysis of spatial multi-omics data, including spatial atlas building, niche identification & characterization, cell-cell communication inference and spatial reference mapping. It is built on top of [PyG](https://pytorch-geometric.readthedocs.io/en/latest/) and [AnnData](https://anndata.readthedocs.io/en/latest/).
 
