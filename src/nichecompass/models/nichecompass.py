@@ -601,6 +601,7 @@ class NicheCompass(BaseModelMixin):
               retrieve_agg_weights: bool=False,
               use_cuda_if_available: bool=True,
               n_sampled_neighbors: int=-1,
+              latent_dtype: type=np.float64,
               **trainer_kwargs):
         """
         Train the NicheCompass model.
@@ -702,6 +703,9 @@ class NicheCompass(BaseModelMixin):
         n_sampled_neighbors:
             Number of neighbors that are sampled during model training from the spatial
             neighborhood graph.
+        latent_dtype:
+            Data type for storing the latent representations. Set to np.float16 for
+            really big datasets (>1m observations).
         trainer_kwargs:
             Kwargs for the model Trainer.
         """
@@ -720,6 +724,7 @@ class NicheCompass(BaseModelMixin):
             node_batch_size=node_batch_size,
             use_cuda_if_available=use_cuda_if_available,
             n_sampled_neighbors=n_sampled_neighbors,
+            latent_dtype=latent_dtype,
             **trainer_kwargs)
         
         if lambda_l1_masked > 0.:
@@ -784,8 +789,9 @@ class NicheCompass(BaseModelMixin):
            cat_covariates_keys=self.cat_covariates_keys_,
            only_active_gps=True,
            return_mu_std=True,
-           node_batch_size=self.node_batch_size_)
-        
+           node_batch_size=self.node_batch_size_,
+           dtype=latent_dtype)
+
         self.adata.uns[self.active_gp_names_key_] = self.get_active_gps()
 
         if ((len(self.cat_covariates_cats_) > 0) &
@@ -1251,6 +1257,7 @@ class NicheCompass(BaseModelMixin):
             only_active_gps: bool=True,
             return_mu_std: bool=False,
             node_batch_size: int=64,
+            dtype: type=np.float64,
             ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         """
         Get the latent representation / gene program scores from a trained model.
@@ -1272,6 +1279,10 @@ class NicheCompass(BaseModelMixin):
             If ´True´, return only the latent representation of active gps.              
         return_mu_std:
             If `True`, return ´mu´ and ´std´ instead of latent features ´z´.
+        node_batch_size:
+            Batch size used during data loading.
+        dtype:
+            Precision to store the latent representations.
 
         Returns
         ----------
@@ -1323,10 +1334,10 @@ class NicheCompass(BaseModelMixin):
 
         # Initialize latent vectors
         if return_mu_std:
-            mu = np.empty(shape=(adata.shape[0], n_gps))
-            std = np.empty(shape=(adata.shape[0], n_gps))
+            mu = np.empty(shape=(adata.shape[0], n_gps), dtype=dtype)
+            std = np.empty(shape=(adata.shape[0], n_gps), dtype=dtype)
         else:
-            z = np.empty(shape=(adata.shape[0], n_gps))
+            z = np.empty(shape=(adata.shape[0], n_gps), dtype=dtype)
 
         # Get latent representation for each batch of the dataloader and put it
         # into latent vectors
