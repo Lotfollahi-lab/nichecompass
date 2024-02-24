@@ -17,6 +17,7 @@ NicheCompass (**N**iche **I**dentification based on **C**ellular grap**H** **E**
 - If you find NicheCompass useful for your research, please consider citing the NicheCompass manuscript.
 
 ## Reference
+```
 @article{Birk2024,
   title = {Large-scale characterization of cell niches in spatial atlases using bio-inspired graph learning},
   author = {Birk, S. and others},
@@ -25,3 +26,4 @@ NicheCompass (**N**iche **I**dentification based on **C**ellular grap**H** **E**
   doi = {10.1101/2024.02.21.581428},
   url = {https://doi.org/10.1101/2024.02.21.581428}
 }
+```
