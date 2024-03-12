@@ -39,7 +39,7 @@ conda install bedtools=2.30.0 -c bioconda
 Alternatively, we have provided a conda environment file with all required
 external libraries, which you can use as:
 ```
-conda create -f environment.yaml
+conda env create -f environment.yaml
 ```
 
 ## Installation via PyPi
