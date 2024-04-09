@@ -18,12 +18,12 @@ NicheCompass (**N**iche **I**dentification based on **C**ellular grap**H** **E**
 
 ## Reference
 ```
-@article{Birk2024,
-  title = {Large-scale characterization of cell niches in spatial atlases using bio-inspired graph learning},
+@article{Birk2024Quantitative,
+  title = {Quantitative characterization of cell niches in spatial atlases},
   author = {Birk, S. and others},
   journal = {bioRxiv},
   year = {2024},
   doi = {10.1101/2024.02.21.581428},
-  url = {https://www.biorxiv.org/content/early/2024/02/23/2024.02.21.581428}
+  url = {https://www.biorxiv.org/content/10.1101/2024.02.21.581428v3}
 }
 ```
