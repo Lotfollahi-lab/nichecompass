@@ -1,6 +1,6 @@
 """
-This module contains utilities to add interpretable communication gene programs
-as prior knowledge for use by the NicheCompass model.
+This module contains utilities to retrieve interpretable prior knowledge gene
+programs for use by the NicheCompass model.
 """
 
 import copy
@@ -571,10 +571,11 @@ def extract_gp_dict_from_nichenet_lrt_interactions(
 
 def extract_gp_dict_from_omnipath_lr_interactions(
         species: Literal["human", "mouse"]="human",
-        min_curation_effort: int=0,
+        min_curation_effort: int=2,
         load_from_disk: bool=False,
         save_to_disk: bool=False,
-        lr_network_file_path: Optional[str]="omnipath_lr_network.csv",
+        lr_network_file_path: Optional[str]="../data/gene_programs/" \
+                                            "omnipath_lr_network.csv",
         gene_orthologs_mapping_file_path: Optional[str]="../data/gene_" \
                                                         "annotations/human_" \
                                                         "mouse_gene_orthologs.csv",
@@ -593,9 +594,9 @@ def extract_gp_dict_from_omnipath_lr_interactions(
     Parameters
     ----------
     species:
-        Species for which the gps will be extracted. The default is human and
-        human genes are mapped to mouse orthologs using a mapping file. NicheCompass
-        contains a default mapping file stored under
+        Species for which the gene programs will be extracted. The default is
+        human. Human genes are mapped to mouse orthologs using a mapping file.
+        NicheCompass contains a default mapping file stored under
         "<root>/data/gene_annotations/human_mouse_gene_orthologs.csv", which was
         created with Ensembl BioMart
         (http://www.ensembl.org/info/data/biomart/index.html).
@@ -613,11 +614,14 @@ def extract_gp_dict_from_omnipath_lr_interactions(
         stored (if ´save_to_disk´ is ´True´) or loaded from (if ´load_from_disk´
         is ´True´).
     gene_orthologs_mapping_file_path:
-        Path of the file where the gene orthologs mapping is stored if version
-        is ´v1´ and species is ´mouse´.
+        Path of the file where the gene orthologs mapping is stored if species
+        is ´mouse´.
     plot_gp_gene_count_distributions:
         If ´True´, display the distribution of gene programs per number of
         source and target genes.
+    gp_gene_count_distributions_save_path:
+        Path of the file where the gene program gene count distribution plot
+        will be saved if ´plot_gp_gene_count_distributions´ is ´True´.
 
     Returns
     ----------
@@ -631,10 +635,11 @@ def extract_gp_dict_from_omnipath_lr_interactions(
         the categories of the targets.
     """
     if not load_from_disk:
-        # Define intercell_network categories to be retrieved
+        # Define intercell_network categories to be retrieved (see
+        # https://workflows.omnipathdb.org/intercell-networks-py.html,
+        # https://omnipath.readthedocs.io/en/latest/api/omnipath.interactions.import_intercell_network.html#omnipath.interactions.import_intercell_network)
         intercell_df = op.interactions.import_intercell_network(
             include=["omnipath", "pathwayextra", "ligrecextra"])
-        # Set transmitters to be ligands and targets to be receptors
         lr_interaction_df = intercell_df[
             (intercell_df["category_intercell_source"] == "ligand")
             & (intercell_df["category_intercell_target"] == "receptor")]
@@ -643,29 +648,32 @@ def extract_gp_dict_from_omnipath_lr_interactions(
     else:
         lr_interaction_df = pd.read_csv(lr_network_file_path, index_col=0)
 
-    # Filter as per ´min_curation_effort´
+    # Only keep curated interactions (see
+    # https://r.omnipathdb.org/reference/filter_intercell_network.html)
     lr_interaction_df = lr_interaction_df[
         lr_interaction_df["curation_effort"] >= min_curation_effort]
 
-    lr_interaction_df = lr_interaction_df[
-        ["genesymbol_intercell_source", "genesymbol_intercell_target"]]
-    lr_interaction_dict = lr_interaction_df.set_index(
-        "genesymbol_intercell_source")["genesymbol_intercell_target"].to_dict()
-
-    # Dictionary comprehension to convert dictionary values to lists and split
-    # "COMPLEX:receptor1_receptor2" into ["receptor1", "receptor2"]
-    lr_interaction_dict = {key: ([value] if "COMPLEX:" not in value
-                                 else value.removeprefix("COMPLEX:").split("_"))
-                           for key, value in lr_interaction_dict.items()}
+    # Resolve protein complexes into individual genes
+    lr_interaction_df["sources"] = lr_interaction_df[
+        "genesymbol_intercell_source"].apply(
+            lambda x: [x] if "COMPLEX:" not in x else
+            x.removeprefix("COMPLEX:").split("_"))
+    lr_interaction_df["targets"] = lr_interaction_df[
+        "genesymbol_intercell_target"].apply(
+            lambda x: [x] if "COMPLEX:" not in x else
+            x.removeprefix("COMPLEX:").split("_"))
 
     # Extract gene programs and store in nested dict
     gp_dict = {}
-    for ligand, receptors in lr_interaction_dict.items():
-        gp_dict[ligand + "_ligand_receptor_GP"] = {
-            "sources": [ligand],
-            "targets": receptors,
-            "sources_categories": ["ligand"],
-            "targets_categories": ["receptor"] * len(receptors)}
+    for _, row in lr_interaction_df.iterrows():
+        gp_dict[row["genesymbol_intercell_source"] +
+                "_" +
+                row["genesymbol_intercell_target"] +
+                "_ligand_receptor_GP"] = {
+                    "sources": row["sources"],
+                    "targets": row["targets"],
+                    "sources_categories": ["ligand"] * len(row["sources"]),
+                    "targets_categories": ["receptor"] * len(row["targets"])}
         
     if species == "mouse":
         # Create mapping df to map from human genes to mouse orthologs
@@ -673,32 +681,31 @@ def extract_gp_dict_from_omnipath_lr_interactions(
         grouped_mapping_df = mapping_df.groupby(
             "Gene name")["Mouse gene name"].agg(list).reset_index()
         
-        # Map all genes in the gp dict to their orthologs from the mapping df
-        # or capitalize them if no orthologs are found
-        for gp_name, gp in gp_dict.items():
-            gp["sources_categories"] = [element for sublist in [[source_category] *
-                                        len(grouped_mapping_df[
-                                            grouped_mapping_df["Gene name"] == source][
-                                            "Mouse gene name"].values[0])
-                                        if source in grouped_mapping_df["Gene name"].values
-                                        else [source_category]
-                                        for source, source_category in zip(gp["sources"], gp["sources_categories"])] for element in sublist]
-            gp["targets_categories"] = [element for sublist in [[target_category] *
-                                        len(grouped_mapping_df[
-                                            grouped_mapping_df["Gene name"] == target][
-                                            "Mouse gene name"].values[0])
-                                        if target in grouped_mapping_df["Gene name"].values
-                                        else [target_category]
-                                        for target, target_category in zip(gp["targets"], gp["targets_categories"])] for element in sublist]   
-            gp["sources"] = [element for sublist in [grouped_mapping_df[grouped_mapping_df[
-                "Gene name"] == source]["Mouse gene name"].values[0]
-                             if source in grouped_mapping_df["Gene name"].values
-                             else [source.capitalize()] for source in gp["sources"]] for element in sublist]
-            gp["targets"] = [element for sublist in [grouped_mapping_df[grouped_mapping_df[
-                "Gene name"] == target]["Mouse gene name"].values[0]
-                             if target in grouped_mapping_df["Gene name"].values
-                             else [target.capitalize()] for target in gp["targets"]] for element in sublist]
-        
+        # Map all genes in the gene programs to their orthologs from the mapping
+        # df or capitalize them if no orthologs are found (one human gene can
+        # have multiple mouse orthologs)
+        for _, gp in gp_dict.items():
+            gp["sources"] = [element for nested_list_l1 in [
+                list_element for nested_list_l2 in [
+                    grouped_mapping_df[
+                        grouped_mapping_df["Gene name"] == source][
+                            "Mouse gene name"].values.tolist() if
+                            source in grouped_mapping_df["Gene name"].values else
+                            [[source.capitalize()]] for source in gp["sources"]]
+                            for list_element in nested_list_l2]
+                            for element in nested_list_l1]
+            gp["targets"] = [element for nested_list_l1 in [
+                list_element for nested_list_l2 in [
+                    grouped_mapping_df[
+                        grouped_mapping_df["Gene name"] == target][
+                            "Mouse gene name"].values.tolist() if
+                            target in grouped_mapping_df["Gene name"].values else
+                            [[target.capitalize()]] for target in gp["targets"]]
+                            for list_element in nested_list_l2]
+                            for element in nested_list_l1]
+            gp["sources_categories"] = ["ligand"] * len(gp["sources"])
+            gp["targets_categories"] = ["receptor"] * len(gp["targets"])
+    
     if plot_gp_gene_count_distributions:
         create_gp_gene_count_distribution_plots(gp_dict=gp_dict,
                                                 gp_plot_label="OmniPath",
