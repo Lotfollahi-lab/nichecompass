@@ -707,9 +707,10 @@ def extract_gp_dict_from_omnipath_lr_interactions(
             gp["targets_categories"] = ["receptor"] * len(gp["targets"])
     
     if plot_gp_gene_count_distributions:
-        create_gp_gene_count_distribution_plots(gp_dict=gp_dict,
-                                                gp_plot_label="OmniPath",
-                                                save_path=gp_gene_count_distributions_save_path)
+        create_gp_gene_count_distribution_plots(
+            gp_dict=gp_dict,
+            gp_plot_label="OmniPath",
+            save_path=gp_gene_count_distributions_save_path)
     return gp_dict
 
 
@@ -762,12 +763,17 @@ def extract_gp_dict_from_mebocost_es_interactions(
                            .drop_duplicates()
                            .set_index("HMDB_ID"))
 
+    # Keep only enzymes for which the metabolite is the product (filter enzymes
+    # for which the metabolite is the substrate)
+    metabolite_enzymes_df = metabolite_enzymes_df[
+        metabolite_enzymes_df["direction"] == "product"]
+
     # Retrieve metabolite enzyme and sensor genes
     metabolite_enzymes_unrolled = []
-    for _, line in metabolite_enzymes_df.iterrows():
-        genes = line["gene"].split("; ")
+    for _, row in metabolite_enzymes_df.iterrows():
+        genes = row["gene"].split("; ")
         for gene in genes:
-            tmp = line.copy()
+            tmp = row.copy()
             tmp["gene"] = gene
             metabolite_enzymes_unrolled.append(tmp)
     metabolite_enzymes_df = pd.DataFrame(metabolite_enzymes_unrolled)
@@ -784,7 +790,8 @@ def extract_gp_dict_from_mebocost_es_interactions(
                              .rename({"Gene_name": "sensor_genes"}, axis=1)
                              .reset_index()).set_index("HMDB_ID")
 
-    # Combine metabolite names and enzyme and sensor genes
+    # Combine enzyme and sensor genes based on metabolite names (sensor genes
+    # are not available for most metabolites)
     metabolite_df = metabolite_enzymes_df.join(
         other=metabolite_sensors_df,
         how="inner").join(metabolite_names_df).set_index("standard_metName")
