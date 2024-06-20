@@ -719,17 +719,19 @@ def extract_gp_dict_from_mebocost_es_interactions(
         species: Literal["mouse", "human"]="mouse",
         plot_gp_gene_count_distributions: bool=True) -> dict:
     """
-    Retrieve metabolite enzyme sensor interactions from the Human Metabolome
-    Database (HMDB) data curated in Chen, K. et al. MEBOCOST: 
-    Metabolite-mediated cell communication modeling by single cell 
-    transcriptome. Research Square (2022) doi:10.21203/rs.3.rs-2092898/v1. 
+    Retrieve metabolite sensor interactions from the Human Metabolome Database
+    (HMDB) data curated in Chen, K. et al. MEBOCOST: Metabolite-mediated cell
+    communication modeling by single cell transcriptome. Research Square (2022)
+    doi:10.21203/rs.3.rs-2092898/v1. Expression of enzymes involved in reactions
+    where the metabolite is a product are used as proxy for metabolite presence.
+    
     This data is available in the NicheCompass package under 
     ´..data/gene_programs/metabolite_enzyme_sensor_gps´.
 
     Parameters
     ----------
     species:
-        Species for which to retrieve metabolite enzyme-sensor interactions.
+        Species for which to retrieve metabolite-sensor interactions.
     plot_gp_gene_count_distributions:
         If ´True´, display the distribution of gene programs per number of
         target and source genes.
