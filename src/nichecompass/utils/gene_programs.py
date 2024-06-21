@@ -455,8 +455,7 @@ def extract_gp_dict_from_nichenet_lrt_interactions(
             R_file_path="lr_network.rds",
             url=lr_network_url,
             save_df_to_disk=save_to_disk,
-            df_save_path=lr_network_file_path) # multiple rows per ligand (one
-                                               # for each receptor)
+            df_save_path=lr_network_file_path) # multiple rows per ligand
         print(f"Downloading NicheNet ligand target matrix '{version}' from the "
               "web. This might take a while...")
         ligand_target_matrix_df = load_R_file_as_df(
@@ -466,8 +465,7 @@ def extract_gp_dict_from_nichenet_lrt_interactions(
             df_save_path=ligand_target_matrix_file_path) # one column per ligand
     else:
         lr_network_df = pd.read_csv(lr_network_file_path,
-                                    index_col=0) # multiple rows per ligand (one
-                                                 # for each receptor)
+                                    index_col=0) # multiple rows per ligand
         ligand_target_matrix_df = pd.read_csv(ligand_target_matrix_file_path,
                                               index_col=0) # one column per
                                                            # ligand
@@ -653,27 +651,42 @@ def extract_gp_dict_from_omnipath_lr_interactions(
     lr_interaction_df = lr_interaction_df[
         lr_interaction_df["curation_effort"] >= min_curation_effort]
 
+    # Group receptors by ligands
+    grouped_lr_interaction_df = lr_interaction_df.groupby(
+        "genesymbol_intercell_source")["genesymbol_intercell_target"].agg(
+            list).reset_index()
+    
     # Resolve protein complexes into individual genes
-    lr_interaction_df["sources"] = lr_interaction_df[
+    def compute_elementwise_func(lst, func):
+        return [func(item) for item in lst]
+
+    def resolve_protein_complexes(x):
+        if "COMPLEX:" not in x:
+            return [x]
+        else:
+            return x.removeprefix("COMPLEX:").split("_")
+        
+    grouped_lr_interaction_df["sources"] = grouped_lr_interaction_df[
         "genesymbol_intercell_source"].apply(
-            lambda x: [x] if "COMPLEX:" not in x else
-            x.removeprefix("COMPLEX:").split("_"))
-    lr_interaction_df["targets"] = lr_interaction_df[
+            lambda x: list(set(resolve_protein_complexes(x))))
+    grouped_lr_interaction_df["sources_categories"] = grouped_lr_interaction_df[
+        "sources"].apply(lambda x: ["ligand"] * len(x))
+    grouped_lr_interaction_df["targets"] = grouped_lr_interaction_df[
         "genesymbol_intercell_target"].apply(
-            lambda x: [x] if "COMPLEX:" not in x else
-            x.removeprefix("COMPLEX:").split("_"))
+            lambda x: list(set([element for sublist in compute_elementwise_func(x, resolve_protein_complexes) for element in sublist])))
+    grouped_lr_interaction_df["targets_categories"] = grouped_lr_interaction_df[
+        "targets"].apply(lambda x: ["receptor"] * len(x))
+
 
     # Extract gene programs and store in nested dict
     gp_dict = {}
-    for _, row in lr_interaction_df.iterrows():
+    for _, row in grouped_lr_interaction_df.iterrows():
         gp_dict[row["genesymbol_intercell_source"] +
-                "_" +
-                row["genesymbol_intercell_target"] +
                 "_ligand_receptor_GP"] = {
                     "sources": row["sources"],
                     "targets": row["targets"],
-                    "sources_categories": ["ligand"] * len(row["sources"]),
-                    "targets_categories": ["receptor"] * len(row["targets"])}
+                    "sources_categories": row["sources_categories"],
+                    "targets_categories": row["targets_categories"]}
         
     if species == "mouse":
         # Create mapping df to map from human genes to mouse orthologs

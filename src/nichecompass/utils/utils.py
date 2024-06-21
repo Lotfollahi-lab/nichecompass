@@ -18,8 +18,8 @@ def load_R_file_as_df(R_file_path: str,
                       save_df_to_disk: bool=False,
                       df_save_path: Optional[str]=None) -> pd.DataFrame:
     """
-    Helper to load an R file either from ´url´ if specified or from ´file_path´ 
-    on disk and convert it to a pandas DataFrame.
+    Helper to load an R file either from ´url´ if specified or from
+    ´R_file_path´ on disk and convert it to a pandas DataFrame.
 
     Parameters
     ----------
@@ -39,7 +39,7 @@ def load_R_file_as_df(R_file_path: str,
     """
     if url is None:
         if not os.path.exists(R_file_path):
-            raise ValueError("Please specify a valid ´file_path´ or ´url´.")
+            raise ValueError("Please specify a valid ´R_file_path´ or ´url´.")
         result_odict = pyreadr.read_r(R_file_path)
     else:
         result_odict = pyreadr.read_r(pyreadr.download_file(url, R_file_path))
