@@ -12,7 +12,6 @@ import pandas as pd
 import scanpy as sc
 import scipy.sparse as sp
 from anndata import AnnData
-from scglue import genomics
 
 
 def get_gene_annotations(
@@ -29,8 +28,8 @@ def get_gene_annotations(
     be downloaded from
     https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M32/gencode.vM32.chr_patch_hapl_scaff.annotation.gff3.gz.
     for example.
-    
-    Parts of the implementation are adapted from 
+
+    Parts of the implementation are adapted from
     Cao, Z.-J. & Gao, G. Multi-omics single-cell data integration and regulatory
     inference with graph-linked embedding. Nat. Biotechnol. 40, 1458–1466 (2022)
     -> https://github.com/gao-lab/GLUE/blob/master/scglue/data.py#L86; 14.04.23.
@@ -65,17 +64,23 @@ def get_gene_annotations(
     The genomic locations are converted to 0-based as specified in bed format
     rather than 1-based as specified in GTF format.
     """
-    gene_names = (adata.var_names if adata_join_col_name is None 
+
+    try:
+        from scglue import genomics
+    except ImportError:
+        raise ImportError("optional dependency `scglue` is required for this function")
+
+    gene_names = (adata.var_names if adata_join_col_name is None
                   else adata.var[adata_join_col_name])
-    
+
     gtf = genomics.read_gtf(
         gtf_file_path).query("feature == 'gene'").split_attribute()
-    
+
     if by_func:
         by_func = np.vectorize(by_func)
         gene_names = by_func(gene_names)
         gtf[gtf_join_col_name] = by_func(gtf[gtf_join_col_name])
-        
+
     # Drop duplicates. Typically scaffolds come first, chromosomes come last
     gtf = gtf.sort_values("seqname").drop_duplicates(
         subset=[gtf_join_col_name], keep="last")
@@ -100,7 +105,7 @@ def get_gene_annotations(
 
 
 def generate_multimodal_mapping_dict(
-        adata: AnnData, 
+        adata: AnnData,
         adata_atac: AnnData,
         gene_region: Literal["combined", "promoter", "gene_body"]="combined",
         promoter_len: int=2000,
@@ -111,7 +116,7 @@ def generate_multimodal_mapping_dict(
     Build a mapping dict to map peaks to genes based on chromosomal bp position
     overlaps.
 
-    Parts of the implementation are adapted from 
+    Parts of the implementation are adapted from
     Cao, Z.-J. & Gao, G. Multi-omics single-cell data integration and regulatory
     inference with graph-linked embedding. Nat. Biotechnol. 40, 1458–1466 (2022)
     -> https://github.com/gao-lab/GLUE/blob/master/scglue/genomics.py#L473;
@@ -142,6 +147,12 @@ def generate_multimodal_mapping_dict(
     multimodal_mapping_dict:
         Dictionary that maps genes to atac omics features (peaks).
     """
+
+    try:
+        from scglue import genomics
+    except ImportError:
+        raise ImportError("optional dependency `scglue` is required for this function")
+
     # Get chromosome start and end bp positions of genes and peak regions
     rna_bed = genomics.Bed(adata.var.assign(name=adata.var_names))
     atac_bed = genomics.Bed(adata_atac.var.assign(name=adata_atac.var_names))
@@ -155,7 +166,7 @@ def generate_multimodal_mapping_dict(
         rna_bed = rna_bed.expand(promoter_len, 0)
     elif gene_region != "gene_body":
         raise ValueError("Unrecognized ´gene_region´!")
-        
+
     # Create networkx graph that maps genes and peaks based on overlap in bp
     # positions.
     graph = genomics.window_graph(
@@ -163,7 +174,7 @@ def generate_multimodal_mapping_dict(
         right=atac_bed,
         window_size=extend_range,
         attr_fn=lambda l, r, d: {"dist": abs(d), "weight": extend_fn(abs(d))})
-    
+
     # Get edges (all edges will get a weight of 1)
     gene_peak_edges_list = list(graph.edges)
 
@@ -206,7 +217,7 @@ def add_multimodal_mask_to_adata(
     Parameters
     ----------
     adata:
-        AnnData rna object with rna gene program masks stored in 
+        AnnData rna object with rna gene program masks stored in
         ´adata.varm[gp_targets_mask_key]´ and ´adata.varm[gp_sources_mask_key]´,
         and gene program names stored in ´adata.uns[gp_names_key]´.
     adata_atac:
@@ -260,6 +271,12 @@ def add_multimodal_mask_to_adata(
     adata_atac:
         The modified AnnData atac object with atac gene program masks stored.
     """
+
+    try:
+        from scglue import genomics
+    except ImportError:
+        raise ImportError("optional dependency `scglue` is required for this function")
+
     if filter_peaks_based_on_genes:
         all_gene_peaks = list(
             set(peak for gene_peaks in gene_peak_mapping_dict.values() for peak
@@ -274,14 +291,14 @@ def add_multimodal_mask_to_adata(
                                     flavor="seurat_v3",
                                     batch_key=batch_key)
         print(f"Keeping {len(adata_atac.var_names)} highly variable peaks.")
-        
+
     # Create mapping dict with adata indices instead of gene and peak names
     uppercase_sorted_gene_list = [
         gene.upper() for gene in adata.var_names.tolist()]
     sorted_peak_list = adata_atac.var_names.tolist()
     gene_idx_peak_idx_mapping_dict = {
         uppercase_sorted_gene_list.index(gene): [
-            sorted_peak_list.index(peak) for peak in peaks] 
+            sorted_peak_list.index(peak) for peak in peaks]
         for gene, peaks in gene_peak_mapping_dict.items()}
 
     # Convert mapping dict into boolean mask and store in sparse format
@@ -293,10 +310,10 @@ def add_multimodal_mask_to_adata(
     adata.varm[gene_peaks_mask_key] = sp.csr_matrix(gene_peak_mask)
 
     # Create mapping dict for computationally efficient mapping of peaks to
-    # their index in ´adata_atac.var_names´    
-    peak_idx_mapping_dict = {value: index for index, value in 
+    # their index in ´adata_atac.var_names´
+    peak_idx_mapping_dict = {value: index for index, value in
                              enumerate(adata_atac.var_names)}
-    
+
     for entity in ["targets", "sources"]:
         if entity == "targets":
             gp_mask_key = gp_targets_mask_key
@@ -304,40 +321,40 @@ def add_multimodal_mask_to_adata(
         elif entity == "sources":
             gp_mask_key = gp_sources_mask_key
             ca_mask_key = ca_sources_mask_key
- 
+
         # Get all corresponding peaks for each gene in a gene program and remove
         # duplicate peaks
-        
+
         # Retrieve all genes for each gene program
         genes_rep = np.tile(adata.var_names,
                             (adata.varm[gp_mask_key].shape[1], 1)).T
         all_gp_genes = [[gene.upper() for gene in gene_list if gene is not None]
                         for gene_list in np.where(
                             adata.varm[gp_mask_key], genes_rep, None).T]
-        
+
         if entity == "targets":
             # Retrieve all peaks for each gene program
-            all_target_gp_peaks = [list(set([peak for gene_peaks in 
-                                    [gene_peak_mapping_dict.get(gene, []) for 
+            all_target_gp_peaks = [list(set([peak for gene_peaks in
+                                    [gene_peak_mapping_dict.get(gene, []) for
                                     gene in genes] for peak in gene_peaks]))
                             for genes in all_gp_genes]
-            
+
             # Create gp peak dict with only target peaks
             peak_dict = {adata.uns[gp_names_key][gp_idx]:{
                 entity: target_gp_peaks} for gp_idx, target_gp_peaks in
                 enumerate(all_target_gp_peaks)}
 
         elif entity == "sources":
-            all_source_gp_peaks = [list(set([peak for gene_peaks in 
-                                    [gene_peak_mapping_dict.get(gene, []) for 
+            all_source_gp_peaks = [list(set([peak for gene_peaks in
+                                    [gene_peak_mapping_dict.get(gene, []) for
                                     gene in genes] for peak in gene_peaks]))
                             for genes in all_gp_genes]
-            
+
             # Add all source peaks to gp peak dict
             for gp_idx, source_gp_peaks in enumerate(all_source_gp_peaks):
                 peak_dict[adata.uns[gp_names_key][gp_idx]][entity] = (
                     source_gp_peaks)
-    
+
         # Create binary atac decoder masks and add them to ´adata_atac.varm´
         peak_idx = [peak_idx_mapping_dict[peak] for gp_peak_dict
                     in peak_dict.values() for peak in gp_peak_dict[entity]]
