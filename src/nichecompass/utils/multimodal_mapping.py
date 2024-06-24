@@ -110,7 +110,7 @@ def generate_multimodal_mapping_dict(
         gene_region: Literal["combined", "promoter", "gene_body"]="combined",
         promoter_len: int=2000,
         extend_range: int=0,
-        extend_fn: Callable[[int], float]=genomics.dist_power_decay,
+        extend_fn: Callable[[int], float]=None,
         uppercase: bool=True) -> dict:
     """
     Build a mapping dict to map peaks to genes based on chromosomal bp position
@@ -152,6 +152,9 @@ def generate_multimodal_mapping_dict(
         from scglue import genomics
     except ImportError:
         raise ImportError("optional dependency `scglue` is required for this function")
+
+    if extend_fn is None:
+        extend_fn = genomics.dist_power_decay
 
     # Get chromosome start and end bp positions of genes and peak regions
     rna_bed = genomics.Bed(adata.var.assign(name=adata.var_names))
