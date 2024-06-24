@@ -49,11 +49,15 @@ Subsequently, install NicheCompass via pip:
 pip install nichecompass
 ```
 
-or
+Install optional dependencies required for multimodal analysis with:
+```
+pip install nichecompass[multimodal]
+```
+
+Install optional dependencies required for benchmarking, running tutorials etc. with:
 ```
 pip install nichecompass[all]
 ```
-to include dependencies required for benchmarking, running tutorials etc.
 
 [Mambaforge]: https://github.com/conda-forge/miniforge
 [Docker]: https://www.docker.com
