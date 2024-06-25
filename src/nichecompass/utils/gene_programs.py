@@ -352,6 +352,7 @@ def extract_gp_dict_from_collectri_tf_network(
             gp_dict=gp_dict,
             gp_plot_label="CollecTRI",
             save_path=gp_gene_count_distributions_save_path)
+        
     return gp_dict
 
 
@@ -591,6 +592,7 @@ def extract_gp_dict_from_nichenet_lrt_interactions(
             gp_dict=gp_dict,
             gp_plot_label=f"NicheNet {version.replace('_', ' ').title()}",
             save_path=gp_gene_count_distributions_save_path)
+        
     return gp_dict
 
 
@@ -752,6 +754,7 @@ def extract_gp_dict_from_omnipath_lr_interactions(
             gp_dict=gp_dict,
             gp_plot_label="OmniPath",
             save_path=gp_gene_count_distributions_save_path)
+        
     return gp_dict
 
 
@@ -871,211 +874,139 @@ def extract_gp_dict_from_mebocost_ms_interactions(
 
 
 def filter_and_combine_gp_dict_gps(
-        gp_dict: dict,
-        gp_filter_mode: Optional[Literal["subset", "superset"]]=None,
-        combine_overlap_gps: bool=True,
-        overlap_thresh_source_genes: float=1.,
+        gp_dicts: list,
         overlap_thresh_target_genes: float=1.,
-        overlap_thresh_genes: float=1.,
         verbose: bool=False) -> dict:
     """
-    Filter and combine the gene programs in a gene program dictionary based on
-    overlapping genes.
+    Combine gene program dictionaries and filter them based on gene overlaps.
 
     Parameters
     ----------
-    gp_dict:
-        Nested dictionary containing the gene programs with keys being gene 
-        program names and values being dictionaries with keys ´targets´ and 
-        ´sources´, where ´targets´ contains a list of the names of genes in the
-        gene program for the reconstruction of the gene expression of the node
-        itself (receiving node) and ´sources´ contains a list of the names of
-        genes in the gene program for the reconstruction of the gene expression
-        of the node's neighbors (transmitting nodes).
-    gp_filter_mode:
-        If `None` (default), do not filter any gene programs. If `subset`, 
-        remove gene programs that are subsets of other gene programs from the 
-        gene program dictionary. If `superset`, remove gene programs that are 
-        supersets of other gene programs instead.
-    combine_overlap_gps:
-        If `True`, combine gene programs that overlap according to the defined
-        thresholds.
-    overlap_thresh_source_genes:
-        If `combine_overlap_gps` is `True`, the minimum ratio of source 
-        genes that need to overlap between two gene programs for them to be 
-        combined.
+    gp_dicts:
+        List of gene program dictionaries with keys being gene program names and
+        values being dictionaries with keys ´sources´, ´targets´,
+        ´sources_categories´, and ´targets_categories´, where ´targets´ contains
+        a list of the names of genes in the gene program for the reconstruction
+        of the gene expression of the node itself (receiving node) and ´sources´
+        contains a list of the names of genes in the gene program for the
+        reconstruction of the gene expression of the node's neighbors
+        (transmitting nodes).
     overlap_thresh_target_genes:
-        If `combine_overlap_gps` is `True`, the minimum ratio of target 
-        genes that need to overlap between two gene programs for them to be 
-        combined.
-    overlap_thresh_genes:
-        If `combine_overlap_gps` is `True`, the minimum ratio of total genes
-        (source genes & target genes) that need to overlap between two gene 
-        programs for them to be combined.
+        The minimum ratio of target genes that need to overlap between two gene
+        programs (one of which does not have source genes) for them to be
+        combined. Gene programs with different source genes are never combined.
     verbose:
         If `True`, print gene programs that are removed and combined.
 
     Returns
     ----------
     new_gp_dict:
-        Modified gene program dictionary with gene programs filtered according 
-        to ´gp_filter_mode´ and combined according to ´combine_overlap_gps´,
-        ´overlap_thresh_source_genes´, ´overlap_thresh_target_genes´, and 
-        ´overlap_thresh_genes´.
+        Combined gene program dictionary with filtered gene programs.
     """
-    new_gp_dict = gp_dict.copy()
+    # Combine gene program dictionaries
+    combined_gp_dict = {}
+    for i, gp_dict in enumerate(gp_dicts):
+        combined_gp_dict.update(gp_dict)
 
-    # Remove gps that are subsets or supersets of other gps from the gp dict
-    if gp_filter_mode != None:
-        for i, (gp_i, gp_genes_dict_i) in enumerate(gp_dict.items()):
-            source_genes_i = set([gene.upper() for gene in 
-                                  gp_genes_dict_i["sources"]])
-            target_genes_i = set([gene.upper() for gene in 
-                                  gp_genes_dict_i["targets"]])
-            for j, (gp_j, gp_genes_dict_j) in enumerate(gp_dict.items()):
-                if i != j:
-                    source_genes_j = set([gene.upper() for gene in 
-                                          gp_genes_dict_j["sources"]])
-                    target_genes_j = set([gene.upper() for gene in
-                                          gp_genes_dict_j["targets"]])
-                    if gp_filter_mode == "subset":
-                        if (source_genes_j.issubset(source_genes_i) &
-                            target_genes_j.issubset(target_genes_i)):
-                                new_gp_dict.pop(gp_j, None)
-                                if verbose:
-                                    print(f"Removing GP '{gp_j}' as it is a "
-                                          f"subset of GP '{gp_i}'.")
-                    elif gp_filter_mode == "superset":
-                        if (source_genes_j.issuperset(source_genes_i) &
-                            target_genes_j.issuperset(target_genes_i)):
-                                new_gp_dict.pop(gp_j, None)
-                                if verbose:
-                                    print(f"Removing GP '{gp_j}' as it is a "
-                                          f"superset of GP '{gp_i}'.")
+    new_gp_dict = combined_gp_dict.copy()
 
-    # Combine overlap gps in the gp dict (overlap ratios are calculated 
-    # based on average gene numbers of the compared gene programs)
-    if combine_overlap_gps:
-        # First, get all overlap gps per gene program (this includes
-        # duplicate overlaps and unresolved cross overlaps (i.e. GP A might 
-        # overlap with GP B and GP B might overlap with GP C while GP A and GP C
-        # do not overlap)
-        all_overlap_gps = []
-        for i, (gp_i, gp_genes_dict_i) in enumerate(new_gp_dict.items()):
-            source_genes_i = set([gene.upper() for gene in 
-                                  gp_genes_dict_i["sources"]])
-            target_genes_i = set([gene.upper() for gene in 
-                                  gp_genes_dict_i["targets"]])
-            gp_overlap_gps = [gp_i]
-            for j, (gp_j, gp_genes_dict_j) in enumerate(new_gp_dict.items()):
-                if i != j:
-                    source_genes_j = set([gene.upper() for gene in 
-                                          gp_genes_dict_j["sources"]])
-                    target_genes_j = set([gene.upper() for gene in
-                                          gp_genes_dict_j["targets"]])
-                    source_genes_overlap = list(source_genes_i & source_genes_j)
-                    target_genes_overlap = list(target_genes_i & target_genes_j)
-                    n_source_gene_overlap = len(source_genes_overlap)
-                    n_target_gene_overlap = len(target_genes_overlap)
-                    n_gene_overlap = (n_source_gene_overlap + 
-                                      n_target_gene_overlap)
-                    n_avg_source_genes = (len(source_genes_i) + 
-                                          len(source_genes_j)) / 2
-                    n_avg_target_genes = (len(target_genes_i) + 
-                                          len(target_genes_j)) / 2
-                    n_avg_genes = n_avg_source_genes + n_avg_target_genes
-                    if n_avg_source_genes > 0:
-                        ratio_shared_source_genes = (n_source_gene_overlap / 
-                                                     n_avg_source_genes)
-                    else: 
-                        ratio_shared_source_genes = 1
-                    if n_avg_target_genes > 0:
-                        ratio_shared_target_genes = (n_target_gene_overlap /
-                                                     n_avg_target_genes)
+    # Combine gene programs with overlapping genes
+    all_combined = False
+    while not all_combined:
+        all_combined = True
+        combined_gp_dict = new_gp_dict.copy()
+        for i, (gp_i, gp_genes_dict_i) in enumerate(combined_gp_dict.items()):
+            source_genes_i = [
+                gene.upper() for gene in gp_genes_dict_i["sources"]]
+            target_genes_i = [
+                gene.upper() for gene in gp_genes_dict_i["targets"]]
+            target_genes_categories_i = [
+                target_gene_category for target_gene_category in
+                gp_genes_dict_i["targets_categories"]]
+            for j, (gp_j, gp_genes_dict_j) in enumerate(
+                combined_gp_dict.items()):
+                if j != i:
+                    source_genes_j = [
+                        gene.upper() for gene in gp_genes_dict_j["sources"]]
+                    target_genes_j = [
+                        gene.upper() for gene in gp_genes_dict_j["targets"]]
+                    target_genes_categories_j = [
+                        target_gene_category for target_gene_category in
+                        gp_genes_dict_j["targets_categories"]]
+
+                    if ((source_genes_i == source_genes_j) &
+                        len(source_genes_i) > 0):
+                        # if source genes are exactly the same, combine gene
+                        # programs
+                        all_combined = False
+                        if verbose:
+                            print(f"Combining {gp_i} and {gp_j}.")
+                        source_genes = source_genes_i
+                        target_genes = target_genes_i
+                        target_genes_categories = target_genes_categories_i
+                        for target_gene, target_gene_category in zip(
+                            target_genes_j, target_genes_categories_j):
+                            if target_gene not in target_genes:
+                                target_genes.extend([target_gene])
+                                target_genes_categories.extend(
+                                    [target_gene_category])
+                        new_gp_dict.pop(gp_i, None)
+                        new_gp_dict.pop(gp_j, None)
+                        new_gp_name = gp_i.split("_")[0].upper() + "_combined_GP"
+                        new_gp_dict[new_gp_name] = {"sources": source_genes}
+                        new_gp_dict[new_gp_name]["targets"] = target_genes
+                        new_gp_dict[new_gp_name][
+                            "sources_categories"] = gp_genes_dict_i[
+                                "sources_categories"]
+                        new_gp_dict[new_gp_name][
+                            "targets_categories"] = target_genes_categories
+                            
+                    elif len(source_genes_i) == 0:
+                        if target_genes_i.issubset(target_genes_j):
+                            # if source genes not existent but target genes are
+                            # a subset, drop gene program
+                            if verbose:
+                                print(f"Dropping {gp_i}.")
+                            new_gp_dict.pop(gp_i, None)
+                        else:
+                            target_genes_overlap = list(
+                                target_genes_i & target_genes_j)
+                            n_target_gene_overlap = len(target_genes_overlap)
+                            n_avg_target_genes = (
+                                len(target_genes_i) + len(target_genes_j)) / 2
+                            ratio_shared_target_genes = (n_target_gene_overlap /
+                                                        n_avg_target_genes)
+                            if ratio_shared_target_genes >= overlap_thresh_target_genes:
+                                # if source genes not existent and target genes
+                                # overlap more than specified, combine gene programs
+                                all_combined = False
+                                if verbose:
+                                    print(f"Combining {gp_i} and {gp_j}.")
+                                source_genes = source_genes_j
+                                target_genes = target_genes_i
+                                target_genes_categories = target_genes_categories_i
+                                for target_gene, target_gene_category in zip(
+                                    target_genes_j, target_genes_categories_j):
+                                    if target_gene not in target_genes:
+                                        target_genes.extend([target_gene])
+                                        target_genes_categories.extend(
+                                            [target_gene_category])
+                                new_gp_dict.pop(gp_i, None)
+                                new_gp_dict.pop(gp_j, None)
+                                new_gp_name = gp_j.split("_")[0].upper() + "_combined_GP"
+                                new_gp_dict[new_gp_name] = {
+                                    "sources": source_genes}
+                                new_gp_dict[new_gp_name][
+                                    "targets"] = target_genes
+                                new_gp_dict[new_gp_name][
+                                    "sources_categories"] = gp_genes_dict_j[
+                                        "sources_categories"]
+                                new_gp_dict[new_gp_name][
+                                    "targets_categories"] = target_genes_categories    
                     else:
-                        ratio_shared_target_genes = 1
-                    ratio_shared_genes = n_gene_overlap / n_avg_genes
-                    if ((ratio_shared_source_genes >= 
-                         overlap_thresh_source_genes) &
-                        (ratio_shared_target_genes >= 
-                         overlap_thresh_target_genes) &
-                        (ratio_shared_genes >= overlap_thresh_genes)):
-                            gp_overlap_gps.append(gp_j)
-            if len(gp_overlap_gps) > 1:
-                all_overlap_gps.append(set(gp_overlap_gps))
+                        # otherwise do not combine or drop gene programs
+                        pass
 
-        # Second, clean up duplicate overlaps 
-        all_unique_overlap_gps = []
-        _ = [all_unique_overlap_gps.append(overlap_gp) for overlap_gp in 
-             all_overlap_gps if overlap_gp not in all_unique_overlap_gps]
-
-        # Third, split overlaps into no cross and cross overlaps
-        no_cross_overlap_gps = []
-        cross_overlap_gps = []
-        for i, overlap_gp_i in enumerate(all_unique_overlap_gps):
-            if all(overlap_gp_j.isdisjoint(overlap_gp_i) for 
-            j, overlap_gp_j in enumerate(all_unique_overlap_gps) 
-            if i != j):
-                no_cross_overlap_gps.append(overlap_gp_i)
-            else:
-                cross_overlap_gps.append(overlap_gp_i)
-
-        # Fourth, resolve cross overlaps by sequentally combining them (until
-        # convergence)
-        sequential_overlap_gps = list(cross_overlap_gps)
-        while True:
-            new_sequential_overlap_gps = []
-            for i, overlap_gp_i in enumerate(sequential_overlap_gps):
-                paired_overlap_gps = [overlap_gp_i.union(overlap_gp_j) for 
-                                      j, overlap_gp_j in 
-                                      enumerate(sequential_overlap_gps) 
-                                      if (i != j) & 
-                                      (overlap_gp_i.intersection(overlap_gp_j) 
-                                       != set())]
-                paired_overlap_gps_union = set().union(*paired_overlap_gps)
-                if (paired_overlap_gps_union != set() &
-                paired_overlap_gps_union not in new_sequential_overlap_gps):
-                    new_sequential_overlap_gps.append(paired_overlap_gps_union)
-            if (sorted([list(gp) for gp in new_sequential_overlap_gps]) == 
-            sorted([list(gp) for gp in sequential_overlap_gps])):
-                break
-            else:
-                sequential_overlap_gps = list(new_sequential_overlap_gps)
-
-        # Fifth, add overlap gps to gp dict and remove component gps
-        final_overlap_gps = [list(overlap_gp) for overlap_gp in 
-                             no_cross_overlap_gps]
-        _ = [final_overlap_gps.append(list(overlap_gp)) for overlap_gp in 
-             sequential_overlap_gps if list(overlap_gp) not in 
-             final_overlap_gps]
-
-        for overlap_gp in final_overlap_gps:
-            new_gp_name = "_".join([gp[:-3] for gp in overlap_gp]) + "_GP"
-            new_gp_sources = []
-            new_gp_targets = []
-            new_gp_sources_categories = []
-            new_gp_targets_categories = []
-            for gp in overlap_gp:
-                for new_gp_source, new_gp_source_category in zip(
-                    gp_dict[gp]["sources"], gp_dict[gp]["sources_categories"]):
-                    if new_gp_source not in new_gp_sources:
-                        new_gp_sources.extend(new_gp_source)
-                        new_gp_sources_categories.extend(new_gp_source_category)
-                for new_gp_target, new_gp_target_category in zip(
-                    gp_dict[gp]["targets"], gp_dict[gp]["targets_categories"]):
-                    if new_gp_target not in new_gp_targets:
-                        new_gp_targets.extend(new_gp_target)
-                        new_gp_targets_categories.extend(new_gp_target_category)
-                new_gp_dict.pop(gp, None)
-                if verbose:
-                    print(f"Removing GP '{gp}' as it is a component of the "
-                          f"combined GP '{new_gp_name}'.")
-            new_gp_dict[new_gp_name] = {"sources": new_gp_sources}
-            new_gp_dict[new_gp_name]["targets"] = new_gp_targets
-            new_gp_dict[new_gp_name]["sources_categories"] = (
-                new_gp_sources_categories)
-            new_gp_dict[new_gp_name]["targets_categories"] = (
-                new_gp_targets_categories)
     return new_gp_dict
 
 
