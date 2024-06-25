@@ -4,7 +4,7 @@ requires = ["hatchling"]
 
 [project]
 name = "nichecompass"
-version = "0.1.2"
+version = "0.1.3"
 description = "End-to-end analysis of spatial multi-omics data"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -30,7 +30,6 @@ dependencies = [
     "mlflow>=1.28.0",
     "pyreadr>=0.4.6",
     "scanpy>=1.9.3",
-    "scglue>=0.3.2",
     "torch-geometric>=2.2.0",
     "omnipath>=1.0.7",
     "decoupler>=1.4.0",
@@ -61,7 +60,8 @@ docs = [
 ]
 docsbuild = ["nichecompass[docs,optional]"]  # docs build dependencies
 optional = [
-    "nichecompass[benchmarking]"
+    "nichecompass[benchmarking]",
+    "nichecompass[multimodal]"
 ]  # all optional user functionality
 tests = [
     "pytest",
@@ -75,10 +75,13 @@ benchmarking = [
     "jax==0.4.7",
     "jaxlib==0.4.7"
 ]
+multimodal = [
+    "scglue>=0.3.2",
+]
 tutorials = [
     "jupyter",
 ]
-all = ["nichecompass[dev,docs,tests,benchmarking,tutorials]"]
+all = ["nichecompass[dev,docs,tests,benchmarking,multimodal,tutorials]"]
 
 [tool.coverage.run]
 source = ["nichecompass"]
