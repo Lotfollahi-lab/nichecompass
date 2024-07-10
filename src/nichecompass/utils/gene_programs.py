@@ -917,9 +917,9 @@ def filter_and_combine_gp_dict_gps(
         combined_gp_dict = new_gp_dict.copy()
         for i, (gp_i, gp_genes_dict_i) in enumerate(combined_gp_dict.items()):
             source_genes_i = [
-                gene.upper() for gene in gp_genes_dict_i["sources"]]
+                gene for gene in gp_genes_dict_i["sources"]]
             target_genes_i = [
-                gene.upper() for gene in gp_genes_dict_i["targets"]]
+                gene for gene in gp_genes_dict_i["targets"]]
             target_genes_categories_i = [
                 target_gene_category for target_gene_category in
                 gp_genes_dict_i["targets_categories"]]
@@ -927,9 +927,9 @@ def filter_and_combine_gp_dict_gps(
                 combined_gp_dict.items()):
                 if j != i:
                     source_genes_j = [
-                        gene.upper() for gene in gp_genes_dict_j["sources"]]
+                        gene for gene in gp_genes_dict_j["sources"]]
                     target_genes_j = [
-                        gene.upper() for gene in gp_genes_dict_j["targets"]]
+                        gene for gene in gp_genes_dict_j["targets"]]
                     target_genes_categories_j = [
                         target_gene_category for target_gene_category in
                         gp_genes_dict_j["targets_categories"]]
@@ -952,14 +952,16 @@ def filter_and_combine_gp_dict_gps(
                                     [target_gene_category])
                         new_gp_dict.pop(gp_i, None)
                         new_gp_dict.pop(gp_j, None)
-                        new_gp_name = gp_i.split("_")[0].upper() + "_combined_GP"
-                        new_gp_dict[new_gp_name] = {"sources": source_genes}
-                        new_gp_dict[new_gp_name]["targets"] = target_genes
-                        new_gp_dict[new_gp_name][
-                            "sources_categories"] = gp_genes_dict_i[
-                                "sources_categories"]
-                        new_gp_dict[new_gp_name][
-                            "targets_categories"] = target_genes_categories
+                        if (gp_j.split("_")[0] + 
+                            "_combined_GP") not in new_gp_dict.keys():
+                            new_gp_name = gp_i.split("_")[0] + "_combined_GP"
+                            new_gp_dict[new_gp_name] = {"sources": source_genes}
+                            new_gp_dict[new_gp_name]["targets"] = target_genes
+                            new_gp_dict[new_gp_name][
+                                "sources_categories"] = gp_genes_dict_i[
+                                    "sources_categories"]
+                            new_gp_dict[new_gp_name][
+                                "targets_categories"] = target_genes_categories
                             
                     elif len(source_genes_i) == 0:
                         if target_genes_i.issubset(target_genes_j):
@@ -993,16 +995,18 @@ def filter_and_combine_gp_dict_gps(
                                             [target_gene_category])
                                 new_gp_dict.pop(gp_i, None)
                                 new_gp_dict.pop(gp_j, None)
-                                new_gp_name = gp_j.split("_")[0].upper() + "_combined_GP"
-                                new_gp_dict[new_gp_name] = {
-                                    "sources": source_genes}
-                                new_gp_dict[new_gp_name][
-                                    "targets"] = target_genes
-                                new_gp_dict[new_gp_name][
-                                    "sources_categories"] = gp_genes_dict_j[
-                                        "sources_categories"]
-                                new_gp_dict[new_gp_name][
-                                    "targets_categories"] = target_genes_categories    
+                                if (gp_i.split("_")[0] + 
+                                    "_combined_GP") not in new_gp_dict.keys():                                
+                                    new_gp_name = gp_j.split("_")[0] + "_combined_GP"
+                                    new_gp_dict[new_gp_name] = {
+                                        "sources": source_genes}
+                                    new_gp_dict[new_gp_name][
+                                        "targets"] = target_genes
+                                    new_gp_dict[new_gp_name][
+                                        "sources_categories"] = gp_genes_dict_j[
+                                            "sources_categories"]
+                                    new_gp_dict[new_gp_name][
+                                        "targets_categories"] = target_genes_categories    
                     else:
                         # otherwise do not combine or drop gene programs
                         pass

@@ -155,8 +155,10 @@ class Trainer(BaseTrainerMixin):
         print("\n--- INITIALIZING TRAINER ---")
         
         # Set seed and use GPU if available
+        np.random.seed(self.seed_)
         if use_cuda_if_available & torch.cuda.is_available():
             torch.cuda.manual_seed(self.seed_)
+            torch.manual_seed(self.seed_)
             self.device = torch.device("cuda")
         else:
             torch.manual_seed(self.seed_)

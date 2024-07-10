@@ -179,7 +179,10 @@ class NicheCompass(BaseModelMixin):
         in masks but can be learned de novo).
     cat_covariates_embeds_nums:
         List of number of embedding nodes for all categorical covariates.
-
+    use_cuda_if_available:
+        If `True`, use cuda if available.
+    seed:
+        Random seed to get reproducible results.
     kwargs:
         NicheCompass kwargs (to support legacy versions).
     """
@@ -240,6 +243,8 @@ class NicheCompass(BaseModelMixin):
                  n_addon_gp: int=100,
                  cat_covariates_embeds_nums: Optional[List[int]]=None,
                  include_edge_kl_loss: bool=True,
+                 use_cuda_if_available: bool=True,
+                 seed: int=0,
                  **kwargs):
         self.adata = adata
         self.adata_atac = adata_atac
@@ -282,6 +287,15 @@ class NicheCompass(BaseModelMixin):
         self.active_gp_thresh_ratio_ = active_gp_thresh_ratio
         self.active_gp_type_ = active_gp_type
         self.include_edge_kl_loss_ = include_edge_kl_loss
+        self.seed_ = seed
+
+        # Set seed for reproducibility
+        np.random.seed(self.seed_)
+        if use_cuda_if_available & torch.cuda.is_available():
+            torch.cuda.manual_seed(self.seed_)
+            torch.manual_seed(self.seed_)
+        else:
+            torch.manual_seed(self.seed_)
 
         # Retrieve gene program masks
         if gp_targets_mask_key in adata.varm:
