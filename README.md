@@ -24,6 +24,6 @@ NicheCompass (**N**iche **I**dentification based on **C**ellular grap**H** **E**
   journal = {bioRxiv},
   year = {2024},
   doi = {10.1101/2024.02.21.581428},
-  url = {https://www.biorxiv.org/content/10.1101/2024.02.21.581428v3}
+  url = {https://www.biorxiv.org/content/10.1101/2024.02.21.581428}
 }
 ```
