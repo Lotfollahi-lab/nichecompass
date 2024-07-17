@@ -42,7 +42,7 @@ external libraries, which you can use as:
 conda env create -f environment.yaml
 ```
 
-To enable GPU support for JAX, after the installation run
+To enable GPU support for JAX, after the installation run:
 ```
 pip install jaxlib==0.3.25+cuda${CUDA}.cudnn${CUDNN} -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 ```
