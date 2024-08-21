@@ -604,7 +604,7 @@ class NicheCompass(BaseModelMixin):
               lambda_l1_masked: float=0.,
               l1_targets_categories: Optional[list]=["target_gene"],
               l1_sources_categories: Optional[list]=None,
-              lambda_l1_addon: float=0.,
+              lambda_l1_addon: float=30.,
               edge_val_ratio: float=0.1,
               node_val_ratio: float=0.1,
               edge_batch_size: int=256,
