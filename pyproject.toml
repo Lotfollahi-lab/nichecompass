@@ -29,8 +29,7 @@ classifiers = [
 dependencies = [
     "mlflow>=1.28.0",
     "pyreadr>=0.4.6",
-    "scanpy>=1.9.3",
-    "scglue>=0.3.2",
+    "scanpy>=1.9.3,<1.10.0",
     "torch-geometric>=2.2.0",
     "omnipath>=1.0.7",
     "decoupler>=1.4.0",
@@ -61,7 +60,8 @@ docs = [
 ]
 docsbuild = ["nichecompass[docs,optional]"]  # docs build dependencies
 optional = [
-    "nichecompass[benchmarking]"
+    "nichecompass[benchmarking]",
+    "nichecompass[multimodal]"
 ]  # all optional user functionality
 tests = [
     "pytest",
@@ -75,10 +75,13 @@ benchmarking = [
     "jax==0.4.7",
     "jaxlib==0.4.7"
 ]
+multimodal = [
+    "scglue>=0.3.2",
+]
 tutorials = [
     "jupyter",
 ]
-all = ["nichecompass[dev,docs,tests,benchmarking,tutorials]"]
+all = ["nichecompass[dev,docs,tests,benchmarking,multimodal,tutorials]"]
 
 [tool.coverage.run]
 source = ["nichecompass"]

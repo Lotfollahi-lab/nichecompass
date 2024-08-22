@@ -42,6 +42,17 @@ external libraries, which you can use as:
 conda env create -f environment.yaml
 ```
 
+To enable GPU support for JAX, after the installation run:
+```
+pip install jaxlib==0.3.25+cuda${CUDA}.cudnn${CUDNN} -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+```
+
+For example, for CUDA 11.7, type:
+```
+pip install jaxlib==0.4.7+cuda11.cudnn86 -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+```
+
+
 ## Installation via PyPi
 
 Subsequently, install NicheCompass via pip:
@@ -49,11 +60,10 @@ Subsequently, install NicheCompass via pip:
 pip install nichecompass
 ```
 
-or
+Install optional dependencies required for benchmarking, multimodal analysis, running tutorials etc. with:
 ```
 pip install nichecompass[all]
 ```
-to include dependencies required for benchmarking, running tutorials etc.
 
 [Mambaforge]: https://github.com/conda-forge/miniforge
 [Docker]: https://www.docker.com
