@@ -1101,11 +1101,11 @@ def filter_and_combine_gp_dict_gps_v2(
         reconstruction of the gene expression of the node's neighbors
         (transmitting nodes).
     overlap_thresh_target_genes:
-        The minimum ratio of target genes that need to overlap between two gene
-        programs (one of which does not have source genes) for them to be
-        combined. Gene programs with different source genes are never combined.
+        The minimum ratio of target genes that need to overlap between a GP
+        without source genes and another GP for the GP to be dropped.
+        Gene programs with different source genes are never combined or dropped.
     verbose:
-        If `True`, print gene programs that are removed and combined.
+        If `True`, print gene programs that are dropped and combined.
 
     Returns
     ----------
@@ -1173,49 +1173,19 @@ def filter_and_combine_gp_dict_gps_v2(
                                 "targets_categories"] = target_genes_categories
                             
                     elif len(source_genes_i) == 0:
-                        if target_genes_i.issubset(target_genes_j):
-                            # if source genes not existent but target genes are
-                            # a subset, drop gene program
-                            if verbose:
-                                print(f"Dropping {gp_i}.")
-                            new_gp_dict.pop(gp_i, None)
-                        else:
-                            target_genes_overlap = list(
-                                target_genes_i & target_genes_j)
-                            n_target_gene_overlap = len(target_genes_overlap)
-                            n_avg_target_genes = (
-                                len(target_genes_i) + len(target_genes_j)) / 2
-                            ratio_shared_target_genes = (n_target_gene_overlap /
-                                                        n_avg_target_genes)
-                            if ratio_shared_target_genes >= overlap_thresh_target_genes:
-                                # if source genes not existent and target genes
-                                # overlap more than specified, combine gene programs
-                                all_combined = False
+                        target_genes_overlap = list(
+                            set(target_genes_i) & set(target_genes_j))
+                        n_target_gene_overlap = len(target_genes_overlap)
+                        n_target_genes = len(target_genes_i)
+                        ratio_shared_target_genes = (n_target_gene_overlap /
+                                                     n_target_genes)
+                        if ratio_shared_target_genes >= overlap_thresh_target_genes:
+                            # if source genes not existent and target genes
+                            # overlap more than specified, drop gene program
+                            if gp_j in new_gp_dict.keys():
                                 if verbose:
-                                    print(f"Combining {gp_i} and {gp_j}.")
-                                source_genes = source_genes_j
-                                target_genes = target_genes_i
-                                target_genes_categories = target_genes_categories_i
-                                for target_gene, target_gene_category in zip(
-                                    target_genes_j, target_genes_categories_j):
-                                    if target_gene not in target_genes:
-                                        target_genes.extend([target_gene])
-                                        target_genes_categories.extend(
-                                            [target_gene_category])
+                                    print(f"Dropping {gp_i}.")
                                 new_gp_dict.pop(gp_i, None)
-                                new_gp_dict.pop(gp_j, None)
-                                if (gp_i.split("_")[0] + 
-                                    "_combined_GP") not in new_gp_dict.keys():                                
-                                    new_gp_name = gp_j.split("_")[0] + "_combined_GP"
-                                    new_gp_dict[new_gp_name] = {
-                                        "sources": source_genes}
-                                    new_gp_dict[new_gp_name][
-                                        "targets"] = target_genes
-                                    new_gp_dict[new_gp_name][
-                                        "sources_categories"] = gp_genes_dict_j[
-                                            "sources_categories"]
-                                    new_gp_dict[new_gp_name][
-                                        "targets_categories"] = target_genes_categories    
                     else:
                         # otherwise do not combine or drop gene programs
                         pass
