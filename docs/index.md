@@ -20,6 +20,13 @@ Check out the installation guide.
 Learn by following example applications of NicheCompass.
 :::
 
+:::{grid-item-card} User Guide {octicon}`book;1em;`
+:link: user_guide/index
+:link-type: doc
+
+Review good practices for training NicheCompass models on your own data.
+:::
+
 :::{grid-item-card} API {octicon}`info;1em;`
 :link: api/index
 :link-type: doc
@@ -27,7 +34,7 @@ Learn by following example applications of NicheCompass.
 Find a detailed description of NicheCompass APIs.
 :::
 
-:::{grid-item-card} Release Notes {octicon}`book;1em;`
+:::{grid-item-card} Release Notes {octicon}`tag;1em;`
 :link: release_notes/index
 :link-type: doc
 
