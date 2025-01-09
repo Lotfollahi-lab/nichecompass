@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file. The format
 is based on [keep a changelog], and this project adheres to
 [Semantic Versioning]. Full commit history is available in the [commit logs].
 
+### 0.2.2 (09.01.2025)
+
+-   Synced repository with Zenodo to mint DOI for publication.
+[@sebastianbirk]
+
 ### 0.2.1 (15.10.2024)
 
 -   Added a user guide to the package documentation.
