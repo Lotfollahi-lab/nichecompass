@@ -4,7 +4,7 @@ requires = ["hatchling"]
 
 [project]
 name = "nichecompass"
-version = "0.2.2"
+version = "0.2.1"
 description = "End-to-end analysis of spatial multi-omics data"
 readme = "README.md"
 requires-python = ">=3.9"
