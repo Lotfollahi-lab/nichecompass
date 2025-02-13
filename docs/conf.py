@@ -19,8 +19,8 @@ sys.path.insert(0, str(HERE / "extensions"))
 # NOTE: If you installed your project in editable mode, this might be stale.
 #       If this is the case, reinstall it to refresh the metadata
 info = metadata("nichecompass")
-project_name = info["Name"]
-author = info["Author"]
+project_name = info.get("Name", "NicheCompass")
+author = info.get("Author", "Sebastian Birk")
 copyright = f"{datetime.now():%Y}, {author}."
 version = info["Version"]
 urls = dict(pu.split(", ") for pu in info.get_all("Project-URL"))
