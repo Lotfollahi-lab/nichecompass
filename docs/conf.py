@@ -13,9 +13,6 @@ from pathlib import Path
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE / "extensions"))
 
-# -- Autodoc Mock Imports ----------------------------------------------------
-autodoc_mock_imports = ["nichecompass.benchmarking"]
-
 # -- Project information -----------------------------------------------------
 
 # NOTE: If you installed your project in editable mode, this might be stale.
