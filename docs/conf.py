@@ -13,6 +13,8 @@ from pathlib import Path
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE / "extensions"))
 
+# -- Autodoc Mock Imports ----------------------------------------------------
+autodoc_mock_imports = ["nichecompass.benchmarking"]
 
 # -- Project information -----------------------------------------------------
 
@@ -103,7 +105,6 @@ intersphinx_mapping = {
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "**.ipynb_checkpoints"]
-
 
 # -- Options for HTML output -------------------------------------------------
 
