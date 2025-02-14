@@ -19,6 +19,7 @@ sys.path.insert(0, str(HERE / "extensions"))
 #       If this is the case, reinstall it to refresh the metadata
 info = metadata("nichecompass")
 project_name = info.get("Name", "NicheCompass")
+project = project_name
 author = info.get("Author", "Sebastian Birk")
 copyright = f"{datetime.now():%Y}, {author}."
 version = info["Version"]
