@@ -34,13 +34,11 @@ dependencies = [
     "omnipath>=1.0.7",
     "decoupler>=1.4.0",
 ]
-
-[project.optional-dependencies]
-dev = [
+optional-dependencies.dev = [
     "pre-commit",
     "twine>=4.0.2",
 ]
-docs = [
+optional-dependencies.docs = [
     "docutils>=0.8,!=0.18.*,!=0.19.*",
     "sphinx>=4.1",
     "sphinx-book-theme>=1.0.0",
@@ -58,16 +56,14 @@ docs = [
     "ipython",
     "pandas",
 ]
-docsbuild = ["nichecompass[docs,optional]"]  # docs build dependencies
-optional = [
-    "nichecompass[benchmarking]",
-    "nichecompass[multimodal]"
-]  # all optional user functionality
-tests = [
+optional-dependencies.docsbuild = [
+    "nichecompass[docs,benchmarking,multimodal]"
+]  # docs build dependencies
+optional-dependencies.tests = [
     "pytest",
     "coverage",
 ]
-benchmarking = [
+optional-dependencies.benchmarking = [
     "scib-metrics>=0.3.3",
     "pynndescent>=0.5.8",
     "scikit-misc>=0.3.0",
@@ -75,10 +71,10 @@ benchmarking = [
     "jax==0.4.7",
     "jaxlib==0.4.7"
 ]
-multimodal = [
+optional-dependencies.multimodal = [
     "scglue>=0.3.2",
 ]
-tutorials = [
+optional-dependencies.tutorials = [
     "jupyter",
 ]
 all = ["nichecompass[dev,docs,tests,benchmarking,multimodal,tutorials]"]
