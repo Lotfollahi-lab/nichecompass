@@ -18,12 +18,12 @@ NicheCompass (**N**iche **I**dentification based on **C**ellular grap**H** **E**
 
 ## Reference
 ```
-@article{Birk2024Quantitative,
-  title = {Quantitative characterization of cell niches in spatial atlases},
-  author = {Birk, S. and others},
-  journal = {bioRxiv},
-  year = {2024},
-  doi = {10.1101/2024.02.21.581428},
-  url = {https://www.biorxiv.org/content/10.1101/2024.02.21.581428}
+@article{Birk2025,
+  author    = {Birk, S. and Bonafonte-Pard{\`a}s, I. and Feriz, A. M. and et al.},
+  title     = {Quantitative characterization of cell niches in spatially resolved omics data},
+  journal   = {Nature Genetics},
+  year      = {2025},
+  doi       = {10.1038/s41588-025-02120-6},
+  url       = {https://doi.org/10.1038/s41588-025-02120-6}
 }
 ```
