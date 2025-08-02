@@ -78,7 +78,7 @@ optional-dependencies.multimodal = [
 optional-dependencies.tutorials = [
     "jupyter",
 ]
-all = ["nichecompass[dev,docs,tests,benchmarking,multimodal,tutorials]"]
+optional-dependencies.all = ["nichecompass[dev,docs,tests,benchmarking,multimodal,tutorials]"]
 
 [tool.coverage.run]
 source = ["nichecompass"]
