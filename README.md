@@ -19,7 +19,7 @@ NicheCompass (**N**iche **I**dentification based on **C**ellular grap**H** **E**
 ## Reference
 ```
 @article{Birk2025,
-  author    = {Birk, S. and Bonafonte-Pard{\`a}s, I. and Feriz, A. M. and et al.},
+  author    = {Birk, S. et al.},
   title     = {Quantitative characterization of cell niches in spatially resolved omics data},
   journal   = {Nature Genetics},
   year      = {2025},
