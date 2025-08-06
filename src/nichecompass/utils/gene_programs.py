@@ -329,7 +329,7 @@ def extract_gp_dict_from_collectri_tf_network(
         'target_gene').
     """
     if not load_from_disk:
-        net = dc.get_collectri(organism=species, split_complexes=False)
+        net = dc.op.collectri(organism=species, remove_complexes=False)
         if save_to_disk:
             net.to_csv(tf_network_file_path, index=False)
     else:
