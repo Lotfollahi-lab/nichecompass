@@ -32,7 +32,7 @@ dependencies = [
     "scanpy>=1.9.3,<1.10.0",
     "torch-geometric>=2.2.0",
     "omnipath>=1.0.7",
-    "decoupler>=1.4.0",
+    "decoupler>=1.4.0,<2",
     "numpy<2",
 ]
 optional-dependencies.dev = [
