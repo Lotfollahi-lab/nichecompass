@@ -7,7 +7,7 @@ name = "nichecompass"
 version = "0.2.4"
 description = "End-to-end analysis of spatial multi-omics data"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {file = "LICENSE"}
 authors = [
     {name = "Sebastian Birk"},
@@ -22,7 +22,7 @@ classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
   "Natural Language :: English",
-  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
   "Operating System :: POSIX :: Linux",
   "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
