@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file. The format
 is based on [keep a changelog], and this project adheres to
 [Semantic Versioning]. Full commit history is available in the [commit logs].
 
+### 0.3.0 (07.08.2025)
+
+-   Fixed dependency issues in optional dependencies and updated decoupler to version 2.0.0.
+[@sebastianbirk]
+
 ### 0.2.4 (02.08.2025)
 
 -   Fixed issue in pyproject.toml that prevented "pip install nichecompass[all]" from installing optional dependencies.
