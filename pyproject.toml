@@ -29,11 +29,11 @@ classifiers = [
 dependencies = [
     "mlflow>=1.28.0",
     "pyreadr>=0.4.6",
-    "scanpy>=1.9.3,<1.10.0",
+    "scanpy>=1.9.3",
     "torch-geometric>=2.2.0",
     "omnipath>=1.0.7",
     "decoupler>=2.0.0",
-    "numpy<2",
+    "numpy>=2",
 ]
 optional-dependencies.dev = [
     "pre-commit",
@@ -68,9 +68,9 @@ optional-dependencies.benchmarking = [
     "scib-metrics>=0.3.3",
     "pynndescent>=0.5.8",
     "scikit-misc>=0.3.0",
-    "squidpy==1.2.3",
-    "jax==0.4.7",
-    "jaxlib==0.4.7"
+    "squidpy>=1.2.3",
+    "jax>=0.4.7",
+    "jaxlib>=0.4.7"
 ]
 optional-dependencies.multimodal = [
     "scglue>=0.3.2",
