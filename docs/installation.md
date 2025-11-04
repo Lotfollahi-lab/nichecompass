@@ -5,12 +5,12 @@ models on a device with GPU support. Apple silicon or multi-GPU training is not
 yet supported.
 
 We do not recommend installation on your system Python. Please set up a virtual
-environment, e.g. via conda through the [Mambaforge] distribution or [venv], or
-create a [Docker] image.
+environment, e.g. via conda through the [Mambaforge] distribution or [python-venv],
+or create a [Docker] image.
 
 If you want to train NicheCompass on multimodal data, we recommend to use conda.
 For the fastest installation experience for unimodal training, use the [uv]
-package manager within a [venv] environment. For example, run:
+package manager within a [python-venv] environment. For example, run:
 
 ```
 python3 -m venv ${/path/to/new/virtual/environment}
@@ -81,7 +81,7 @@ uv pip install jax[cuda12]
 ```
 
 [Mambaforge]: https://github.com/conda-forge/miniforge
-[venv]: https://docs.python.org/3/library/venv.html
+[python-venv]: https://docs.python.org/3/library/venv.html
 [uv]: https://docs.astral.sh/uv/getting-started/installation
 [Docker]: https://www.docker.com
 [PyTorch]: http://pytorch.org
