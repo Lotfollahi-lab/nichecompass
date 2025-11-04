@@ -17,7 +17,7 @@ python3 -m venv ${/path/to/new/virtual/environment}
 source ${/path/to/new/virtual/environment}/bin/activate
 pip install uv
 ```
-where ${/path/to/new/virtual/environment} should be replaced with the path
+where `${/path/to/new/virtual/environment}` should be replaced with the path
 where you want to install the virtual environment.
 
 ## Additional Libraries
