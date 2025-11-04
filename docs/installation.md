@@ -1,71 +1,86 @@
 # Installation
 
-NicheCompass is available for Python 3.10. It does yet not support Apple silicon.
-
+NicheCompass is available for Python 3.10. We recommend to train NicheCompass
+models on a device with GPU support. Apple silicon or multi-GPU training is not
+yet supported.
 
 We do not recommend installation on your system Python. Please set up a virtual
-environment, e.g. via conda through the [Mambaforge] distribution, or create a
-[Docker] image.
+environment, e.g. via conda through the [Mambaforge] distribution or [venv], or
+create a [Docker] image.
+
+If you want to train NicheCompass on multimodal data, we recommend to use conda.
+For the fastest installation experience for unimodal training, use the [uv]
+package manager within a [venv] environment. For example, run:
+
+```
+python3 -m venv ${/path/to/new/virtual/environment}
+source ${/path/to/new/virtual/environment}/bin/activate
+pip install uv
+```
+where ${/path/to/new/virtual/environment} should be replaced with the path
+where you want to install the virtual environment.
 
 ## Additional Libraries
 
-To use NicheCompass, you need to install some external libraries. These include:
+To use NicheCompass, you first need to install some external libraries. These
+include:
 - [PyTorch]
 - [PyTorch Scatter]
 - [PyTorch Sparse]
-- [bedtools]
+- [bedtools] (only for multimodal training including paired ATAC-seq data)
 
 We recommend to install the PyTorch libraries with GPU support. If you have
 CUDA, this can be done as:
 
 ```
-pip install torch==${TORCH}+${CUDA} --extra-index-url https://download.pytorch.org/whl/${CUDA}
-pip install pyg_lib torch_scatter torch_sparse -f https://data.pyg.org/whl/torch-${TORCH}+${CUDA}.html
+uv pip install torch==${TORCH}+${CUDA} --extra-index-url https://download.pytorch.org/whl/${CUDA}
+uv pip install pyg_lib torch_scatter torch_sparse -f https://data.pyg.org/whl/torch-${TORCH}+${CUDA}.html
 ```
 where `${TORCH}` and `${CUDA}` should be replaced by the specific PyTorch and
 CUDA versions, respectively.
 
-For example, for PyTorch 2.0.0 and CUDA 11.7, type:
+For example, for PyTorch 2.6.0 and CUDA 12.4, type:
 ```
-pip install torch==2.0.0+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
-pip install pyg_lib torch_scatter torch_sparse -f https://data.pyg.org/whl/torch-2.0.0+cu117.html
+uv pip install torch --index-url https://download.pytorch.org/whl/cu124
+uv pip install pyg_lib torch_scatter torch_sparse -f https://data.pyg.org/whl/torch-2.6.0+cu124.html
 ```
 
-To install bedtools, you can use conda:
+If you want to install bedtools, we recommend to use conda:
 ```
 conda install bedtools=2.30.0 -c bioconda
 ```
 
 Alternatively, we have provided a conda environment file with all required
-external libraries, which you can use as:
+external libraries for PyTorch 2.0.0 and CUDA 11.7, which you can use as:
 ```
 conda env create -f environment.yaml
 ```
-
-To enable GPU support for JAX, after the installation run:
-```
-pip install jaxlib==0.3.25+cuda${CUDA}.cudnn${CUDNN} -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-```
-
-For example, for CUDA 11.7, type:
-```
-pip install jaxlib==0.4.7+cuda11.cudnn86 -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-```
-
 
 ## Installation via PyPi
 
 Subsequently, install NicheCompass via pip:
 ```
-pip install nichecompass
+uv pip install nichecompass
 ```
 
-Install optional dependencies required for benchmarking, multimodal analysis, running tutorials etc. with:
+Or install optional dependencies required for benchmarking, multimodal analysis, running tutorials etc. with:
 ```
-pip install nichecompass[all]
+uv pip install nichecompass[all]
+```
+
+To enable GPU support for JAX (recommended for benchmarking), after the installation run:
+```
+uv pip install jax[cuda${CUDA}]
+```
+where ${CUDA} should be replaced by your major CUDA version. For example:
+
+```
+uv pip install jax[cuda12]
 ```
 
 [Mambaforge]: https://github.com/conda-forge/miniforge
+[venv]: https://docs.python.org/3/library/venv.html\
+[uv]: https://docs.astral.sh/uv/getting-started/installation/
 [Docker]: https://www.docker.com
 [PyTorch]: http://pytorch.org
 [PyTorch Scatter]: https://github.com/rusty1s/pytorch_scatter
