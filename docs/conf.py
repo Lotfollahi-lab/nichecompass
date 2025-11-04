@@ -64,6 +64,19 @@ extensions = [
     *[p.stem for p in (HERE / "extensions").glob("*.py")],
 ]
 
+# -- Mock heavy dependencies -------------------------------------------------
+autodoc_mock_imports = [
+    "torch",
+    "torchvision",
+    "torchaudio",
+    "torch_geometric",
+    "torch_scatter",
+    "torch_sparse",
+    "torch_cluster",
+    "torch_spline_conv",
+    "pynvml"
+]
+
 autosummary_generate = True
 autodoc_member_order = "groupwise"
 default_role = "literal"

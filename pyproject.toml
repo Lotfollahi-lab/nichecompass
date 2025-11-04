@@ -4,7 +4,7 @@ requires = ["hatchling"]
 
 [project]
 name = "nichecompass"
-version = "0.3.1"
+version = "0.3.2"
 description = "End-to-end analysis of spatial multi-omics data"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -27,13 +27,13 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
 dependencies = [
-    "mlflow>=1.28.0",
-    "pyreadr>=0.4.6",
-    "scanpy>=1.9.3,<1.10.0",
-    "torch-geometric>=2.2.0",
-    "omnipath>=1.0.7",
-    "decoupler>=2.0.0",
-    "numpy<2",
+    "mlflow",
+    "pyreadr",
+    "scanpy",
+    "torch-geometric",
+    "omnipath",
+    "decoupler",
+    "numpy",
 ]
 optional-dependencies.dev = [
     "pre-commit",
@@ -65,18 +65,18 @@ optional-dependencies.tests = [
     "coverage",
 ]
 optional-dependencies.benchmarking = [
-    "scib-metrics>=0.3.3",
-    "pynndescent>=0.5.8",
-    "scikit-misc>=0.3.0",
-    "squidpy==1.2.3",
-    "jax==0.4.7",
-    "jaxlib==0.4.7"
+    "scib-metrics",
+    "pynndescent",
+    "scikit-misc",
+    "squidpy",
+    "jax",
+    "jaxlib"
 ]
 optional-dependencies.multimodal = [
-    "scglue>=0.3.2",
+    "scglue",
 ]
 optional-dependencies.tutorials = [
-    "jupyter",
+    "jupyterlab",
 ]
 optional-dependencies.all = ["nichecompass[dev,docs,tests,benchmarking,multimodal,tutorials]"]
 
