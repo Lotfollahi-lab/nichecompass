@@ -74,7 +74,7 @@ To enable GPU support for JAX (recommended for benchmarking), after the installa
 ```
 uv pip install jax[cuda${CUDA}]
 ```
-where ${CUDA} should be replaced by your major CUDA version. For example:
+where `${CUDA}` should be replaced by your major CUDA version. For example:
 
 ```
 uv pip install jax[cuda12]
