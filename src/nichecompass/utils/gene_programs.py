@@ -692,10 +692,13 @@ def extract_gp_dict_from_omnipath_lr_interactions(
         return [func(item) for item in lst]
 
     def resolve_protein_complexes(x):
-        if "COMPLEX:" not in x:
-            return [x]
+        if x:
+            if "COMPLEX:" not in x:
+                return [x]
+            else:
+                return x.removeprefix("COMPLEX:").split("_")
         else:
-            return x.removeprefix("COMPLEX:").split("_")
+            return []
         
     grouped_lr_interaction_df["sources"] = grouped_lr_interaction_df[
         "genesymbol_intercell_source"].apply(
