@@ -27,7 +27,9 @@ include:
 - [PyTorch]
 - [PyTorch Scatter]
 - [PyTorch Sparse]
-- [bedtools] (only for multimodal training including paired ATAC-seq data)
+- [bedtools]
+
+Bedtools is only required for multimodal training including paired ATAC-seq data.
 
 We recommend to install the PyTorch libraries with GPU support. If you have
 CUDA, this can be done as:
@@ -79,8 +81,8 @@ uv pip install jax[cuda12]
 ```
 
 [Mambaforge]: https://github.com/conda-forge/miniforge
-[venv]: https://docs.python.org/3/library/venv.html\
-[uv]: https://docs.astral.sh/uv/getting-started/installation/
+[venv]: https://docs.python.org/3/library/venv.html
+[uv]: https://docs.astral.sh/uv/getting-started/installation
 [Docker]: https://www.docker.com
 [PyTorch]: http://pytorch.org
 [PyTorch Scatter]: https://github.com/rusty1s/pytorch_scatter
