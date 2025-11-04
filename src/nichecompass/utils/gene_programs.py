@@ -496,7 +496,8 @@ def extract_gp_dict_from_nichenet_lrt_interactions(
     per_gp_target_gene_scores_sorted = np.flip(
         np.sort(per_gp_target_gene_scores, axis=0), axis=0)
     per_gp_score_keep_threshold = pd.Series(
-        per_gp_target_gene_scores_sorted[max_n_target_genes_per_gp, :],
+        per_gp_target_gene_scores_sorted[
+            min(max_n_target_genes_per_gp, len(per_gp_target_gene_scores_sorted) - 1), :],
         index=ligand_target_matrix_df.columns)
     all_target_gene_scores.sort()
     all_target_gene_scores_sorted = np.flip(all_target_gene_scores)
