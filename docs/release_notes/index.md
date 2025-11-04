@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file. The format
 is based on [keep a changelog], and this project adheres to
 [Semantic Versioning]. Full commit history is available in the [commit logs].
 
+### 0.3.1 (04.11.2025)
+
+-   Fixed issue in retrieval of omnipath gene programs due to omnipath db version update.
+[@sebastianbirk]
+
 ### 0.3.0 (07.08.2025)
 
 -   Fixed dependency issues in optional dependencies and updated decoupler to version 2.0.0.
