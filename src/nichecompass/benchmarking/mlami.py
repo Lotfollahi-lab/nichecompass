@@ -195,6 +195,7 @@ def compute_mlami(
                     cluster_group2_key=f"leiden_latent_{str(latent_resolution)}"))
         mlami = np.max(lami_list)
     elif batch_key is not None:
+        batch_mlami_list = []
         for i, batch in enumerate(unique_batches):
             print(f"Computing MLAMI for {batch_key} {batch}...")
             batch_lami_list = []
@@ -205,7 +206,8 @@ def compute_mlami(
                         cluster_group1_key=f"leiden_spatial_{str(spatial_resolution)}",
                         cluster_group2_key=f"leiden_latent_{str(latent_resolution)}"))
             batch_mlami = np.max(batch_lami_list)
-        mlami = np.mean(batch_mlami)
+            batch_mlami_list.append(batch_mlami)
+        mlami = np.mean(batch_mlami_list)
     return mlami
 
 
