@@ -64,7 +64,7 @@ def load_saved_files(dir_path: str,
     model_path = os.path.join(dir_path, "model_params.pt")
 
     if os.path.exists(adata_path) and load_adata:
-        adata = ad.read(adata_path)
+        adata = ad.read_h5ad(adata_path)
     elif not os.path.exists(adata_path) and load_adata:
         raise ValueError("Dir path contains no saved anndata and no adata was "
                          "passed.")
@@ -74,7 +74,7 @@ def load_saved_files(dir_path: str,
     if load_adata_atac:
         adata_atac_path = os.path.join(dir_path, adata_atac_file_name)
         if os.path.exists(adata_atac_path):
-            adata_atac = ad.read(adata_atac_path)
+            adata_atac = ad.read_h5ad(adata_atac_path)
         else:
             raise ValueError("Dir path contains no saved 'adata_atac' and no "
                              "'adata_atac' was passed.")
