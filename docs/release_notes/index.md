@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. The format
 is based on [keep a changelog], and this project adheres to
 [Semantic Versioning]. Full commit history is available in the [commit logs].
 
+### 0.3.3 (15.05.2026)
+
+-   Fix small bug by changing ad.read() to ad.read_h5ad().
+[@sebastianbirk]
+
+
 ### 0.3.2 (04.11.2025)
 
 -   Remove fixed versioning of package dependencies for uv installation with jax CUDA 12.4 support.
