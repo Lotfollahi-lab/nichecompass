@@ -4,6 +4,14 @@ programs for use by the NicheCompass model.
 """
 
 import copy
+import os
+import shutil
+import ssl
+import tarfile
+import tempfile
+import urllib.error
+import urllib.request
+import warnings
 from typing import Literal, Optional
 
 import decoupler as dc
@@ -13,6 +21,23 @@ import pandas as pd
 from anndata import AnnData
 
 from .utils import load_R_file_as_df, create_gp_gene_count_distribution_plots
+
+
+# UniProt cellular-component keywords indicating that a protein resides at the
+# cell surface, is secreted, or is otherwise extracellular, and can therefore
+# plausibly participate in intercellular (juxtacrine or paracrine) signaling.
+# Used to filter the human interactome to interactions that can act between
+# neighboring cells (as opposed to intracellular protein complexes).
+HUMANPPI_CELL_SURFACE_SECRETED_KEYWORDS = {
+    "Cell membrane", "Secreted", "Cell surface", "Cell junction",
+    "Cell projection", "Extracellular matrix", "Basement membrane",
+    "Synapse", "Postsynaptic cell membrane", "Presynaptic cell membrane",
+    "Apical cell membrane", "Basolateral cell membrane",
+    "Apicolateral cell membrane", "Lateral cell membrane",
+    "Tight junction", "Gap junction", "Adherens junction", "Desmosome",
+    "Focal adhesion", "Hemidesmosome", "Microvillus", "Cilium", "Flagellum",
+    "Filopodium", "Lamellipodium", "Membrane raft", "Dendritic spine",
+    "Sarcolemma"}
 
 
 def add_gps_from_gp_dict_to_adata(
@@ -872,6 +897,330 @@ def extract_gp_dict_from_mebocost_ms_interactions(
         create_gp_gene_count_distribution_plots(
             gp_dict=gp_dict,
             gp_plot_label="MEBOCOST",
+            save_path=gp_gene_count_distributions_save_path)
+
+    return gp_dict
+
+
+def _download_and_load_humanppi_predictions(
+        precision: Literal["90", "80"],
+        url: str) -> pd.DataFrame:
+    """
+    Helper to download the human interactome predictions tarball from the web
+    and load the requested precision table into a pandas DataFrame.
+
+    The download server may present an incomplete TLS certificate chain; in
+    that case the download is retried with certificate verification disabled
+    (with a warning), as the underlying data is a public research resource.
+
+    Parameters
+    ----------
+    precision:
+        Expected precision of the predicted interactions to load ('90' or
+        '80'), corresponding to the ´final_predictions_90.tsv´ and
+        ´final_predictions_80.tsv´ files respectively.
+    url:
+        URL of the ´final_predictions.tar.gz´ archive.
+
+    Returns
+    ----------
+    ppi_df:
+        Predicted protein-protein interactions loaded into a pandas DataFrame.
+    """
+    target_file = f"final_predictions_{precision}.tsv"
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_tar_path = os.path.join(tmp_dir, "final_predictions.tar.gz")
+        try:
+            with urllib.request.urlopen(url) as response, \
+                    open(tmp_tar_path, "wb") as out_file:
+                shutil.copyfileobj(response, out_file)
+        except (ssl.SSLError, urllib.error.URLError):
+            warnings.warn(
+                "Could not verify the TLS certificate of the human "
+                f"interactome download server ('{url}'). Retrying the "
+                "download with certificate verification disabled.")
+            unverified_context = ssl._create_unverified_context()
+            with urllib.request.urlopen(
+                    url, context=unverified_context) as response, \
+                    open(tmp_tar_path, "wb") as out_file:
+                shutil.copyfileobj(response, out_file)
+
+        with tarfile.open(tmp_tar_path, "r:gz") as tar:
+            member = next((m for m in tar.getmembers()
+                           if m.name.endswith(target_file)), None)
+            if member is None:
+                raise ValueError(
+                    f"Could not find '{target_file}' in the downloaded human "
+                    "interactome archive.")
+            extracted_file = tar.extractfile(member)
+            # The tsv is preceded by comment lines (starting with '#') that
+            # describe each column; the first non-comment line is the header.
+            ppi_df = pd.read_csv(extracted_file, sep="\t", comment="#")
+    return ppi_df
+
+
+def extract_gp_dict_from_humanppi_interactions(
+        species: Literal["mouse", "human"],
+        precision: Literal["90", "80"]="90",
+        program_type: Literal[
+            "intercellular", "intracellular", "both"]="intercellular",
+        localization_filter: Literal[
+            "surface_secreted", "membrane", "all"]="surface_secreted",
+        min_rf_prob: Optional[float]=None,
+        min_af_prob: Optional[float]=None,
+        load_from_disk: bool=False,
+        save_to_disk: bool=False,
+        ppi_network_file_path: Optional[str]="../data/gene_programs/" \
+                                             "humanppi_network.csv",
+        humanppi_predictions_url: str="https://conglab.swmed.edu/humanPPI/" \
+                                      "downloads/final_predictions.tar.gz",
+        gene_orthologs_mapping_file_path: Optional[str]="../data/gene_" \
+                                                        "annotations/human_" \
+                                                        "mouse_gene_orthologs.csv",
+        plot_gp_gene_count_distributions: bool=True,
+        gp_gene_count_distributions_save_path: Optional[str]=None) -> dict:
+    """
+    Retrieve predicted human protein-protein interactions from the human
+    interactome resource described in Zhang, J., Humphreys, I. R. et al.
+    Predicting protein-protein interactions in the human proteome. Science
+    (2025) doi:10.1126/science.adt1630, and extract them into a gene program
+    dictionary. The predictions were generated with RoseTTAFold2-PPI and
+    AlphaFold2 by screening ~190 million human protein pairs, and are
+    distributed at two expected precision levels (17,849 interactions at 90%
+    precision and 29,258 at 80% precision). The data is archived on Dryad
+    (doi:10.5061/dryad.15dv41p84) and additionally available for direct
+    download from https://conglab.swmed.edu/humanPPI/.
+
+    NicheCompass gene programs have a source component (genes reconstructed in
+    a node's neighbors, i.e. the transmitting cells) and a target/self
+    component (genes reconstructed in the node itself, i.e. the receiving
+    cell). Physical interactions can therefore be represented in two ways,
+    controlled by ´program_type´:
+    - As intercellular gene programs, where the two partners are placed in the
+      source and target component respectively, modeling contact-dependent or
+      paracrine signaling between neighboring cells. This is only meaningful
+      for partners that can act between cells, so such programs are restricted
+      to cell-surface / secreted / extracellular proteins (based on the UniProt
+      cellular-component keywords provided with the predictions). Physical
+      interactions are undirected, so the source/target assignment is arbitrary
+      but consistent.
+    - As intracellular gene programs, where both partners are placed in the
+      target/self component (with an empty source component), modeling a within
+      -cell protein complex / co-expression module. This mirrors the structure
+      of the CollecTRI transcription-factor programs (see
+      ´extract_gp_dict_from_collectri_tf_network´) and is consistent with the
+      self component representing the target of intercellular OR intracellular
+      interactions.
+
+    Note that intracellular (target-only) gene programs have an empty source
+    component and are therefore discarded by ´add_gps_from_gp_dict_to_adata´
+    unless it is called with ´min_source_genes_per_gp=0´ (as is also required
+    for the CollecTRI transcription-factor programs). A warning is emitted when
+    such programs are produced.
+
+    Parameters
+    ----------
+    species:
+        Species for which the gene programs will be extracted. The predictions
+        are human; if ´mouse´, human genes are mapped to their mouse orthologs
+        using a mapping file. NicheCompass contains a default mapping file
+        stored under
+        "<root>/data/gene_annotations/human_mouse_gene_orthologs.csv", which
+        was created with Ensembl BioMart
+        (http://www.ensembl.org/info/data/biomart/index.html).
+    precision:
+        Expected precision of the predicted interactions to use ('90' or '80').
+        '90' (default) uses the high-confidence set of 17,849 interactions,
+        '80' uses the broader set of 29,258 interactions.
+    program_type:
+        Determines which interactions are retained and how they are placed into
+        gene program components. If ´intercellular´ (default), only interactions
+        whose partners can act between cells (both localized to the cell
+        surface / secreted / extracellular, as defined by ´localization_filter´)
+        are kept, and each is turned into a source-to-target gene program. If
+        ´intracellular´, only the remaining interactions are kept, and each is
+        turned into a target-only gene program (empty source component). If
+        ´both´, all interactions are kept and placed into the appropriate
+        component based on their localization. Intracellular (target-only)
+        programs require ´min_source_genes_per_gp=0´ downstream (see above).
+    localization_filter:
+        Defines the set of UniProt cellular-component keywords used to decide
+        whether a protein can act between cells (and hence whether an
+        interaction is treated as intercellular vs. intracellular). If
+        ´surface_secreted´ (default), a protein qualifies if it is localized to
+        the cell surface, secreted, or extracellular. If ´membrane´, the set is
+        relaxed to also include the generic 'Membrane' keyword. If ´all´, every
+        protein qualifies (all interactions are treated as intercellular, so
+        ´program_type´ 'intracellular' yields no programs and 'both' collapses
+        to 'intercellular').
+    min_rf_prob:
+        If not ´None´, only interactions with a RoseTTAFold2-PPI interaction
+        probability (´RFprob´) greater than or equal to this value are kept.
+        The predictions are already precision-filtered, so this is an optional
+        additional filter.
+    min_af_prob:
+        If not ´None´, only interactions with an AlphaFold2 interaction
+        probability (´AFprob´) greater than or equal to this value are kept.
+    load_from_disk:
+        If ´True´, the human PPI network will be loaded from disk instead of
+        from the web.
+    save_to_disk:
+        If ´True´, the human PPI network will additionally be stored on disk.
+        Only applies if ´load_from_disk´ is ´False´.
+    ppi_network_file_path:
+        Path of the file where the human PPI network will be stored (if
+        ´save_to_disk´ is ´True´) or loaded from (if ´load_from_disk´ is
+        ´True´).
+    humanppi_predictions_url:
+        URL of the ´final_predictions.tar.gz´ archive to download if
+        ´load_from_disk´ is ´False´.
+    gene_orthologs_mapping_file_path:
+        Path of the file where the gene orthologs mapping is stored if species
+        is ´mouse´.
+    plot_gp_gene_count_distributions:
+        If ´True´, display the distribution of gene programs per number of
+        source and target genes.
+    gp_gene_count_distributions_save_path:
+        Path of the file where the gene program gene count distribution plot
+        will be saved if ´plot_gp_gene_count_distributions´ is ´True´.
+
+    Returns
+    ----------
+    gp_dict:
+        Nested dictionary containing the human PPI gene programs with keys being
+        gene program names and values being dictionaries with keys ´sources´,
+        ´targets´, ´sources_categories´, and ´targets_categories´. For
+        intercellular programs, ´sources´ contains the first interacting protein
+        and ´targets´ the second; for intracellular programs, ´sources´ is empty
+        and ´targets´ contains both interacting proteins. In all cases the
+        categories label the proteins as 'ppi_protein'.
+    """
+    if precision not in ("90", "80"):
+        raise ValueError("´precision´ should be either '90' or '80'.")
+    if program_type not in ("intercellular", "intracellular", "both"):
+        raise ValueError("´program_type´ should be one of 'intercellular', "
+                         "'intracellular', or 'both'.")
+
+    # Download (or load) the human interactome predictions and store in df
+    # (optionally also on disk)
+    if not load_from_disk:
+        print("Downloading human interactome predictions "
+              f"(precision '{precision}') from the web...")
+        ppi_df = _download_and_load_humanppi_predictions(
+            precision=precision,
+            url=humanppi_predictions_url)
+        if save_to_disk:
+            ppi_df.to_csv(ppi_network_file_path, sep="\t", index=False)
+    else:
+        ppi_df = pd.read_csv(ppi_network_file_path, sep="\t")
+
+    # Drop interactions without a gene symbol for either partner
+    ppi_df = ppi_df.dropna(subset=["Name1", "Name2"])
+    ppi_df = ppi_df[(ppi_df["Name1"].astype(str).str.len() > 0) &
+                    (ppi_df["Name2"].astype(str).str.len() > 0)]
+
+    # Optionally filter by interaction probabilities
+    if min_rf_prob is not None:
+        ppi_df = ppi_df[pd.to_numeric(ppi_df["RFprob"], errors="coerce")
+                        >= min_rf_prob]
+    if min_af_prob is not None:
+        ppi_df = ppi_df[pd.to_numeric(ppi_df["AFprob"], errors="coerce")
+                        >= min_af_prob]
+
+    # Define the localization keyword set used to decide whether a protein can
+    # act between cells (cell surface / secreted / extracellular)
+    allowed_keywords = set(HUMANPPI_CELL_SURFACE_SECRETED_KEYWORDS)
+    if localization_filter == "membrane":
+        allowed_keywords.add("Membrane")
+
+    def can_act_between_cells(localization) -> bool:
+        if localization_filter == "all":
+            return True
+        if pd.isna(localization):
+            return False
+        keywords = [kw.strip() for kw in str(localization).split(",")]
+        return any(kw in allowed_keywords for kw in keywords)
+
+    # Extract gene programs and store in nested dict (deduplicate symmetric and
+    # repeated interactions based on the unordered gene pair). Each interaction
+    # is classified as intercellular (both partners can act between cells) or
+    # intracellular, and placed into the corresponding gene program components
+    # depending on ´program_type´.
+    gp_dict = {}
+    seen_pairs = set()
+    produced_source_empty_gp = False
+    for _, row in ppi_df.iterrows():
+        gene_1 = str(row["Name1"])
+        gene_2 = str(row["Name2"])
+        pair_key = frozenset((gene_1.upper(), gene_2.upper()))
+        if pair_key in seen_pairs:
+            continue
+
+        is_intercellular = (can_act_between_cells(row["Locality1"]) and
+                            can_act_between_cells(row["Locality2"]))
+        if is_intercellular and program_type == "intracellular":
+            continue
+        if not is_intercellular and program_type == "intercellular":
+            continue
+        seen_pairs.add(pair_key)
+
+        if is_intercellular:
+            # Intercellular program: partners split across neighbor (source)
+            # and self (target) components
+            gp_dict[f"{gene_1}_{gene_2}_ppi_GP"] = {
+                "sources": [gene_1],
+                "targets": [gene_2],
+                "sources_categories": ["ppi_protein"],
+                "targets_categories": ["ppi_protein"]}
+        else:
+            # Intracellular program: both partners in the self (target)
+            # component, empty source component (as for CollecTRI TF programs)
+            produced_source_empty_gp = True
+            gp_dict[f"{gene_1}_{gene_2}_intracellular_ppi_GP"] = {
+                "sources": [],
+                "targets": [gene_1, gene_2],
+                "sources_categories": [],
+                "targets_categories": ["ppi_protein", "ppi_protein"]}
+
+    if species == "mouse":
+        # Create mapping to map from human genes to mouse orthologs
+        mapping_df = pd.read_csv(gene_orthologs_mapping_file_path)
+        grouped_mapping_df = mapping_df.groupby(
+            "Gene name")["Mouse gene name"].agg(list).reset_index()
+        ortholog_map = dict(zip(grouped_mapping_df["Gene name"],
+                                grouped_mapping_df["Mouse gene name"]))
+
+        def map_to_mouse_orthologs(gene: str) -> list:
+            # One human gene can have multiple mouse orthologs; capitalize if no
+            # (valid) ortholog is found (consistent with the other GP resources).
+            # Some human genes are present in the mapping file but only with
+            # missing (NaN) mouse gene names, which are filtered out here.
+            orthologs = [o for o in ortholog_map.get(gene, [])
+                         if isinstance(o, str) and o]
+            return orthologs if orthologs else [gene.capitalize()]
+
+        # Map every gene in each program (handles empty source components and
+        # multi-gene target components of intracellular programs)
+        for _, gp in gp_dict.items():
+            for entity in ("sources", "targets"):
+                mapped_genes = []
+                for gene in gp[entity]:
+                    mapped_genes.extend(map_to_mouse_orthologs(gene))
+                gp[entity] = mapped_genes
+                gp[f"{entity}_categories"] = ["ppi_protein"] * len(mapped_genes)
+
+    if produced_source_empty_gp:
+        warnings.warn(
+            "Produced intracellular (target-only) human PPI gene programs with "
+            "an empty source component. Call ´add_gps_from_gp_dict_to_adata´ "
+            "with ´min_source_genes_per_gp=0´ so that these programs are not "
+            "discarded (as is also required for the CollecTRI transcription-"
+            "factor programs).")
+
+    if plot_gp_gene_count_distributions:
+        create_gp_gene_count_distribution_plots(
+            gp_dict=gp_dict,
+            gp_plot_label="HumanPPI",
             save_path=gp_gene_count_distributions_save_path)
 
     return gp_dict
