@@ -1295,7 +1295,13 @@ def filter_and_combine_gp_dict_gps(
     """
     new_gp_dict = gp_dict.copy()
 
-    # Remove gps that are subsets or supersets of other gps from the gp dict
+    # Remove gps that are subsets or supersets of other gps from the gp dict.
+    # Note that ´issubset´ and ´issuperset´ are also ´True´ for identical gene
+    # sets, and the loops below compare each pair of gene programs in both
+    # directions. Gene programs are therefore only removed based on a gene
+    # program that is itself still part of the gene program dictionary, so that
+    # two gene programs with identical genes do not remove each other and one
+    # of them is retained.
     if gp_filter_mode != None:
         for i, (gp_i, gp_genes_dict_i) in enumerate(gp_dict.items()):
             source_genes_i = set([gene.upper() for gene in 
@@ -1309,14 +1315,16 @@ def filter_and_combine_gp_dict_gps(
                     target_genes_j = set([gene.upper() for gene in
                                           gp_genes_dict_j["targets"]])
                     if gp_filter_mode == "subset":
-                        if (source_genes_j.issubset(source_genes_i) &
+                        if (gp_i in new_gp_dict and
+                            source_genes_j.issubset(source_genes_i) and
                             target_genes_j.issubset(target_genes_i)):
                                 new_gp_dict.pop(gp_j, None)
                                 if verbose:
                                     print(f"Removing GP '{gp_j}' as it is a "
                                           f"subset of GP '{gp_i}'.")
                     elif gp_filter_mode == "superset":
-                        if (source_genes_j.issuperset(source_genes_i) &
+                        if (gp_i in new_gp_dict and
+                            source_genes_j.issuperset(source_genes_i) and
                             target_genes_j.issuperset(target_genes_i)):
                                 new_gp_dict.pop(gp_j, None)
                                 if verbose:
@@ -1429,13 +1437,13 @@ def filter_and_combine_gp_dict_gps(
                 for new_gp_source, new_gp_source_category in zip(
                     gp_dict[gp]["sources"], gp_dict[gp]["sources_categories"]):
                     if new_gp_source not in new_gp_sources:
-                        new_gp_sources.extend(new_gp_source)
-                        new_gp_sources_categories.extend(new_gp_source_category)
+                        new_gp_sources.append(new_gp_source)
+                        new_gp_sources_categories.append(new_gp_source_category)
                 for new_gp_target, new_gp_target_category in zip(
                     gp_dict[gp]["targets"], gp_dict[gp]["targets_categories"]):
                     if new_gp_target not in new_gp_targets:
-                        new_gp_targets.extend(new_gp_target)
-                        new_gp_targets_categories.extend(new_gp_target_category)
+                        new_gp_targets.append(new_gp_target)
+                        new_gp_targets_categories.append(new_gp_target_category)
                 new_gp_dict.pop(gp, None)
                 if verbose:
                     print(f"Removing GP '{gp}' as it is a component of the "
@@ -1510,7 +1518,7 @@ def filter_and_combine_gp_dict_gps_v2(
                         target_gene_category for target_gene_category in
                         gp_genes_dict_j["targets_categories"]]
 
-                    if ((source_genes_i == source_genes_j) &
+                    if ((source_genes_i == source_genes_j) and
                         len(source_genes_i) > 0):
                         # if source genes are exactly the same, combine gene
                         # programs
