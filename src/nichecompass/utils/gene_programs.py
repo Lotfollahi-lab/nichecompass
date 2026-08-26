@@ -23,21 +23,124 @@ from anndata import AnnData
 from .utils import load_R_file_as_df, create_gp_gene_count_distribution_plots
 
 
-# UniProt cellular-component keywords indicating that a protein resides at the
-# cell surface, is secreted, or is otherwise extracellular, and can therefore
-# plausibly participate in intercellular (juxtacrine or paracrine) signaling.
-# Used to filter the human interactome to interactions that can act between
-# neighboring cells (as opposed to intracellular protein complexes).
-HUMANPPI_CELL_SURFACE_SECRETED_KEYWORDS = {
-    "Cell membrane", "Secreted", "Cell surface", "Cell junction",
-    "Cell projection", "Extracellular matrix", "Basement membrane",
-    "Synapse", "Postsynaptic cell membrane", "Presynaptic cell membrane",
-    "Apical cell membrane", "Basolateral cell membrane",
-    "Apicolateral cell membrane", "Lateral cell membrane",
-    "Tight junction", "Gap junction", "Adherens junction", "Desmosome",
-    "Focal adhesion", "Hemidesmosome", "Microvillus", "Cilium", "Flagellum",
-    "Filopodium", "Lamellipodium", "Membrane raft", "Dendritic spine",
-    "Sarcolemma"}
+# Classification of UniProt cellular-component keywords, used to decide whether
+# a predicted protein-protein interaction can act between neighboring cells
+# (intercellular) or only within a cell (intracellular).
+#
+# Each keyword is assigned to exactly one of four groups. The guiding principle
+# is that a keyword only counts as evidence for an extracellular face if every
+# protein carrying it necessarily presents one. Compartment keywords that cover
+# both a membrane-embedded core and a cytoplasmic plaque or interior (for
+# example ´Cell junction´, which is carried by cadherins as well as by
+# cytosolic catenins, vinculin and ZO-1) are therefore NOT treated as evidence
+# of an extracellular face; the genuinely surface-exposed proteins in those
+# compartments virtually always also carry ´Cell membrane´.
+
+# Soluble proteins that are released into the extracellular space. An
+# interaction involving such a protein is paracrine rather than contact
+# dependent.
+HUMANPPI_SECRETED_KEYWORDS = {
+    "Secreted", "Extracellular matrix", "Basement membrane",
+    "Membrane attack complex", "Surface film",
+    "HDL", "LDL", "VLDL", "Chylomicron"}
+
+# Membrane-anchored proteins that necessarily present an extracellular face,
+# i.e. specific plasma-membrane keywords and cell-surface complexes. An
+# interaction between two such proteins is contact dependent (juxtacrine).
+HUMANPPI_CELL_SURFACE_KEYWORDS = {
+    "Cell membrane", "Cell surface", "Apical cell membrane",
+    "Basolateral cell membrane", "Apicolateral cell membrane",
+    "Lateral cell membrane", "Presynaptic cell membrane",
+    "Postsynaptic cell membrane", "Sarcolemma", "Membrane raft",
+    "Cilium membrane", "Gap junction", "MHC I", "MHC II", "T cell receptor",
+    "Target cell membrane"}
+
+# Keywords that establish an intracellular location. A protein carrying one of
+# these and no surface or secreted keyword cannot act between cells.
+HUMANPPI_INTRACELLULAR_KEYWORDS = {
+    "Cytoplasm", "Nucleus", "Nucleosome core", "Chromosome", "Centromere",
+    "Kinetochore", "Telomere", "Mitochondrion", "Mitochondrion inner membrane",
+    "Mitochondrion outer membrane", "Mitochondrion nucleoid",
+    "Endoplasmic reticulum", "Sarcoplasmic reticulum", "Microsome",
+    "Golgi apparatus", "Lysosome", "Endosome", "Peroxisome", "Vacuole",
+    "Autophagosome", "Melanosome", "Phagosome", "Cytoplasmic vesicle",
+    "Coated pit", "Lipid droplet", "Cytoskeleton", "Microtubule",
+    "Intermediate filament", "Keratin", "Thick filament", "Dynein",
+    "Proteasome", "Ribosome", "Spliceosome", "Exosome", "Signalosome",
+    "Inflammasome", "Primosome", "Signal recognition particle",
+    "DNA-directed RNA polymerase", "Nuclear pore complex", "Synaptosome",
+    "Flagellum", "CF(0)", "CF(1)"}
+
+# Keywords that are compatible with an extracellular face but do not establish
+# one, either because they are generic parents of the whole membrane branch
+# (´Membrane´), because they denote a compartment with a large cytoplasmic
+# component (junctions, projections, synapses), or because they describe a
+# property rather than a location (´Amyloid´). These count as evidence of an
+# extracellular face only when ´localization_filter´ is ´membrane_strict´, and
+# then only if the protein carries no intracellular keyword.
+HUMANPPI_AMBIGUOUS_LOCATION_KEYWORDS = {
+    "Membrane", "Cell junction", "Tight junction", "Adherens junction",
+    "Desmosome", "Hemidesmosome", "Focal adhesion", "Cell projection",
+    "Cilium", "Synapse", "Microvillus", "Filopodium", "Lamellipodium",
+    "Dendritic spine", "Stereocilium", "Growth cone", "Axon", "Dendrite",
+    "Amyloid", "Immunoglobulin", "Virion", "Viral envelope protein",
+    "Target membrane"}
+
+
+def _classify_humanppi_protein_location(localization) -> str:
+    """
+    Classify a protein into ´secreted´, ´cell_surface´, ´intracellular´,
+    ´ambiguous´ or ´unknown´ based on its UniProt cellular-component keywords.
+
+    Evidence for an extracellular face takes precedence over evidence for an
+    intracellular location, because many genuinely secreted or surface proteins
+    are additionally annotated with the compartments they traverse (interleukin
+    15, for example, is annotated ´Cytoplasm,Nucleus,Secreted´).
+
+    Membrane anchoring in turn takes precedence over secretion, because a
+    substantial number of cell-surface receptors additionally carry the
+    ´Secreted´ keyword on account of a shed soluble isoform (programmed
+    cell death 1 ligand 1, for example, is annotated
+    ´Cell membrane,Endosome,Membrane,Nucleus,Secreted´). Classifying those as
+    secreted would turn contact-dependent interactions such as PD-1 / PD-L1
+    into paracrine ones.
+    """
+    if pd.isna(localization):
+        return "unknown"
+    keywords = [keyword.strip() for keyword in str(localization).split(",")]
+    keywords = [keyword for keyword in keywords
+                if keyword and keyword.lower() != "none"]
+    if not keywords:
+        return "unknown"
+    if any(keyword in HUMANPPI_CELL_SURFACE_KEYWORDS for keyword in keywords):
+        return "cell_surface"
+    if any(keyword in HUMANPPI_SECRETED_KEYWORDS for keyword in keywords):
+        return "secreted"
+    if any(keyword in HUMANPPI_INTRACELLULAR_KEYWORDS for keyword in keywords):
+        return "intracellular"
+    if any(keyword in HUMANPPI_AMBIGUOUS_LOCATION_KEYWORDS
+           for keyword in keywords):
+        return "ambiguous"
+    return "unknown"
+
+
+def _classify_humanppi_interaction(location_1: str,
+                                   location_2: str,
+                                   localization_filter: str) -> str:
+    """
+    Classify an interaction into ´paracrine´, ´juxtacrine´, ´intracellular´ or
+    ´unknown´ based on the location classes of its two partners.
+    """
+    if "unknown" in (location_1, location_2):
+        return "unknown"
+    extracellular_facing = {"secreted", "cell_surface"}
+    if localization_filter == "membrane_strict":
+        extracellular_facing = extracellular_facing | {"ambiguous"}
+    if location_1 in extracellular_facing and location_2 in extracellular_facing:
+        if "secreted" in (location_1, location_2):
+            return "paracrine"
+        return "juxtacrine"
+    return "intracellular"
 
 
 def add_gps_from_gp_dict_to_adata(
@@ -965,7 +1068,8 @@ def extract_gp_dict_from_humanppi_interactions(
         program_type: Literal[
             "intercellular", "intracellular", "both"]="intercellular",
         localization_filter: Literal[
-            "surface_secreted", "membrane", "all"]="surface_secreted",
+            "surface_secreted", "membrane_strict"]="surface_secreted",
+        unknown_locality: Literal["exclude", "intracellular"]="exclude",
         min_rf_prob: Optional[float]=None,
         min_af_prob: Optional[float]=None,
         load_from_disk: bool=False,
@@ -990,6 +1094,39 @@ def extract_gp_dict_from_humanppi_interactions(
     precision and 29,257 at 80% precision). The data is archived on Dryad
     (doi:10.5061/dryad.15dv41p84) and additionally available for direct
     download from https://conglab.swmed.edu/humanPPI/.
+
+    Each interaction is classified before it is turned into a gene program.
+    First, both partners are assigned a location class from their UniProt
+    cellular-component keywords:
+
+    - ´cell_surface´: membrane anchored with a necessarily extracellular face
+      (´Cell membrane´, ´MHC I´, ´MHC II´, ´T cell receptor´, ...).
+    - ´secreted´: released into the extracellular space and not membrane
+      anchored (´Secreted´, ´Extracellular matrix´, lipoprotein particles,
+      ...).
+    - ´intracellular´: an intracellular location and no surface or secreted
+      keyword (´Nucleus´, ´Mitochondrion´, ´Cytoskeleton´, ...).
+    - ´ambiguous´: compatible with an extracellular face but not establishing
+      one, either because the keyword is the generic parent of the whole
+      membrane branch (´Membrane´), or because the compartment has a large
+      cytoplasmic component (´Cell junction´ is carried by cadherins but also
+      by cytosolic catenins, vinculin and ZO-1), or because it describes a
+      property rather than a location (´Amyloid´).
+    - ´unknown´: no usable keyword at all.
+
+    Evidence for an extracellular face takes precedence over evidence for an
+    intracellular location, since secreted and surface proteins are frequently
+    also annotated with the compartments they traverse.
+
+    Second, the interaction is classified from the two location classes:
+
+    - ´paracrine´: both partners are extracellular facing and at least one is
+      secreted, i.e. signaling through a diffusible partner.
+    - ´juxtacrine´: both partners are membrane anchored and extracellular
+      facing, i.e. contact dependent signaling.
+    - ´intracellular´: anything else, i.e. at least one partner has no
+      extracellular face.
+    - ´unknown´: at least one partner could not be classified.
 
     NicheCompass gene programs have a source component (genes reconstructed in
     a node's neighbors, i.e. the transmitting cells) and a target/self
@@ -1038,25 +1175,35 @@ def extract_gp_dict_from_humanppi_interactions(
         and 29,191 unique gene pairs respectively).
     program_type:
         Determines which interactions are retained and how they are placed into
-        gene program components. If ´intercellular´ (default), only interactions
-        whose partners can act between cells (both localized to the cell
-        surface / secreted / extracellular, as defined by ´localization_filter´)
-        are kept, and each is turned into a source-to-target gene program. If
-        ´intracellular´, only the remaining interactions are kept, and each is
-        turned into a target-only gene program (empty source component). If
-        ´both´, all interactions are kept and placed into the appropriate
-        component based on their localization. Intracellular (target-only)
-        programs require ´min_source_genes_per_gp=0´ downstream (see above).
+        gene program components. If ´intercellular´ (default), only paracrine
+        and juxtacrine interactions are kept, and each is turned into a
+        source-to-target gene program. If ´intracellular´, only the remaining
+        interactions are kept, and each is turned into a target-only gene
+        program (empty source component). If ´both´, all classified
+        interactions are kept and placed into the appropriate component.
+        Intracellular (target-only) programs require ´min_source_genes_per_gp=0´
+        downstream (see above).
     localization_filter:
-        Defines the set of UniProt cellular-component keywords used to decide
-        whether a protein can act between cells (and hence whether an
-        interaction is treated as intercellular vs. intracellular). If
-        ´surface_secreted´ (default), a protein qualifies if it is localized to
-        the cell surface, secreted, or extracellular. If ´membrane´, the set is
-        relaxed to also include the generic 'Membrane' keyword. If ´all´, every
-        protein qualifies (all interactions are treated as intercellular, so
-        ´program_type´ 'intracellular' yields no programs and 'both' collapses
-        to 'intercellular').
+        Determines whether proteins with an ´ambiguous´ location class count as
+        extracellular facing. If ´surface_secreted´ (default), they do not, so
+        an interaction is only intercellular if both partners carry a keyword
+        that establishes an extracellular face. If ´membrane_strict´, a protein
+        whose only evidence is an ambiguous keyword additionally counts as
+        extracellular facing, provided it carries no intracellular keyword;
+        this recovers proteins that are annotated with the generic ´Membrane´
+        keyword alone, at the cost of some false positives. The previously
+        available values ´membrane´ and ´all´ were removed because they
+        classified interactions between intracellular proteins as intercellular
+        (´membrane´ admitted the generic ´Membrane´ keyword, which also covers
+        the endoplasmic reticulum, mitochondrial, Golgi and nuclear membranes,
+        and ´all´ admitted every protein regardless of localization).
+    unknown_locality:
+        Determines how interactions are handled in which at least one partner
+        has no usable localization annotation, which is the case for around a
+        tenth of the proteins in the resource. If ´exclude´ (default), these
+        interactions are dropped, since they cannot be classified either way.
+        If ´intracellular´, they are treated as intracellular, which retains
+        them at the risk of mislabeling genuine intercellular interactions.
     min_rf_prob:
         If not ´None´, only interactions with a RoseTTAFold2-PPI interaction
         probability (´RFprob´) greater than or equal to this value are kept.
@@ -1096,14 +1243,38 @@ def extract_gp_dict_from_humanppi_interactions(
         ´targets´, ´sources_categories´, and ´targets_categories´. For
         intercellular programs, ´sources´ contains the first interacting protein
         and ´targets´ the second; for intracellular programs, ´sources´ is empty
-        and ´targets´ contains both interacting proteins. In all cases the
-        categories label the proteins as 'ppi_protein'.
+        and ´targets´ contains both interacting proteins.
+
+        The interaction class is part of the gene program name, which is
+        ´<gene 1>_<gene 2>_<interaction class>_ppi_GP´ with the interaction
+        class being ´paracrine´, ´juxtacrine´ or ´intracellular´. It therefore
+        remains visible in gene program summaries, differential gene program
+        test results and plots. The gene categories are the location classes of
+        the corresponding proteins (´secreted´, ´cell_surface´, ´ambiguous´ or
+        ´intracellular´), so they can additionally be used to regularize or
+        select genes by location via ´l1_targets_categories´ and
+        ´l1_sources_categories´.
     """
     if precision not in ("90", "80"):
         raise ValueError("´precision´ should be either '90' or '80'.")
     if program_type not in ("intercellular", "intracellular", "both"):
         raise ValueError("´program_type´ should be one of 'intercellular', "
                          "'intracellular', or 'both'.")
+    if localization_filter in ("membrane", "all"):
+        raise ValueError(
+            f"´localization_filter´ '{localization_filter}' is no longer "
+            "supported because it classified interactions between "
+            "intracellular proteins as intercellular. Use 'surface_secreted' "
+            "(default) or 'membrane_strict' instead. To retrieve the complete "
+            "interactome, use ´program_type´ 'both', which retains every "
+            "interaction and assigns each one to the appropriate gene program "
+            "component.")
+    if localization_filter not in ("surface_secreted", "membrane_strict"):
+        raise ValueError("´localization_filter´ should be either "
+                         "'surface_secreted' or 'membrane_strict'.")
+    if unknown_locality not in ("exclude", "intracellular"):
+        raise ValueError("´unknown_locality´ should be either 'exclude' or "
+                         "'intracellular'.")
 
     # Download (or load) the human interactome predictions and store in df
     # (optionally also on disk)
@@ -1141,28 +1312,17 @@ def extract_gp_dict_from_humanppi_interactions(
         ppi_df = ppi_df[pd.to_numeric(ppi_df["AFprob"], errors="coerce")
                         >= min_af_prob]
 
-    # Define the localization keyword set used to decide whether a protein can
-    # act between cells (cell surface / secreted / extracellular)
-    allowed_keywords = set(HUMANPPI_CELL_SURFACE_SECRETED_KEYWORDS)
-    if localization_filter == "membrane":
-        allowed_keywords.add("Membrane")
-
-    def can_act_between_cells(localization) -> bool:
-        if localization_filter == "all":
-            return True
-        if pd.isna(localization):
-            return False
-        keywords = [kw.strip() for kw in str(localization).split(",")]
-        return any(kw in allowed_keywords for kw in keywords)
-
     # Extract gene programs and store in nested dict (deduplicate symmetric and
-    # repeated interactions based on the unordered gene pair). Each interaction
-    # is classified as intercellular (both partners can act between cells) or
-    # intracellular, and placed into the corresponding gene program components
-    # depending on ´program_type´.
+    # repeated interactions based on the unordered gene pair). Each protein is
+    # first assigned a location class, from which the interaction is classified
+    # as paracrine, juxtacrine, intracellular or unknown. The interaction class
+    # determines both the gene program components and the gene program name, so
+    # that it remains visible in downstream gene program summaries, and the
+    # location classes are used as the gene categories.
     gp_dict = {}
     seen_pairs = set()
     produced_source_empty_gp = False
+    n_unknown_locality = 0
     for _, row in ppi_df.iterrows():
         gene_1 = str(row["Name1"])
         gene_2 = str(row["Name2"])
@@ -1170,8 +1330,20 @@ def extract_gp_dict_from_humanppi_interactions(
         if pair_key in seen_pairs:
             continue
 
-        is_intercellular = (can_act_between_cells(row["Locality1"]) and
-                            can_act_between_cells(row["Locality2"]))
+        location_1 = _classify_humanppi_protein_location(row["Locality1"])
+        location_2 = _classify_humanppi_protein_location(row["Locality2"])
+        interaction_class = _classify_humanppi_interaction(
+            location_1, location_2, localization_filter)
+
+        if interaction_class == "unknown":
+            # At least one partner has no usable localization annotation, so
+            # the interaction cannot be classified either way
+            n_unknown_locality += 1
+            if unknown_locality == "exclude":
+                continue
+            interaction_class = "intracellular"
+
+        is_intercellular = interaction_class in ("paracrine", "juxtacrine")
         if is_intercellular and program_type == "intracellular":
             continue
         if not is_intercellular and program_type == "intercellular":
@@ -1181,11 +1353,11 @@ def extract_gp_dict_from_humanppi_interactions(
         if is_intercellular:
             # Intercellular program: partners split across neighbor (source)
             # and self (target) components
-            gp_dict[f"{gene_1}_{gene_2}_ppi_GP"] = {
+            gp_dict[f"{gene_1}_{gene_2}_{interaction_class}_ppi_GP"] = {
                 "sources": [gene_1],
                 "targets": [gene_2],
-                "sources_categories": ["ppi_protein"],
-                "targets_categories": ["ppi_protein"]}
+                "sources_categories": [location_1],
+                "targets_categories": [location_2]}
         else:
             # Intracellular program: both partners in the self (target)
             # component, empty source component (as for CollecTRI TF programs)
@@ -1194,7 +1366,7 @@ def extract_gp_dict_from_humanppi_interactions(
                 "sources": [],
                 "targets": [gene_1, gene_2],
                 "sources_categories": [],
-                "targets_categories": ["ppi_protein", "ppi_protein"]}
+                "targets_categories": [location_1, location_2]}
 
     if species == "mouse":
         # Create mapping to map from human genes to mouse orthologs
@@ -1214,14 +1386,26 @@ def extract_gp_dict_from_humanppi_interactions(
             return orthologs if orthologs else [gene.capitalize()]
 
         # Map every gene in each program (handles empty source components and
-        # multi-gene target components of intracellular programs)
+        # multi-gene target components of intracellular programs). One human
+        # gene can have several mouse orthologs, so the gene category is
+        # repeated for each ortholog.
         for _, gp in gp_dict.items():
             for entity in ("sources", "targets"):
                 mapped_genes = []
-                for gene in gp[entity]:
-                    mapped_genes.extend(map_to_mouse_orthologs(gene))
+                mapped_categories = []
+                for gene, category in zip(gp[entity],
+                                          gp[f"{entity}_categories"]):
+                    orthologs = map_to_mouse_orthologs(gene)
+                    mapped_genes.extend(orthologs)
+                    mapped_categories.extend([category] * len(orthologs))
                 gp[entity] = mapped_genes
-                gp[f"{entity}_categories"] = ["ppi_protein"] * len(mapped_genes)
+                gp[f"{entity}_categories"] = mapped_categories
+
+    if n_unknown_locality > 0:
+        print(f"Encountered {n_unknown_locality} interactions in which at "
+              "least one partner has no usable localization annotation. These "
+              + ("were excluded." if unknown_locality == "exclude" else
+                 "were treated as intracellular."))
 
     if produced_source_empty_gp:
         warnings.warn(
