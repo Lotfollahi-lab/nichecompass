@@ -53,7 +53,7 @@
     utils.add_multimodal_mask_to_adata
     utils.extract_gp_dict_from_collectri_tf_network
     utils.extract_gp_dict_from_nichenet_lrt_interactions
-    utils.extract_gp_dict_from_mebocost_es_interactions
+    utils.extract_gp_dict_from_mebocost_ms_interactions
     utils.extract_gp_dict_from_omnipath_lr_interactions
     utils.extract_gp_dict_from_humanppi_interactions
     utils.filter_and_combine_gp_dict_gps
