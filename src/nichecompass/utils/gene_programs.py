@@ -987,7 +987,7 @@ def extract_gp_dict_from_humanppi_interactions(
     dictionary. The predictions were generated with RoseTTAFold2-PPI and
     AlphaFold2 by screening ~190 million human protein pairs, and are
     distributed at two expected precision levels (17,849 interactions at 90%
-    precision and 29,258 at 80% precision). The data is archived on Dryad
+    precision and 29,257 at 80% precision). The data is archived on Dryad
     (doi:10.5061/dryad.15dv41p84) and additionally available for direct
     download from https://conglab.swmed.edu/humanPPI/.
 
@@ -1031,7 +1031,11 @@ def extract_gp_dict_from_humanppi_interactions(
     precision:
         Expected precision of the predicted interactions to use ('90' or '80').
         '90' (default) uses the high-confidence set of 17,849 interactions,
-        '80' uses the broader set of 29,258 interactions.
+        '80' uses the broader set of 29,257 interactions. Note that a small
+        number of interactions are listed twice, and that interactions
+        involving a protein without a UniProt gene name are dropped, so the
+        number of gene programs is lower than the number of table rows (17,809
+        and 29,191 unique gene pairs respectively).
     program_type:
         Determines which interactions are retained and how they are placed into
         gene program components. If ´intercellular´ (default), only interactions
@@ -1114,10 +1118,20 @@ def extract_gp_dict_from_humanppi_interactions(
     else:
         ppi_df = pd.read_csv(ppi_network_file_path, sep="\t")
 
-    # Drop interactions without a gene symbol for either partner
+    # Drop interactions without a gene symbol for either partner. Note that the
+    # predictions use the literal string 'none' as a placeholder for missing
+    # values, so interactions involving a protein whose UniProt entry has no
+    # gene name are removed here as well. Such interactions can never be
+    # matched to measured genes, and because all unnamed proteins share the
+    # same placeholder they would additionally be conflated into a single
+    # spurious gene.
     ppi_df = ppi_df.dropna(subset=["Name1", "Name2"])
-    ppi_df = ppi_df[(ppi_df["Name1"].astype(str).str.len() > 0) &
-                    (ppi_df["Name2"].astype(str).str.len() > 0)]
+    gene_name_missing = pd.Series(False, index=ppi_df.index)
+    for gene_name_col in ["Name1", "Name2"]:
+        gene_names = ppi_df[gene_name_col].astype(str).str.strip()
+        gene_name_missing |= ((gene_names.str.len() == 0) |
+                              (gene_names.str.lower() == "none"))
+    ppi_df = ppi_df[~gene_name_missing]
 
     # Optionally filter by interaction probabilities
     if min_rf_prob is not None:
