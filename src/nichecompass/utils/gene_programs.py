@@ -1411,7 +1411,7 @@ def filter_and_combine_gp_dict_gps(
                                       (overlap_gp_i.intersection(overlap_gp_j) 
                                        != set())]
                 paired_overlap_gps_union = set().union(*paired_overlap_gps)
-                if (paired_overlap_gps_union != set() &
+                if (paired_overlap_gps_union != set() and
                 paired_overlap_gps_union not in new_sequential_overlap_gps):
                     new_sequential_overlap_gps.append(paired_overlap_gps_union)
             if (sorted([list(gp) for gp in new_sequential_overlap_gps]) == 
