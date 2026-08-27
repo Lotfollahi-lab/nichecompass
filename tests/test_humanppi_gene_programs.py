@@ -9,6 +9,7 @@ import pytest
 from nichecompass.utils.gene_programs import (
     _classify_humanppi_interaction,
     _classify_humanppi_go_cellular_components,
+    _is_humanppi_trans_capable,
     _orient_humanppi_intercellular_gp,
     _parse_humanppi_subcellular_location,
     _classify_humanppi_protein_location,
@@ -276,6 +277,47 @@ def test_interaction_classification_rejects_raw_localization_strings():
 
 
 ###############################################################################
+## Reaching across the intercellular cleft ##
+###############################################################################
+
+def topology_record(n_transmem=1, max_extracellular_domain_length=200):
+    return {"n_transmem": n_transmem,
+            "max_extracellular_domain_length":
+                max_extracellular_domain_length}
+
+
+@pytest.mark.parametrize("gene,n_transmem,ectodomain,expected", [
+    # Large ectodomains reach across: PD-1 146 aa, PD-L1 220 aa, NRP1 835 aa
+    ("PDCD1", 1, 146, True),
+    ("CD274", 1, 220, True),
+    ("EFNB3", 1, 199, True),
+    # Channel and transporter subunits do not: KCNJ6 24 aa, CNGA1 23 aa
+    ("KCNJ6", 2, 24, False),
+    ("CNGA1", 7, 23, False),
+    ("HCN1", 6, 26, False),
+    # Signalling adaptors have almost no ectodomain: CD247 9 aa, FCER1G 5 aa
+    ("CD247", 1, 9, False),
+    ("FCER1G", 1, 5, False),
+    ("TYROBP", 1, 19, False),
+    # No annotated ectodomain: polytopic proteins cannot reach, others are not
+    # penalised, since only positive evidence demotes
+    ("ORAI2", 4, 0, False),
+    ("SOMEGENE", 1, 0, True),
+    # Connexins, claudins and occludin dock through short loops
+    ("GJA1", 4, 12, True),
+    ("CLDN1", 4, 10, True),
+    ("OCLN", 4, 8, True),
+])
+def test_trans_capability(gene, n_transmem, ectodomain, expected):
+    assert _is_humanppi_trans_capable(
+        gene, topology_record(n_transmem, ectodomain), 30) is expected
+
+
+def test_trans_capability_without_topology_is_not_penalised():
+    assert _is_humanppi_trans_capable("SOMEGENE", None, 30) is True
+
+
+###############################################################################
 ## Gene program orientation ##
 ###############################################################################
 
@@ -360,8 +402,23 @@ def test_curated_cis_families_share_a_family(gene_1, gene_2):
 
 
 @pytest.mark.parametrize("gene_1,gene_2", [
+    # Co-receptor complexes that assemble on a single cell and are large enough
+    # to reach across, so they have to be curated
+    ("ERBB2", "ERBB3"), ("EGFR", "ERBB2"), ("INSR", "IGF1R"),
+    ("BMPR1A", "BMPR2"), ("ENG", "TGFBR2"), ("TLR1", "TLR2"),
+    ("GABBR1", "GABBR2"), ("PTCH1", "SMO"), ("NRP1", "KDR"),
+    ("CALCR", "RAMP1"), ("ABCG5", "ABCG8"), ("SLC51A", "SLC51B"),
+    ("ASIC4", "ASIC3"), ("AQP1", "AQP6")])
+def test_curated_coreceptor_families_share_a_family(gene_1, gene_2):
+    assert (_humanppi_cis_complex_gene_families(gene_1) &
+            _humanppi_cis_complex_gene_families(gene_2))
+
+
+@pytest.mark.parametrize("gene_1,gene_2", [
     ("PDCD1", "CD274"), ("SIRPA", "CD47"), ("TNF", "TNFRSF1A"),
-    ("IL15", "IL15RA"), ("EPHB1", "EFNB3")])
+    ("IL15", "IL15RA"), ("EPHB1", "EFNB3"),
+    # A secreted ligand and its receptor must never share a family
+    ("TGFB1", "TGFBR2"), ("VEGFA", "KDR"), ("CCL19", "CCR7")])
 def test_ligand_receptor_pairs_do_not_share_a_family(gene_1, gene_2):
     assert not (_humanppi_cis_complex_gene_families(gene_1) &
                 _humanppi_cis_complex_gene_families(gene_2))

@@ -264,7 +264,30 @@ HUMANPPI_CIS_COMPLEX_GENE_FAMILY_PATTERNS = {
     "heteromeric_amino_acid_transporter": r"^SLC[37]A\d+$",
     "catsper_channel": r"^CATSPER",
     "shared_gamma_chain_cytokine_receptor":
-        r"^(IL2R[ABG]|IL4R|IL7R|IL9R|IL21R)$"}
+        r"^(IL2R[ABG]|IL4R|IL7R|IL9R|IL21R)$",
+    # Co-receptor complexes that assemble on a single cell. Unlike the channel
+    # and transporter subunits above, these protrude far enough from the
+    # membrane to reach a neighboring cell, so the topological test cannot
+    # separate them and they have to be curated: the epidermal growth factor
+    # receptor family heterodimers, the insulin and insulin-like growth factor
+    # receptors, the transforming growth factor beta type I and type II
+    # receptors, the Toll-like receptor heterodimers, the two metabotropic GABA
+    # receptor subunits, the Hedgehog receptor and its transducer, the
+    # neuropilin co-receptors of the vascular endothelial growth factor
+    # receptors, and the calcitonin receptors with their modifying proteins.
+    "erbb_receptor": r"^(EGFR|ERBB[234])$",
+    "insulin_receptor": r"^(INSR|IGF1R|INSRR)$",
+    "tgf_beta_receptor":
+        r"^(TGFBR[123]|BMPR1[AB]|BMPR2|ACVR1|ACVR1[BC]|ACVRL1|ACVR2[AB]|ENG)$",
+    "toll_like_receptor": r"^TLR\d+$",
+    "gaba_b_receptor": r"^GABBR[12]$",
+    "hedgehog_receptor": r"^(PTCH[12]|SMO|BOC|CDON|GAS1)$",
+    "vegf_coreceptor": r"^(NRP[12]|KDR|FLT[14])$",
+    "calcitonin_receptor": r"^(CALCR|CALCRL|RAMP[123])$",
+    "acid_sensing_channel": r"^ASIC\d$",
+    "aquaporin": r"^AQP\d+$",
+    "sterol_transporter": r"^ABCG[58]$",
+    "organic_solute_transporter": r"^SLC51[AB]$"}
 
 
 # Immunoglobulin and T cell receptor V, D and J gene segments. These are
@@ -501,7 +524,9 @@ def _load_humanppi_protein_topology(accessions: list,
     topology = {}
     required_columns = ["accession", "is_membrane_anchored",
                         "has_topological_domain", "has_extracellular_domain",
-                        "has_signal_peptide", "subcellular_location",
+                        "has_signal_peptide", "n_transmem",
+                        "max_extracellular_domain_length",
+                        "subcellular_location",
                         "cellular_component_keywords",
                         "go_cellular_components"]
     if os.path.exists(topology_file_path):
@@ -524,6 +549,9 @@ def _load_humanppi_protein_topology(accessions: list,
                     topology_row["has_extracellular_domain"]),
                 "has_signal_peptide": bool(
                     topology_row["has_signal_peptide"]),
+                "n_transmem": int(topology_row["n_transmem"]),
+                "max_extracellular_domain_length": int(
+                    topology_row["max_extracellular_domain_length"]),
                 "subcellular_location": split_cached(
                     topology_row["subcellular_location"]),
                 "cellular_component_keywords": split_cached(
@@ -556,6 +584,16 @@ def _load_humanppi_protein_topology(accessions: list,
                 transmem = columns[1] if len(columns) > 1 else ""
                 lipid = columns[2] if len(columns) > 2 else ""
                 topo_dom = columns[3] if len(columns) > 3 else ""
+                # The number of membrane crossings and the size of the
+                # extracellular domains decide whether a membrane anchored
+                # protein can reach a partner on a neighboring cell
+                n_transmem = transmem.count("TRANSMEM ")
+                extracellular_domain_lengths = [
+                    int(end) - int(start) + 1
+                    for start, end, note in re.findall(
+                        r"TOPO_DOM (\d+)\.\.(\d+); /note=\"([^\"]+)\"",
+                        topo_dom)
+                    if note == "Extracellular"]
                 signal = columns[4] if len(columns) > 4 else ""
                 subcellular = columns[5] if len(columns) > 5 else ""
                 keywords = columns[6] if len(columns) > 6 else ""
@@ -575,6 +613,10 @@ def _load_humanppi_protein_topology(accessions: list,
                     "has_topological_domain": "TOPO_DOM" in topo_dom,
                     "has_extracellular_domain": "Extracellular" in topo_dom,
                     "has_signal_peptide": "SIGNAL" in signal,
+                    "n_transmem": n_transmem,
+                    "max_extracellular_domain_length": (
+                        max(extracellular_domain_lengths)
+                        if extracellular_domain_lengths else 0),
                     "subcellular_location":
                         _parse_humanppi_subcellular_location(subcellular),
                     "cellular_component_keywords": current_keywords,
@@ -589,6 +631,9 @@ def _load_humanppi_protein_topology(accessions: list,
              "has_topological_domain": values["has_topological_domain"],
              "has_extracellular_domain": values["has_extracellular_domain"],
              "has_signal_peptide": values["has_signal_peptide"],
+             "n_transmem": values["n_transmem"],
+             "max_extracellular_domain_length":
+                 values["max_extracellular_domain_length"],
              "subcellular_location": ";".join(values["subcellular_location"]),
              "cellular_component_keywords":
                  ";".join(values["cellular_component_keywords"]),
@@ -703,6 +748,47 @@ def _load_complex_portal_cis_pairs(complex_portal_file_path: str,
             for accession_j in unique_subunits[i + 1:]:
                 cis_pairs.add(frozenset((accession_i, accession_j)))
     return cis_pairs
+
+
+# Membrane protein families whose extracellular loops are short but which
+# nevertheless dock with a partner on the opposing cell, so that the
+# ectodomain requirement below must not be applied to them: the connexins of
+# gap junctions, and the claudins and occludin of tight junctions.
+HUMANPPI_SHORT_LOOP_TRANS_GENE_PATTERN = r"^(GJ[ABCDE]\d|CLDN\d|OCLN$)"
+
+
+def _is_humanppi_trans_capable(gene: str,
+                               topology: Optional[dict],
+                               min_extracellular_domain_length: int) -> bool:
+    """
+    Return whether a membrane anchored protein can plausibly engage a partner
+    on a neighboring cell rather than only within its own membrane.
+
+    Two proteins in the same membrane satisfy every localization-based test for
+    a contact-dependent interaction, so localization alone cannot separate
+    signaling between two cells from subunit assembly within one cell. Reaching
+    across the intercellular cleft additionally requires a part of the protein
+    that protrudes from the membrane. A polytopic protein whose extracellular
+    loops are a few residues long, such as an ion channel or a transporter
+    subunit, cannot do so, whereas a single-pass receptor with a large
+    ectodomain can.
+
+    Only positive evidence demotes an interaction, so a protein whose topology
+    is not annotated is not penalized, except that a protein annotated with
+    three or more membrane crossings and no extracellular domain at all is
+    treated as unable to reach across.
+    """
+    if re.match(HUMANPPI_SHORT_LOOP_TRANS_GENE_PATTERN, gene.upper()):
+        return True
+    if topology is None:
+        return True
+    ectodomain_length = topology.get("max_extracellular_domain_length", 0)
+    n_transmem = topology.get("n_transmem", 0)
+    if ectodomain_length > 0:
+        return ectodomain_length >= min_extracellular_domain_length
+    # No extracellular domain is annotated, so fall back on the number of
+    # membrane crossings
+    return n_transmem < 3
 
 
 def _orient_humanppi_intercellular_gp(gene_1: str,
@@ -1753,6 +1839,8 @@ def extract_gp_dict_from_humanppi_interactions(
         topology_file_path: Optional[str]="../data/gene_programs/" \
                                           "humanppi_protein_topology.tsv",
         detect_cis_complexes: bool=True,
+        min_extracellular_domain_length: int=30,
+        symmetric_juxtacrine_gps: bool=False,
         complex_portal_file_path: Optional[str]="../data/gene_programs/" \
                                                 "complex_portal_human.tsv",
         complex_portal_url: str="https://ftp.ebi.ac.uk/pub/databases/intact/" \
@@ -1966,6 +2054,29 @@ def extract_gp_dict_from_humanppi_interactions(
     topology_file_path:
         Path of the file where the retrieved membrane topology is cached. Only
         accessions missing from the cache are requested from UniProt.
+    min_extracellular_domain_length:
+        Minimum length in residues of the largest annotated extracellular
+        domain for a membrane anchored protein to be considered able to engage a
+        partner on a neighboring cell. Contact-dependent interactions in which
+        either partner falls below it are reclassified as ´cis_complex´, since
+        two proteins that barely protrude from their membrane interact within
+        that membrane rather than across the intercellular cleft. Only positive
+        evidence demotes an interaction, so a protein whose topology is not
+        annotated is not penalized, and connexins, claudins and occludin are
+        exempt because their trans docking through short loops is genuine. The
+        test is deliberately not applied to paracrine interactions, where the
+        soluble partner diffuses and can engage a shallow binding pocket, as
+        chemokines do with their seven transmembrane receptors.
+    symmetric_juxtacrine_gps:
+        If ´True´, each contact-dependent interaction is emitted twice, once in
+        each orientation, since it operates in both directions between two
+        neighboring cells and a single orientation can only represent one of
+        the two niches involved. This doubles the number of contact-dependent
+        gene programs and creates pairs of highly correlated latent dimensions,
+        which risks splitting the signal of one interaction across two
+        dimensions, so it is disabled by default and best decided by
+        benchmarking. Paracrine interactions are never mirrored, since their
+        orientation is determined by which partner is soluble.
     detect_cis_complexes:
         If ´True´ (default), interactions whose two partners are subunits of a
         common protein complex in the EBI Complex Portal, or that belong to a
@@ -2145,6 +2256,7 @@ def extract_gp_dict_from_humanppi_interactions(
     n_unresolved_locality = 0
     n_cis_complex = 0
     n_extracellular_assembly = 0
+    n_same_membrane = 0
     for _, row in ppi_df.iterrows():
         gene_1 = str(row["Name1"])
         gene_2 = str(row["Name2"])
@@ -2172,6 +2284,21 @@ def extract_gp_dict_from_humanppi_interactions(
             if unresolved_locality == "exclude":
                 continue
             interaction_class = "intracellular"
+
+        if interaction_class == "juxtacrine" and use_topology:
+            # A contact-dependent interaction additionally requires that both
+            # partners protrude from their membrane far enough to reach the
+            # opposing cell. This test is deliberately not applied to paracrine
+            # interactions, where the soluble partner diffuses and can engage a
+            # shallow binding pocket, as chemokines do with their seven
+            # transmembrane receptors.
+            if not all(_is_humanppi_trans_capable(
+                    gene, topology.get(accession),
+                    min_extracellular_domain_length)
+                    for gene, accession in ((gene_1, str(row["Protein1"])),
+                                            (gene_2, str(row["Protein2"])))):
+                interaction_class = "cis_complex"
+                n_same_membrane += 1
 
         if (cis_pairs is not None and
                 interaction_class in ("paracrine", "juxtacrine")):
@@ -2219,12 +2346,25 @@ def extract_gp_dict_from_humanppi_interactions(
             (source_gene, target_gene, source_location,
              target_location) = _orient_humanppi_intercellular_gp(
                  gene_1, gene_2, location_1, location_2)
-            gp_dict[f"{source_gene}_{target_gene}_{interaction_class}"
-                    "_ppi_GP"] = {
-                "sources": [source_gene],
-                "targets": [target_gene],
-                "sources_categories": [source_location],
-                "targets_categories": [target_location]}
+            orientations = [(source_gene, target_gene, source_location,
+                             target_location)]
+            if (symmetric_juxtacrine_gps
+                    and interaction_class == "juxtacrine"):
+                # A contact-dependent interaction operates in both directions
+                # between two neighboring cells, and which of the two partners
+                # a given cell expresses is itself a niche property, so the
+                # mirrored gene program is emitted as well
+                orientations.append((target_gene, source_gene, target_location,
+                                     source_location))
+            for (orientation_source, orientation_target,
+                 orientation_source_location,
+                 orientation_target_location) in orientations:
+                gp_dict[f"{orientation_source}_{orientation_target}_"
+                        f"{interaction_class}_ppi_GP"] = {
+                    "sources": [orientation_source],
+                    "targets": [orientation_target],
+                    "sources_categories": [orientation_source_location],
+                    "targets_categories": [orientation_target_location]}
         else:
             # Intracellular program: both partners in the self (target)
             # component, empty source component (as for CollecTRI TF programs)
@@ -2267,6 +2407,12 @@ def extract_gp_dict_from_humanppi_interactions(
                     mapped_categories.extend([category] * len(orthologs))
                 gp[entity] = mapped_genes
                 gp[f"{entity}_categories"] = mapped_categories
+
+    if n_same_membrane > 0:
+        print(f"Reclassified {n_same_membrane} interactions as 'cis_complex' "
+              "because at least one partner does not protrude from its "
+              "membrane far enough to reach a partner on a neighboring cell, "
+              "so the interaction takes place within one membrane.")
 
     if n_extracellular_assembly > 0:
         print(f"Reclassified {n_extracellular_assembly} interactions as "
