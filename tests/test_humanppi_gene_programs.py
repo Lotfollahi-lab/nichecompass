@@ -12,7 +12,9 @@ from nichecompass.utils.gene_programs import (
     _classify_humanppi_interaction,
     _classify_humanppi_go_cellular_components,
     _check_humanppi_cached_precision,
+    _humanppi_gene_family_root,
     _humanppi_gene_symbol_role,
+    _is_humanppi_same_family_assembly,
     _humanppi_gene_symbol_stem_role,
     _humanppi_go_function_role,
     _is_humanppi_trans_capable,
@@ -363,6 +365,59 @@ def test_trans_capability(gene, n_transmem, ectodomain, expected):
 
 def test_trans_capability_without_topology_is_not_penalised():
     assert _is_humanppi_trans_capable("SOMEGENE", None, 30) is True
+
+
+###############################################################################
+## Assemblies within one gene family ##
+###############################################################################
+
+@pytest.mark.parametrize("gene,expected_root", [
+    ("P2RX2", "P2RX"), ("P2RX3", "P2RX"), ("KCNA6", "KCNA"),
+    ("ABCG1", "ABCG"), ("EPHA1", "EPHA"), ("EFNA1", "EFNA"),
+    ("BTN3A1", "BTN3A"), ("OCLN", "OCLN"), ("BMP4", "BMP"),
+])
+def test_gene_family_root(gene, expected_root):
+    assert _humanppi_gene_family_root(gene) == expected_root
+
+
+@pytest.mark.parametrize("gene_1,gene_2", [
+    # Channel, transporter and receptor subunits that oligomerize within one
+    # membrane rather than binding a partner on a neighboring cell
+    ("P2RX2", "P2RX3"), ("P2RX6", "P2RX7"), ("KCNA6", "KCNA1"),
+    ("ABCG1", "ABCG4"), ("EPHA1", "EPHA2"), ("BTN3A1", "BTN3A2"),
+    ("NOMO3", "NOMO1"),
+    # Secreted multimers, assembled by the cell that produces them
+    ("FCN1", "FCN2"), ("BMP4", "BMP7"), ("APOC2", "APOC3"), ("C1QL2", "C1QL4"),
+])
+def test_same_family_partners_assemble_within_one_cell(gene_1, gene_2):
+    assert _is_humanppi_same_family_assembly(gene_1, gene_2)
+
+
+@pytest.mark.parametrize("gene_1,gene_2", [
+    # These families are built to engage a partner on the neighboring cell, so
+    # two members of one of them is not evidence of a within-cell assembly
+    ("CDH1", "CDH2"), ("PCDHB5", "PCDHB16"), ("CLDN3", "CLDN1"),
+    ("CLDN16", "CLDN19"), ("GJA1", "GJA8"), ("NECTIN3", "NECTIN2"),
+    ("CADM1", "CADM3"), ("DSG1", "DSG3"), ("JAM2", "JAM3"),
+    ("NRXN1", "NRXN3"), ("CNTN1", "CNTN4"), ("SIGLEC7", "SIGLEC9"),
+])
+def test_trans_homophilic_families_are_exempt(gene_1, gene_2):
+    assert not _is_humanppi_same_family_assembly(gene_1, gene_2)
+
+
+@pytest.mark.parametrize("gene_1,gene_2", [
+    # A ligand and its receptor never share a family root, so the rule must
+    # not fire on them
+    ("EFNA1", "EPHA2"), ("TNFSF4", "TNFRSF4"), ("CD274", "PDCD1"),
+    ("KITLG", "KIT"), ("SEMA4D", "PLXNB1"), ("CCL19", "CCR7"),
+])
+def test_ligand_receptor_pairs_are_not_same_family_assemblies(gene_1, gene_2):
+    assert not _is_humanppi_same_family_assembly(gene_1, gene_2)
+
+
+def test_a_short_family_root_does_not_decide():
+    # A two-character root is too generic to be evidence of anything
+    assert not _is_humanppi_same_family_assembly("CD4", "CD8")
 
 
 ###############################################################################

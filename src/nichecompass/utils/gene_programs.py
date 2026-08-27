@@ -841,6 +841,63 @@ def _load_complex_portal_cis_pairs(complex_portal_file_path: str,
 # gap junctions, and the claudins and occludin of tight junctions.
 HUMANPPI_SHORT_LOOP_TRANS_GENE_PATTERN = r"^(GJ[ABCDE]\d|CLDN\d|OCLN$)"
 
+# Gene families whose members genuinely engage one another across the
+# intercellular cleft, and which are therefore exempt from the rule that two
+# members of one family assemble within a single cell. Cadherins and
+# protocadherins mediate homophilic adhesion between cells, claudins, occludin
+# and the junctional adhesion molecules form tight-junction strands with the
+# neighboring cell, connexins dock hemichannel to hemichannel, nectins and the
+# nectin-like molecules bind heterophilically in trans, the desmosomal
+# cadherins bridge two cells, and the neurexins, neuroligins, contactins and
+# their partners span the synaptic cleft.
+HUMANPPI_TRANS_HOMOPHILIC_GENE_PATTERNS = (
+    r"^(CDH|PCDH|CELSR|DCHS|CDHR)",
+    r"^(CLDN|OCLN$|JAM|F11R$)",
+    r"^GJ[ABCDE]",
+    r"^(NECTIN|PVR$|PVRL|CADM|IGSF|NEGR|LSAMP|OPCML|NTM$)",
+    r"^(DSG|DSC|DSP$|PKP)",
+    r"^(NRXN|NLGN|CNTN|CNTNAP|LRRTM|SDK|DSCAM|IL1RAPL|PTPRD$|PTPRS$)",
+    r"^(SIGLEC|SELP|SELE|SELL)")
+
+
+def _humanppi_gene_family_root(gene: str) -> str:
+    """
+    Return the gene family root of a symbol, obtained by stripping the trailing
+    member number and any isoform letter, so that ´P2RX2´ and ´P2RX3´ share a
+    root and ´EFNA1´ and ´EPHA1´ do not.
+    """
+    return re.sub(r"\d+[A-Z]*$", "", gene.upper()) or gene.upper()
+
+
+def _is_humanppi_trans_homophilic_family(gene: str) -> bool:
+    """
+    Indicate whether a gene belongs to a family whose members bind one another
+    across the intercellular cleft rather than within one membrane.
+    """
+    return any(re.match(pattern, gene.upper())
+               for pattern in HUMANPPI_TRANS_HOMOPHILIC_GENE_PATTERNS)
+
+
+def _is_humanppi_same_family_assembly(gene_1: str, gene_2: str) -> bool:
+    """
+    Indicate whether two partners are members of one gene family that assemble
+    within a single cell.
+
+    Two members of the same family are usually subunits of one oligomer rather
+    than partners on two cells: the P2X receptor subunits form a heterotrimeric
+    channel, the Kv1 subunits a heterotetramer, ´ABCG1´ and ´ABCG4´ a
+    heterodimeric transporter, and the ficolins, the C1q-domain proteins and
+    the bone morphogenetic proteins form secreted multimers. The families in
+    ´HUMANPPI_TRANS_HOMOPHILIC_GENE_PATTERNS´ are exempt, since their members
+    are built to engage a partner on the neighboring cell.
+    """
+    root_1 = _humanppi_gene_family_root(gene_1)
+    root_2 = _humanppi_gene_family_root(gene_2)
+    if root_1 != root_2 or len(root_1) < 3:
+        return False
+    return not (_is_humanppi_trans_homophilic_family(gene_1)
+                or _is_humanppi_trans_homophilic_family(gene_2))
+
 # Evidence used to decide which partner of a contact-dependent interaction is
 # the ligand, expressed by the sending cell, and which is the receptor,
 # expressed by the receiving cell. NicheCompass reconstructs the source
@@ -2850,6 +2907,10 @@ def extract_gp_dict_from_humanppi_interactions(
             shares_curated_family = bool(
                 _humanppi_cis_complex_gene_families(gene_1) &
                 _humanppi_cis_complex_gene_families(gene_2))
+            # Two members of one gene family are usually subunits of a single
+            # oligomer rather than partners on two cells
+            shares_gene_family = _is_humanppi_same_family_assembly(gene_1,
+                                                                   gene_2)
             # A shared complex in which exactly one partner is soluble is a
             # ligand-receptor assembly rather than a cis complex: the ligand is
             # released by one cell and engages the receptor of another. Both
@@ -2858,7 +2919,8 @@ def extract_gp_dict_from_humanppi_interactions(
             # the cell that produces them.
             is_ligand_receptor_assembly = (
                 (location_1 == "secreted") != (location_2 == "secreted"))
-            if ((accession_pair in cis_pairs or shares_curated_family)
+            if ((accession_pair in cis_pairs or shares_curated_family
+                 or shares_gene_family)
                     and not is_ligand_receptor_assembly):
                 if location_1 == "secreted" and location_2 == "secreted":
                     # Secreted multimers such as collagen and laminin trimers,
