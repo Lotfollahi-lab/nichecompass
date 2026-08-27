@@ -878,6 +878,30 @@ def _is_humanppi_trans_homophilic_family(gene: str) -> bool:
                for pattern in HUMANPPI_TRANS_HOMOPHILIC_GENE_PATTERNS)
 
 
+# Suffixes that HGNC appends to a ligand's symbol to name its receptor, or to a
+# receptor's symbol to name its ligand. A pair related this way is a
+# ligand-receptor pair and must never be read as two members of one family, even
+# though stripping the trailing member number collapses them onto one root:
+# ´CSF1´ and ´CSF1R´ both reduce to ´CSF´.
+HUMANPPI_LIGAND_RECEPTOR_SYMBOL_SUFFIXES = ("R", "R1", "R2", "RA", "RB", "RG",
+                                            "LG")
+
+
+def _is_humanppi_ligand_receptor_symbol_pair(gene_1: str,
+                                             gene_2: str) -> bool:
+    """
+    Indicate whether one symbol is the other plus a suffix that marks it as the
+    receptor of that ligand or the ligand of that receptor, as for ´CSF1´ with
+    ´CSF1R´, ´CSF2´ with ´CSF2RA´, ´MST1´ with ´MST1R´ and ´KIT´ with ´KITLG´.
+    """
+    first, second = gene_1.upper(), gene_2.upper()
+    for stem, derived in ((first, second), (second, first)):
+        if any(derived == stem + suffix
+               for suffix in HUMANPPI_LIGAND_RECEPTOR_SYMBOL_SUFFIXES):
+            return True
+    return False
+
+
 def _is_humanppi_same_family_assembly(gene_1: str, gene_2: str) -> bool:
     """
     Indicate whether two partners are members of one gene family that assemble
@@ -889,11 +913,17 @@ def _is_humanppi_same_family_assembly(gene_1: str, gene_2: str) -> bool:
     heterodimeric transporter, and the ficolins, the C1q-domain proteins and
     the bone morphogenetic proteins form secreted multimers. The families in
     ´HUMANPPI_TRANS_HOMOPHILIC_GENE_PATTERNS´ are exempt, since their members
-    are built to engage a partner on the neighboring cell.
+    are built to engage a partner on the neighboring cell, and so is a pair in
+    which one symbol is the other plus a receptor or ligand suffix, since
+    stripping the member number collapses ´CSF1´ and ´CSF1R´ onto one root.
     """
     root_1 = _humanppi_gene_family_root(gene_1)
     root_2 = _humanppi_gene_family_root(gene_2)
     if root_1 != root_2 or len(root_1) < 3:
+        return False
+    # A ligand and its own receptor share a root once the trailing member
+    # number is stripped, so they have to be excluded explicitly
+    if _is_humanppi_ligand_receptor_symbol_pair(gene_1, gene_2):
         return False
     return not (_is_humanppi_trans_homophilic_family(gene_1)
                 or _is_humanppi_trans_homophilic_family(gene_2))

@@ -14,6 +14,7 @@ from nichecompass.utils.gene_programs import (
     _check_humanppi_cached_precision,
     _humanppi_gene_family_root,
     _humanppi_gene_symbol_role,
+    _is_humanppi_ligand_receptor_symbol_pair,
     _is_humanppi_same_family_assembly,
     _humanppi_gene_symbol_stem_role,
     _humanppi_go_function_role,
@@ -413,6 +414,25 @@ def test_trans_homophilic_families_are_exempt(gene_1, gene_2):
 ])
 def test_ligand_receptor_pairs_are_not_same_family_assemblies(gene_1, gene_2):
     assert not _is_humanppi_same_family_assembly(gene_1, gene_2)
+
+
+@pytest.mark.parametrize("gene_1,gene_2", [
+    # Stripping the trailing member number collapses a ligand and its own
+    # receptor onto one family root, so they have to be excluded explicitly
+    ("CSF1", "CSF1R"), ("CSF3", "CSF3R"), ("CSF2", "CSF2RA"),
+    ("MST1", "MST1R"), ("KIT", "KITLG"), ("IL2", "IL2RA"),
+])
+def test_a_ligand_and_its_own_receptor_are_not_a_family_assembly(gene_1,
+                                                                gene_2):
+    assert _is_humanppi_ligand_receptor_symbol_pair(gene_1, gene_2)
+    assert not _is_humanppi_same_family_assembly(gene_1, gene_2)
+
+
+@pytest.mark.parametrize("gene_1,gene_2", [
+    ("P2RX2", "P2RX3"), ("FCN1", "FCN2"), ("EPHA1", "EPHA2"),
+])
+def test_family_members_are_not_a_ligand_receptor_symbol_pair(gene_1, gene_2):
+    assert not _is_humanppi_ligand_receptor_symbol_pair(gene_1, gene_2)
 
 
 def test_a_short_family_root_does_not_decide():

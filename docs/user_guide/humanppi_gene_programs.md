@@ -314,6 +314,11 @@ ficolin oligomers (`FCN1`-`FCN2`), the C1q-domain multimers (`C1QL2`-`C1QL4`), t
 protein heterodimers (`BMP4`-`BMP7`) and the apolipoproteins sharing a lipoprotein particle
 (`APOC2`-`APOC3`).
 
+A pair in which one symbol is the other plus a receptor or ligand suffix is also excluded, because
+stripping the member number collapses a ligand and its own receptor onto one root: `CSF1` and `CSF1R` both
+reduce to `CSF`, as do `CSF3`/`CSF3R`, `CSF2`/`CSF2RA` and `MST1`/`MST1R`. Without that exclusion a
+membrane-anchored ligand paired with its own receptor would be silently demoted to `cis_complex`.
+
 Seven families are **exempt**, because their members are built to engage a partner on the neighbouring
 cell: the cadherins and protocadherins, the claudins with occludin and the junctional adhesion molecules,
 the connexins, the nectins and nectin-like molecules, the desmosomal cadherins, the synaptic adhesion
@@ -550,7 +555,7 @@ left, so the intercellular set grows rather than shrinks: 2,485 programs at prec
   cover: **243 of 246 (98.8%)**, with all three disagreements on pairs that are genuinely bidirectional
   (`TNFRSF14` with `BTLA` and with `TIGIT`, `SELPLG` with `SPN`).
   `tests/benchmark_humanppi_classification.py` gates on both the accuracy and the coverage.
-- **Unit tests.** `tests/test_humanppi_gene_programs.py` contains 236 offline tests pinning the protein and
+- **Unit tests.** `tests/test_humanppi_gene_programs.py` contains 246 offline tests pinning the protein and
   interaction classification, the precedence rules, the fallback ordering, the reach test, the segment and
   paralogue patterns, the curated families and every orientation rule including its abstentions.
 
