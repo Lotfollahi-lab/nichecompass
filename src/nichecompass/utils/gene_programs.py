@@ -90,7 +90,8 @@ HUMANPPI_AMBIGUOUS_LOCATION_KEYWORDS = {
 
 def _classify_humanppi_protein_location(
         localization,
-        is_membrane_anchored: Optional[bool]=None) -> str:
+        topology: Optional[dict]=None,
+        process: Optional[str]=None) -> str:
     """
     Classify a protein into ´secreted´, ´cell_surface´, ´intracellular´,
     ´ambiguous´ or ´unknown´ based on its UniProt cellular-component keywords.
@@ -113,12 +114,30 @@ def _classify_humanppi_protein_location(
     antibody form, and it is the secreted form that dominates their
     interactions with Fc receptors.
     """
+    # A protein presents an extracellular face only if it is membrane anchored,
+    # and is contradicted if UniProt annotates its topological domains without
+    # any extracellular one
+    can_be_at_cell_surface = None
+    if topology is not None:
+        can_be_at_cell_surface = (
+            topology["is_membrane_anchored"] and
+            not (topology["has_topological_domain"] and
+                 not topology["has_extracellular_domain"]))
+
     if pd.isna(localization):
-        return "unknown"
-    keywords = [keyword.strip() for keyword in str(localization).split(",")]
-    keywords = [keyword for keyword in keywords
-                if keyword and keyword.lower() != "none"]
+        keywords = []
+    else:
+        keywords = [keyword.strip() for keyword in str(localization).split(",")]
+        keywords = [keyword for keyword in keywords
+                    if keyword and keyword.lower() != "none"]
     if not keywords:
+        # Fall back on biological process keywords, which cannot establish an
+        # extracellular face but can establish an intracellular location
+        if process is not None and not pd.isna(process):
+            processes = [entry.strip() for entry in str(process).split(",")]
+            if any(entry in HUMANPPI_INTRACELLULAR_PROCESS_KEYWORDS
+                   for entry in processes):
+                return "intracellular"
         return "unknown"
     # Antibody chains are an exception to the precedence of membrane anchoring
     # over secretion: they carry ´Cell membrane´ for the B cell receptor form
@@ -135,9 +154,20 @@ def _classify_humanppi_protein_location(
     # or GPI anchor cannot present a face at the cell surface. Secreted
     # keywords are always trusted, because proteins can also be released
     # through non-classical routes that leave no sequence signature.
-    if (is_membrane_anchored is not False
+    if (can_be_at_cell_surface is not False
             and any(keyword in HUMANPPI_CELL_SURFACE_KEYWORDS
                     for keyword in keywords)):
+        return "cell_surface"
+    # An annotated extracellular topological domain is decisive positive
+    # evidence and outweighs the cellular-component keywords. UniProt uses
+    # ´Extracellular´ only for the outside of the cell and ´Lumenal´ for the
+    # inside of organelles, so this does not admit organelle membranes. Many
+    # cytokine receptors need this rule, since they are annotated with the
+    # generic ´Membrane´ keyword, with ´Secreted´ for a shed soluble form and
+    # with the compartments they traverse, but never with ´Cell membrane´
+    # (interleukin 15 receptor subunit alpha and interleukin 10 receptor
+    # subunit beta among them).
+    if topology is not None and topology["has_extracellular_domain"]:
         return "cell_surface"
     # A protein that UniProt annotates with a membrane anchor and that carries
     # no intracellular keyword is at the cell surface even when its
@@ -147,7 +177,7 @@ def _classify_humanppi_protein_location(
     # soluble form but never with ´Cell membrane´ (interleukin 15 receptor
     # subunit alpha and interleukin 10 receptor subunit beta among them), and
     # would otherwise be classified as secreted ligands.
-    if (is_membrane_anchored is True
+    if (can_be_at_cell_surface is True
             and not any(keyword in HUMANPPI_INTRACELLULAR_KEYWORDS
                         for keyword in keywords)
             and any(keyword in HUMANPPI_AMBIGUOUS_LOCATION_KEYWORDS
@@ -161,7 +191,7 @@ def _classify_humanppi_protein_location(
            for keyword in keywords):
         # An ambiguous keyword that is contradicted by the absence of a
         # membrane anchor is evidence of an intracellular location
-        return "ambiguous" if is_membrane_anchored is not False else (
+        return "ambiguous" if can_be_at_cell_surface is not False else (
             "intracellular")
     return "unknown"
 
@@ -209,8 +239,62 @@ HUMANPPI_CIS_COMPLEX_GENE_FAMILY_PATTERNS = {
 # variable domains share the immunoglobulin fold. Constant region genes
 # (´IGHG1´, ´IGHM´, ´IGLC2´, ´TRAC´, ´TRBC1´, ...) encode real proteins and are
 # deliberately not matched.
+# UniProt biological-process keywords that establish an intracellular location.
+# They are used only as a fallback for proteins without any cellular-component
+# keyword, and only to establish an intracellular location, never an
+# extracellular face.
+HUMANPPI_INTRACELLULAR_PROCESS_KEYWORDS = {
+    "Transcription", "Transcription regulation", "Transcription termination",
+    "Transcription antitermination", "DNA damage", "DNA repair",
+    "DNA replication", "DNA recombination", "DNA condensation",
+    "mRNA processing", "mRNA splicing", "mRNA transport", "rRNA processing",
+    "tRNA processing", "Translation regulation", "Protein biosynthesis",
+    "Protein transport", "Protein folding", "Cell cycle", "Cell division",
+    "Mitosis", "Meiosis", "Chromosome partition", "Ubl conjugation pathway",
+    "Autophagy", "Proteasome", "Nonsense-mediated mRNA decay",
+    "Keratinization", "Glycolysis", "Gluconeogenesis",
+    "Tricarboxylic acid cycle", "Fatty acid biosynthesis",
+    "Fatty acid metabolism", "Respiratory chain",
+    "Electron transport", "Nucleotide biosynthesis", "Purine biosynthesis",
+    "Pyrimidine biosynthesis", "Cholesterol biosynthesis",
+    "Steroid biosynthesis", "Ribosome biogenesis", "Spermatogenesis"}
+
 HUMANPPI_IG_TCR_SEGMENT_PATTERN = (
     r"^(IG[HKL][VJ]\d|IGHD\d|TR[ABDG][VJ]\d|TR[BD]D\d)")
+
+
+# Heterodimers that actually form, for gene families in which the structural
+# predictor generalizes across close paralogues and produces combinations that
+# do not exist. Integrin alpha-beta heterodimers are restricted to the 24 known
+# pairs, and MHC class II alpha-beta heterodimers to matching isotypes.
+HUMANPPI_VALID_INTEGRIN_HETERODIMERS = {
+    frozenset(pair) for pair in [
+        ("ITGA1", "ITGB1"), ("ITGA2", "ITGB1"), ("ITGA3", "ITGB1"),
+        ("ITGA4", "ITGB1"), ("ITGA5", "ITGB1"), ("ITGA6", "ITGB1"),
+        ("ITGA7", "ITGB1"), ("ITGA8", "ITGB1"), ("ITGA9", "ITGB1"),
+        ("ITGA10", "ITGB1"), ("ITGA11", "ITGB1"), ("ITGAV", "ITGB1"),
+        ("ITGAL", "ITGB2"), ("ITGAM", "ITGB2"), ("ITGAX", "ITGB2"),
+        ("ITGAD", "ITGB2"), ("ITGA2B", "ITGB3"), ("ITGAV", "ITGB3"),
+        ("ITGA6", "ITGB4"), ("ITGAV", "ITGB5"), ("ITGAV", "ITGB6"),
+        ("ITGA4", "ITGB7"), ("ITGAE", "ITGB7"), ("ITGAV", "ITGB8")]}
+
+
+def _is_humanppi_paralog_cross_pair(gene_1: str, gene_2: str) -> bool:
+    """
+    Return whether two genes are paralogues that the structural predictor pairs
+    although the corresponding heterodimer does not form.
+    """
+    gene_1, gene_2 = gene_1.upper(), gene_2.upper()
+    if re.match(r"^ITG[AB]", gene_1) and re.match(r"^ITG[AB]", gene_2):
+        return frozenset((gene_1, gene_2)) not in (
+            HUMANPPI_VALID_INTEGRIN_HETERODIMERS)
+    mhc_2_isotype = r"^HLA-D([RQP])"
+    match_1 = re.match(mhc_2_isotype, gene_1)
+    match_2 = re.match(mhc_2_isotype, gene_2)
+    if match_1 and match_2:
+        # Only matching isotypes pair, e.g. HLA-DRA with HLA-DRB1
+        return match_1.group(1) != match_2.group(1)
+    return False
 
 
 def _is_humanppi_ig_tcr_segment(gene: str) -> bool:
@@ -252,10 +336,21 @@ def _load_humanppi_protein_topology(accessions: list,
         Accessions for which UniProt returned no entry are absent.
     """
     topology = {}
+    required_columns = ["accession", "is_membrane_anchored",
+                        "has_topological_domain", "has_extracellular_domain"]
     if os.path.exists(topology_file_path):
         topology_df = pd.read_csv(topology_file_path, sep="\t")
-        topology = dict(zip(topology_df["accession"].astype(str),
-                            topology_df["is_membrane_anchored"].astype(bool)))
+        if not set(required_columns).issubset(topology_df.columns):
+            # An outdated cache is ignored and retrieved again
+            topology_df = topology_df.iloc[0:0]
+        for _, topology_row in topology_df.iterrows():
+            topology[str(topology_row["accession"])] = {
+                "is_membrane_anchored": bool(
+                    topology_row["is_membrane_anchored"]),
+                "has_topological_domain": bool(
+                    topology_row["has_topological_domain"]),
+                "has_extracellular_domain": bool(
+                    topology_row["has_extracellular_domain"])}
 
     missing = sorted({accession for accession in accessions
                       if accession not in topology})
@@ -263,7 +358,7 @@ def _load_humanppi_protein_topology(accessions: list,
         print(f"Retrieving membrane topology for {len(missing)} proteins from "
               "UniProt...")
         batch_size = 100
-        fields = "accession,ft_transmem,ft_lipid"
+        fields = "accession,ft_transmem,ft_lipid,ft_topo_dom"
         for batch_start in range(0, len(missing), batch_size):
             batch = missing[batch_start:batch_start + batch_size]
             query = "+OR+".join(f"accession:{accession}"
@@ -279,14 +374,18 @@ def _load_humanppi_protein_topology(accessions: list,
                 accession = columns[0]
                 transmem = columns[1] if len(columns) > 1 else ""
                 lipid = columns[2] if len(columns) > 2 else ""
-                topology[accession] = bool(
-                    "TRANSMEM" in transmem or "GPI-anchor" in lipid)
+                topo_dom = columns[3] if len(columns) > 3 else ""
+                topology[accession] = {
+                    "is_membrane_anchored": bool("TRANSMEM" in transmem
+                                                 or "GPI-anchor" in lipid),
+                    "has_topological_domain": "TOPO_DOM" in topo_dom,
+                    "has_extracellular_domain": "Extracellular" in topo_dom}
 
         cache_dir = os.path.dirname(topology_file_path)
         if cache_dir:
             os.makedirs(cache_dir, exist_ok=True)
-        pd.DataFrame({"accession": list(topology.keys()),
-                      "is_membrane_anchored": list(topology.values())}).to_csv(
+        pd.DataFrame([{"accession": accession, **values}
+                      for accession, values in topology.items()]).to_csv(
                           topology_file_path, sep="\t", index=False)
     return topology
 
@@ -1350,6 +1449,7 @@ def extract_gp_dict_from_humanppi_interactions(
             "strict", "include_ambiguous"]="include_ambiguous",
         unknown_locality: Literal["exclude", "intracellular"]="exclude",
         filter_ig_tcr_segments: bool=True,
+        filter_paralog_cross_pairs: bool=True,
         use_topology: bool=True,
         topology_file_path: Optional[str]="../data/gene_programs/" \
                                           "humanppi_protein_topology.tsv",
@@ -1415,6 +1515,11 @@ def extract_gp_dict_from_humanppi_interactions(
     - ´intracellular´: anything else, i.e. at least one partner has no
       extracellular face.
     - ´unknown´: at least one partner could not be classified.
+
+    Interactions between two secreted subunits of a common complex are
+    classified as ´extracellular_assembly´ rather than paracrine, since
+    secreted multimers such as collagen and laminin trimers, fibrinogen and
+    complement C1q are assembled by the cell that produces them.
 
     If ´use_topology´ is ´True´, a cell-surface keyword is only trusted for
     proteins that UniProt annotates with a transmembrane segment or a GPI
@@ -1507,7 +1612,17 @@ def extract_gp_dict_from_humanppi_interactions(
         whose only evidence is an ambiguous keyword also counts as
         extracellular facing, provided it carries no intracellular keyword;
         this recovers proteins annotated with the generic ´Membrane´ keyword
-        alone, at the cost of some false positives. ´include_ambiguous´ is the
+        alone, at the cost of some false positives.
+
+        Note that this parameter has almost no effect while ´use_topology´ is
+        ´True´, because membrane topology answers the same question with
+        sequence-level evidence and is consulted first: measured on the
+        predictions at 90% precision, both settings then yield 2,010
+        intercellular gene programs, against 2,527 and 1,776 respectively with
+        ´use_topology´ set to ´False´. It therefore mainly matters when topology
+        cannot be retrieved.
+
+        ´include_ambiguous´ is the
         default because it recovers a large amount of genuine biology: measured
         against curated ligand-receptor pairs from CellPhoneDB and OmniPath,
         recall is 97.4% with ´include_ambiguous´ against 79.7% with ´strict´,
@@ -1520,6 +1635,12 @@ def extract_gp_dict_from_humanppi_interactions(
         interactions are dropped, since they cannot be classified either way.
         If ´intracellular´, they are treated as intracellular, which retains
         them at the risk of mislabeling genuine intercellular interactions.
+    filter_paralog_cross_pairs:
+        If ´True´ (default), interactions between paralogues that do not form a
+        heterodimer are dropped. Integrin alpha-beta pairs are restricted to
+        the 24 heterodimers that exist and MHC class II alpha-beta pairs to
+        matching isotypes. The structural predictor produces such combinations
+        because close paralogues have interchangeable interfaces.
     filter_ig_tcr_segments:
         If ´True´ (default), interactions involving an immunoglobulin or T cell
         receptor V, D or J gene segment are dropped. These segments are
@@ -1595,8 +1716,8 @@ def extract_gp_dict_from_humanppi_interactions(
 
         The interaction class is part of the gene program name, which is
         ´<gene 1>_<gene 2>_<interaction class>_ppi_GP´ with the interaction
-        class being ´paracrine´, ´juxtacrine´, ´cis_complex´ or
-        ´intracellular´. It therefore
+        class being ´paracrine´, ´juxtacrine´, ´cis_complex´,
+        ´extracellular_assembly´ or ´intracellular´. It therefore
         remains visible in gene program summaries, differential gene program
         test results and plots. The gene categories are the location classes of
         the corresponding proteins (´secreted´, ´cell_surface´, ´ambiguous´ or
@@ -1658,6 +1779,20 @@ def extract_gp_dict_from_humanppi_interactions(
                   "represent interactions between two proteins.")
         ppi_df = ppi_df[~is_segment]
 
+    # Optionally drop paralogue combinations that do not form
+    if filter_paralog_cross_pairs:
+        is_cross_pair = ppi_df.apply(
+            lambda row: _is_humanppi_paralog_cross_pair(str(row["Name1"]),
+                                                        str(row["Name2"])),
+            axis=1)
+        n_cross_pair = int(is_cross_pair.sum())
+        if n_cross_pair > 0:
+            print(f"Dropped {n_cross_pair} interactions between paralogues "
+                  "that do not form a heterodimer, which the structural "
+                  "predictor produces because close paralogues have "
+                  "interchangeable interfaces.")
+        ppi_df = ppi_df[~is_cross_pair]
+
     # Optionally filter by interaction probabilities
     if min_rf_prob is not None:
         ppi_df = ppi_df[pd.to_numeric(ppi_df["RFprob"], errors="coerce")
@@ -1695,6 +1830,7 @@ def extract_gp_dict_from_humanppi_interactions(
     produced_source_empty_gp = False
     n_unknown_locality = 0
     n_cis_complex = 0
+    n_extracellular_assembly = 0
     for _, row in ppi_df.iterrows():
         gene_1 = str(row["Name1"])
         gene_2 = str(row["Name2"])
@@ -1704,10 +1840,12 @@ def extract_gp_dict_from_humanppi_interactions(
 
         location_1 = _classify_humanppi_protein_location(
             row["Locality1"],
-            is_membrane_anchored=topology.get(str(row["Protein1"])))
+            topology=topology.get(str(row["Protein1"])),
+            process=row["Process1"] if "Process1" in row else None)
         location_2 = _classify_humanppi_protein_location(
             row["Locality2"],
-            is_membrane_anchored=topology.get(str(row["Protein2"])))
+            topology=topology.get(str(row["Protein2"])),
+            process=row["Process2"] if "Process2" in row else None)
         interaction_class = _classify_humanppi_interaction(
             location_1, location_2, localization_filter)
 
@@ -1741,8 +1879,16 @@ def extract_gp_dict_from_humanppi_interactions(
                 (location_1 == "secreted") != (location_2 == "secreted"))
             if ((accession_pair in cis_pairs or shares_curated_family)
                     and not is_ligand_receptor_assembly):
-                interaction_class = "cis_complex"
-                n_cis_complex += 1
+                if location_1 == "secreted" and location_2 == "secreted":
+                    # Secreted multimers such as collagen and laminin trimers,
+                    # fibrinogen and complement C1q are assembled by the cell
+                    # that produces them, so they are not signaling between two
+                    # cells even though they act outside the cell
+                    interaction_class = "extracellular_assembly"
+                    n_extracellular_assembly += 1
+                else:
+                    interaction_class = "cis_complex"
+                    n_cis_complex += 1
 
         is_intercellular = interaction_class in ("paracrine", "juxtacrine")
         if is_intercellular and program_type == "intracellular":
@@ -1801,6 +1947,12 @@ def extract_gp_dict_from_humanppi_interactions(
                     mapped_categories.extend([category] * len(orthologs))
                 gp[entity] = mapped_genes
                 gp[f"{entity}_categories"] = mapped_categories
+
+    if n_extracellular_assembly > 0:
+        print(f"Reclassified {n_extracellular_assembly} interactions as "
+              "'extracellular_assembly' because both partners are secreted "
+              "subunits of a common complex, which is assembled by the cell "
+              "that produces it.")
 
     if n_cis_complex > 0:
         print(f"Reclassified {n_cis_complex} interactions as 'cis_complex' "
