@@ -104,6 +104,26 @@ def test_secretion_is_trusted_without_a_membrane_anchor():
         topology=anchored(is_membrane_anchored=False)) == "secreted"
 
 
+def test_ambiguous_locality_governs_unresolved_evidence():
+    # Only a keyword compatible with an extracellular face, and no topology
+    assert _classify_humanppi_protein_location("Membrane") == "ambiguous"
+    assert _classify_humanppi_protein_location(
+        "Membrane", ambiguous_locality="intracellular") == "intracellular"
+    # It must not override established evidence
+    assert _classify_humanppi_protein_location(
+        "Cell membrane", ambiguous_locality="intracellular") == "cell_surface"
+    assert _classify_humanppi_protein_location(
+        "Secreted", ambiguous_locality="intracellular") == "secreted"
+    # Nor contradict topology, which is stronger evidence either way
+    assert _classify_humanppi_protein_location(
+        "Membrane", topology=anchored(has_topological_domain=True,
+                                      has_extracellular_domain=True),
+        ambiguous_locality="intracellular") == "cell_surface"
+    assert _classify_humanppi_protein_location(
+        "Membrane", topology=anchored(is_membrane_anchored=False),
+        ambiguous_locality="extracellular") == "intracellular"
+
+
 def test_process_keywords_are_only_a_fallback_for_missing_localization():
     assert _classify_humanppi_protein_location(
         "none", process="Keratinization") == "intracellular"
