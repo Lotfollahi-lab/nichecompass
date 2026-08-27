@@ -335,7 +335,7 @@ proteins localisation cannot: `CD247` has a 9-residue ectodomain, `FCER1G` 5, `T
 
 Some complexes assemble on one cell yet have ectodomains hundreds of residues long, so no topological test
 can separate them from a genuine *trans* interaction, and the Complex Portal holds almost no binary
-cell-surface heteromers. **36 curated gene family patterns** cover them, 12 of which exist specifically for
+cell-surface heteromers. **42 curated gene family patterns** cover them, 12 of which exist specifically for
 co-receptor complexes: the ERBB heterodimers, the insulin and insulin-like growth factor receptors, the
 transforming growth factor beta receptors including endoglin, the Toll-like receptor heterodimers, the
 metabotropic GABA receptor, the Hedgehog receptor with its transducer and co-receptors, the neuropilins with
@@ -349,57 +349,89 @@ receptor, which is the failure mode a family pattern could introduce.
 ### 6.4 Orientation: which partner goes into the source component
 
 NicheCompass reconstructs the source component from the **neighbours** and the target component from the
-**cell itself**, so for a diffusible interaction the ligand belongs in the source and its receptor in the
-target. Where exactly one partner is soluble, it is placed in the source component. This resolves all 529
-secreted-to-cell-surface pairs and makes the gene program names read as ligand to receptor
-(`CCL19_CCR7_paracrine_ppi_GP`). Without it, 200 of 856 paracrine programs were inverted, asking the model to
-predict the chemokine in the receiving cell and its receptor in the neighbourhood.
+**cell itself**, so the partner expressed by the sending cell belongs in the source component and the
+partner expressed by the receiving cell in the target component. Getting this backwards asks the model to
+predict the ligand in the receiving cell and its receptor in the neighbourhood.
 
-For a contact-dependent interaction between two membrane anchored partners, and for an interaction between
-two soluble partners, this rule does not fire and the orientation is the order of the two columns in the
-released table.
+Without evidence the orientation is the order of the two columns in the released table, which is a coin
+flip: measured over the 138 contact-dependent interactions with an unambiguous canonical sender, the ligand
+landed in the source component 68 times and in the target component 70 times. `orient_juxtacrine_gps`
+(default `True`) therefore applies an ordered chain of rules, and the first one that fires decides.
 
-**That is a real limitation, and it has been measured.** Of the 863 contact-dependent interactions at
-precision 90, 138 have an unambiguous canonical sender (ephrin to Eph receptor, a TNF superfamily ligand to
-its receptor, a Notch ligand to Notch, MHC to the T cell receptor, a checkpoint ligand to its receptor, or a
-named `<GENE>LG` to `<GENE>` pair). Among those 138, the ligand lands in the source component 68 times and in
-the target component **70** times — a coin flip. All eight `KLRK1` pairs put NKG2D in the neighbourhood and
-its stress ligand in the cell itself, which is backwards; so are `KIT`-`KITLG`, `FAS`-`FASLG` and
-`NCR3`-`NCR3LG1`. Orienting these from a ligand-receptor annotation is the outstanding improvement here, and
-it would cost no additional latent dimensions.
+| # | Rule | Evidence | Interactions | Accuracy |
+| --: | :-- | :-- | --: | --: |
+| 1 | `secreted_partner` | exactly one partner is soluble, so it is released by the neighbour | 529 | physical |
+| 2 | `gene_symbol_family` | one symbol names a curated ligand family, the other a curated receptor family | 196 | 100% |
+| 3 | `gene_symbol_stem` | one symbol is the other plus an HGNC `LG` or `R` suffix | 1 | 100% |
+| 4 | `omnipath_exclusive_role` | OmniPath calls one partner only a ligand and the other only a receptor | 24 | 100% |
+| 5 | `omnipath_surface_ligand` | OmniPath calls exactly one partner a ligand that stays on the surface, the other a receptor | 134 | 100% |
+| 6 | `go_molecular_function` | one carries a ligand molecular function, the other a receptor molecular function | 18 | 100% gold / 57% held out |
+| 7 | `gpi_anchor` | exactly one partner is GPI anchored, so it has no cytoplasmic domain and cannot signal inwards | 19 | 100% |
+| 8 | `table_order` | no evidence applies, the released order is kept | 778 | arbitrary |
 
-`symmetric_juxtacrine_gps=True` sidesteps the arbitrariness instead, by emitting each contact-dependent
-interaction **twice**, once in each orientation, so that neither orientation has to be the right one. It
-also closes a coverage gap: with one orientation, 557 of the 812 genes taking part in a contact-dependent
-interaction appear in only one component across the whole prior set, so no named program ever reconstructs
-them from the other one. With both orientations, none do.
+**921 of 1,699** intercellular interactions (54.2%) are oriented from evidence, and on the 215 curated
+directions the chain decided it is **correct 215 times, including 116 of 116 once the ephrins are
+excluded**. The rule that decided each program is stored under `orientation_rule` and the counts are
+printed. `tests/data/humanppi_orientation_gold.tsv` holds the 224 curated directions and
+`tests/benchmark_humanppi_classification.py` gates on both the accuracy and the coverage.
 
-It is nevertheless **off by default**, because it adds 863 programs at precision 90 (1,719 to 2,582
-intercellular, +50%) and 1,878 at precision 80 (3,413 to 5,291, +55%), and because the arithmetic of the
-biology does not justify applying it to the whole set. Contact-dependent signalling is frequently
-*bidirectional* — ephrin-B cytoplasmic tails signal in the ligand-expressing cell, so do Notch ligand
-intracellular domains, membrane TNF, B7 and MHC — but bidirectional is not the same as *symmetric*: the two
-arms use different effectors and produce different outputs, so the two orientations are not interchangeable
-descriptions of one event. Genuinely symmetric interactions, where the two partners are the same molecule,
-number **0 of 863**: the interactome screened heterodimeric pairs only, so homophilic adhesion is absent from
-this resource by construction. Only 177 of 863 (20.5%) have both partners in a family where bidirectional
-signalling is the norm, and 113 of those 177 are ephrin/Eph.
+Rules 2 to 7 are reached whenever rule 1 could not decide. That is every contact-dependent interaction, but
+also the **327 of 856 paracrine interactions in which both partners are soluble**, which rule 1 cannot
+separate: a secreted ligand against a soluble decoy receptor is oriented by the same evidence.
+
+Three design decisions are worth stating, because each was arrived at by measurement rather than assumption:
+
+- **Both sides must match.** A rule fires only when one partner looks like a ligand *and* the other looks
+  like a receptor. Comparing a partner that carries receptor evidence against one that carries *no*
+  annotation lets absence of evidence choose the ligand; that variant was measured at 64% against
+  independent curation, versus 100% for the two-sided form.
+- **A bare `L` suffix is not a ligand marker.** `LG` reliably marks one (`KITLG`, `FASLG`, `CD40LG`), but a
+  lone `L` far more often abbreviates "like": the rule would call `PXDNL` the ligand of `PXDN`.
+- **Two rules were implemented, measured and removed.** Orienting by which partner carries a kinase,
+  phosphatase or transducer keyword was correct for 33 of 42 interactions held out against NicheNet,
+  CellPhoneDB and OmniPath, and orienting by the larger cytoplasmic domain for only 7 of 17, against 45% for
+  the released column order. Both fire almost exclusively on pairs where *both* partners are receptors and
+  there is no ligand to find, such as `NOTCH1` with `TLR4`, `DCC` with `UNC5D` and `PTPRG` with `TEK`. The
+  keyword and the cytoplasmic domain lengths are still retrieved and cached, but no longer decide anything.
+
+The residual 778 are overwhelmingly interactions between poorly characterised proteins — `FAM209A` with
+`GYPA`, `SMIM5` with `TMEM52B`, `CTXN2` with `SERTM1` — where no resource states a direction and
+`table_order` is the honest answer. For those programs the interaction class is meaningful and the direction
+is not.
+
+Nothing in this section adds an interaction: OmniPath is consulted only to decide which of two partners
+already predicted to interact is the sender.
+
+### 6.5 Two symmetric programs per contact-dependent interaction
+
+`symmetric_juxtacrine_gps=True` sidesteps orientation altogether for contact-dependent interactions, by
+emitting each one **twice**, once in each orientation, so neither has to be the right one. It also closes a
+coverage gap: with one orientation, 557 of the 812 genes taking part in a contact-dependent interaction
+appear in only one component across the whole prior set, so no named program ever reconstructs them from the
+other one. With both orientations, none do.
+
+It is nevertheless **off by default**, because it adds 843 programs at precision 90 (1,699 to 2,542
+intercellular, +50%) and because the arithmetic of the biology does not justify applying it to the whole
+set. Contact-dependent signalling is frequently *bidirectional* — ephrin-B cytoplasmic tails signal in the
+ligand-expressing cell, so do Notch ligand intracellular domains, membrane TNF, B7 and MHC — but
+bidirectional is not the same as *symmetric*: the two arms use different effectors and produce different
+outputs, so the two orientations are not interchangeable descriptions of one event. Genuinely symmetric
+interactions, where the two partners are the same molecule, number **0 of 863**: the interactome screened
+heterodimeric pairs only, so homophilic adhesion is absent from this resource by construction. Only 177 of
+863 (20.5%) have both partners in a family where bidirectional signalling is the norm, and 113 of those 177
+are ephrin/Eph.
 
 The cost is in reading rather than in statistics. Differential program testing applies a fixed log Bayes
 factor threshold with no multiple-testing correction, so doubling the program count carries no statistical
 penalty; but a mirrored pair occupies two rows of every program summary, two of the ten panels of
 `generate_enriched_gp_info_plots`, and two arrow families in the communication network for one physical
-contact. The two names differ only in gene order (`A_B_juxtacrine_ppi_GP` against `B_A_juxtacrine_ppi_GP`)
-and read as a typo.
+contact. The two names differ only in gene order and read as a typo.
 
 Turn it on when the *side* of a contact-dependent interface is itself the question — for example when asking
-whether a checkpoint interaction is enriched from the tumour cell's side, the T cell's side, or both.
-
-One interaction with `combine_gps`: `filter_and_combine_gp_dict_gps_v2` merges programs that share a source
-gene, and every intercellular program has exactly one source gene, so combining collapses the mirrored set
-to one program per source gene and discards the interaction class in the rename. After combining, only 75 of
-the 863 mirrored pairs remain as pairs. `symmetric_juxtacrine_gps=True` together with combining is therefore
-a materially different object from either alone.
+whether a checkpoint interaction is enriched from the tumour cell's side, the T cell's side, or both. Note
+that `filter_and_combine_gp_dict_gps_v2` merges programs sharing a source gene, and every intercellular
+program has exactly one source gene, so combining collapses the mirrored set to one program per source gene
+and discards the interaction class; only 75 of the 863 mirrored pairs survive as pairs.
 
 ## 7. Gene program construction
 
@@ -427,19 +459,19 @@ At `precision="90"`, `species="human"`, `program_type="both"` and otherwise defa
 | Class | Count | Share |
 | :-- | --: | --: |
 | `paracrine` | 856 | 5.1% |
-| `juxtacrine` | 863 | 5.1% |
-| `cis_complex` | 457 | 2.7% |
+| `juxtacrine` | 843 | 5.0% |
+| `cis_complex` | 477 | 2.8% |
 | `extracellular_assembly` | 57 | 0.3% |
 | `intracellular` | 14,614 | 86.7% |
 | **total** | **16,847** | |
 
-Intercellular programs total 1,719. At `precision="80"` the totals are 27,823 programs of which 3,413 are
-intercellular (1,535 paracrine, 1,878 juxtacrine).
+Intercellular programs total 1,699. At `precision="80"` the totals are 27,823 programs of which 3,361 are
+intercellular (1,535 paracrine, 1,826 juxtacrine).
 
 With `use_topology=False` the reach test cannot run and the curated families are the only *cis* evidence
 left, so the intercellular set grows rather than shrinks: 2,485 programs at precision 90 with
 `ambiguous_locality="extracellular"`, 1,745 with `"intracellular"`. Both are less trustworthy than the
-1,719 obtained with topology.
+1,699 obtained with topology.
 
 ## 9. Downstream use and three caveats
 
@@ -452,7 +484,7 @@ left, so the intercellular set grows rather than shrinks: 2,485 programs at prec
 2. **Combining discards the interaction class.** `filter_and_combine_gp_dict_gps_v2` merges programs sharing
    a source gene and renames them `<GENE>_combined_GP`, which loses the `_paracrine_`/`_juxtacrine_` label.
 3. **Targeted panels.** An intercellular program needs *both* partners probed. On the 313-gene Xenium human
-   breast panel only 32 of 3,413 intercellular programs retain both partners (18 of 1,719 at
+   breast panel only 32 of 3,361 intercellular programs retain both partners (18 of 1,699 at
    precision 90). The resource is best suited to
    whole-transcriptome data; on a targeted panel it is more informative as a supplement to
    OmniPath, NicheNet and MEBOCOST than on its own.
@@ -486,9 +518,18 @@ left, so the intercellular set grows rather than shrinks: 2,485 programs at prec
   non-intercellular. Before the reach test and the curated co-receptor families, 15 of 15 were `juxtacrine`.
 - **True trans pairs preserved.** `PDCD1`-`CD274`, `SIRPA`-`CD47`, `EPHB1`-`EFNB3`, `CCL19`-`CCR7`,
   `IL15`-`IL15RA` and `TNFSF4`-`TNFRSF4` all remain intercellular.
-- **Unit tests.** `tests/test_humanppi_gene_programs.py` contains 135 offline tests pinning the protein and
+- **Orientation against curated direction.** `tests/data/humanppi_orientation_gold.tsv` holds 224
+  interactions whose sender is unambiguous from established cell biology. Of the 215 the rules decide, the
+  ligand is placed in the source component **215 times (100%)**, and **116 of 116** once the ephrins are
+  excluded, against 104 of 224 (46.4%) for the released column order. Coverage is 921 of 1,699 (54.2%).
+  Because the gold set and the curated family lexicon share provenance, the chain was additionally scored
+  against NicheNet, CellPhoneDB and the OmniPath intercell annotation on interactions the gold set does not
+  cover: **243 of 246 (98.8%)**, with all three disagreements on pairs that are genuinely bidirectional
+  (`TNFRSF14` with `BTLA` and with `TIGIT`, `SELPLG` with `SPN`).
+  `tests/benchmark_humanppi_classification.py` gates on both the accuracy and the coverage.
+- **Unit tests.** `tests/test_humanppi_gene_programs.py` contains 198 offline tests pinning the protein and
   interaction classification, the precedence rules, the fallback ordering, the reach test, the segment and
-  paralogue patterns, the curated families and the orientation.
+  paralogue patterns, the curated families and every orientation rule including its abstentions.
 
 ## 11. Known limitations
 
@@ -509,7 +550,7 @@ left, so the intercellular set grows rather than shrinks: 2,485 programs at prec
    T cell receptor complex on the same cell, and both are still classified `juxtacrine`. The residual error
    rate among the 863 juxtacrine programs is unmeasured.
 3. **Precision is not measured globally.** Every specific false positive found has been fixed, but there is
-   no clean negative gold standard, so the fraction of the 1,719 intercellular calls that are wrong is
+   no clean negative gold standard, so the fraction of the 1,699 intercellular calls that are wrong is
    unknown. Recall is measured; precision is argued.
 4. **524 interactions remain unresolved** and are dropped by default. Closing that would need sequence-based
    prediction such as SignalP or DeepTMHMM rather than another annotation source, which is exhausted.
@@ -552,6 +593,8 @@ Grouped by what they control. Defaults are those of
 | `ambiguous_locality` | `"extracellular"` | How to treat proteins whose extracellular face is neither established nor contradicted (section 5.3). Inert unless `use_topology=False` |
 | `unresolved_locality` | `"exclude"` | How to treat interactions whose partner locations stay unresolved: `"exclude"` drops them, `"intracellular"` keeps them as target-only programs |
 | `detect_cis_complexes` | `True` | Reclassify subunits of a common complex as `cis_complex` or `extracellular_assembly` (section 6.1) |
+| `orient_juxtacrine_gps` | `True` | Orient interactions from evidence about which partner sends the signal, so the ligand lands in the source component (section 6.4). `False` keeps the released column order |
+| `omnipath_annotation_file_path` | `../data/gene_programs/omnipath_intercell_annotation.tsv` | Cache for the OmniPath intercell annotation used by orientation rules 4 and 5. A failure to retrieve it costs orientation coverage, not the mask |
 | `min_extracellular_domain_length` | `30` | Shortest extracellular domain, in residues, that still counts as able to reach a partner on a neighbouring cell (section 6.2). `0` disables the reach test. Requires `use_topology=True` |
 | `symmetric_juxtacrine_gps` | `False` | Emit each contact-dependent interaction in both orientations, since it operates in both directions between two neighbouring cells (section 6.4). Doubles the number of `juxtacrine` programs |
 | `complex_portal_file_path` | `../data/gene_programs/complex_portal_human.tsv` | Cache location for the Complex Portal table |
@@ -582,6 +625,7 @@ humanppi_gp_dict = extract_gp_dict_from_humanppi_interactions(
     use_topology=True,
     detect_cis_complexes=True,
     min_extracellular_domain_length=30,
+    orient_juxtacrine_gps=True,
     symmetric_juxtacrine_gps=False,
     min_rf_prob=None,                   # trust the authors' calibration
     min_af_prob=None)

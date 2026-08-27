@@ -14,6 +14,7 @@ import tempfile
 import urllib.error
 import urllib.request
 import warnings
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Literal, Optional
 
@@ -251,6 +252,24 @@ HUMANPPI_CIS_COMPLEX_GENE_FAMILY_PATTERNS = {
     "collagen": r"^COL\d",
     "laminin": r"^LAM[ABC]\d",
     "sarcoglycan": r"^SGC[ABDEG]$",
+    # Tetraspanins organize their partners into microdomains within a single
+    # membrane, so they interact with integrins, immunoglobulin superfamily
+    # receptors and each other in cis rather than across an intercellular cleft
+    "tetraspanin": r"^(CD9|CD53|CD63|CD81|CD82|CD151|TSPAN\d+)$",
+    # Basigin chaperones the monocarboxylate transporters to the plasma
+    # membrane, so it interacts with them in the membrane it delivers them to
+    "basigin_transporter": r"^(BSG|SLC16A\d+|SLC3A2|SLC7A11)$",
+    # Syndecans and glypicans are co-receptors that present their heparan
+    # sulfate chains alongside a signaling receptor on the same cell
+    "syndecan_coreceptor": r"^(SDC\d|PTPRZ1|NCAM1|GPC\d)$",
+    # MDGA proteins bind neuroligins on the postsynaptic membrane to block
+    # neurexin binding, so that interaction is within one cell
+    "mdga_neuroligin": r"^(MDGA\d|NLGN\d[XY]?)$",
+    # The CD45 phosphatase and its associated protein form a complex within
+    # the leukocyte membrane
+    "cd45_complex": r"^(PTPRC|PTPRCAP)$",
+    # The platelet glycoprotein Ib-IX-V complex is assembled in one membrane
+    "gp1b_ix_v": r"^(GP1B[AB]|GP5|GP9)$",
     "bbsome": r"^(BBS\d+|TTC8|ARL6)$",
     "ap2_adaptor": r"^AP2[ABMS]\d",
     "complement_c1q": r"^C1Q[ABC]$",
@@ -529,6 +548,15 @@ def _load_humanppi_protein_topology(accessions: list,
                         "subcellular_location",
                         "cellular_component_keywords",
                         "go_cellular_components"]
+    # Evidence used only to orient contact-dependent interactions. A cache
+    # written before these were retrieved is still valid for the
+    # classification, so it is kept and the orientation evidence is marked
+    # unavailable rather than discarding an entire cache of thousands of
+    # proteins and re-downloading it.
+    orientation_columns = ["is_gpi_anchored",
+                           "max_cytoplasmic_domain_length",
+                           "has_receptor_kinase_keyword",
+                           "go_molecular_functions"]
     if os.path.exists(topology_file_path):
         _report_humanppi_provenance(topology_file_path,
                                     "UniProt protein annotation")
@@ -536,6 +564,16 @@ def _load_humanppi_protein_topology(accessions: list,
         if not set(required_columns).issubset(topology_df.columns):
             # An outdated cache is ignored and retrieved again
             topology_df = topology_df.iloc[0:0]
+        has_orientation_evidence = set(orientation_columns).issubset(
+            topology_df.columns)
+        if len(topology_df) > 0 and not has_orientation_evidence:
+            warnings.warn(
+                "The cached UniProt protein annotation at "
+                f"'{topology_file_path}' predates the evidence used to orient "
+                "contact-dependent gene programs, so those interactions fall "
+                "back on the order of the two columns in the released "
+                "predictions. Delete the file to retrieve the annotation "
+                "again.")
         for _, topology_row in topology_df.iterrows():
             def split_cached(value):
                 return [] if pd.isna(value) else str(value).split(";")
@@ -557,7 +595,22 @@ def _load_humanppi_protein_topology(accessions: list,
                 "cellular_component_keywords": split_cached(
                     topology_row["cellular_component_keywords"]),
                 "go_cellular_components": split_cached(
-                    topology_row["go_cellular_components"])}
+                    topology_row["go_cellular_components"]),
+                "is_gpi_anchored": (
+                    bool(topology_row["is_gpi_anchored"])
+                    if has_orientation_evidence else None),
+                # ´None´ rather than 0, so that a protein with no annotated
+                # cytoplasmic domain is never mistaken for one that is known
+                # to have none
+                "max_cytoplasmic_domain_length": (
+                    int(topology_row["max_cytoplasmic_domain_length"])
+                    if has_orientation_evidence else None),
+                "has_receptor_kinase_keyword": (
+                    bool(topology_row["has_receptor_kinase_keyword"])
+                    if has_orientation_evidence else None),
+                "go_molecular_functions": (
+                    split_cached(topology_row["go_molecular_functions"])
+                    if has_orientation_evidence else None)}
 
     missing = sorted({accession for accession in accessions
                       if accession not in topology})
@@ -565,8 +618,11 @@ def _load_humanppi_protein_topology(accessions: list,
         print(f"Retrieving membrane topology for {len(missing)} proteins from "
               "UniProt...")
         batch_size = 100
+        # ´go_f´ is the only field added for orientation; the GPI anchor, the
+        # cytoplasmic domain lengths and the functional keywords are all
+        # already retrieved and were simply being discarded
         fields = ("accession,ft_transmem,ft_lipid,ft_topo_dom,ft_signal,"
-                  "cc_subcellular_location,keyword,go_c")
+                  "cc_subcellular_location,keyword,go_c,go_f")
         for batch_start in range(0, len(missing), batch_size):
             batch = missing[batch_start:batch_start + batch_size]
             query = "+OR+".join(f"accession:{accession}"
@@ -594,10 +650,20 @@ def _load_humanppi_protein_topology(accessions: list,
                         r"TOPO_DOM (\d+)\.\.(\d+); /note=\"([^\"]+)\"",
                         topo_dom)
                     if note == "Extracellular"]
+                # A protein whose cytoplasmic domain is short or absent cannot
+                # transduce a signal into its own cell, so it is the ligand
+                # rather than the receptor of the interaction
+                cytoplasmic_domain_lengths = [
+                    int(end) - int(start) + 1
+                    for start, end, note in re.findall(
+                        r"TOPO_DOM (\d+)\.\.(\d+); /note=\"([^\"]+)\"",
+                        topo_dom)
+                    if note == "Cytoplasmic"]
                 signal = columns[4] if len(columns) > 4 else ""
                 subcellular = columns[5] if len(columns) > 5 else ""
                 keywords = columns[6] if len(columns) > 6 else ""
                 go_components = columns[7] if len(columns) > 7 else ""
+                go_functions = columns[8] if len(columns) > 8 else ""
                 # Only the cellular-component keywords are retained; the field
                 # also contains biological-process and other keywords
                 current_keywords = [
@@ -607,6 +673,11 @@ def _load_humanppi_protein_topology(accessions: list,
                 go_terms = [re.sub(r"\s*\[GO:\d+\]", "", term).strip()
                             for term in str(go_components).split(";")
                             if term.strip()]
+                go_function_terms = [
+                    re.sub(r"\s*\[GO:\d+\]", "", term).strip()
+                    for term in str(go_functions).split(";") if term.strip()]
+                all_keywords = {keyword.strip()
+                                for keyword in str(keywords).split(";")}
                 topology[accession] = {
                     "is_membrane_anchored": bool("TRANSMEM" in transmem
                                                  or "GPI-anchor" in lipid),
@@ -620,7 +691,14 @@ def _load_humanppi_protein_topology(accessions: list,
                     "subcellular_location":
                         _parse_humanppi_subcellular_location(subcellular),
                     "cellular_component_keywords": current_keywords,
-                    "go_cellular_components": go_terms}
+                    "go_cellular_components": go_terms,
+                    "is_gpi_anchored": "GPI-anchor" in lipid,
+                    "max_cytoplasmic_domain_length": (
+                        max(cytoplasmic_domain_lengths)
+                        if cytoplasmic_domain_lengths else 0),
+                    "has_receptor_kinase_keyword": bool(
+                        all_keywords & HUMANPPI_RECEPTOR_KINASE_KEYWORDS),
+                    "go_molecular_functions": go_function_terms}
 
         cache_dir = os.path.dirname(topology_file_path)
         if cache_dir:
@@ -638,7 +716,14 @@ def _load_humanppi_protein_topology(accessions: list,
              "cellular_component_keywords":
                  ";".join(values["cellular_component_keywords"]),
              "go_cellular_components":
-                 ";".join(values["go_cellular_components"])}
+                 ";".join(values["go_cellular_components"]),
+             "is_gpi_anchored": values["is_gpi_anchored"],
+             "max_cytoplasmic_domain_length":
+                 values["max_cytoplasmic_domain_length"],
+             "has_receptor_kinase_keyword":
+                 values["has_receptor_kinase_keyword"],
+             "go_molecular_functions":
+                 ";".join(values["go_molecular_functions"] or [])}
             for accession, values in topology.items()]).to_csv(
                 topology_file_path, sep="\t", index=False)
         _write_humanppi_provenance(topology_file_path,
@@ -756,6 +841,102 @@ def _load_complex_portal_cis_pairs(complex_portal_file_path: str,
 # gap junctions, and the claudins and occludin of tight junctions.
 HUMANPPI_SHORT_LOOP_TRANS_GENE_PATTERN = r"^(GJ[ABCDE]\d|CLDN\d|OCLN$)"
 
+# Evidence used to decide which partner of a contact-dependent interaction is
+# the ligand, expressed by the sending cell, and which is the receptor,
+# expressed by the receiving cell. NicheCompass reconstructs the source
+# component from the neighbors and the target component from the cell itself,
+# so the ligand belongs in the source component. For a soluble partner this is
+# settled by its being secreted, but when both partners are membrane anchored
+# localization says nothing about direction, and without this evidence the
+# orientation is the order of the two columns in the released predictions,
+# which is a coin flip: measured over the 138 interactions with an
+# unambiguous canonical sender, the ligand landed in the source component 68
+# times and in the target component 70 times.
+
+# Gene Ontology molecular functions that mark a protein as the ligand of an
+# interaction. Matched as case-insensitive substrings, which subsumes the
+# child terms of each.
+HUMANPPI_LIGAND_GO_FUNCTION_FRAGMENTS = (
+    "receptor ligand activity",
+    "receptor agonist activity",
+    "death receptor agonist activity",
+    "cytokine activity",
+    "chemokine activity",
+    "growth factor activity",
+    "hormone activity")
+
+# Gene Ontology molecular functions that mark a protein as the receptor. A
+# protein that transduces a signal, or that phosphorylates in response to one,
+# is acting on its own cell and is therefore the receiving partner.
+HUMANPPI_RECEPTOR_GO_FUNCTION_FRAGMENTS = (
+    "signaling receptor activity",
+    "transmembrane signaling receptor activity",
+    "cytokine receptor activity",
+    "growth factor receptor activity",
+    "immune receptor activity",
+    "coreceptor activity",
+    "g protein-coupled receptor activity",
+    "transmembrane receptor protein tyrosine kinase activity",
+    "protein tyrosine kinase activity",
+    "protein serine/threonine kinase activity",
+    "protein kinase activity",
+    "phosphatase activity")
+
+# UniProt keywords that imply a protein signals into the cell that carries it,
+# which makes it the receiving partner. Note that the bare ´Receptor´ keyword
+# is deliberately absent: it is carried by membrane anchored ligands as well
+# and was measured to orient only half of the interactions it decided
+# correctly.
+HUMANPPI_RECEPTOR_KINASE_KEYWORDS = frozenset({
+    "Kinase",
+    "Tyrosine-protein kinase",
+    "Serine/threonine-protein kinase",
+    "G-protein coupled receptor",
+    "Transducer",
+    "Guanylate cyclase",
+    "Protein phosphatase"})
+
+# Curated gene families whose name states which side of an interaction a
+# protein acts on. Only used when one partner matches the ligand patterns and
+# the other matches the receptor patterns, so that a single match never
+# decides an orientation on its own.
+HUMANPPI_LIGAND_GENE_PATTERNS = (
+    r"^EFN[AB]\d",          # ephrins, ligands of the Eph receptors
+    r"^SEMA\d",             # semaphorins, ligands of the plexins
+    r"^TNFSF\d",            # tumor necrosis factor superfamily ligands
+    r"^(DLL\d|DLK\d|JAG\d)",  # Delta, Delta-like and Jagged, Notch ligands
+    r"^(RGM[AB]|HJV)$",     # repulsive guidance molecules, ligands of neogenin
+    r"^NTNG\d",             # netrin G, ligand of the netrin G ligands
+    r"^(MICA|MICB|ULBP\d|RAET1[A-Z])$",   # stress ligands of NKG2D
+    r"^CLEC2[ABD]$",        # ligands of the NK cell lectin-like receptors
+    r"^(CCL\d|CXCL\d|XCL\d|CX3CL\d)",   # chemokines
+    r"^HLA-",               # MHC, presented to the T cell receptor
+    r"^(CD274|PDCD1LG2)$",  # PD-L1 and PD-L2, ligands of PD-1
+    r"^(CD80|CD86)$",       # ligands of CD28 and CTLA-4
+    r"^(CD48|CD58|CD200|CD47|CD55)$",
+    r"^(ICOSLG|HHLA2|NCR3LG1|SECTM1|TNFSF\d+)$",
+    r"^(KITLG|FLT3LG|CSF1|SELPLG)$",
+    r"^(EGF|TGFA|AREG|EREG|BTC|EPGN|HBEGF|NRG\d)$")
+
+HUMANPPI_RECEPTOR_GENE_PATTERNS = (
+    r"^EPH[AB]\d",          # Eph receptor tyrosine kinases
+    r"^PLXN[A-D]\d",        # plexins
+    r"^NRP\d$",             # neuropilins
+    r"^TNFRSF\d",          # tumor necrosis factor receptor superfamily
+    r"^(FAS|CD40|CD27)$",
+    r"^NOTCH\d",
+    r"^(NEO1|DCC|UNC5[A-D])$",
+    r"^(KIT|EGFR|ERBB\d|CSF1R|FLT3)$",
+    r"^(PDCD1|CTLA4|CD28|ICOS|TIGIT|CD226|CD96|LAG3|HAVCR2)$",
+    r"^SIRP[ABG]\d?$",
+    r"^(KIR\d|LILR[AB]\d|KLR[BCDFGK]\d|NCR\d)",
+    r"^ITG[AB]\d",
+    r"^(CCR\d|CXCR\d|XCR\d|CX3CR\d)$",
+    r"^(CD2|CD7|CD244|CD200R\d|TMIGD2)$",
+    r"^PTPR[A-Z]$",
+    r"^(CD3[DEG]|CD4|CD8[AB])$")
+
+
 
 def _is_humanppi_trans_capable(gene: str,
                                topology: Optional[dict],
@@ -791,31 +972,305 @@ def _is_humanppi_trans_capable(gene: str,
     return n_transmem < 3
 
 
-def _orient_humanppi_intercellular_gp(gene_1: str,
-                                      gene_2: str,
-                                      location_1: str,
-                                      location_2: str) -> tuple:
+def _load_humanppi_omnipath_intercell_roles(
+        omnipath_annotation_file_path: str) -> dict:
+    """
+    Load which genes the OmniPath intercell annotation calls ligands, which it
+    calls cell-surface ligands and which it calls receptors, used to orient
+    contact-dependent interactions.
+
+    Only the functional aspect of the annotation is retrieved, restricted to
+    the three parent categories that state a role. The number of distinct
+    resources supporting each role is kept, so that a gene annotated by many
+    resources can be told apart from one annotated by a single one. Nothing is
+    ever added to the gene programs from this annotation: it only decides which
+    of two partners of an interaction already in the predicted interactome is
+    the sender.
+
+    Results are cached at ´omnipath_annotation_file_path´.
+
+    Returns
+    ----------
+    roles:
+        Mapping from upper-case gene symbol to a dict with the number of
+        supporting resources under ´ligand´, ´cell_surface_ligand´ and
+        ´receptor´.
+    """
+    if os.path.exists(omnipath_annotation_file_path):
+        _report_humanppi_provenance(omnipath_annotation_file_path,
+                                    "OmniPath intercell annotation")
+        annotation_df = pd.read_csv(omnipath_annotation_file_path, sep="\t")
+    else:
+        print("Retrieving the OmniPath intercell annotation from the web...")
+        annotation_df = op.requests.Intercell.get(
+            aspect="functional",
+            parent=["ligand", "cell_surface_ligand", "receptor"])
+        annotation_df = annotation_df[
+            ["genesymbol", "parent", "database"]].drop_duplicates()
+        annotation_dir = os.path.dirname(omnipath_annotation_file_path)
+        if annotation_dir:
+            os.makedirs(annotation_dir, exist_ok=True)
+        annotation_df.to_csv(omnipath_annotation_file_path, sep="\t",
+                             index=False)
+        _write_humanppi_provenance(omnipath_annotation_file_path,
+                                   "https://omnipathdb.org/intercell")
+
+    roles = {}
+    for _, annotation_row in annotation_df.iterrows():
+        genesymbol = str(annotation_row["genesymbol"])
+        parent = str(annotation_row["parent"])
+        if parent not in ("ligand", "cell_surface_ligand", "receptor"):
+            continue
+        # A complex is annotated as one entity, so the role propagates to each
+        # of its subunits
+        genes = (genesymbol.removeprefix("COMPLEX:").split("_")
+                 if genesymbol.startswith("COMPLEX:") else [genesymbol])
+        for gene in genes:
+            gene_roles = roles.setdefault(
+                gene.upper(), {"ligand": set(), "cell_surface_ligand": set(),
+                               "receptor": set()})
+            gene_roles[parent].add(str(annotation_row["database"]))
+    return {gene: {parent: len(databases)
+                   for parent, databases in gene_roles.items()}
+            for gene, gene_roles in roles.items()}
+
+
+def _humanppi_gene_symbol_role(gene: str) -> Optional[str]:
+    """
+    Return ´ligand´ or ´receptor´ if the gene symbol places the protein on one
+    side of an interaction by naming its curated family, and ´None´ otherwise.
+    """
+    symbol = gene.upper()
+    is_ligand = any(re.match(pattern, symbol)
+                    for pattern in HUMANPPI_LIGAND_GENE_PATTERNS)
+    is_receptor = any(re.match(pattern, symbol)
+                      for pattern in HUMANPPI_RECEPTOR_GENE_PATTERNS)
+    if is_ligand and not is_receptor:
+        return "ligand"
+    if is_receptor and not is_ligand:
+        return "receptor"
+    return None
+
+
+def _humanppi_gene_symbol_stem_role(gene_1: str, gene_2: str) -> Optional[str]:
+    """
+    Return which of the two genes the symbols themselves mark as the ligand,
+    for the two naming conventions in which one symbol is the other plus a
+    suffix, and ´None´ if neither applies.
+
+    HGNC appends ´LG´ to a receptor's symbol to name its ligand (´KITLG´ for
+    the ligand of ´KIT´, ´FASLG´ for the ligand of ´FAS´), and conversely
+    appends ´R´ to a ligand's symbol to name its receptor (´EGFR´ for the
+    receptor of ´EGF´).
+
+    A bare ´L´ suffix is deliberately not treated as a ligand marker, even
+    though a few ligands carry it, because it far more often abbreviates
+    "like": it would call ´PXDNL´ the ligand of ´PXDN´, which is a peroxidasin
+    paralogue rather than its ligand.
+    """
+    first, second = gene_1.upper(), gene_2.upper()
+    for ligand, receptor in ((first, second), (second, first)):
+        if ligand == receptor + "LG":
+            return ligand
+        for suffix in ("R", "R1", "R2"):
+            if receptor == ligand + suffix:
+                return ligand
+    return None
+
+
+def _humanppi_go_function_role(topology: Optional[dict]) -> Optional[int]:
+    """
+    Score a protein as a ligand or a receptor from its Gene Ontology molecular
+    functions: ´1´ if it carries a ligand function and no receptor function,
+    ´-1´ for the converse, ´0´ if it carries both or neither, and ´None´ if no
+    molecular function is available.
+    """
+    if topology is None or topology.get("go_molecular_functions") is None:
+        return None
+    functions = " ; ".join(topology["go_molecular_functions"]).lower()
+    if not functions:
+        return 0
+    is_ligand = any(fragment in functions
+                    for fragment in HUMANPPI_LIGAND_GO_FUNCTION_FRAGMENTS)
+    is_receptor = any(fragment in functions
+                      for fragment in HUMANPPI_RECEPTOR_GO_FUNCTION_FRAGMENTS)
+    return int(is_ligand) - int(is_receptor)
+
+
+def _orient_humanppi_intercellular_gp(
+        gene_1: str,
+        gene_2: str,
+        location_1: str,
+        location_2: str,
+        interaction_class: Optional[str]=None,
+        topology_1: Optional[dict]=None,
+        topology_2: Optional[dict]=None,
+        omnipath_roles: Optional[dict]=None) -> tuple:
     """
     Order the two partners of an intercellular interaction into the source
     (neighbor) and target (self) component of a gene program.
 
     NicheCompass reconstructs the source component from the aggregated
     expression of a cell's spatial neighbors and the target component from the
-    cell's own expression. Where exactly one partner is soluble, it is the one
-    released by the neighboring cell and therefore belongs in the source
-    component, so that the model reconstructs the ligand in the neighborhood
-    and its receptor in the cell itself. For a contact-dependent interaction
-    between two membrane anchored partners, and for an interaction between two
-    soluble partners, the assignment is arbitrary but consistent.
+    cell's own expression, so the partner expressed by the sending cell belongs
+    in the source component and the partner expressed by the receiving cell in
+    the target component.
+
+    The evidence is applied in descending order of reliability, and the first
+    rule that fires decides:
+
+    1. ´secreted_partner´: exactly one partner is soluble. It is released by
+       the neighboring cell, so it is the ligand. This settles every paracrine
+       interaction and is the only rule that is purely physical.
+    2. ´gene_symbol_family´: one partner's symbol names a curated ligand family
+       and the other's names a curated receptor family, as for the ephrins and
+       the Eph receptors. Both sides have to match, so a lone match never
+       decides an orientation.
+    3. ´gene_symbol_stem´: one symbol is the other plus an HGNC ligand or
+       receptor suffix, as in ´KITLG´ against ´KIT´ or ´EGFR´ against ´EGF´.
+    4. ´omnipath_exclusive_role´: the OmniPath intercell annotation calls one
+       partner a ligand and never a receptor, and the other a receptor and
+       never a ligand.
+    5. ´omnipath_surface_ligand´: OmniPath calls exactly one partner a ligand
+       that stays on the cell surface, which is what the sender of a
+       contact-dependent interaction is, and the other a receptor.
+    6. ´go_molecular_function´: one partner carries a ligand molecular function
+       and the other a receptor molecular function in the Gene Ontology.
+    7. ´gpi_anchor´: exactly one partner is GPI anchored. It has no cytoplasmic
+       domain at all and therefore cannot transduce a signal into its own cell,
+       so it has to be the ligand. This is what makes the GPI anchored
+       ephrin-A proteins resolvable.
+    8. ´table_order´: no evidence applies and the order of the two columns in
+       the released predictions is kept. This is arbitrary, so for such a gene
+       program the interaction class is what should be trusted, not the
+       direction.
+
+    Two further rules were implemented, measured and then deliberately removed,
+    because both fire almost exclusively on pairs in which *both* partners are
+    receptors, where there is no ligand to identify. Held out against curated
+    direction from NicheNet, CellPhoneDB and the OmniPath intercell annotation,
+    orienting by which partner carries a kinase, phosphatase or transducer
+    keyword was correct for 33 of 42 interactions, and orienting by the larger
+    cytoplasmic domain for only 7 of 17, against 45% for keeping the released
+    column order. Their errors were pairs such as ´NOTCH1´ with ´TLR4´, ´DCC´
+    with ´UNC5D´ and ´PTPRG´ with ´TEK´. The keyword and the cytoplasmic domain
+    lengths are still retrieved and cached, since they are informative about the
+    proteins, but they no longer decide an orientation.
+
+    Rules 2 to 7 are reached whenever rule 1 could not decide. That is every
+    contact-dependent interaction, but also the paracrine interactions in which
+    *both* partners are soluble, which rule 1 cannot separate and which are 327
+    of the 856 paracrine interactions at 90% precision: a secreted ligand
+    against a soluble decoy receptor is oriented by the same evidence as a
+    contact-dependent pair. Rules 6 and 7 need the UniProt annotation, so they
+    do not fire when ´use_topology´ is disabled or when a cached annotation
+    predates them.
+
+    Parameters
+    ----------
+    gene_1:
+        Gene symbol of the first partner.
+    gene_2:
+        Gene symbol of the second partner.
+    location_1:
+        Location class of the first partner.
+    location_2:
+        Location class of the second partner.
+    interaction_class:
+        Interaction class as returned by ´_classify_humanppi_interaction´, kept
+        for reporting and for callers that need to distinguish the classes.
+    topology_1:
+        UniProt annotation of the first partner, as returned by
+        ´_load_humanppi_protein_topology´, or ´None´ if unavailable.
+    topology_2:
+        UniProt annotation of the second partner.
+    omnipath_roles:
+        Ligand and receptor roles from the OmniPath intercell annotation, as
+        returned by ´_load_humanppi_omnipath_intercell_roles´, or ´None´ if
+        unavailable.
 
     Returns
     ----------
     orientation:
-        Tuple of source gene, target gene, source location and target location.
+        Tuple of source gene, target gene, source location, target location and
+        the name of the rule that decided the orientation.
     """
-    if location_2 == "secreted" and location_1 != "secreted":
-        return gene_2, gene_1, location_2, location_1
-    return gene_1, gene_2, location_1, location_2
+    def oriented(ligand, rule):
+        if ligand == gene_2:
+            return gene_2, gene_1, location_2, location_1, rule
+        return gene_1, gene_2, location_1, location_2, rule
+
+    # A soluble partner is released by the neighboring cell, which decides the
+    # orientation on physical grounds alone
+    if (location_1 == "secreted") != (location_2 == "secreted"):
+        ligand = gene_1 if location_1 == "secreted" else gene_2
+        return oriented(ligand, "secreted_partner")
+
+    # Curated gene families, where the symbols themselves state which partner
+    # acts on which. Requiring a match on both sides keeps the rule from
+    # deciding an orientation against a partner that is not a receptor at all.
+    role_1 = _humanppi_gene_symbol_role(gene_1)
+    role_2 = _humanppi_gene_symbol_role(gene_2)
+    if role_1 == "ligand" and role_2 == "receptor":
+        return oriented(gene_1, "gene_symbol_family")
+    if role_2 == "ligand" and role_1 == "receptor":
+        return oriented(gene_2, "gene_symbol_family")
+
+    stem_ligand = _humanppi_gene_symbol_stem_role(gene_1, gene_2)
+    if stem_ligand is not None:
+        return oriented(gene_1 if stem_ligand == gene_1.upper() else gene_2,
+                        "gene_symbol_stem")
+
+    # The OmniPath intercell annotation, restricted to the two rules that were
+    # measured to be reliable. The margin rule that OmniPath also supports,
+    # comparing how many resources call each partner a ligand against a
+    # receptor, is deliberately not used: it is a popularity vote that fails
+    # systematically for surface molecules that are curated as both, and it
+    # oriented only 1 of 6 of the interactions the rules above leave undecided.
+    if omnipath_roles is not None:
+        roles_1 = omnipath_roles.get(gene_1.upper())
+        roles_2 = omnipath_roles.get(gene_2.upper())
+        if roles_1 is not None and roles_2 is not None:
+            ligand_1 = roles_1["ligand"] + roles_1["cell_surface_ligand"]
+            ligand_2 = roles_2["ligand"] + roles_2["cell_surface_ligand"]
+            # One partner is annotated only as a ligand and the other only as a
+            # receptor
+            if (ligand_1 > 0 and roles_1["receptor"] == 0
+                    and ligand_2 == 0 and roles_2["receptor"] > 0):
+                return oriented(gene_1, "omnipath_exclusive_role")
+            if (ligand_2 > 0 and roles_2["receptor"] == 0
+                    and ligand_1 == 0 and roles_1["receptor"] > 0):
+                return oriented(gene_2, "omnipath_exclusive_role")
+            # Exactly one partner is annotated as a ligand that stays on the
+            # cell surface, which is what a contact-dependent sender is, and
+            # the other is annotated as a receptor
+            surface_1 = roles_1["cell_surface_ligand"] > 0
+            surface_2 = roles_2["cell_surface_ligand"] > 0
+            if surface_1 != surface_2:
+                if surface_1 and roles_2["receptor"] > 0:
+                    return oriented(gene_1, "omnipath_surface_ligand")
+                if surface_2 and roles_1["receptor"] > 0:
+                    return oriented(gene_2, "omnipath_surface_ligand")
+
+    # A ligand molecular function against a receptor molecular function.
+    # Positive evidence is required on BOTH sides: comparing a partner that
+    # carries a receptor function against one that carries no functional
+    # annotation at all would make absence of evidence decide the orientation,
+    # which was measured to be barely better than the released column order.
+    score_1 = _humanppi_go_function_role(topology_1)
+    score_2 = _humanppi_go_function_role(topology_2)
+    if {score_1, score_2} == {1, -1}:
+        return oriented(gene_1 if score_1 == 1 else gene_2,
+                        "go_molecular_function")
+
+    # A GPI anchored protein has no cytoplasmic domain and cannot signal into
+    # its own cell, so it is the ligand
+    gpi_1 = None if topology_1 is None else topology_1.get("is_gpi_anchored")
+    gpi_2 = None if topology_2 is None else topology_2.get("is_gpi_anchored")
+    if gpi_1 is not None and gpi_2 is not None and gpi_1 != gpi_2:
+        return oriented(gene_1 if gpi_1 else gene_2, "gpi_anchor")
+
+    return gene_1, gene_2, location_1, location_2, "table_order"
 
 
 def _classify_humanppi_interaction(location_1: str,
@@ -1865,6 +2320,8 @@ def extract_gp_dict_from_humanppi_interactions(
                                           "humanppi_protein_topology.tsv",
         detect_cis_complexes: bool=True,
         min_extracellular_domain_length: int=30,
+        orient_juxtacrine_gps: bool=True,
+        omnipath_annotation_file_path: Optional[str]=None,
         symmetric_juxtacrine_gps: bool=False,
         complex_portal_file_path: Optional[str]="../data/gene_programs/" \
                                                 "complex_portal_human.tsv",
@@ -2091,6 +2548,26 @@ def extract_gp_dict_from_humanppi_interactions(
         test is deliberately not applied to paracrine interactions, where the
         soluble partner diffuses and can engage a shallow binding pocket, as
         chemokines do with their seven transmembrane receptors.
+    orient_juxtacrine_gps:
+        If ´True´ (default), contact-dependent interactions are oriented from
+        evidence about which partner sends the signal, so that the ligand is
+        placed in the source (neighborhood) component and the receptor in the
+        target (self) component. Curated gene families are used first, then the
+        Gene Ontology molecular functions, the GPI anchor, the kinase and
+        transducer keywords and the cytoplasmic domain lengths of the two
+        partners, all of which come from the UniProt annotation that
+        ´use_topology´ retrieves. See ´_orient_humanppi_intercellular_gp´ for
+        the full precedence chain. If ´False´, the order of the two columns in
+        the released predictions is kept, which is arbitrary: measured over the
+        138 contact-dependent interactions with an unambiguous canonical
+        sender, the ligand landed in the source component 68 times and in the
+        target component 70 times. The rule that decided each gene program is
+        recorded under ´orientation_rule´ and the counts are printed per rule.
+    omnipath_annotation_file_path:
+        Path of the file where the OmniPath intercell annotation used to orient
+        interactions is cached. Only read when ´orient_juxtacrine_gps´ is
+        ´True´, and a failure to retrieve it costs orientation coverage rather
+        than raising, since the remaining rules do not depend on it.
     symmetric_juxtacrine_gps:
         If ´True´, each contact-dependent interaction is emitted twice, once in
         each orientation, since it operates in both directions between two
@@ -2178,6 +2655,8 @@ def extract_gp_dict_from_humanppi_interactions(
     if program_type not in ("intercellular", "intracellular", "both"):
         raise ValueError("´program_type´ should be one of 'intercellular', "
                          "'intracellular', or 'both'.")
+    if not isinstance(orient_juxtacrine_gps, bool):
+        raise ValueError("´orient_juxtacrine_gps´ should be a bool.")
     if ambiguous_locality not in ("extracellular", "intracellular"):
         raise ValueError("´ambiguous_locality´ should be either "
                          "'extracellular' or 'intracellular'.")
@@ -2273,6 +2752,27 @@ def extract_gp_dict_from_humanppi_interactions(
             accessions=accessions,
             topology_file_path=topology_file_path)
 
+    # Optionally load the ligand and receptor roles used to orient
+    # interactions. Nothing is added to the gene programs from this
+    # annotation; it only decides which partner of an interaction already in
+    # the predicted interactome sends the signal.
+    omnipath_roles = None
+    if orient_juxtacrine_gps:
+        if omnipath_annotation_file_path is None:
+            omnipath_annotation_file_path = ("../data/gene_programs/"
+                                             "omnipath_intercell_annotation"
+                                             ".tsv")
+        try:
+            omnipath_roles = _load_humanppi_omnipath_intercell_roles(
+                omnipath_annotation_file_path=omnipath_annotation_file_path)
+        except Exception as omnipath_error:
+            # The remaining rules do not need it, so a failure here costs
+            # orientation coverage rather than the whole gene program mask
+            warnings.warn(
+                "Could not load the OmniPath intercell annotation used to "
+                f"orient interactions ({omnipath_error}). The interactions it "
+                "would have oriented fall back on the remaining evidence.")
+
     # Optionally load the protein complexes used to detect cis interactions
     cis_pairs = None
     if detect_cis_complexes:
@@ -2294,6 +2794,7 @@ def extract_gp_dict_from_humanppi_interactions(
     n_cis_complex = 0
     n_extracellular_assembly = 0
     n_same_membrane = 0
+    orientation_rules = Counter()
     for _, row in ppi_df.iterrows():
         gene_1 = str(row["Name1"])
         gene_2 = str(row["Name2"])
@@ -2380,9 +2881,22 @@ def extract_gp_dict_from_humanppi_interactions(
         if is_intercellular:
             # Intercellular program: partners split across the neighbor
             # (source) and self (target) components
-            (source_gene, target_gene, source_location,
-             target_location) = _orient_humanppi_intercellular_gp(
-                 gene_1, gene_2, location_1, location_2)
+            (source_gene, target_gene, source_location, target_location,
+             orientation_rule) = _orient_humanppi_intercellular_gp(
+                 gene_1, gene_2, location_1, location_2,
+                 interaction_class=interaction_class,
+                 topology_1=(topology.get(str(row["Protein1"]))
+                             if orient_juxtacrine_gps else None),
+                 topology_2=(topology.get(str(row["Protein2"]))
+                             if orient_juxtacrine_gps else None),
+                 omnipath_roles=omnipath_roles)
+            if not orient_juxtacrine_gps and interaction_class == "juxtacrine":
+                # Without orientation the released column order is kept, as
+                # before the evidence based rules existed
+                (source_gene, target_gene, source_location,
+                 target_location) = (gene_1, gene_2, location_1, location_2)
+                orientation_rule = "table_order"
+            orientation_rules[orientation_rule] += 1
             orientations = [(source_gene, target_gene, source_location,
                              target_location)]
             if (symmetric_juxtacrine_gps
@@ -2401,7 +2915,8 @@ def extract_gp_dict_from_humanppi_interactions(
                     "sources": [orientation_source],
                     "targets": [orientation_target],
                     "sources_categories": [orientation_source_location],
-                    "targets_categories": [orientation_target_location]}
+                    "targets_categories": [orientation_target_location],
+                    "orientation_rule": orientation_rule}
         else:
             # Intracellular program: both partners in the self (target)
             # component, empty source component (as for CollecTRI TF programs)
@@ -2444,6 +2959,26 @@ def extract_gp_dict_from_humanppi_interactions(
                     mapped_categories.extend([category] * len(orthologs))
                 gp[entity] = mapped_genes
                 gp[f"{entity}_categories"] = mapped_categories
+
+    ordered_rules = ["secreted_partner", "gene_symbol_family",
+                     "gene_symbol_stem", "omnipath_exclusive_role",
+                     "omnipath_surface_ligand", "go_molecular_function",
+                     "gpi_anchor"]
+    n_oriented = sum(orientation_rules[rule] for rule in ordered_rules)
+    if n_oriented > 0:
+        rule_counts = ", ".join(f"{orientation_rules[rule]} by {rule}"
+                                for rule in ordered_rules
+                                if orientation_rules[rule] > 0)
+        print(f"Oriented {n_oriented} intercellular interactions from evidence "
+              f"about which partner sends the signal ({rule_counts}), so that "
+              "the partner expressed by the sending cell is reconstructed in "
+              "the source (neighborhood) component.")
+    if orientation_rules["table_order"] > 0:
+        print(f"Kept the released column order for "
+              f"{orientation_rules['table_order']} intercellular interactions "
+              "for which no evidence about the direction was available. Their "
+              "interaction class is meaningful but their orientation is "
+              "arbitrary.")
 
     if n_same_membrane > 0:
         print(f"Reclassified {n_same_membrane} interactions as 'cis_complex' "

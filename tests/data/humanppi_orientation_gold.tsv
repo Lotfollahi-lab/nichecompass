@@ -1,0 +1,225 @@
+gene_1	gene_2	ligand	receptor	confidence	rationale	class
+EFNA3	EPHA10	EFNA3	EPHA10	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNA5	EPHB1	EFNA5	EPHB1	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNA3	EPHA5	EFNA3	EPHA5	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNA3	EPHA6	EFNA3	EPHA6	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+KLRK1	ULBP2	ULBP2	KLRK1	high	Stress-induced MHC-I-like surface ligand for the activating NK receptor NKG2D (KLRK1).	nk_ligand_receptor
+KIT	KITLG	KITLG	KIT	high	Stem-cell factor (KITLG), including its membrane-anchored isoform, is the ligand for the KIT receptor kinase.	growth_factor
+KLRK1	MICA	MICA	KLRK1	high	Stress-induced MHC-I-like surface ligand for the activating NK receptor NKG2D (KLRK1).	nk_ligand_receptor
+NEO1	RGMA	RGMA	NEO1	high	GPI-anchored RGM-family ligand (RGMA/RGMB/hemojuvelin) signals to the neogenin receptor.	netrin_rgm
+ERBB3	BTC	BTC	ERBB3	medium	EGF/neuregulin-family ligand; ERBB3 is the receptor (not this ligand's canonical ERBB partner).	growth_factor
+KLRK1	RAET1E	RAET1E	KLRK1	high	Stress-induced MHC-I-like surface ligand for the activating NK receptor NKG2D (KLRK1).	nk_ligand_receptor
+PLXNA3	SEMA6C	SEMA6C	PLXNA3	high	Semaphorin is the signalling ligand; plexin is the transducing receptor.	semaphorin
+CD86	ICOS	CD86	ICOS	medium	FAMILY-ROLE: CD86 belongs to a canonical surface-ligand family and ICOS to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	checkpoint_costim
+EFNA1	EPHB4	EFNA1	EPHB4	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHA2	EFNA4	EFNA4	EPHA2	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHB2	EFNB2	EFNB2	EPHB2	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+PTPRG	CNTN3	CNTN3	PTPRG	medium	Contactin acts as the ligand for the receptor phosphatase PTPRG.	ptpr_contactin
+EFNA1	EPHA3	EFNA1	EPHA3	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+TNFSF11	TNFRSF11A	TNFSF11	TNFRSF11A	high	TNF-superfamily ligand (TNFSF/FASLG) on the sender engages its cognate TNFRSF death/co-stimulatory receptor on the receiver.	tnf_superfamily
+TNFSF14	TNFRSF14	TNFSF14	TNFRSF14	high	TNF-superfamily ligand (TNFSF/FASLG) on the sender engages its cognate TNFRSF death/co-stimulatory receptor on the receiver.	tnf_superfamily
+EPHA8	EFNA5	EFNA5	EPHA8	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+LAG3	CD80	CD80	LAG3	medium	FAMILY-ROLE: CD80 belongs to a canonical surface-ligand family and LAG3 to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	checkpoint_costim
+NTNG2	LRRC4	NTNG2	LRRC4	high	Presynaptic GPI-anchored netrin-G2 binds its postsynaptic receptor NGL-2 (LRRC4).	netrin_rgm
+DLL1	NOTCH3	DLL1	NOTCH3	high	DSL ligand on the sender trans-activates NOTCH on the receiver.	notch
+CD28	CD80	CD80	CD28	high	B7 ligand on the APC engages the co-stimulatory receptor CD28 on the T cell.	checkpoint_costim
+EFNA3	EPHA4	EFNA3	EPHA4	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHA1	EFNB3	EFNB3	EPHA1	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+NRP2	SEMA5A	SEMA5A	NRP2	medium	Semaphorin is the ligand; neuropilin is a receptor/co-receptor (this particular sema class is not neuropilin's canonical partner).	semaphorin
+KLRB1	CLEC2D	CLEC2D	KLRB1	high	LLT1 (CLEC2D) is the ligand for the NK/T receptor CD161 (KLRB1).	nk_ligand_receptor
+EFNA1	EPHA7	EFNA1	EPHA7	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EGFR	AREG	AREG	EGFR	high	Membrane-anchored EGF-family ligand signalling to EGFR.	growth_factor
+EPHA3	EFNA5	EFNA5	EPHA3	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+FCER1A	CD58	CD58	FCER1A	medium	FAMILY-ROLE: CD58 belongs to a canonical surface-ligand family and FCER1A to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	checkpoint_costim
+EFNA1	EPHB1	EFNA1	EPHB1	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHA8	EFNB2	EFNB2	EPHA8	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+LAG3	CD274	CD274	LAG3	medium	FAMILY-ROLE: CD274 belongs to a canonical surface-ligand family and LAG3 to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	checkpoint_costim
+EPHA8	EFNB1	EFNB1	EPHA8	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+PLXNA2	SEMA6B	SEMA6B	PLXNA2	high	Semaphorin is the signalling ligand; plexin is the transducing receptor.	semaphorin
+PLXNB1	SEMA4D	SEMA4D	PLXNB1	high	Semaphorin is the signalling ligand; plexin is the transducing receptor.	semaphorin
+EFNA5	EPHB3	EFNA5	EPHB3	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNA2	EPHA3	EFNA2	EPHA3	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+CD55	ADGRE5	CD55	ADGRE5	high	CD55 (DAF) is the cellular ligand for the adhesion-GPCR CD97 (ADGRE5).	checkpoint_costim
+EGF	ERBB3	EGF	ERBB3	medium	EGF/neuregulin-family ligand; ERBB3 is the receptor (not this ligand's canonical ERBB partner).	growth_factor
+CD28	CD274	CD274	CD28	medium	FAMILY-ROLE: CD274 belongs to a canonical surface-ligand family and CD28 to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	checkpoint_costim
+EREG	EGFR	EREG	EGFR	high	Membrane-anchored EGF-family ligand signalling to EGFR.	growth_factor
+ICAM2	ITGAL	ICAM2	ITGAL	high	ICAM on the presenting/endothelial cell is the counter-receptor (ligand); LFA-1 alpha chain ITGAL on the leukocyte is the receptor.	integrin_counterreceptor
+EGFR	EGF	EGF	EGFR	high	Membrane-anchored EGF-family ligand signalling to EGFR.	growth_factor
+EPHA3	EFNB2	EFNB2	EPHA3	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+ERBB3	NRG4	NRG4	ERBB3	medium	EGF/neuregulin-family ligand; ERBB3 is the receptor (not this ligand's canonical ERBB partner).	growth_factor
+CD2	CD48	CD48	CD2	medium	CD48 is a CD2 ligand (dominant in mouse; CD58 is the main human ligand) - CD2 is the receptor.	checkpoint_costim
+EPHA3	EFNB1	EFNB1	EPHA3	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNA1	EPHA2	EFNA1	EPHA2	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNA1	EPHA8	EFNA1	EPHA8	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+PTPRZ1	CNTN1	CNTN1	PTPRZ1	medium	GPI-anchored contactin-1 acts as the ligand for the receptor phosphatase PTPRZ1.	ptpr_contactin
+EFNB3	EPHA10	EFNB3	EPHA10	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+HLA-A	IL27RA	HLA-A	IL27RA	medium	FAMILY-ROLE: HLA-A belongs to a canonical surface-ligand family and IL27RA to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	mhc_immune_receptor
+HLA-E	KLRK1	HLA-E	KLRK1	medium	FAMILY-ROLE: HLA-E belongs to a canonical surface-ligand family and KLRK1 to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	mhc_immune_receptor
+EFNA2	EPHA7	EFNA2	EPHA7	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNB2	EPHA10	EFNB2	EPHA10	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNB3	EPHA6	EFNB3	EPHA6	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNB2	EPHA5	EFNB2	EPHA5	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNB1	EPHA7	EFNB1	EPHA7	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHB1	EFNB1	EFNB1	EPHB1	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNB2	EPHA6	EFNB2	EPHA6	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+PDCD1	PDCD1LG2	PDCD1LG2	PDCD1	high	PD-L2 on the sender engages the inhibitory receptor PD-1 on the T cell.	checkpoint_costim
+EFNA4	EPHA4	EFNA4	EPHA4	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+FAS	FASLG	FASLG	FAS	high	TNF-superfamily ligand (TNFSF/FASLG) on the sender engages its cognate TNFRSF death/co-stimulatory receptor on the receiver.	tnf_superfamily
+CD80	GPR132	CD80	GPR132	medium	FAMILY-ROLE: CD80 belongs to a canonical surface-ligand family and GPR132 to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	checkpoint_costim
+CD86	TIGIT	CD86	TIGIT	medium	FAMILY-ROLE: CD86 belongs to a canonical surface-ligand family and TIGIT to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	checkpoint_costim
+EGFR	EPGN	EPGN	EGFR	high	Membrane-anchored EGF-family ligand signalling to EGFR.	growth_factor
+TNFSF4	TNFRSF4	TNFSF4	TNFRSF4	high	TNF-superfamily ligand (TNFSF/FASLG) on the sender engages its cognate TNFRSF death/co-stimulatory receptor on the receiver.	tnf_superfamily
+EPHA8	EFNA4	EFNA4	EPHA8	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+RGMB	NEO1	RGMB	NEO1	high	GPI-anchored RGM-family ligand (RGMA/RGMB/hemojuvelin) signals to the neogenin receptor.	netrin_rgm
+EPHA4	EFNB1	EFNB1	EPHA4	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+DLL1	NOTCH2	DLL1	NOTCH2	high	DSL ligand on the sender trans-activates NOTCH on the receiver.	notch
+EFNA1	EPHA4	EFNA1	EPHA4	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHB6	EFNB2	EFNB2	EPHB6	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+HLA-DRA	KLRK1	HLA-DRA	KLRK1	medium	FAMILY-ROLE: HLA-DRA belongs to a canonical surface-ligand family and KLRK1 to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	mhc_immune_receptor
+EFNA1	EPHB3	EFNA1	EPHB3	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+KLRK1	RAET1G	RAET1G	KLRK1	high	Stress-induced MHC-I-like surface ligand for the activating NK receptor NKG2D (KLRK1).	nk_ligand_receptor
+PLXNB2	SEMA4C	SEMA4C	PLXNB2	high	Semaphorin is the signalling ligand; plexin is the transducing receptor.	semaphorin
+TNFSF8	CLEC1B	TNFSF8	CLEC1B	medium	FAMILY-ROLE: TNFSF8 belongs to a canonical surface-ligand family and CLEC1B to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	tnf_superfamily
+EFNA2	EPHA8	EFNA2	EPHA8	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+NRP1	SEMA6A	SEMA6A	NRP1	medium	Semaphorin is the ligand; neuropilin is a receptor/co-receptor (this particular sema class is not neuropilin's canonical partner).	semaphorin
+CD48	CD244	CD48	CD244	high	CD48 is the ligand for the NK receptor 2B4 (CD244).	checkpoint_costim
+KLRK1	ULBP3	ULBP3	KLRK1	high	Stress-induced MHC-I-like surface ligand for the activating NK receptor NKG2D (KLRK1).	nk_ligand_receptor
+SDC4	SEMA5A	SEMA5A	SDC4	medium	SEMA5A is the transmembrane signalling ligand; syndecan heparan-sulfate proteoglycan acts on the receiving side.	semaphorin
+EPHA3	EFNA4	EFNA4	EPHA3	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNB2	EPHA4	EFNB2	EPHA4	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+CCR5	CXCL16	CXCL16	CCR5	medium	CXCL16 is a transmembrane chemokine ligand and CCR5 a chemokine receptor; roles unambiguous although this pairing is not the cognate one.	chemokine
+SIRPB1	CD47	CD47	SIRPB1	medium	FAMILY-ROLE: CD47 belongs to a canonical surface-ligand family and SIRPB1 to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	checkpoint_costim
+TNFSF18	TNFRSF18	TNFSF18	TNFRSF18	high	TNF-superfamily ligand (TNFSF/FASLG) on the sender engages its cognate TNFRSF death/co-stimulatory receptor on the receiver.	tnf_superfamily
+ITGB1	JAM2	JAM2	ITGB1	medium	JAM-B on the endothelium is the ligand for leukocyte alpha4beta1 integrin (ITGB1 side is the receptor).	integrin_counterreceptor
+EPHA1	EFNA5	EFNA5	EPHA1	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+TNFSF12	TNFRSF12A	TNFSF12	TNFRSF12A	high	TNF-superfamily ligand (TNFSF/FASLG) on the sender engages its cognate TNFRSF death/co-stimulatory receptor on the receiver.	tnf_superfamily
+EFNA2	EPHA4	EFNA2	EPHA4	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHA7	EFNB3	EFNB3	EPHA7	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+PLXNB2	SEMA4D	SEMA4D	PLXNB2	high	Semaphorin is the signalling ligand; plexin is the transducing receptor.	semaphorin
+SEMA4D	PLXNB3	SEMA4D	PLXNB3	high	Semaphorin is the signalling ligand; plexin is the transducing receptor.	semaphorin
+EFNA2	EPHB3	EFNA2	EPHB3	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+CD96	NECTIN2	NECTIN2	CD96	medium	FAMILY-ROLE: NECTIN2 belongs to a canonical surface-ligand family and CD96 to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	checkpoint_costim
+EFNA3	EPHB4	EFNA3	EPHB4	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+NCR3	NCR3LG1	NCR3LG1	NCR3	high	B7-H6 (NCR3LG1) on the target cell is the ligand for NKp30 (NCR3).	nk_ligand_receptor
+CD7	SECTM1	SECTM1	CD7	medium	SECTM1 (K12) is the described ligand for the T/NK receptor CD7.	checkpoint_costim
+EPHB4	EFNB3	EFNB3	EPHB4	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNA5	EPHA10	EFNA5	EPHA10	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNA5	EPHA5	EFNA5	EPHA5	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHA1	EFNB2	EFNB2	EPHA1	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHA1	EFNB1	EFNB1	EPHA1	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNA5	EPHA6	EFNA5	EPHA6	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHB2	EFNA3	EFNA3	EPHB2	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+PLXNA2	SEMA4F	SEMA4F	PLXNA2	high	Semaphorin is the signalling ligand; plexin is the transducing receptor.	semaphorin
+TNFSF4	CLEC1B	TNFSF4	CLEC1B	medium	FAMILY-ROLE: TNFSF4 belongs to a canonical surface-ligand family and CLEC1B to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	tnf_superfamily
+KLRG2	CD47	CD47	KLRG2	medium	FAMILY-ROLE: CD47 belongs to a canonical surface-ligand family and KLRG2 to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	checkpoint_costim
+HLA-E	CD226	HLA-E	CD226	medium	FAMILY-ROLE: HLA-E belongs to a canonical surface-ligand family and CD226 to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	mhc_immune_receptor
+KLRK1	MICB	MICB	KLRK1	high	Stress-induced MHC-I-like surface ligand for the activating NK receptor NKG2D (KLRK1).	nk_ligand_receptor
+PVR	CD226	PVR	CD226	high	CD155 (PVR) on the target cell is the ligand for the activating receptor DNAM-1 (CD226).	checkpoint_costim
+SDC3	SEMA5A	SEMA5A	SDC3	medium	SEMA5A is the transmembrane signalling ligand; syndecan heparan-sulfate proteoglycan acts on the receiving side.	semaphorin
+EFNA3	EPHA7	EFNA3	EPHA7	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+CX3CR1	CX3CL1	CX3CL1	CX3CR1	high	Fractalkine (CX3CL1) is a transmembrane chemokine ligand; CX3CR1 is its receptor.	chemokine
+EPHB6	EFNB3	EFNB3	EPHB6	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+CXCR6	CXCL16	CXCL16	CXCR6	high	CXCL16 is a transmembrane chemokine ligand; CXCR6 is its cognate receptor.	chemokine
+EFNA1	EPHA1	EFNA1	EPHA1	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHA2	EFNB3	EFNB3	EPHA2	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EGFR	HBEGF	HBEGF	EGFR	high	Membrane-anchored EGF-family ligand signalling to EGFR.	growth_factor
+EFNA3	EPHB1	EFNA3	EPHB1	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHA5	EFNB1	EFNB1	EPHA5	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+CD80	C5AR2	CD80	C5AR2	medium	FAMILY-ROLE: CD80 belongs to a canonical surface-ligand family and C5AR2 to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	checkpoint_costim
+NRP1	SEMA5A	SEMA5A	NRP1	medium	Semaphorin is the ligand; neuropilin is a receptor/co-receptor (this particular sema class is not neuropilin's canonical partner).	semaphorin
+TNFRSF8	TNFSF8	TNFSF8	TNFRSF8	high	TNF-superfamily ligand (TNFSF/FASLG) on the sender engages its cognate TNFRSF death/co-stimulatory receptor on the receiver.	tnf_superfamily
+EPHB2	EFNA5	EFNA5	EPHB2	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+TGFA	ERBB3	TGFA	ERBB3	medium	EGF/neuregulin-family ligand; ERBB3 is the receptor (not this ligand's canonical ERBB partner).	growth_factor
+GPC4	LRRTM4	GPC4	LRRTM4	medium	Presynaptic glypican-4 is the ligand for postsynaptic LRRTM4.	synaptic_adhesion
+PVR	TIGIT	PVR	TIGIT	high	CD155 (PVR) on the target cell is the ligand for the lymphocyte receptor TIGIT.	checkpoint_costim
+HJV	NEO1	HJV	NEO1	high	GPI-anchored RGM-family ligand (RGMA/RGMB/hemojuvelin) signals to the neogenin receptor.	netrin_rgm
+EPHA8	EFNA3	EFNA3	EPHA8	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+ITGAL	ICAM3	ICAM3	ITGAL	high	ICAM on the presenting/endothelial cell is the counter-receptor (ligand); LFA-1 alpha chain ITGAL on the leukocyte is the receptor.	integrin_counterreceptor
+EFNA5	EPHA4	EFNA5	EPHA4	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+PTPRG	CNTN4	CNTN4	PTPRG	medium	Contactin acts as the ligand for the receptor phosphatase PTPRG.	ptpr_contactin
+CD226	NECTIN2	NECTIN2	CD226	high	Nectin-2 (CD112) on the target cell is the ligand for DNAM-1 (CD226).	checkpoint_costim
+EPHA5	EFNB3	EFNB3	EPHA5	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+HLA-C	KIR3DL1	HLA-C	KIR3DL1	high	MHC class I on the target cell is the ligand; KIR on the NK cell is the inhibitory receptor.	mhc_immune_receptor
+CLEC2B	KLRF1	CLEC2B	KLRF1	high	AICL (CLEC2B) is the ligand for NKp80 (KLRF1).	nk_ligand_receptor
+EFNA1	EPHB2	EFNA1	EPHB2	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNA1	EPHA10	EFNA1	EPHA10	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHB3	EFNB3	EFNB3	EPHB3	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+PDCD1	CD274	CD274	PDCD1	high	PD-L1 on the sender engages the inhibitory receptor PD-1 on the T cell.	checkpoint_costim
+EGFR	BTC	BTC	EGFR	high	Membrane-anchored EGF-family ligand signalling to EGFR.	growth_factor
+HLA-A	KLRK1	HLA-A	KLRK1	medium	FAMILY-ROLE: HLA-A belongs to a canonical surface-ligand family and KLRK1 to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	mhc_immune_receptor
+EFNA1	EPHA5	EFNA1	EPHA5	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+DCC	RGMA	RGMA	DCC	medium	RGM is a GPI-anchored ligand; DCC is a guidance receptor (RGM's canonical receptor is NEO1, but the roles are unambiguous).	netrin_rgm
+EFNA1	EPHA6	EFNA1	EPHA6	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHB2	EFNB1	EFNB1	EPHB2	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHB6	EFNA2	EFNA2	EPHB6	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHA3	EFNA3	EFNA3	EPHA3	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+LAG3	FLT3LG	FLT3LG	LAG3	medium	FAMILY-ROLE: FLT3LG belongs to a canonical surface-ligand family and LAG3 to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	checkpoint_costim
+EFNA2	EPHA1	EFNA2	EPHA1	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+TNFRSF9	CLEC2B	CLEC2B	TNFRSF9	medium	FAMILY-ROLE: CLEC2B belongs to a canonical surface-ligand family and TNFRSF9 to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	tnf_superfamily
+DCC	RGMB	RGMB	DCC	medium	RGM is a GPI-anchored ligand; DCC is a guidance receptor (RGM's canonical receptor is NEO1, but the roles are unambiguous).	netrin_rgm
+CD47	SIRPB2	CD47	SIRPB2	medium	FAMILY-ROLE: CD47 belongs to a canonical surface-ligand family and SIRPB2 to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	checkpoint_costim
+EFNB2	EPHB4	EFNB2	EPHB4	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHB2	EFNB3	EFNB3	EPHB2	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+PLXNA2	SEMA6A	SEMA6A	PLXNA2	high	Semaphorin is the signalling ligand; plexin is the transducing receptor.	semaphorin
+EPHB6	EFNA1	EFNA1	EPHB6	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNA3	EPHB3	EFNA3	EPHB3	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+TMIGD2	HHLA2	HHLA2	TMIGD2	high	HHLA2 (B7-H7) on the APC/tumour is the ligand for CD28H (TMIGD2).	checkpoint_costim
+CD200	CD200R1	CD200	CD200R1	high	CD200 is the ligand; CD200R1 is the inhibitory myeloid receptor.	checkpoint_costim
+CD2	CD58	CD58	CD2	high	LFA-3 (CD58) on the APC is the ligand for CD2 on the T/NK cell.	checkpoint_costim
+KLRK1	ULBP1	ULBP1	KLRK1	high	Stress-induced MHC-I-like surface ligand for the activating NK receptor NKG2D (KLRK1).	nk_ligand_receptor
+EFNA2	EPHB2	EFNA2	EPHB2	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNA2	EPHA10	EFNA2	EPHA10	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+NOTCH1	CNTN1	CNTN1	NOTCH1	medium	Contactin-1 has been reported as a non-canonical NOTCH1 ligand (F3/contactin-Notch axis); NOTCH1 is the receptor.	notch
+EFNA2	EPHA5	EFNA2	EPHA5	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNA2	EPHA6	EFNA2	EPHA6	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNB1	EPHA10	EFNB1	EPHA10	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+SEMA6C	PLXNA1	SEMA6C	PLXNA1	high	Semaphorin is the signalling ligand; plexin is the transducing receptor.	semaphorin
+CD80	TIGIT	CD80	TIGIT	medium	FAMILY-ROLE: CD80 belongs to a canonical surface-ligand family and TIGIT to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	checkpoint_costim
+CTLA4	CD86	CD86	CTLA4	high	B7 ligand on the APC engages the inhibitory receptor CTLA-4 on the T cell.	checkpoint_costim
+EPHB6	EFNA3	EFNA3	EPHB6	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNB1	EPHA6	EFNB1	EPHA6	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHA2	EFNA3	EFNA3	EPHA2	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNB2	EPHA7	EFNB2	EPHA7	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNB2	EPHB1	EFNB2	EPHB1	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHA8	EFNB3	EFNB3	EPHA8	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+AREG	ERBB3	AREG	ERBB3	medium	EGF/neuregulin-family ligand; ERBB3 is the receptor (not this ligand's canonical ERBB partner).	growth_factor
+JAG1	NOTCH2	JAG1	NOTCH2	high	DSL ligand on the sender trans-activates NOTCH on the receiver.	notch
+SEMA6D	PLXNA1	SEMA6D	PLXNA1	high	Semaphorin is the signalling ligand; plexin is the transducing receptor.	semaphorin
+ICOSLG	ICOS	ICOSLG	ICOS	high	ICOS-ligand on the APC engages the co-stimulatory receptor ICOS on the T cell.	checkpoint_costim
+TIGIT	NECTIN2	NECTIN2	TIGIT	high	Nectin-2 (CD112) on the target cell is the ligand for TIGIT.	checkpoint_costim
+SIRPA	CD47	CD47	SIRPA	high	CD47 on the target cell is the 'don't eat me' ligand for SIRP-alpha on the phagocyte.	checkpoint_costim
+EPHB6	EFNA5	EFNA5	EPHB6	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHB4	EFNB1	EFNB1	EPHB4	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+TNFSF9	TNFRSF9	TNFSF9	TNFRSF9	high	TNF-superfamily ligand (TNFSF/FASLG) on the sender engages its cognate TNFRSF death/co-stimulatory receptor on the receiver.	tnf_superfamily
+CD55	ADGRE2	CD55	ADGRE2	medium	CD55 is the described ligand for the adhesion-GPCR EMR2 (ADGRE2).	checkpoint_costim
+EPHA2	EFNA5	EFNA5	EPHA2	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+KLRK1	RAET1L	RAET1L	KLRK1	high	Stress-induced MHC-I-like surface ligand for the activating NK receptor NKG2D (KLRK1).	nk_ligand_receptor
+TNFSF15	TNFRSF25	TNFSF15	TNFRSF25	high	TNF-superfamily ligand (TNFSF/FASLG) on the sender engages its cognate TNFRSF death/co-stimulatory receptor on the receiver.	tnf_superfamily
+EPHA3	EFNB3	EFNB3	EPHA3	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+CD47	SIRPG	CD47	SIRPG	high	CD47 is the ligand; SIRP-gamma on the T cell is the receptor.	checkpoint_costim
+PLXNA3	SEMA6B	SEMA6B	PLXNA3	high	Semaphorin is the signalling ligand; plexin is the transducing receptor.	semaphorin
+NCR2	ULBP1	ULBP1	NCR2	medium	ULBP1 is a stress-induced surface ligand; NCR2 (NKp44) is an activating NK receptor - roles unambiguous even though this exact pairing is not canonical.	nk_ligand_receptor
+ICAM1	ITGAL	ICAM1	ITGAL	high	ICAM on the presenting/endothelial cell is the counter-receptor (ligand); LFA-1 alpha chain ITGAL on the leukocyte is the receptor.	integrin_counterreceptor
+EPHB1	EFNB3	EFNB3	EPHB1	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHB6	EFNB1	EFNB1	EPHB6	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+LILRB5	HLA-G	HLA-G	LILRB5	medium	HLA class I (HLA-G) is the ligand; LILRB5 is the inhibitory leukocyte receptor.	mhc_immune_receptor
+EPHA2	EFNB2	EFNB2	EPHA2	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+PLXNA2	SEMA6D	SEMA6D	PLXNA2	high	Semaphorin is the signalling ligand; plexin is the transducing receptor.	semaphorin
+EPHA2	EFNB1	EFNB1	EPHA2	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EFNA5	EPHB4	EFNA5	EPHB4	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+EPHA1	EFNA3	EFNA3	EPHA1	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+SEMA6D	PLXNA4	SEMA6D	PLXNA4	high	Semaphorin is the signalling ligand; plexin is the transducing receptor.	semaphorin
+TNFRSF13B	TNFSF13B	TNFSF13B	TNFRSF13B	high	TNF-superfamily ligand (TNFSF/FASLG) on the sender engages its cognate TNFRSF death/co-stimulatory receptor on the receiver.	tnf_superfamily
+EPHA4	EFNB3	EFNB3	EPHA4	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+CD226	NECTIN4	NECTIN4	CD226	medium	FAMILY-ROLE: NECTIN4 belongs to a canonical surface-ligand family and CD226 to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	checkpoint_costim
+EFNB2	EPHB3	EFNB2	EPHB3	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+SEMA6A	PLXNA4	SEMA6A	PLXNA4	high	Semaphorin is the signalling ligand; plexin is the transducing receptor.	semaphorin
+KLRF2	CLEC2A	CLEC2A	KLRF2	high	KACL (CLEC2A) on keratinocytes is the ligand for NKp65 (KLRF2).	nk_ligand_receptor
+CD28	CD86	CD86	CD28	high	B7 ligand on the APC engages the co-stimulatory receptor CD28 on the T cell.	checkpoint_costim
+HLA-C	KLRK1	HLA-C	KLRK1	medium	FAMILY-ROLE: HLA-C belongs to a canonical surface-ligand family and KLRK1 to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	mhc_immune_receptor
+CTLA4	CD274	CD274	CTLA4	medium	FAMILY-ROLE: CD274 belongs to a canonical surface-ligand family and CTLA4 to a canonical receiving-receptor family, so the sender/receiver roles are unambiguous, but this exact pairing is not a documented cognate interaction.	checkpoint_costim
+EPHB3	EFNB1	EFNB1	EPHB3	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+TNFSF11	LGR4	TNFSF11	LGR4	medium	RANKL is the ligand; LGR4 is a documented second (negative) receptor for RANKL.	tnf_superfamily
+CD8A	HLA-B	HLA-B	CD8A	high	MHC class I on the presenting cell is the ligand; CD8 on the T cell is the co-receptor.	mhc_immune_receptor
+EFNA5	EPHA7	EFNA5	EPHA7	high	Ephrin ligand engages Eph receptor tyrosine kinase; forward signalling into the Eph-bearing cell is the canonical arm.	ephrin_eph
+PVR	CD96	PVR	CD96	high	CD155 (PVR) on the target cell is the ligand for the lymphocyte receptor CD96.	checkpoint_costim

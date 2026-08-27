@@ -12,6 +12,9 @@ from nichecompass.utils.gene_programs import (
     _classify_humanppi_interaction,
     _classify_humanppi_go_cellular_components,
     _check_humanppi_cached_precision,
+    _humanppi_gene_symbol_role,
+    _humanppi_gene_symbol_stem_role,
+    _humanppi_go_function_role,
     _is_humanppi_trans_capable,
     _orient_humanppi_intercellular_gp,
     _parse_humanppi_subcellular_location,
@@ -363,33 +366,249 @@ def test_trans_capability_without_topology_is_not_penalised():
 
 
 ###############################################################################
+## Orientation of intercellular gene programs ##
+###############################################################################
+
+def annotated(go_functions=(), is_gpi=False, cytoplasmic=0, n_transmem=1,
+              has_topo=True):
+    return {"go_molecular_functions": list(go_functions),
+            "is_gpi_anchored": is_gpi,
+            "max_cytoplasmic_domain_length": cytoplasmic,
+            "has_receptor_kinase_keyword": False,
+            "has_topological_domain": has_topo,
+            "n_transmem": n_transmem,
+            "max_extracellular_domain_length": 200}
+
+
+LIGAND_GO = ["receptor ligand activity"]
+RECEPTOR_GO = ["transmembrane signaling receptor activity"]
+
+
+def orient(gene_1, gene_2, location_1="cell_surface",
+           location_2="cell_surface", interaction_class="juxtacrine",
+           topology_1=None, topology_2=None, omnipath_roles=None):
+    return _orient_humanppi_intercellular_gp(
+        gene_1, gene_2, location_1, location_2,
+        interaction_class=interaction_class, topology_1=topology_1,
+        topology_2=topology_2, omnipath_roles=omnipath_roles)
+
+
+@pytest.mark.parametrize("gene,expected", [
+    ("EFNB3", "ligand"), ("EFNA1", "ligand"), ("TNFSF4", "ligand"),
+    ("SEMA4D", "ligand"), ("JAG1", "ligand"), ("MICA", "ligand"),
+    ("CD274", "ligand"), ("CD86", "ligand"), ("HLA-A", "ligand"),
+    ("EPHB1", "receptor"), ("EPHA2", "receptor"), ("TNFRSF4", "receptor"),
+    ("PLXNB1", "receptor"), ("NOTCH1", "receptor"), ("PDCD1", "receptor"),
+    ("CTLA4", "receptor"), ("SIRPA", "receptor"), ("ITGB1", "receptor"),
+    # No curated family, so no role is claimed
+    ("TMEM154", None), ("SMIM5", None), ("GYPA", None),
+])
+def test_gene_symbol_role(gene, expected):
+    assert _humanppi_gene_symbol_role(gene) == expected
+
+
+@pytest.mark.parametrize("gene_1,gene_2,expected", [
+    ("KITLG", "KIT", "KITLG"),
+    ("KIT", "KITLG", "KITLG"),
+    ("FASLG", "FAS", "FASLG"),
+    ("EGF", "EGFR", "EGF"),
+    ("EGFR", "EGF", "EGF"),
+    # A bare 'L' suffix means "like" far more often than "ligand", so it must
+    # not fire: PXDNL is a peroxidasin paralogue, not the ligand of PXDN
+    ("PXDNL", "PXDN", None),
+    ("DLL1", "DLK1", None),
+    ("EFNB3", "EPHB1", None),
+])
+def test_gene_symbol_stem_role(gene_1, gene_2, expected):
+    assert _humanppi_gene_symbol_stem_role(gene_1, gene_2) == expected
+
+
+@pytest.mark.parametrize("functions,expected", [
+    (LIGAND_GO, 1),
+    (["cytokine activity"], 1),
+    (RECEPTOR_GO, -1),
+    (["protein tyrosine kinase activity"], -1),
+    # Both or neither is no evidence either way
+    (LIGAND_GO + RECEPTOR_GO, 0),
+    (["calcium ion binding"], 0),
+    ([], 0),
+])
+def test_go_function_role(functions, expected):
+    assert _humanppi_go_function_role(annotated(functions)) == expected
+
+
+def test_go_function_role_is_none_without_annotation():
+    assert _humanppi_go_function_role(None) is None
+    assert _humanppi_go_function_role({"go_molecular_functions": None}) is None
+
+
+def test_a_soluble_partner_is_placed_in_the_source_component():
+    # The ligand is released by the neighboring cell
+    source, target, source_location, _, rule = orient(
+        "CCR7", "CCL19", "cell_surface", "secreted",
+        interaction_class="paracrine")
+    assert (source, target) == ("CCL19", "CCR7")
+    assert source_location == "secreted"
+    assert rule == "secreted_partner"
+
+
+def test_the_secreted_rule_beats_every_other_rule():
+    # The symbols would put EFNB3 in the source, but a secreted partner is
+    # decided on physical grounds and takes precedence
+    source, _, _, _, rule = orient(
+        "EFNB3", "EPHB1", "cell_surface", "secreted",
+        interaction_class="paracrine")
+    assert (source, rule) == ("EPHB1", "secreted_partner")
+
+
+def test_two_soluble_partners_still_reach_the_remaining_rules():
+    # 327 of the 856 paracrine interactions have two secreted partners, which
+    # the secreted rule cannot separate
+    source, _, _, _, rule = orient(
+        "SOMEGENE", "OTHERGENE", "secreted", "secreted",
+        interaction_class="paracrine",
+        topology_1=annotated(LIGAND_GO), topology_2=annotated(RECEPTOR_GO))
+    assert (source, rule) == ("SOMEGENE", "go_molecular_function")
+
+
+@pytest.mark.parametrize("gene_1,gene_2,expected_source", [
+    ("EFNB3", "EPHB1", "EFNB3"),
+    ("EPHB1", "EFNB3", "EFNB3"),
+    ("TNFSF4", "TNFRSF4", "TNFSF4"),
+    ("JAG1", "NOTCH1", "JAG1"),
+    ("CD274", "PDCD1", "CD274"),
+    ("MICA", "KLRK1", "MICA"),
+    ("SEMA4D", "PLXNB1", "SEMA4D"),
+])
+def test_curated_families_put_the_ligand_in_the_source(gene_1, gene_2,
+                                                       expected_source):
+    source, target, _, _, rule = orient(gene_1, gene_2)
+    assert source == expected_source
+    assert target == (gene_2 if expected_source == gene_1 else gene_1)
+    assert rule == "gene_symbol_family"
+
+
+@pytest.mark.parametrize("gene_1,gene_2", [
+    # Both sides match the same lexicon, so no orientation is claimed
+    ("EPHA4", "EPHB2"), ("EFNA1", "EFNA5"), ("ITGA4", "ITGB7"),
+])
+def test_curated_families_abstain_when_both_sides_match(gene_1, gene_2):
+    assert orient(gene_1, gene_2)[4] != "gene_symbol_family"
+
+
+def test_omnipath_exclusive_role():
+    roles = {"AAA": {"ligand": 3, "cell_surface_ligand": 0, "receptor": 0},
+             "BBB": {"ligand": 0, "cell_surface_ligand": 0, "receptor": 4}}
+    source, _, _, _, rule = orient("BBB", "AAA", omnipath_roles=roles)
+    assert (source, rule) == ("AAA", "omnipath_exclusive_role")
+
+
+def test_omnipath_surface_ligand():
+    # A ligand that stays on the surface is what a contact-dependent sender is
+    roles = {"AAA": {"ligand": 1, "cell_surface_ligand": 2, "receptor": 1},
+             "BBB": {"ligand": 0, "cell_surface_ligand": 0, "receptor": 4}}
+    source, _, _, _, rule = orient("BBB", "AAA", omnipath_roles=roles)
+    assert (source, rule) == ("AAA", "omnipath_surface_ligand")
+
+
+def test_omnipath_abstains_when_both_are_annotated_the_same_way():
+    roles = {"AAA": {"ligand": 2, "cell_surface_ligand": 1, "receptor": 2},
+             "BBB": {"ligand": 2, "cell_surface_ligand": 1, "receptor": 2}}
+    assert orient("AAA", "BBB", omnipath_roles=roles)[4] == "table_order"
+
+
+def test_go_molecular_function_requires_evidence_on_both_sides():
+    # A receptor function against no annotation at all must not decide: that
+    # would let absence of evidence choose the ligand
+    assert orient("AAA", "BBB", topology_1=annotated([]),
+                  topology_2=annotated(RECEPTOR_GO))[4] == "table_order"
+    # Positive evidence on both sides does decide
+    source, _, _, _, rule = orient("AAA", "BBB",
+                                   topology_1=annotated(RECEPTOR_GO),
+                                   topology_2=annotated(LIGAND_GO))
+    assert (source, rule) == ("BBB", "go_molecular_function")
+
+
+def test_a_gpi_anchored_partner_is_the_ligand():
+    # A GPI anchored protein has no cytoplasmic domain and cannot transduce a
+    # signal into its own cell, as for the ephrin-A proteins
+    source, _, _, _, rule = orient(
+        "AAA", "BBB", topology_1=annotated(is_gpi=False),
+        topology_2=annotated(is_gpi=True))
+    assert (source, rule) == ("BBB", "gpi_anchor")
+
+
+def test_the_curated_family_beats_the_uniprot_evidence():
+    # Contradictory annotation must not override the curated family
+    source, _, _, _, rule = orient(
+        "EFNB3", "EPHB1", topology_1=annotated(RECEPTOR_GO),
+        topology_2=annotated(LIGAND_GO))
+    assert (source, rule) == ("EFNB3", "gene_symbol_family")
+
+
+def test_omnipath_beats_the_uniprot_evidence():
+    roles = {"AAA": {"ligand": 0, "cell_surface_ligand": 0, "receptor": 3},
+             "BBB": {"ligand": 2, "cell_surface_ligand": 0, "receptor": 0}}
+    source, _, _, _, rule = orient(
+        "AAA", "BBB", omnipath_roles=roles,
+        topology_1=annotated(LIGAND_GO), topology_2=annotated(RECEPTOR_GO))
+    assert (source, rule) == ("BBB", "omnipath_exclusive_role")
+
+
+def test_no_evidence_keeps_the_released_column_order():
+    source, target, source_location, target_location, rule = orient(
+        "TMEM154", "GYPA", topology_1=annotated([]), topology_2=annotated([]))
+    assert (source, target) == ("TMEM154", "GYPA")
+    assert (source_location, target_location) == ("cell_surface",
+                                                 "cell_surface")
+    assert rule == "table_order"
+
+
+def test_locations_travel_with_their_genes_when_the_orientation_flips():
+    _, _, source_location, target_location, _ = orient(
+        "EPHB1", "EFNB3", location_1="ambiguous", location_2="cell_surface")
+    assert (source_location, target_location) == ("cell_surface", "ambiguous")
+
+
+###############################################################################
 ## Gene program orientation ##
 ###############################################################################
 
-@pytest.mark.parametrize("gene_1,gene_2,location_1,location_2,expected", [
+@pytest.mark.parametrize("gene_1,gene_2,location_1,location_2,expected,rule", [
     # The diffusible ligand belongs in the source (neighbour) component
-    ("CCR7", "CCL19", "cell_surface", "secreted", ("CCL19", "CCR7")),
-    ("AXL", "GAS6", "cell_surface", "secreted", ("GAS6", "AXL")),
+    ("CCR7", "CCL19", "cell_surface", "secreted", ("CCL19", "CCR7"),
+     "secreted_partner"),
+    ("AXL", "GAS6", "cell_surface", "secreted", ("GAS6", "AXL"),
+     "secreted_partner"),
     # Already correctly oriented, so left alone
-    ("CCL19", "CCR7", "secreted", "cell_surface", ("CCL19", "CCR7")),
-    # Contact dependent between two membrane anchored partners: arbitrary but
-    # order preserving
-    ("PDCD1", "CD274", "cell_surface", "cell_surface", ("PDCD1", "CD274")),
-    # Two soluble partners: likewise order preserving
-    ("COL1A1", "COL1A2", "secreted", "secreted", ("COL1A1", "COL1A2")),
+    ("CCL19", "CCR7", "secreted", "cell_surface", ("CCL19", "CCR7"),
+     "secreted_partner"),
+    # Contact dependent between two membrane anchored partners: the curated
+    # families identify PD-L1 as the ligand of PD-1, so the released order is
+    # corrected rather than preserved
+    ("PDCD1", "CD274", "cell_surface", "cell_surface", ("CD274", "PDCD1"),
+     "gene_symbol_family"),
+    # Two soluble partners, neither of which any rule can separate, so the
+    # released order is preserved
+    ("COL1A1", "COL1A2", "secreted", "secreted", ("COL1A1", "COL1A2"),
+     "table_order"),
 ])
 def test_the_soluble_partner_is_placed_in_the_source_component(
-        gene_1, gene_2, location_1, location_2, expected):
+        gene_1, gene_2, location_1, location_2, expected, rule):
     """
     NicheCompass reconstructs the source component from the aggregated
     expression of a cell's neighbours and the target component from the cell
     itself, so a diffusible ligand belongs in the source component and its
     receptor in the target component.
     """
-    source_gene, target_gene, source_location, target_location = (
-        _orient_humanppi_intercellular_gp(gene_1, gene_2, location_1,
-                                          location_2))
+    interaction_class = ("paracrine" if "secreted" in (location_1, location_2)
+                         else "juxtacrine")
+    (source_gene, target_gene, source_location, target_location,
+     orientation_rule) = _orient_humanppi_intercellular_gp(
+         gene_1, gene_2, location_1, location_2,
+         interaction_class=interaction_class)
     assert (source_gene, target_gene) == expected
+    assert orientation_rule == rule
     # The locations must travel with their genes
     original = {gene_1: location_1, gene_2: location_2}
     assert source_location == original[source_gene]
