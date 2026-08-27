@@ -4,6 +4,7 @@ programs for use by the NicheCompass model.
 """
 
 import copy
+import json
 import os
 import re
 import shutil
@@ -13,6 +14,7 @@ import tempfile
 import urllib.error
 import urllib.request
 import warnings
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 import decoupler as dc
@@ -503,6 +505,8 @@ def _load_humanppi_protein_topology(accessions: list,
                         "cellular_component_keywords",
                         "go_cellular_components"]
     if os.path.exists(topology_file_path):
+        _report_humanppi_provenance(topology_file_path,
+                                    "UniProt protein annotation")
         topology_df = pd.read_csv(topology_file_path, sep="\t")
         if not set(required_columns).issubset(topology_df.columns):
             # An outdated cache is ignored and retrieved again
@@ -542,6 +546,7 @@ def _load_humanppi_protein_topology(accessions: list,
             url = (f"https://rest.uniprot.org/uniprotkb/search?query={query}"
                    f"&fields={fields}&format=tsv&size={batch_size}")
             with urllib.request.urlopen(url) as response:
+                version = _humanppi_response_version(response)
                 lines = response.read().decode("utf-8").splitlines()
             for line in lines[1:]:
                 columns = line.split("\t")
@@ -591,6 +596,9 @@ def _load_humanppi_protein_topology(accessions: list,
                  ";".join(values["go_cellular_components"])}
             for accession, values in topology.items()]).to_csv(
                 topology_file_path, sep="\t", index=False)
+        _write_humanppi_provenance(topology_file_path,
+                                   "https://rest.uniprot.org/uniprotkb/search",
+                                   version)
     return topology
 
 
@@ -629,15 +637,21 @@ def _load_complex_portal_cis_pairs(complex_portal_file_path: str,
         Set of ´frozenset´s of two UniProt accessions.
     """
     if os.path.exists(complex_portal_file_path):
+        _report_humanppi_provenance(complex_portal_file_path,
+                                    "EBI Complex Portal complexes")
         complex_df = pd.read_csv(complex_portal_file_path, sep="\t")
     else:
         print("Downloading human protein complexes from the EBI Complex "
               "Portal...")
-        complex_df = pd.read_csv(complex_portal_url, sep="\t")
+        with urllib.request.urlopen(complex_portal_url) as response:
+            version = _humanppi_response_version(response)
+            complex_df = pd.read_csv(response, sep="\t")
         cache_dir = os.path.dirname(complex_portal_file_path)
         if cache_dir:
             os.makedirs(cache_dir, exist_ok=True)
         complex_df.to_csv(complex_portal_file_path, sep="\t", index=False)
+        _write_humanppi_provenance(complex_portal_file_path,
+                                   complex_portal_url, version)
 
     subunit_cols = [col for col in
                     ["Expanded participant list",
@@ -1608,6 +1622,61 @@ def extract_gp_dict_from_mebocost_ms_interactions(
     return gp_dict
 
 
+def _humanppi_provenance_file_path(file_path: str) -> str:
+    """Path of the provenance file that accompanies a cached resource."""
+    return file_path + ".provenance.json"
+
+
+def _write_humanppi_provenance(file_path: str,
+                               source_url: str,
+                               version: Optional[dict]=None):
+    """
+    Record where a cached resource came from and which version it is, next to
+    the cached file itself.
+
+    The classification depends on external resources that are updated
+    independently of NicheCompass, so a gene program mask is only reproducible
+    if the versions that produced it are known.
+    """
+    provenance = {
+        "source_url": source_url,
+        "retrieved_utc": datetime.now(timezone.utc).isoformat(
+            timespec="seconds")}
+    if version:
+        provenance.update({key: value for key, value in version.items()
+                           if value})
+    provenance_file_path = _humanppi_provenance_file_path(file_path)
+    provenance_dir = os.path.dirname(provenance_file_path)
+    if provenance_dir:
+        os.makedirs(provenance_dir, exist_ok=True)
+    with open(provenance_file_path, "w") as provenance_file:
+        json.dump(provenance, provenance_file, indent=1, sort_keys=True)
+
+
+def _report_humanppi_provenance(file_path: str, label: str):
+    """Print the recorded provenance of a cached resource, if any."""
+    provenance_file_path = _humanppi_provenance_file_path(file_path)
+    if not os.path.exists(provenance_file_path):
+        print(f"Using cached {label} at '{file_path}' with no recorded "
+              "provenance. Delete the file to retrieve it again and record "
+              "its version.")
+        return
+    with open(provenance_file_path) as provenance_file:
+        provenance = json.load(provenance_file)
+    details = ", ".join(f"{key}: {value}" for key, value in
+                        sorted(provenance.items()) if key != "source_url")
+    print(f"Using cached {label} ({details}).")
+
+
+def _humanppi_response_version(response) -> dict:
+    """Extract version information from the headers of an HTTP response."""
+    headers = response.headers
+    return {"uniprot_release": headers.get("X-UniProt-Release"),
+            "uniprot_release_date": headers.get("X-UniProt-Release-Date"),
+            "source_last_modified": headers.get("Last-Modified"),
+            "source_content_length": headers.get("Content-Length")}
+
+
 def _download_and_load_humanppi_predictions(
         precision: Literal["90", "80"],
         url: str) -> pd.DataFrame:
@@ -1632,13 +1701,17 @@ def _download_and_load_humanppi_predictions(
     ----------
     ppi_df:
         Predicted protein-protein interactions loaded into a pandas DataFrame.
+    version:
+        Version information taken from the response headers.
     """
     target_file = f"final_predictions_{precision}.tsv"
+    version = {}
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_tar_path = os.path.join(tmp_dir, "final_predictions.tar.gz")
         try:
             with urllib.request.urlopen(url) as response, \
                     open(tmp_tar_path, "wb") as out_file:
+                version = _humanppi_response_version(response)
                 shutil.copyfileobj(response, out_file)
         except (ssl.SSLError, urllib.error.URLError):
             warnings.warn(
@@ -1649,6 +1722,7 @@ def _download_and_load_humanppi_predictions(
             with urllib.request.urlopen(
                     url, context=unverified_context) as response, \
                     open(tmp_tar_path, "wb") as out_file:
+                version = _humanppi_response_version(response)
                 shutil.copyfileobj(response, out_file)
 
         with tarfile.open(tmp_tar_path, "r:gz") as tar:
@@ -1662,7 +1736,7 @@ def _download_and_load_humanppi_predictions(
             # The tsv is preceded by comment lines (starting with '#') that
             # describe each column; the first non-comment line is the header.
             ppi_df = pd.read_csv(extracted_file, sep="\t", comment="#")
-    return ppi_df
+    return ppi_df, version
 
 
 def extract_gp_dict_from_humanppi_interactions(
@@ -1978,12 +2052,16 @@ def extract_gp_dict_from_humanppi_interactions(
     if not load_from_disk:
         print("Downloading human interactome predictions "
               f"(precision '{precision}') from the web...")
-        ppi_df = _download_and_load_humanppi_predictions(
+        ppi_df, version = _download_and_load_humanppi_predictions(
             precision=precision,
             url=humanppi_predictions_url)
         if save_to_disk:
             ppi_df.to_csv(ppi_network_file_path, sep="\t", index=False)
+            _write_humanppi_provenance(ppi_network_file_path,
+                                       humanppi_predictions_url, version)
     else:
+        _report_humanppi_provenance(ppi_network_file_path,
+                                    "human interactome predictions")
         ppi_df = pd.read_csv(ppi_network_file_path, sep="\t")
 
     # Drop interactions without a gene symbol for either partner. Note that the
