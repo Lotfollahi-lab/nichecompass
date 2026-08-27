@@ -1739,6 +1739,31 @@ def _write_humanppi_provenance(file_path: str,
         json.dump(provenance, provenance_file, indent=1, sort_keys=True)
 
 
+def _check_humanppi_cached_precision(file_path: str, precision: str):
+    """
+    Fail loudly if a cached interactome table was retrieved at a different
+    precision than the one requested.
+
+    The two precision levels are different tables, so silently reading the
+    cache of one while ´precision´ names the other would return the wrong
+    interaction set under a label that says otherwise. Caches written before
+    the precision was recorded carry no such entry and are left alone.
+    """
+    provenance_file_path = _humanppi_provenance_file_path(file_path)
+    if not os.path.exists(provenance_file_path):
+        return
+    with open(provenance_file_path) as provenance_file:
+        cached_precision = json.load(provenance_file).get("precision")
+    if cached_precision is not None and str(cached_precision) != precision:
+        raise ValueError(
+            f"The cached human interactome predictions at "
+            f"'{file_path}' were retrieved at precision "
+            f"'{cached_precision}', but precision '{precision}' was "
+            "requested. The two precision levels are different tables. Pass a "
+            "separate ´ppi_network_file_path´ per precision level, or delete "
+            "the cached file to retrieve the requested one.")
+
+
 def _report_humanppi_provenance(file_path: str, label: str):
     """Print the recorded provenance of a cached resource, if any."""
     provenance_file_path = _humanppi_provenance_file_path(file_path)
@@ -1849,8 +1874,7 @@ def extract_gp_dict_from_humanppi_interactions(
         min_af_prob: Optional[float]=None,
         load_from_disk: bool=False,
         save_to_disk: bool=False,
-        ppi_network_file_path: Optional[str]="../data/gene_programs/" \
-                                             "humanppi_network.csv",
+        ppi_network_file_path: Optional[str]=None,
         humanppi_predictions_url: str="https://conglab.swmed.edu/humanPPI/" \
                                       "downloads/final_predictions.tar.gz",
         gene_orthologs_mapping_file_path: Optional[str]="../data/gene_" \
@@ -2111,7 +2135,10 @@ def extract_gp_dict_from_humanppi_interactions(
     ppi_network_file_path:
         Path of the file where the human PPI network will be stored (if
         ´save_to_disk´ is ´True´) or loaded from (if ´load_from_disk´ is
-        ´True´).
+        ´True´). Defaults to a precision-specific path, since the two
+        precision levels are different tables and must not share a cache
+        file. A cache whose recorded provenance names a different precision
+        than the one requested is rejected rather than silently used.
     humanppi_predictions_url:
         URL of the ´final_predictions.tar.gz´ archive to download if
         ´load_from_disk´ is ´False´.
@@ -2158,6 +2185,13 @@ def extract_gp_dict_from_humanppi_interactions(
         raise ValueError("´unresolved_locality´ should be either 'exclude' or "
                          "'intracellular'.")
 
+    # The two precision levels are different tables, so they must not share a
+    # cache file: loading the cache of one while asking for the other would
+    # silently return the wrong interaction set.
+    if ppi_network_file_path is None:
+        ppi_network_file_path = ("../data/gene_programs/humanppi_network_"
+                                 f"{precision}.csv")
+
     # Download (or load) the human interactome predictions and store in df
     # (optionally also on disk)
     if not load_from_disk:
@@ -2169,10 +2203,13 @@ def extract_gp_dict_from_humanppi_interactions(
         if save_to_disk:
             ppi_df.to_csv(ppi_network_file_path, sep="\t", index=False)
             _write_humanppi_provenance(ppi_network_file_path,
-                                       humanppi_predictions_url, version)
+                                       humanppi_predictions_url,
+                                       {**(version or {}),
+                                        "precision": precision})
     else:
         _report_humanppi_provenance(ppi_network_file_path,
                                     "human interactome predictions")
+        _check_humanppi_cached_precision(ppi_network_file_path, precision)
         ppi_df = pd.read_csv(ppi_network_file_path, sep="\t")
 
     # Drop interactions without a gene symbol for either partner. Note that the

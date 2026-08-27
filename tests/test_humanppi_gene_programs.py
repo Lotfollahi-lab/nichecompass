@@ -4,11 +4,14 @@ back the human PPI gene programs. All tests here are offline: they exercise the
 classification helpers directly and never download anything.
 """
 
+import json
+
 import pytest
 
 from nichecompass.utils.gene_programs import (
     _classify_humanppi_interaction,
     _classify_humanppi_go_cellular_components,
+    _check_humanppi_cached_precision,
     _is_humanppi_trans_capable,
     _orient_humanppi_intercellular_gp,
     _parse_humanppi_subcellular_location,
@@ -274,6 +277,48 @@ def test_interaction_classification_rejects_raw_localization_strings():
     with pytest.raises(ValueError, match="not a location class"):
         _classify_humanppi_interaction("Cell membrane,Membrane",
                                        "cell_surface")
+
+
+###############################################################################
+## Cache provenance ##
+###############################################################################
+
+def write_provenance(tmp_path, precision):
+    network_file_path = tmp_path / "humanppi_network.csv"
+    network_file_path.write_text("Name1\tName2\n")
+    provenance = {"source_url": "https://example.invalid/predictions.tar.gz",
+                  "retrieved_utc": "2026-08-27T00:00:00+00:00"}
+    if precision is not None:
+        provenance["precision"] = precision
+    (tmp_path / "humanppi_network.csv.provenance.json").write_text(
+        json.dumps(provenance))
+    return str(network_file_path)
+
+
+def test_cached_precision_accepts_a_matching_cache(tmp_path):
+    # No exception: the cache holds the table that was asked for
+    _check_humanppi_cached_precision(write_provenance(tmp_path, "90"), "90")
+
+
+def test_cached_precision_rejects_a_mismatched_cache(tmp_path):
+    # The two precision levels are different tables, so reading one while
+    # asking for the other would return the wrong interaction set
+    with pytest.raises(ValueError, match="retrieved at precision '90'"):
+        _check_humanppi_cached_precision(write_provenance(tmp_path, "90"), "80")
+
+
+@pytest.mark.parametrize("precision", [None])
+def test_cached_precision_tolerates_a_cache_without_the_stamp(tmp_path,
+                                                              precision):
+    # Caches written before the precision was recorded carry no such entry
+    _check_humanppi_cached_precision(write_provenance(tmp_path, precision),
+                                     "80")
+
+
+def test_cached_precision_tolerates_a_missing_provenance_file(tmp_path):
+    network_file_path = tmp_path / "humanppi_network.csv"
+    network_file_path.write_text("Name1\tName2\n")
+    _check_humanppi_cached_precision(str(network_file_path), "80")
 
 
 ###############################################################################

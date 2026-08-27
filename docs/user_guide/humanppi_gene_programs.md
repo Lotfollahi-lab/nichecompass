@@ -356,18 +356,50 @@ secreted-to-cell-surface pairs and makes the gene program names read as ligand t
 predict the chemokine in the receiving cell and its receptor in the neighbourhood.
 
 For a contact-dependent interaction between two membrane anchored partners, and for an interaction between
-two soluble partners, there is no principled ordering and the assignment is arbitrary but consistent.
+two soluble partners, this rule does not fire and the orientation is the order of the two columns in the
+released table.
 
-`symmetric_juxtacrine_gps=True` addresses that arbitrariness for the contact-dependent case by emitting each
-interaction **twice**, once in each orientation. This is biologically faithful, since a contact-dependent
-interaction does operate in both directions between two neighbouring cells, and it removes the dependence of
-the result on an arbitrary choice. It is nevertheless **off by default**, for two reasons. It doubles the
-number of contact-dependent programs, 863 to 1,726 at precision 90, and each pair of programs is built from
-the same two genes, so their latent dimensions are near-mirror images of each other. That inflates the
-latent space with correlated dimensions and makes gene program enrichment results harder to read, since a
-single biological signal now appears as two entries. Turn it on when the *direction* of a contact-dependent
-interaction is itself the question being asked, for example when testing whether a checkpoint ligand acts
-from the tumour onto the T cell or the reverse.
+**That is a real limitation, and it has been measured.** Of the 863 contact-dependent interactions at
+precision 90, 138 have an unambiguous canonical sender (ephrin to Eph receptor, a TNF superfamily ligand to
+its receptor, a Notch ligand to Notch, MHC to the T cell receptor, a checkpoint ligand to its receptor, or a
+named `<GENE>LG` to `<GENE>` pair). Among those 138, the ligand lands in the source component 68 times and in
+the target component **70** times — a coin flip. All eight `KLRK1` pairs put NKG2D in the neighbourhood and
+its stress ligand in the cell itself, which is backwards; so are `KIT`-`KITLG`, `FAS`-`FASLG` and
+`NCR3`-`NCR3LG1`. Orienting these from a ligand-receptor annotation is the outstanding improvement here, and
+it would cost no additional latent dimensions.
+
+`symmetric_juxtacrine_gps=True` sidesteps the arbitrariness instead, by emitting each contact-dependent
+interaction **twice**, once in each orientation, so that neither orientation has to be the right one. It
+also closes a coverage gap: with one orientation, 557 of the 812 genes taking part in a contact-dependent
+interaction appear in only one component across the whole prior set, so no named program ever reconstructs
+them from the other one. With both orientations, none do.
+
+It is nevertheless **off by default**, because it adds 863 programs at precision 90 (1,719 to 2,582
+intercellular, +50%) and 1,878 at precision 80 (3,413 to 5,291, +55%), and because the arithmetic of the
+biology does not justify applying it to the whole set. Contact-dependent signalling is frequently
+*bidirectional* — ephrin-B cytoplasmic tails signal in the ligand-expressing cell, so do Notch ligand
+intracellular domains, membrane TNF, B7 and MHC — but bidirectional is not the same as *symmetric*: the two
+arms use different effectors and produce different outputs, so the two orientations are not interchangeable
+descriptions of one event. Genuinely symmetric interactions, where the two partners are the same molecule,
+number **0 of 863**: the interactome screened heterodimeric pairs only, so homophilic adhesion is absent from
+this resource by construction. Only 177 of 863 (20.5%) have both partners in a family where bidirectional
+signalling is the norm, and 113 of those 177 are ephrin/Eph.
+
+The cost is in reading rather than in statistics. Differential program testing applies a fixed log Bayes
+factor threshold with no multiple-testing correction, so doubling the program count carries no statistical
+penalty; but a mirrored pair occupies two rows of every program summary, two of the ten panels of
+`generate_enriched_gp_info_plots`, and two arrow families in the communication network for one physical
+contact. The two names differ only in gene order (`A_B_juxtacrine_ppi_GP` against `B_A_juxtacrine_ppi_GP`)
+and read as a typo.
+
+Turn it on when the *side* of a contact-dependent interface is itself the question — for example when asking
+whether a checkpoint interaction is enriched from the tumour cell's side, the T cell's side, or both.
+
+One interaction with `combine_gps`: `filter_and_combine_gp_dict_gps_v2` merges programs that share a source
+gene, and every intercellular program has exactly one source gene, so combining collapses the mirrored set
+to one program per source gene and discards the interaction class in the rename. After combining, only 75 of
+the 863 mirrored pairs remain as pairs. `symmetric_juxtacrine_gps=True` together with combining is therefore
+a materially different object from either alone.
 
 ## 7. Gene program construction
 
