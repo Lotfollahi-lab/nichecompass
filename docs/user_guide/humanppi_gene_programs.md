@@ -397,7 +397,7 @@ landed in the source component 68 times and in the target component 70 times. `o
 | 7 | `gpi_anchor` | exactly one partner is GPI anchored, so it has no cytoplasmic domain and cannot signal inwards | 18 | 100% |
 | 8 | `table_order` | no evidence applies, the released order is kept | 666 | arbitrary |
 
-**918 of 1,584** intercellular interactions (54.2%) are oriented from evidence, and on the 215 curated
+**918 of 1,584** intercellular interactions (58.0%) are oriented from evidence, and on the 215 curated
 directions the chain decided it is **correct 215 times, including 116 of 116 once the ephrins are
 excluded**. The rule that decided each program is stored under `orientation_rule` and the counts are
 printed. `tests/data/humanppi_orientation_gold.tsv` holds the 224 curated directions and
@@ -497,8 +497,8 @@ Intercellular programs total 1,584. At `precision="80"` the totals are 27,823 pr
 intercellular (1,424 paracrine, 1,664 juxtacrine).
 
 With `use_topology=False` the reach test cannot run and the curated families are the only *cis* evidence
-left, so the intercellular set grows rather than shrinks: 2,485 programs at precision 90 with
-`ambiguous_locality="extracellular"`, 1,745 with `"intracellular"`. Both are less trustworthy than the
+left, so the intercellular set grows rather than shrinks: 2,273 programs at precision 90 with
+`ambiguous_locality="extracellular"`, 1,603 with `"intracellular"`. Both are less trustworthy than the
 1,584 obtained with topology.
 
 ## 9. Downstream use and three caveats
