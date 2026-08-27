@@ -77,8 +77,8 @@ HUMANPPI_INTRACELLULAR_KEYWORDS = {
 # (´Membrane´), because they denote a compartment with a large cytoplasmic
 # component (junctions, projections, synapses), or because they describe a
 # property rather than a location (´Amyloid´). These count as evidence of an
-# extracellular face when ´localization_filter´ is ´include_ambiguous´ (the
-# default), and then only if the protein carries no intracellular keyword.
+# extracellular face, but ´use_topology´ resolves them with sequence-level
+# evidence where UniProt provides it.
 HUMANPPI_AMBIGUOUS_LOCATION_KEYWORDS = {
     "Membrane", "Cell junction", "Tight junction", "Adherens junction",
     "Desmosome", "Hemidesmosome", "Focal adhesion", "Cell projection",
@@ -488,8 +488,7 @@ def _load_complex_portal_cis_pairs(complex_portal_file_path: str,
 
 
 def _classify_humanppi_interaction(location_1: str,
-                                   location_2: str,
-                                   localization_filter: str) -> str:
+                                   location_2: str) -> str:
     """
     Classify an interaction into ´paracrine´, ´juxtacrine´, ´intracellular´ or
     ´unknown´ based on the location classes of its two partners.
@@ -506,14 +505,9 @@ def _classify_humanppi_interaction(location_1: str,
                 f"{sorted(valid_locations)}, as returned by "
                 "´_classify_humanppi_protein_location´. Note that raw UniProt "
                 "localization strings have to be classified first.")
-    if localization_filter not in ("strict", "include_ambiguous"):
-        raise ValueError("´localization_filter´ should be either 'strict' or "
-                         "'include_ambiguous'.")
     if "unknown" in (location_1, location_2):
         return "unknown"
-    extracellular_facing = {"secreted", "cell_surface"}
-    if localization_filter == "include_ambiguous":
-        extracellular_facing = extracellular_facing | {"ambiguous"}
+    extracellular_facing = {"secreted", "cell_surface", "ambiguous"}
     if location_1 in extracellular_facing and location_2 in extracellular_facing:
         if "secreted" in (location_1, location_2):
             return "paracrine"
@@ -1445,8 +1439,6 @@ def extract_gp_dict_from_humanppi_interactions(
         precision: Literal["90", "80"]="90",
         program_type: Literal[
             "intercellular", "intracellular", "both"]="intercellular",
-        localization_filter: Literal[
-            "strict", "include_ambiguous"]="include_ambiguous",
         unknown_locality: Literal["exclude", "intracellular"]="exclude",
         filter_ig_tcr_segments: bool=True,
         filter_paralog_cross_pairs: bool=True,
@@ -1499,7 +1491,9 @@ def extract_gp_dict_from_humanppi_interactions(
       membrane branch (´Membrane´), or because the compartment has a large
       cytoplasmic component (´Cell junction´ is carried by cadherins but also
       by cytosolic catenins, vinculin and ZO-1), or because it describes a
-      property rather than a location (´Amyloid´).
+      property rather than a location (´Amyloid´). Such proteins count as
+      extracellular facing, since excluding them was measured to discard a
+      large amount of genuine biology; ´use_topology´ resolves them properly.
     - ´unknown´: no usable keyword at all.
 
     Evidence for an extracellular face takes precedence over evidence for an
@@ -1603,31 +1597,6 @@ def extract_gp_dict_from_humanppi_interactions(
         interactions are kept and placed into the appropriate component.
         Intracellular (target-only) programs require ´min_source_genes_per_gp=0´
         downstream (see above).
-    localization_filter:
-        Determines whether proteins with an ´ambiguous´ location class count as
-        extracellular facing, and therefore how conservatively interactions are
-        called intercellular. If ´strict´ (default), they do not count, so an
-        interaction is only intercellular if both partners carry a keyword that
-        establishes an extracellular face. If ´include_ambiguous´, a protein
-        whose only evidence is an ambiguous keyword also counts as
-        extracellular facing, provided it carries no intracellular keyword;
-        this recovers proteins annotated with the generic ´Membrane´ keyword
-        alone, at the cost of some false positives.
-
-        Note that this parameter has almost no effect while ´use_topology´ is
-        ´True´, because membrane topology answers the same question with
-        sequence-level evidence and is consulted first: measured on the
-        predictions at 90% precision, both settings then yield 2,010
-        intercellular gene programs, against 2,527 and 1,776 respectively with
-        ´use_topology´ set to ´False´. It therefore mainly matters when topology
-        cannot be retrieved.
-
-        ´include_ambiguous´ is the
-        default because it recovers a large amount of genuine biology: measured
-        against curated ligand-receptor pairs from CellPhoneDB and OmniPath,
-        recall is 97.4% with ´include_ambiguous´ against 79.7% with ´strict´,
-        because many well-known receptors (SIRPA, EFNB3, TNFRSF4, TNFRSF9) are
-        annotated with the generic ´Membrane´ keyword alone.
     unknown_locality:
         Determines how interactions are handled in which at least one partner
         has no usable localization annotation, which is the case for around a
@@ -1730,9 +1699,6 @@ def extract_gp_dict_from_humanppi_interactions(
     if program_type not in ("intercellular", "intracellular", "both"):
         raise ValueError("´program_type´ should be one of 'intercellular', "
                          "'intracellular', or 'both'.")
-    if localization_filter not in ("strict", "include_ambiguous"):
-        raise ValueError("´localization_filter´ should be either 'strict' or "
-                         "'include_ambiguous'.")
     if unknown_locality not in ("exclude", "intracellular"):
         raise ValueError("´unknown_locality´ should be either 'exclude' or "
                          "'intracellular'.")
@@ -1847,7 +1813,7 @@ def extract_gp_dict_from_humanppi_interactions(
             topology=topology.get(str(row["Protein2"])),
             process=row["Process2"] if "Process2" in row else None)
         interaction_class = _classify_humanppi_interaction(
-            location_1, location_2, localization_filter)
+            location_1, location_2)
 
         if interaction_class == "unknown":
             # At least one partner has no usable localization annotation, so

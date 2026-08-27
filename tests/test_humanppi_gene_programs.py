@@ -118,50 +118,33 @@ def test_process_keywords_are_only_a_fallback_for_missing_localization():
 ## Interaction classification ##
 ###############################################################################
 
-@pytest.mark.parametrize("location_1,location_2,localization_filter,expected", [
-    ("cell_surface", "cell_surface", "strict", "juxtacrine"),
-    ("secreted", "cell_surface", "strict", "paracrine"),
-    ("secreted", "secreted", "strict", "paracrine"),
-    ("cell_surface", "intracellular", "strict", "intracellular"),
-    ("cell_surface", "ambiguous", "strict", "intracellular"),
-    ("cell_surface", "ambiguous", "include_ambiguous", "juxtacrine"),
-    ("secreted", "ambiguous", "include_ambiguous", "paracrine"),
-    ("ambiguous", "ambiguous", "include_ambiguous", "juxtacrine"),
-    ("ambiguous", "intracellular", "include_ambiguous", "intracellular"),
-    ("unknown", "cell_surface", "include_ambiguous", "unknown"),
-    ("unknown", "unknown", "strict", "unknown"),
+@pytest.mark.parametrize("location_1,location_2,expected", [
+    ("cell_surface", "cell_surface", "juxtacrine"),
+    ("secreted", "cell_surface", "paracrine"),
+    ("secreted", "secreted", "paracrine"),
+    ("cell_surface", "intracellular", "intracellular"),
+    ("cell_surface", "ambiguous", "juxtacrine"),
+    ("secreted", "ambiguous", "paracrine"),
+    ("ambiguous", "ambiguous", "juxtacrine"),
+    ("ambiguous", "intracellular", "intracellular"),
+    ("unknown", "cell_surface", "unknown"),
+    ("unknown", "unknown", "unknown"),
 ])
-def test_interaction_classification(location_1, location_2,
-                                    localization_filter, expected):
-    assert _classify_humanppi_interaction(
-        location_1, location_2, localization_filter) == expected
+def test_interaction_classification(location_1, location_2, expected):
+    assert _classify_humanppi_interaction(location_1, location_2) == expected
 
 
 def test_interaction_classification_is_symmetric():
     for location_1 in LOCATION_CLASSES:
         for location_2 in LOCATION_CLASSES:
-            for localization_filter in ["strict", "include_ambiguous"]:
-                assert (_classify_humanppi_interaction(
-                            location_1, location_2, localization_filter) ==
-                        _classify_humanppi_interaction(
-                            location_2, location_1, localization_filter))
+            assert (_classify_humanppi_interaction(location_1, location_2) ==
+                    _classify_humanppi_interaction(location_2, location_1))
 
 
 def test_interaction_classification_rejects_raw_localization_strings():
     with pytest.raises(ValueError, match="not a location class"):
         _classify_humanppi_interaction("Cell membrane,Membrane",
-                                       "cell_surface",
-                                       "strict")
-
-
-@pytest.mark.parametrize("localization_filter",
-                         ["surface_secreted", "membrane_strict", "membrane",
-                          "all", ""])
-def test_interaction_classification_rejects_unknown_filters(
-        localization_filter):
-    with pytest.raises(ValueError, match="localization_filter"):
-        _classify_humanppi_interaction("cell_surface", "cell_surface",
-                                       localization_filter)
+                                       "cell_surface")
 
 
 ###############################################################################
