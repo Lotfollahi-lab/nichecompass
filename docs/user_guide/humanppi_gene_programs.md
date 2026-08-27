@@ -276,7 +276,7 @@ moves them into the target component.
 
 | Class | Condition | Gene program shape |
 | :-- | :-- | :-- |
-| `juxtacrine` | both partners extracellular facing, neither purely secreted | source → target |
+| `juxtacrine` | both partners extracellular facing, neither purely secreted, **both able to reach across the cleft** | source → target |
 | `paracrine` | both extracellular facing, at least one secreted | source → target, **soluble partner in the source** |
 | `cis_complex` | both are subunits of a common complex | target only |
 | `extracellular_assembly` | two **secreted** subunits of a common complex | target only |
@@ -302,7 +302,51 @@ by the cell that produces them.
 
 At precision 90 this reclassifies 147 interactions as `cis_complex` and 57 as `extracellular_assembly`.
 
-### 6.2 Orientation: which partner goes into the source component
+### 6.2 The reach test (`min_extracellular_domain_length`, default `30`)
+
+Localisation says which side of the membrane a protein faces, not how far it protrudes from it. Two
+subunits of a channel or a receptor heterodimer both face outwards and neither is secreted, so on
+localisation alone they are indistinguishable from a genuine interaction between two cells. A **positive
+test for *trans*** is therefore applied to every candidate `juxtacrine` interaction.
+
+The length of every annotated extracellular topological domain is parsed from `ft_topo_dom`, and the number
+of membrane crossings from `ft_transmem`. A contact-dependent interaction is reclassified `cis_complex` when
+either partner's **longest extracellular domain is shorter than `min_extracellular_domain_length`**, because
+a protein that barely protrudes from its own membrane cannot bridge the intercellular cleft. A protein with
+no annotated extracellular domain is demoted only if it crosses the membrane three or more times, since
+polytopic proteins with no annotated ectodomain have short connecting loops by construction.
+
+Two design decisions matter:
+
+- **Only positive evidence demotes.** A protein with no topological annotation at all is left alone, so
+  incomplete annotation does not silently shrink the intercellular set.
+- **The test is not applied to `paracrine` interactions.** A soluble partner diffuses to its receptor and
+  can engage a shallow binding pocket. Chemokine receptors are the clearest case: `CCR7` has a 35-residue
+  extracellular N-terminus, and `CCL19`-`CCR7` would be at risk under any stricter threshold.
+
+Connexins, claudins and occludin are exempt by name, because their docking with a partner on the
+neighbouring cell genuinely happens through short extracellular loops.
+
+This reclassifies **166 interactions** at precision 90 with no loss of recall, and catches exactly the
+proteins localisation cannot: `CD247` has a 9-residue ectodomain, `FCER1G` 5, `TYROBP` 19, `KCNJ6` 24,
+`CNGA1` 23, `HCN1` 26, and `ORAI2` has none across four membrane crossings.
+
+### 6.3 Curated cis co-receptor families
+
+Some complexes assemble on one cell yet have ectodomains hundreds of residues long, so no topological test
+can separate them from a genuine *trans* interaction, and the Complex Portal holds almost no binary
+cell-surface heteromers. **36 curated gene family patterns** cover them, 12 of which exist specifically for
+co-receptor complexes: the ERBB heterodimers, the insulin and insulin-like growth factor receptors, the
+transforming growth factor beta receptors including endoglin, the Toll-like receptor heterodimers, the
+metabotropic GABA receptor, the Hedgehog receptor with its transducer and co-receptors, the neuropilins with
+the vascular endothelial growth factor receptors, the calcitonin receptors with their receptor-activity
+modifying proteins, the acid-sensing channels, the aquaporins, and the sterol and organic solute transporter
+heterodimers. These account for a further **44 interactions**.
+
+Every curated family is asserted in the unit tests to contain no secreted ligand together with its
+receptor, which is the failure mode a family pattern could introduce.
+
+### 6.4 Orientation: which partner goes into the source component
 
 NicheCompass reconstructs the source component from the **neighbours** and the target component from the
 **cell itself**, so for a diffusible interaction the ligand belongs in the source and its receptor in the
@@ -313,6 +357,17 @@ predict the chemokine in the receiving cell and its receptor in the neighbourhoo
 
 For a contact-dependent interaction between two membrane anchored partners, and for an interaction between
 two soluble partners, there is no principled ordering and the assignment is arbitrary but consistent.
+
+`symmetric_juxtacrine_gps=True` addresses that arbitrariness for the contact-dependent case by emitting each
+interaction **twice**, once in each orientation. This is biologically faithful, since a contact-dependent
+interaction does operate in both directions between two neighbouring cells, and it removes the dependence of
+the result on an arbitrary choice. It is nevertheless **off by default**, for two reasons. It doubles the
+number of contact-dependent programs, 863 to 1,726 at precision 90, and each pair of programs is built from
+the same two genes, so their latent dimensions are near-mirror images of each other. That inflates the
+latent space with correlated dimensions and makes gene program enrichment results harder to read, since a
+single biological signal now appears as two entries. Turn it on when the *direction* of a contact-dependent
+interaction is itself the question being asked, for example when testing whether a checkpoint ligand acts
+from the tumour onto the T cell or the reverse.
 
 ## 7. Gene program construction
 
@@ -340,14 +395,19 @@ At `precision="90"`, `species="human"`, `program_type="both"` and otherwise defa
 | Class | Count | Share |
 | :-- | --: | --: |
 | `paracrine` | 856 | 5.1% |
-| `juxtacrine` | 1,173 | 7.0% |
-| `cis_complex` | 147 | 0.9% |
+| `juxtacrine` | 863 | 5.1% |
+| `cis_complex` | 457 | 2.7% |
 | `extracellular_assembly` | 57 | 0.3% |
 | `intracellular` | 14,614 | 86.7% |
 | **total** | **16,847** | |
 
-Intercellular programs total 2,029. At `precision="80"` the totals are 27,823 programs of which 4,136 are
-intercellular (1,535 paracrine, 2,601 juxtacrine).
+Intercellular programs total 1,719. At `precision="80"` the totals are 27,823 programs of which 3,413 are
+intercellular (1,535 paracrine, 1,878 juxtacrine).
+
+With `use_topology=False` the reach test cannot run and the curated families are the only *cis* evidence
+left, so the intercellular set grows rather than shrinks: 2,485 programs at precision 90 with
+`ambiguous_locality="extracellular"`, 1,745 with `"intracellular"`. Both are less trustworthy than the
+1,719 obtained with topology.
 
 ## 9. Downstream use and three caveats
 
@@ -360,7 +420,8 @@ intercellular (1,535 paracrine, 2,601 juxtacrine).
 2. **Combining discards the interaction class.** `filter_and_combine_gp_dict_gps_v2` merges programs sharing
    a source gene and renames them `<GENE>_combined_GP`, which loses the `_paracrine_`/`_juxtacrine_` label.
 3. **Targeted panels.** An intercellular program needs *both* partners probed. On the 313-gene Xenium human
-   breast panel only 42 of 4,136 intercellular programs retain both partners. The resource is best suited to
+   breast panel only 32 of 3,413 intercellular programs retain both partners (18 of 1,719 at
+   precision 90). The resource is best suited to
    whole-transcriptome data; on a targeted panel it is more informative as a supplement to
    OmniPath, NicheNet and MEBOCOST than on its own.
 
@@ -368,35 +429,55 @@ intercellular (1,535 paracrine, 2,601 juxtacrine).
 
 - **Recall against curated ligand-receptor pairs.** Curated pairs are intercellular by definition, so every
   such pair present in the interactome should be classified paracrine or juxtacrine. Measured against
-  OmniPath: **98.0%** (396 of 404 testable pairs). Four of the eight misses are cases where the reference is
-  wrong rather than the classification: `NCSTN`-`PSEN1` are gamma-secretase subunits in one membrane,
-  `LRPAP1`-`SORL1` is an endoplasmic reticulum chaperone pair, `CALM3`-`MYLK2` is cytosolic. The remaining
-  four are membrane-anchored ligands inside multi-subunit Complex Portal entries.
-  `tests/benchmark_humanppi_classification.py` reruns this and fails below a threshold.
-- **Unit tests.** `tests/test_humanppi_gene_programs.py` contains 103 offline tests pinning the protein and
-  interaction classification, the precedence rules, the fallback ordering, the segment and paralogue
-  patterns, the curated families and the orientation.
+  OmniPath: **97.0%** (392 of 404 testable pairs). `tests/benchmark_humanppi_classification.py` reruns this
+  and fails below a threshold.
+
+  The twelve misses are worth reading individually, because most are not classification errors:
+
+  | Miss | Our class | Assessment |
+  | :-- | :-- | :-- |
+  | `NCSTN`-`PSEN1` | `intracellular` | Gamma-secretase subunits in one membrane — reference is wrong |
+  | `LRPAP1`-`SORL1` | `intracellular` | Endoplasmic reticulum chaperone pair — reference is wrong |
+  | `CALM3`-`MYLK2` | `intracellular` | Cytosolic — reference is wrong |
+  | `CNTF`-`CNTFR`, `CNTF`-`IL6R` | `intracellular` | Ciliary neurotrophic factor has no signal peptide and is released by injury rather than secreted |
+  | `KDR`-`NRP1` | `cis_complex` | Neuropilin-1 is a VEGFR2 co-receptor **on the same cell** — our call is correct |
+  | `GAS1`-`PTCH1` | `cis_complex` | GAS1 is a Hedgehog co-receptor on the same cell — our call is correct |
+  | `BMPR2`-`ENG` | `cis_complex` | Endoglin is a TGF-beta co-receptor on the same cell — our call is correct |
+  | `TNF`-`TNFRSF1A`, `TNF`-`TNFRSF1B`, `LTB`-`LTBR` | `cis_complex` | Genuine losses: membrane-anchored ligands inside multi-subunit Complex Portal entries |
+  | `NECTIN2`-`PVRIG` | `cis_complex` | Genuine loss: a real *trans* immune checkpoint |
+
+  So three of the twelve are cases where curated resources register a same-cell co-receptor complex as a
+  ligand-receptor pair, and five are cases where the reference is wrong. **Five are genuine losses**, four of
+  them already present before the reach test. Measured recall therefore understates real performance; the
+  headline number is reported unadjusted regardless.
+- **Canonical cis pairs.** All 15 same-cell pairs listed under limitation 2 below are now classified
+  non-intercellular. Before the reach test and the curated co-receptor families, 15 of 15 were `juxtacrine`.
+- **True trans pairs preserved.** `PDCD1`-`CD274`, `SIRPA`-`CD47`, `EPHB1`-`EFNB3`, `CCL19`-`CCR7`,
+  `IL15`-`IL15RA` and `TNFSF4`-`TNFRSF4` all remain intercellular.
+- **Unit tests.** `tests/test_humanppi_gene_programs.py` contains 135 offline tests pinning the protein and
+  interaction classification, the precedence rules, the fallback ordering, the reach test, the segment and
+  paralogue patterns, the curated families and the orientation.
 
 ## 11. Known limitations
 
 1. **Interface topology is not used.** Whether an interaction interface lies on the extracellular side is the
    biologically correct criterion, and the resource ships residue-level contact matrices that would answer
    it, but only inside a 67 GB archive. Everything here is a protein-level proxy.
-2. **`juxtacrine` does not test for *trans* and therefore over-calls badly.** It is inferred from "both
-   partners are extracellular facing and neither is purely secreted", which every pair of subunits in the
-   same channel, transporter or receptor heterodimer also satisfies. Independent review measured that
-   roughly 15-20% of the 1,173 juxtacrine programs are same-cell assemblies, and all 15 canonical cis pairs
-   probed are currently called `juxtacrine`: `KCNJ6`-`KCNJ9` and `HCN1`-`HCN4` (channel heterotetramers),
-   `CNGA1`-`CNGB1` (the rod photoreceptor channel), `ABCG5`-`ABCG8`, `ORAI2`-`ORAI3`, `SLC51A`-`SLC51B`,
-   `ERBB2`-`ERBB3`, `INSR`-`IGF1R`, `GABBR1`-`GABBR2`, `PTCH1`-`SMO`, `TLR1`-`TLR2`, `NRP1`-`KDR`,
-   `CALCR`-`RAMP1`, `BMPR1A`-`BMPR2`, `ASIC4`-`ASIC3`. The Complex Portal cannot fix this, since it holds
-   almost no binary cell-surface heteromers, and it covers only about a fifth of these proteins
-   (`CD247`-`FCER1G` and `FCER1G`-`TREM2` are demonstrably uncaught). The tractable remedy is a positive
-   test for *trans*: the transmembrane segment count and the extracellular span lengths are already
-   retrieved from `ft_transmem` and `ft_topo_dom` and then collapsed to booleans, and a protein that crosses
-   the membrane many times with short loops cannot reach across an intercellular cleft.
+2. **The *trans* test is a physical proxy, not a functional one.** A positive test for *trans* now exists
+   (section 6.2), but reach is necessary rather than sufficient: a protein with a long ectodomain may still
+   only ever partner within its own membrane. The 15 canonical same-cell pairs probed are all now classified
+   non-intercellular, but they divide instructively. Seven were caught by the reach test alone
+   (`KCNJ6`-`KCNJ9`, `HCN1`-`HCN4`, `CNGA1`-`CNGB1`, `ORAI2`-`ORAI3`, `CD247`-`FCER1G`, `FCER1G`-`TREM2`,
+   `SLC51A`-`SLC51B`). Eight had ectodomains far too long for any topological test to reject —
+   `ERBB2`-`ERBB3` (630 residues), `INSR`-`IGF1R` (731), `NRP1`-`KDR` (835), `TLR1`-`TLR2` (568),
+   `GABBR1`-`GABBR2` (572), `PTCH1`-`SMO` (320), `ASIC4`-`ASIC3` (349), `CALCR`-`RAMP1`, `BMPR1A`-`BMPR2`,
+   `ABCG5`-`ABCG8` — and required curated families (section 6.3). **Curation does not generalise**, so
+   co-receptor complexes outside those 36 families are still expected to be called `juxtacrine`. Two survive
+   even on the 313-gene breast panel: `CD4`-`CD3D` and `CD8A`-`CD3D` are a T cell co-receptor engaging the
+   T cell receptor complex on the same cell, and both are still classified `juxtacrine`. The residual error
+   rate among the 863 juxtacrine programs is unmeasured.
 3. **Precision is not measured globally.** Every specific false positive found has been fixed, but there is
-   no clean negative gold standard, so the fraction of the 2,029 intercellular calls that are wrong is
+   no clean negative gold standard, so the fraction of the 1,719 intercellular calls that are wrong is
    unknown. Recall is measured; precision is argued.
 4. **524 interactions remain unresolved** and are dropped by default. Closing that would need sequence-based
    prediction such as SignalP or DeepTMHMM rather than another annotation source, which is exhausted.
@@ -439,6 +520,8 @@ Grouped by what they control. Defaults are those of
 | `ambiguous_locality` | `"extracellular"` | How to treat proteins whose extracellular face is neither established nor contradicted (section 5.3). Inert unless `use_topology=False` |
 | `unresolved_locality` | `"exclude"` | How to treat interactions whose partner locations stay unresolved: `"exclude"` drops them, `"intracellular"` keeps them as target-only programs |
 | `detect_cis_complexes` | `True` | Reclassify subunits of a common complex as `cis_complex` or `extracellular_assembly` (section 6.1) |
+| `min_extracellular_domain_length` | `30` | Shortest extracellular domain, in residues, that still counts as able to reach a partner on a neighbouring cell (section 6.2). `0` disables the reach test. Requires `use_topology=True` |
+| `symmetric_juxtacrine_gps` | `False` | Emit each contact-dependent interaction in both orientations, since it operates in both directions between two neighbouring cells (section 6.4). Doubles the number of `juxtacrine` programs |
 | `complex_portal_file_path` | `../data/gene_programs/complex_portal_human.tsv` | Cache location for the Complex Portal table |
 | `complex_portal_url` | `ftp.ebi.ac.uk/...` | Where the Complex Portal table is downloaded from |
 | `gene_orthologs_mapping_file_path` | `../data/gene_annotations/human_mouse_gene_orthologs.csv` | Ensembl BioMart mapping, used only when `species="mouse"` |
@@ -466,6 +549,8 @@ humanppi_gp_dict = extract_gp_dict_from_humanppi_interactions(
     filter_paralog_cross_pairs=True,
     use_topology=True,
     detect_cis_complexes=True,
+    min_extracellular_domain_length=30,
+    symmetric_juxtacrine_gps=False,
     min_rf_prob=None,                   # trust the authors' calibration
     min_af_prob=None)
 ```
