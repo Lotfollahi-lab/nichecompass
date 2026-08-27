@@ -691,6 +691,33 @@ def _load_complex_portal_cis_pairs(complex_portal_file_path: str,
     return cis_pairs
 
 
+def _orient_humanppi_intercellular_gp(gene_1: str,
+                                      gene_2: str,
+                                      location_1: str,
+                                      location_2: str) -> tuple:
+    """
+    Order the two partners of an intercellular interaction into the source
+    (neighbor) and target (self) component of a gene program.
+
+    NicheCompass reconstructs the source component from the aggregated
+    expression of a cell's spatial neighbors and the target component from the
+    cell's own expression. Where exactly one partner is soluble, it is the one
+    released by the neighboring cell and therefore belongs in the source
+    component, so that the model reconstructs the ligand in the neighborhood
+    and its receptor in the cell itself. For a contact-dependent interaction
+    between two membrane anchored partners, and for an interaction between two
+    soluble partners, the assignment is arbitrary but consistent.
+
+    Returns
+    ----------
+    orientation:
+        Tuple of source gene, target gene, source location and target location.
+    """
+    if location_2 == "secreted" and location_1 != "secreted":
+        return gene_2, gene_1, location_2, location_1
+    return gene_1, gene_2, location_1, location_2
+
+
 def _classify_humanppi_interaction(location_1: str,
                                    location_2: str) -> str:
     """
@@ -1719,7 +1746,9 @@ def extract_gp_dict_from_humanppi_interactions(
     Second, the interaction is classified from the two location classes:
 
     - ´paracrine´: both partners are extracellular facing and at least one is
-      secreted, i.e. signaling through a diffusible partner.
+      secreted, i.e. signaling through a diffusible partner. Where exactly one
+      partner is soluble, it is placed in the source component, since it is the
+      partner released by the neighboring cell.
     - ´juxtacrine´: both partners are membrane anchored and extracellular
       facing, i.e. contact dependent signaling.
     - ´intracellular´: anything else, i.e. at least one partner has no
@@ -2107,13 +2136,17 @@ def extract_gp_dict_from_humanppi_interactions(
         seen_pairs.add(pair_key)
 
         if is_intercellular:
-            # Intercellular program: partners split across neighbor (source)
-            # and self (target) components
-            gp_dict[f"{gene_1}_{gene_2}_{interaction_class}_ppi_GP"] = {
-                "sources": [gene_1],
-                "targets": [gene_2],
-                "sources_categories": [location_1],
-                "targets_categories": [location_2]}
+            # Intercellular program: partners split across the neighbor
+            # (source) and self (target) components
+            (source_gene, target_gene, source_location,
+             target_location) = _orient_humanppi_intercellular_gp(
+                 gene_1, gene_2, location_1, location_2)
+            gp_dict[f"{source_gene}_{target_gene}_{interaction_class}"
+                    "_ppi_GP"] = {
+                "sources": [source_gene],
+                "targets": [target_gene],
+                "sources_categories": [source_location],
+                "targets_categories": [target_location]}
         else:
             # Intracellular program: both partners in the self (target)
             # component, empty source component (as for CollecTRI TF programs)

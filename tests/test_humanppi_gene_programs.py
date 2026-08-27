@@ -9,6 +9,7 @@ import pytest
 from nichecompass.utils.gene_programs import (
     _classify_humanppi_interaction,
     _classify_humanppi_go_cellular_components,
+    _orient_humanppi_intercellular_gp,
     _parse_humanppi_subcellular_location,
     _classify_humanppi_protein_location,
     _humanppi_cis_complex_gene_families,
@@ -272,6 +273,40 @@ def test_interaction_classification_rejects_raw_localization_strings():
     with pytest.raises(ValueError, match="not a location class"):
         _classify_humanppi_interaction("Cell membrane,Membrane",
                                        "cell_surface")
+
+
+###############################################################################
+## Gene program orientation ##
+###############################################################################
+
+@pytest.mark.parametrize("gene_1,gene_2,location_1,location_2,expected", [
+    # The diffusible ligand belongs in the source (neighbour) component
+    ("CCR7", "CCL19", "cell_surface", "secreted", ("CCL19", "CCR7")),
+    ("AXL", "GAS6", "cell_surface", "secreted", ("GAS6", "AXL")),
+    # Already correctly oriented, so left alone
+    ("CCL19", "CCR7", "secreted", "cell_surface", ("CCL19", "CCR7")),
+    # Contact dependent between two membrane anchored partners: arbitrary but
+    # order preserving
+    ("PDCD1", "CD274", "cell_surface", "cell_surface", ("PDCD1", "CD274")),
+    # Two soluble partners: likewise order preserving
+    ("COL1A1", "COL1A2", "secreted", "secreted", ("COL1A1", "COL1A2")),
+])
+def test_the_soluble_partner_is_placed_in_the_source_component(
+        gene_1, gene_2, location_1, location_2, expected):
+    """
+    NicheCompass reconstructs the source component from the aggregated
+    expression of a cell's neighbours and the target component from the cell
+    itself, so a diffusible ligand belongs in the source component and its
+    receptor in the target component.
+    """
+    source_gene, target_gene, source_location, target_location = (
+        _orient_humanppi_intercellular_gp(gene_1, gene_2, location_1,
+                                          location_2))
+    assert (source_gene, target_gene) == expected
+    # The locations must travel with their genes
+    original = {gene_1: location_1, gene_2: location_2}
+    assert source_location == original[source_gene]
+    assert target_location == original[target_gene]
 
 
 ###############################################################################
