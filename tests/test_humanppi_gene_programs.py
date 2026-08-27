@@ -8,6 +8,7 @@ import pytest
 
 from nichecompass.utils.gene_programs import (
     _classify_humanppi_interaction,
+    _parse_humanppi_subcellular_location,
     _classify_humanppi_protein_location,
     _humanppi_cis_complex_gene_families,
     _is_humanppi_ig_tcr_segment,
@@ -19,11 +20,12 @@ LOCATION_CLASSES = ["cell_surface", "secreted", "intracellular", "ambiguous",
 
 
 def anchored(is_membrane_anchored=True, has_topological_domain=False,
-             has_extracellular_domain=False):
+             has_extracellular_domain=False, subcellular_location=None):
     """Build a topology record as returned by the UniProt lookup."""
     return {"is_membrane_anchored": is_membrane_anchored,
             "has_topological_domain": has_topological_domain,
-            "has_extracellular_domain": has_extracellular_domain}
+            "has_extracellular_domain": has_extracellular_domain,
+            "subcellular_location": subcellular_location or []}
 
 
 ###############################################################################
@@ -122,6 +124,42 @@ def test_ambiguous_locality_governs_unresolved_evidence():
     assert _classify_humanppi_protein_location(
         "Membrane", topology=anchored(is_membrane_anchored=False),
         ambiguous_locality="extracellular") == "intracellular"
+
+
+@pytest.mark.parametrize("annotation,expected", [
+    ("SUBCELLULAR LOCATION: Cytoplasm {ECO:0000269|PubMed:17289661}. "
+     "Nucleus, nucleolus {ECO:0000269|PubMed:34516797}. Note=Localized in "
+     "granules. {ECO:0000269|PubMed:17289661}.",
+     ["Cytoplasm", "Nucleus"]),
+    # Topology qualifiers carry no location and are dropped
+    ("SUBCELLULAR LOCATION: Cell membrane; Peripheral membrane protein "
+     "{ECO:0000269|PubMed:20682791}. Endosome {ECO:0000269}.",
+     ["Cell membrane", "Endosome"]),
+    ("", []),
+    (None, []),
+])
+def test_subcellular_location_parsing(annotation, expected):
+    assert _parse_humanppi_subcellular_location(annotation) == expected
+
+
+def test_subcellular_location_is_a_fallback_for_a_missing_keyword():
+    # No cellular component keyword, but a curated subcellular location
+    assert _classify_humanppi_protein_location("none") == "unknown"
+    assert _classify_humanppi_protein_location(
+        "none",
+        topology=anchored(is_membrane_anchored=False,
+                          subcellular_location=["Cytoplasm", "Nucleus"])) == (
+                              "intracellular")
+    # It must never override an existing keyword
+    assert _classify_humanppi_protein_location(
+        "Secreted",
+        topology=anchored(subcellular_location=["Nucleus"])) == "secreted"
+    # And it is still subject to the topology gate
+    assert _classify_humanppi_protein_location(
+        "none",
+        topology=anchored(is_membrane_anchored=False,
+                          subcellular_location=["Cell membrane"])) == (
+                              "intracellular")
 
 
 def test_process_keywords_are_only_a_fallback_for_missing_localization():

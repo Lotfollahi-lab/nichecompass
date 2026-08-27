@@ -70,7 +70,16 @@ HUMANPPI_INTRACELLULAR_KEYWORDS = {
     "Proteasome", "Ribosome", "Spliceosome", "Exosome", "Signalosome",
     "Inflammasome", "Primosome", "Signal recognition particle",
     "DNA-directed RNA polymerase", "Nuclear pore complex", "Synaptosome",
-    "Flagellum", "CF(0)", "CF(1)"}
+    "Flagellum", "CF(0)", "CF(1)",
+    # Terms that occur in the UniProt subcellular location annotation but not
+    # among the cellular-component keywords
+    "Mitochondrion matrix", "Mitochondrion intermembrane space",
+    "Early endosome", "Late endosome", "Recycling endosome", "Autolysosome",
+    "Autophagosome membrane", "Midbody", "Vesicle", "P-body", "Perikaryon",
+    "Cell cortex", "Nucleus matrix", "Nucleus speckle", "Nucleus envelope",
+    "Nucleolus", "Cornified envelope", "Phagosome membrane",
+    "Endoplasmic reticulum membrane", "Golgi apparatus membrane",
+    "Cytoplasm granule", "Stress granule"}
 
 # Keywords that are compatible with an extracellular face but do not establish
 # one, either because they are generic parents of the whole membrane branch
@@ -131,6 +140,17 @@ def _classify_humanppi_protein_location(
         keywords = [keyword.strip() for keyword in str(localization).split(",")]
         keywords = [keyword for keyword in keywords
                     if keyword and keyword.lower() != "none"]
+    if not keywords and topology is not None:
+        # Fall back on the UniProt subcellular location annotation, which is
+        # curated to the same standard as the cellular-component keywords but
+        # is occasionally present when no keyword was assigned
+        keywords = [keyword for keyword in
+                    topology.get("subcellular_location", [])
+                    if keyword in (HUMANPPI_CELL_SURFACE_KEYWORDS
+                                   | HUMANPPI_SECRETED_KEYWORDS
+                                   | HUMANPPI_INTRACELLULAR_KEYWORDS
+                                   | HUMANPPI_AMBIGUOUS_LOCATION_KEYWORDS)]
+
     if not keywords:
         # Fall back on biological process keywords, which cannot establish an
         # extracellular face but can establish an intracellular location
@@ -155,9 +175,9 @@ def _classify_humanppi_protein_location(
     # or GPI anchor cannot present a face at the cell surface. Secreted
     # keywords are always trusted, because proteins can also be released
     # through non-classical routes that leave no sequence signature.
-    if (can_be_at_cell_surface is not False
-            and any(keyword in HUMANPPI_CELL_SURFACE_KEYWORDS
-                    for keyword in keywords)):
+    has_cell_surface_keyword = any(keyword in HUMANPPI_CELL_SURFACE_KEYWORDS
+                                   for keyword in keywords)
+    if can_be_at_cell_surface is not False and has_cell_surface_keyword:
         return "cell_surface"
     # An annotated extracellular topological domain is decisive positive
     # evidence and outweighs the cellular-component keywords. UniProt uses
@@ -198,6 +218,12 @@ def _classify_humanppi_protein_location(
                 or ambiguous_locality == "intracellular"):
             return "intracellular"
         return "ambiguous"
+    if has_cell_surface_keyword:
+        # A cell-surface keyword that is contradicted by the absence of a
+        # membrane anchor describes a peripheral membrane protein, which sits
+        # on one side of the membrane rather than spanning it and is in
+        # practice on the cytoplasmic side
+        return "intracellular"
     return "unknown"
 
 
@@ -310,6 +336,43 @@ def _is_humanppi_ig_tcr_segment(gene: str) -> bool:
     return re.match(HUMANPPI_IG_TCR_SEGMENT_PATTERN, gene.upper()) is not None
 
 
+# Qualifiers that appear in the UniProt subcellular location annotation
+# alongside the actual locations and that carry no location of their own.
+HUMANPPI_SUBCELLULAR_LOCATION_QUALIFIERS = {
+    "Peripheral membrane protein", "Single-pass membrane protein",
+    "Multi-pass membrane protein", "Single-pass type I membrane protein",
+    "Single-pass type II membrane protein", "Single-pass type III membrane protein",
+    "Single-pass type IV membrane protein", "Lipid-anchor", "GPI-anchor",
+    "Extracellular side", "Cytoplasmic side", "Lumenal side"}
+
+
+def _parse_humanppi_subcellular_location(annotation) -> list:
+    """
+    Parse the UniProt subcellular location annotation into a list of location
+    terms that can be matched against the cellular-component keyword sets.
+
+    The annotation is free text of the form
+    ´SUBCELLULAR LOCATION: Cytoplasm {evidence}. Nucleus, nucleolus
+    {evidence}. Note=...´, so evidence blocks, the trailing note and the
+    topology qualifiers are removed, and only the leading term of each location
+    is kept, since the keyword sets use the top-level compartment names.
+    """
+    if annotation is None or pd.isna(annotation) or not str(annotation).strip():
+        return []
+    text = re.sub(r"\{[^}]*\}", "", str(annotation))
+    text = re.sub(r"\bNote=.*", "", text, flags=re.S)
+    text = text.replace("SUBCELLULAR LOCATION:", "")
+    locations = []
+    for sentence in text.split("."):
+        for entry in sentence.split(";"):
+            entry = entry.strip().strip(".").strip()
+            if (not entry
+                    or entry in HUMANPPI_SUBCELLULAR_LOCATION_QUALIFIERS):
+                continue
+            locations.append(entry.split(",")[0].strip())
+    return locations
+
+
 def _load_humanppi_protein_topology(accessions: list,
                                     topology_file_path: str) -> dict:
     """
@@ -342,20 +405,25 @@ def _load_humanppi_protein_topology(accessions: list,
     """
     topology = {}
     required_columns = ["accession", "is_membrane_anchored",
-                        "has_topological_domain", "has_extracellular_domain"]
+                        "has_topological_domain", "has_extracellular_domain",
+                        "subcellular_location"]
     if os.path.exists(topology_file_path):
         topology_df = pd.read_csv(topology_file_path, sep="\t")
         if not set(required_columns).issubset(topology_df.columns):
             # An outdated cache is ignored and retrieved again
             topology_df = topology_df.iloc[0:0]
         for _, topology_row in topology_df.iterrows():
+            subcellular_location = topology_row["subcellular_location"]
             topology[str(topology_row["accession"])] = {
                 "is_membrane_anchored": bool(
                     topology_row["is_membrane_anchored"]),
                 "has_topological_domain": bool(
                     topology_row["has_topological_domain"]),
                 "has_extracellular_domain": bool(
-                    topology_row["has_extracellular_domain"])}
+                    topology_row["has_extracellular_domain"]),
+                "subcellular_location": (
+                    [] if pd.isna(subcellular_location)
+                    else str(subcellular_location).split(";"))}
 
     missing = sorted({accession for accession in accessions
                       if accession not in topology})
@@ -363,7 +431,8 @@ def _load_humanppi_protein_topology(accessions: list,
         print(f"Retrieving membrane topology for {len(missing)} proteins from "
               "UniProt...")
         batch_size = 100
-        fields = "accession,ft_transmem,ft_lipid,ft_topo_dom"
+        fields = ("accession,ft_transmem,ft_lipid,ft_topo_dom,"
+                  "cc_subcellular_location")
         for batch_start in range(0, len(missing), batch_size):
             batch = missing[batch_start:batch_start + batch_size]
             query = "+OR+".join(f"accession:{accession}"
@@ -380,18 +449,26 @@ def _load_humanppi_protein_topology(accessions: list,
                 transmem = columns[1] if len(columns) > 1 else ""
                 lipid = columns[2] if len(columns) > 2 else ""
                 topo_dom = columns[3] if len(columns) > 3 else ""
+                subcellular = columns[4] if len(columns) > 4 else ""
                 topology[accession] = {
                     "is_membrane_anchored": bool("TRANSMEM" in transmem
                                                  or "GPI-anchor" in lipid),
                     "has_topological_domain": "TOPO_DOM" in topo_dom,
-                    "has_extracellular_domain": "Extracellular" in topo_dom}
+                    "has_extracellular_domain": "Extracellular" in topo_dom,
+                    "subcellular_location":
+                        _parse_humanppi_subcellular_location(subcellular)}
 
         cache_dir = os.path.dirname(topology_file_path)
         if cache_dir:
             os.makedirs(cache_dir, exist_ok=True)
-        pd.DataFrame([{"accession": accession, **values}
-                      for accession, values in topology.items()]).to_csv(
-                          topology_file_path, sep="\t", index=False)
+        pd.DataFrame([
+            {"accession": accession,
+             "is_membrane_anchored": values["is_membrane_anchored"],
+             "has_topological_domain": values["has_topological_domain"],
+             "has_extracellular_domain": values["has_extracellular_domain"],
+             "subcellular_location": ";".join(values["subcellular_location"])}
+            for accession, values in topology.items()]).to_csv(
+                topology_file_path, sep="\t", index=False)
     return topology
 
 
@@ -1501,6 +1578,12 @@ def extract_gp_dict_from_humanppi_interactions(
       property rather than a location (´Amyloid´). Whether such proteins count
       as extracellular facing is governed by ´ambiguous_locality´.
     - ´unknown´: no usable keyword at all.
+
+    Where a protein has no cellular-component keyword, two fallbacks are tried
+    in turn: the UniProt subcellular location annotation, which is curated to
+    the same standard as the keywords but is occasionally present when no
+    keyword was assigned, and then the biological-process keywords, which can
+    only establish an intracellular location.
 
     Evidence for an extracellular face takes precedence over evidence for an
     intracellular location, since secreted and surface proteins are frequently
