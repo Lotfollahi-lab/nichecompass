@@ -97,6 +97,12 @@ HUMANPPI_AMBIGUOUS_LOCATION_KEYWORDS = {
     "Target membrane"}
 
 
+HUMANPPI_ALL_LOCATION_KEYWORDS = (HUMANPPI_CELL_SURFACE_KEYWORDS
+                                  | HUMANPPI_SECRETED_KEYWORDS
+                                  | HUMANPPI_INTRACELLULAR_KEYWORDS
+                                  | HUMANPPI_AMBIGUOUS_LOCATION_KEYWORDS)
+
+
 def _classify_humanppi_protein_location(
         localization,
         topology: Optional[dict]=None,
@@ -141,25 +147,22 @@ def _classify_humanppi_protein_location(
         keywords = [keyword for keyword in keywords
                     if keyword and keyword.lower() != "none"]
     if not keywords and topology is not None:
+        # Fall back on the current cellular-component keywords retrieved from
+        # UniProt. The localization shipped with the predictions is a snapshot
+        # and is frequently stale rather than genuinely absent.
+        keywords = list(topology.get("cellular_component_keywords", []))
+
+    if not keywords and topology is not None:
         # Fall back on the UniProt subcellular location annotation, which is
         # curated to the same standard as the cellular-component keywords but
         # is occasionally present when no keyword was assigned
         keywords = [keyword for keyword in
                     topology.get("subcellular_location", [])
-                    if keyword in (HUMANPPI_CELL_SURFACE_KEYWORDS
-                                   | HUMANPPI_SECRETED_KEYWORDS
-                                   | HUMANPPI_INTRACELLULAR_KEYWORDS
-                                   | HUMANPPI_AMBIGUOUS_LOCATION_KEYWORDS)]
+                    if keyword in HUMANPPI_ALL_LOCATION_KEYWORDS]
 
     if not keywords:
-        # Fall back on biological process keywords, which cannot establish an
-        # extracellular face but can establish an intracellular location
-        if process is not None and not pd.isna(process):
-            processes = [entry.strip() for entry in str(process).split(",")]
-            if any(entry in HUMANPPI_INTRACELLULAR_PROCESS_KEYWORDS
-                   for entry in processes):
-                return "intracellular"
-        return "unknown"
+        return _classify_humanppi_location_from_weak_evidence(topology,
+                                                              process)
     # Antibody chains are an exception to the precedence of membrane anchoring
     # over secretion: they carry ´Cell membrane´ for the B cell receptor form
     # and ´Secreted´ for the antibody form, and it is the secreted form that
@@ -224,7 +227,7 @@ def _classify_humanppi_protein_location(
         # on one side of the membrane rather than spanning it and is in
         # practice on the cytoplasmic side
         return "intracellular"
-    return "unknown"
+    return _classify_humanppi_location_from_weak_evidence(topology, process)
 
 
 # Gene families whose members assemble into a common complex within one cell,
@@ -346,6 +349,96 @@ HUMANPPI_SUBCELLULAR_LOCATION_QUALIFIERS = {
     "Extracellular side", "Cytoplasmic side", "Lumenal side"}
 
 
+# Gene Ontology cellular-component term fragments, matched case insensitively
+# against the term names. Gene Ontology coverage is far broader than the UniProt
+# keywords, but its extracellular annotations are unreliable, because
+# proteomics of vesicle and granule preparations attaches terms such as
+# ´extracellular exosome´ to large numbers of cytosolic proteins. Gene Ontology
+# is therefore only used to establish an INTRACELLULAR location, and its
+# extracellular terms only serve to veto that conclusion.
+HUMANPPI_GO_EXTRACELLULAR_FRAGMENTS = (
+    "extracellular space", "extracellular region", "extracellular matrix",
+    "cell surface", "external side of plasma membrane", "basement membrane",
+    "side of plasma membrane")
+
+# Fragments that establish nothing in either direction. ´plasma membrane´ on its
+# own is included because it is attached to many proteins that only dock onto
+# the cytoplasmic leaflet, and the vesicle and granule terms because they come
+# from preparations rather than from a resident location.
+HUMANPPI_GO_NON_ESTABLISHING_FRAGMENTS = (
+    "extracellular exosome", "extracellular vesicle", "microvesicle",
+    "blood microparticle", "granule lumen", "secretory granule",
+    "plasma membrane", "membrane raft", "vesicle membrane")
+
+HUMANPPI_GO_INTRACELLULAR_FRAGMENTS = (
+    "nucle", "cytosol", "cytoplasm", "mitochondri", "endoplasmic reticulum",
+    "golgi", "ribosom", "spliceosom", "proteasom", "cytoskelet", "endosom",
+    "lysosom", "peroxisom", "chromosom", "centrosom", "centriole",
+    "microtubul", "intracellular", "perinuclear", "autophagosom", "phagosom",
+    "vacuol", "midbody", "spindle", "kinetochore", "p-body", "stress granule",
+    "inclusion body", "melanosom", "myofibril", "sarcomere", "chaperonin")
+
+
+def _classify_humanppi_go_cellular_components(go_terms: list) -> str:
+    """
+    Classify a list of Gene Ontology cellular-component term names into
+    ´intracellular´ or ´unknown´.
+
+    Only an intracellular location can be established. A term that establishes
+    an extracellular face vetoes the conclusion, in which case ´unknown´ is
+    returned so that weaker evidence can still be consulted.
+    """
+    has_intracellular = False
+    for go_term in go_terms:
+        term = go_term.lower()
+        if any(fragment in term
+               for fragment in HUMANPPI_GO_EXTRACELLULAR_FRAGMENTS):
+            return "unknown"
+        if any(fragment in term
+               for fragment in HUMANPPI_GO_NON_ESTABLISHING_FRAGMENTS):
+            continue
+        if any(fragment in term
+               for fragment in HUMANPPI_GO_INTRACELLULAR_FRAGMENTS):
+            has_intracellular = True
+    return "intracellular" if has_intracellular else "unknown"
+
+
+def _classify_humanppi_location_from_weak_evidence(
+        topology: Optional[dict],
+        process: Optional[str]) -> str:
+    """
+    Classify a protein for which no cellular-component keyword is available,
+    from progressively weaker evidence.
+
+    Three sources are consulted in order of reliability: Gene Ontology
+    cellular-component annotations, which can only establish an intracellular
+    location; the presence of a signal peptide, which shows that the protein
+    enters the secretory pathway; and the UniProt biological-process keywords,
+    which can again only establish an intracellular location.
+
+    Gene Ontology is consulted before the signal peptide so that proteins of the
+    secretory pathway that are resident in an organelle rather than released,
+    such as endoplasmic reticulum chaperones, are recognized as intracellular
+    despite having a signal peptide.
+    """
+    if topology is not None:
+        go_location = _classify_humanppi_go_cellular_components(
+            topology.get("go_cellular_components", []))
+        if go_location != "unknown":
+            return go_location
+        if topology.get("has_signal_peptide"):
+            # The protein enters the secretory pathway. If it is membrane
+            # anchored it ends up at a membrane, otherwise it is released.
+            return ("cell_surface" if topology["is_membrane_anchored"]
+                    else "secreted")
+    if process is not None and not pd.isna(process):
+        processes = [entry.strip() for entry in str(process).split(",")]
+        if any(entry in HUMANPPI_INTRACELLULAR_PROCESS_KEYWORDS
+               for entry in processes):
+            return "intracellular"
+    return "unknown"
+
+
 def _parse_humanppi_subcellular_location(annotation) -> list:
     """
     Parse the UniProt subcellular location annotation into a list of location
@@ -406,14 +499,18 @@ def _load_humanppi_protein_topology(accessions: list,
     topology = {}
     required_columns = ["accession", "is_membrane_anchored",
                         "has_topological_domain", "has_extracellular_domain",
-                        "subcellular_location"]
+                        "has_signal_peptide", "subcellular_location",
+                        "cellular_component_keywords",
+                        "go_cellular_components"]
     if os.path.exists(topology_file_path):
         topology_df = pd.read_csv(topology_file_path, sep="\t")
         if not set(required_columns).issubset(topology_df.columns):
             # An outdated cache is ignored and retrieved again
             topology_df = topology_df.iloc[0:0]
         for _, topology_row in topology_df.iterrows():
-            subcellular_location = topology_row["subcellular_location"]
+            def split_cached(value):
+                return [] if pd.isna(value) else str(value).split(";")
+
             topology[str(topology_row["accession"])] = {
                 "is_membrane_anchored": bool(
                     topology_row["is_membrane_anchored"]),
@@ -421,9 +518,14 @@ def _load_humanppi_protein_topology(accessions: list,
                     topology_row["has_topological_domain"]),
                 "has_extracellular_domain": bool(
                     topology_row["has_extracellular_domain"]),
-                "subcellular_location": (
-                    [] if pd.isna(subcellular_location)
-                    else str(subcellular_location).split(";"))}
+                "has_signal_peptide": bool(
+                    topology_row["has_signal_peptide"]),
+                "subcellular_location": split_cached(
+                    topology_row["subcellular_location"]),
+                "cellular_component_keywords": split_cached(
+                    topology_row["cellular_component_keywords"]),
+                "go_cellular_components": split_cached(
+                    topology_row["go_cellular_components"])}
 
     missing = sorted({accession for accession in accessions
                       if accession not in topology})
@@ -431,8 +533,8 @@ def _load_humanppi_protein_topology(accessions: list,
         print(f"Retrieving membrane topology for {len(missing)} proteins from "
               "UniProt...")
         batch_size = 100
-        fields = ("accession,ft_transmem,ft_lipid,ft_topo_dom,"
-                  "cc_subcellular_location")
+        fields = ("accession,ft_transmem,ft_lipid,ft_topo_dom,ft_signal,"
+                  "cc_subcellular_location,keyword,go_c")
         for batch_start in range(0, len(missing), batch_size):
             batch = missing[batch_start:batch_start + batch_size]
             query = "+OR+".join(f"accession:{accession}"
@@ -449,14 +551,29 @@ def _load_humanppi_protein_topology(accessions: list,
                 transmem = columns[1] if len(columns) > 1 else ""
                 lipid = columns[2] if len(columns) > 2 else ""
                 topo_dom = columns[3] if len(columns) > 3 else ""
-                subcellular = columns[4] if len(columns) > 4 else ""
+                signal = columns[4] if len(columns) > 4 else ""
+                subcellular = columns[5] if len(columns) > 5 else ""
+                keywords = columns[6] if len(columns) > 6 else ""
+                go_components = columns[7] if len(columns) > 7 else ""
+                # Only the cellular-component keywords are retained; the field
+                # also contains biological-process and other keywords
+                current_keywords = [
+                    keyword.strip() for keyword in str(keywords).split(";")
+                    if keyword.strip() in HUMANPPI_ALL_LOCATION_KEYWORDS]
+                # Term names look like 'nucleus [GO:0005634]'
+                go_terms = [re.sub(r"\s*\[GO:\d+\]", "", term).strip()
+                            for term in str(go_components).split(";")
+                            if term.strip()]
                 topology[accession] = {
                     "is_membrane_anchored": bool("TRANSMEM" in transmem
                                                  or "GPI-anchor" in lipid),
                     "has_topological_domain": "TOPO_DOM" in topo_dom,
                     "has_extracellular_domain": "Extracellular" in topo_dom,
+                    "has_signal_peptide": "SIGNAL" in signal,
                     "subcellular_location":
-                        _parse_humanppi_subcellular_location(subcellular)}
+                        _parse_humanppi_subcellular_location(subcellular),
+                    "cellular_component_keywords": current_keywords,
+                    "go_cellular_components": go_terms}
 
         cache_dir = os.path.dirname(topology_file_path)
         if cache_dir:
@@ -466,7 +583,12 @@ def _load_humanppi_protein_topology(accessions: list,
              "is_membrane_anchored": values["is_membrane_anchored"],
              "has_topological_domain": values["has_topological_domain"],
              "has_extracellular_domain": values["has_extracellular_domain"],
-             "subcellular_location": ";".join(values["subcellular_location"])}
+             "has_signal_peptide": values["has_signal_peptide"],
+             "subcellular_location": ";".join(values["subcellular_location"]),
+             "cellular_component_keywords":
+                 ";".join(values["cellular_component_keywords"]),
+             "go_cellular_components":
+                 ";".join(values["go_cellular_components"])}
             for accession, values in topology.items()]).to_csv(
                 topology_file_path, sep="\t", index=False)
     return topology
@@ -1579,11 +1701,16 @@ def extract_gp_dict_from_humanppi_interactions(
       as extracellular facing is governed by ´ambiguous_locality´.
     - ´unknown´: no usable keyword at all.
 
-    Where a protein has no cellular-component keyword, two fallbacks are tried
-    in turn: the UniProt subcellular location annotation, which is curated to
-    the same standard as the keywords but is occasionally present when no
-    keyword was assigned, and then the biological-process keywords, which can
-    only establish an intracellular location.
+    Where a protein has no cellular-component keyword, five fallbacks are tried
+    in order of reliability: the current cellular-component keywords retrieved
+    from UniProt, since the localization shipped with the predictions is a
+    snapshot and is frequently stale rather than genuinely absent; the UniProt
+    subcellular location annotation; the Gene Ontology cellular-component
+    annotations, which can only establish an intracellular location because
+    their extracellular terms are unreliable; the presence of a signal peptide,
+    which shows that the protein enters the secretory pathway; and finally the
+    biological-process keywords, which can again only establish an intracellular
+    location.
 
     Evidence for an extracellular face takes precedence over evidence for an
     intracellular location, since secreted and surface proteins are frequently

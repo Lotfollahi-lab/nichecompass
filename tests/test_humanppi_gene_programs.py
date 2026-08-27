@@ -8,6 +8,7 @@ import pytest
 
 from nichecompass.utils.gene_programs import (
     _classify_humanppi_interaction,
+    _classify_humanppi_go_cellular_components,
     _parse_humanppi_subcellular_location,
     _classify_humanppi_protein_location,
     _humanppi_cis_complex_gene_families,
@@ -20,12 +21,17 @@ LOCATION_CLASSES = ["cell_surface", "secreted", "intracellular", "ambiguous",
 
 
 def anchored(is_membrane_anchored=True, has_topological_domain=False,
-             has_extracellular_domain=False, subcellular_location=None):
+             has_extracellular_domain=False, subcellular_location=None,
+             has_signal_peptide=False, cellular_component_keywords=None,
+             go_cellular_components=None):
     """Build a topology record as returned by the UniProt lookup."""
     return {"is_membrane_anchored": is_membrane_anchored,
             "has_topological_domain": has_topological_domain,
             "has_extracellular_domain": has_extracellular_domain,
-            "subcellular_location": subcellular_location or []}
+            "has_signal_peptide": has_signal_peptide,
+            "subcellular_location": subcellular_location or [],
+            "cellular_component_keywords": cellular_component_keywords or [],
+            "go_cellular_components": go_cellular_components or []}
 
 
 ###############################################################################
@@ -160,6 +166,69 @@ def test_subcellular_location_is_a_fallback_for_a_missing_keyword():
         topology=anchored(is_membrane_anchored=False,
                           subcellular_location=["Cell membrane"])) == (
                               "intracellular")
+
+
+def test_refreshed_keywords_are_the_first_fallback():
+    # The localization shipped with the predictions is a stale snapshot
+    assert _classify_humanppi_protein_location(
+        "none",
+        topology=anchored(cellular_component_keywords=["Secreted"])) == (
+            "secreted")
+    # It must never override a localization that is present
+    assert _classify_humanppi_protein_location(
+        "Nucleus",
+        topology=anchored(cellular_component_keywords=["Secreted"])) == (
+            "intracellular")
+
+
+@pytest.mark.parametrize("go_terms,expected", [
+    (["nucleus", "cytosol"], "intracellular"),
+    (["mitochondrial inner membrane"], "intracellular"),
+    # Extracellular terms veto the conclusion rather than establishing one
+    (["cytosol", "extracellular space"], "unknown"),
+    (["cell surface"], "unknown"),
+    (["external side of plasma membrane"], "unknown"),
+    # Preparation-derived and generic terms establish nothing either way
+    (["extracellular exosome"], "unknown"),
+    (["blood microparticle"], "unknown"),
+    (["plasma membrane"], "unknown"),
+    (["extracellular exosome", "nucleus"], "intracellular"),
+    (["plasma membrane", "cytosol"], "intracellular"),
+    ([], "unknown"),
+])
+def test_go_cellular_components(go_terms, expected):
+    assert _classify_humanppi_go_cellular_components(go_terms) == expected
+
+
+def test_go_is_consulted_before_the_signal_peptide():
+    # An endoplasmic reticulum chaperone has a signal peptide but is resident
+    assert _classify_humanppi_protein_location(
+        "none",
+        topology=anchored(is_membrane_anchored=False, has_signal_peptide=True,
+                          go_cellular_components=[
+                              "endoplasmic reticulum lumen"])) == (
+                                  "intracellular")
+    # A secreted protease has a signal peptide and no intracellular GO term
+    assert _classify_humanppi_protein_location(
+        "none",
+        topology=anchored(is_membrane_anchored=False,
+                          has_signal_peptide=True)) == "secreted"
+    # With a membrane anchor it ends up at a membrane instead
+    assert _classify_humanppi_protein_location(
+        "none",
+        topology=anchored(is_membrane_anchored=True,
+                          has_signal_peptide=True)) == "cell_surface"
+
+
+def test_weak_evidence_is_only_used_when_no_keyword_is_available():
+    # Established keywords always win over the weak fallbacks
+    assert _classify_humanppi_protein_location(
+        "Secreted",
+        topology=anchored(go_cellular_components=["nucleus"])) == "secreted"
+    assert _classify_humanppi_protein_location(
+        "Nucleus",
+        topology=anchored(has_signal_peptide=True,
+                          is_membrane_anchored=False)) == "intracellular"
 
 
 def test_process_keywords_are_only_a_fallback_for_missing_localization():
