@@ -235,9 +235,12 @@ Topology is consulted in **both** directions:
   cytoplasmic side.
 
 `ambiguous_locality` (default `extracellular`) decides the remaining case, where a keyword is compatible with
-an extracellular face and topology neither confirms nor contradicts it. It has almost no effect while
-`use_topology` is `True`, but with topology disabled it is the deciding parameter: 2,527 against 1,776
-intercellular gene programs.
+an extracellular face and topology neither confirms nor contradicts it. **With `use_topology=True` and a
+complete annotation cache this parameter is inert and the `ambiguous` class is never produced**, because
+topology resolves every case the keywords leave open: measured on the precision-90 predictions, no gene is
+assigned the `ambiguous` category and both settings give 2,010 intercellular programs. It becomes the
+deciding parameter only with `use_topology=False`, where it gives 2,527 against 1,776 intercellular
+programs.
 
 ### 5.4 The fallback chain for proteins with no cellular-component keyword
 
@@ -379,8 +382,19 @@ intercellular (1,535 paracrine, 2,601 juxtacrine).
 1. **Interface topology is not used.** Whether an interaction interface lies on the extracellular side is the
    biologically correct criterion, and the resource ships residue-level contact matrices that would answer
    it, but only inside a 67 GB archive. Everything here is a protein-level proxy.
-2. **cis coverage is a lower bound.** The Complex Portal covers about a fifth of these proteins;
-   `CD247`-`FCER1G` and `FCER1G`-`TREM2` are demonstrably uncaught.
+2. **`juxtacrine` does not test for *trans* and therefore over-calls badly.** It is inferred from "both
+   partners are extracellular facing and neither is purely secreted", which every pair of subunits in the
+   same channel, transporter or receptor heterodimer also satisfies. Independent review measured that
+   roughly 15-20% of the 1,173 juxtacrine programs are same-cell assemblies, and all 15 canonical cis pairs
+   probed are currently called `juxtacrine`: `KCNJ6`-`KCNJ9` and `HCN1`-`HCN4` (channel heterotetramers),
+   `CNGA1`-`CNGB1` (the rod photoreceptor channel), `ABCG5`-`ABCG8`, `ORAI2`-`ORAI3`, `SLC51A`-`SLC51B`,
+   `ERBB2`-`ERBB3`, `INSR`-`IGF1R`, `GABBR1`-`GABBR2`, `PTCH1`-`SMO`, `TLR1`-`TLR2`, `NRP1`-`KDR`,
+   `CALCR`-`RAMP1`, `BMPR1A`-`BMPR2`, `ASIC4`-`ASIC3`. The Complex Portal cannot fix this, since it holds
+   almost no binary cell-surface heteromers, and it covers only about a fifth of these proteins
+   (`CD247`-`FCER1G` and `FCER1G`-`TREM2` are demonstrably uncaught). The tractable remedy is a positive
+   test for *trans*: the transmembrane segment count and the extracellular span lengths are already
+   retrieved from `ft_transmem` and `ft_topo_dom` and then collapsed to booleans, and a protein that crosses
+   the membrane many times with short loops cannot reach across an intercellular cleft.
 3. **Precision is not measured globally.** Every specific false positive found has been fixed, but there is
    no clean negative gold standard, so the fraction of the 2,029 intercellular calls that are wrong is
    unknown. Recall is measured; precision is argued.
@@ -422,7 +436,7 @@ Grouped by what they control. Defaults are those of
 | `program_type` | `"intercellular"` | `"intercellular"` keeps paracrine and juxtacrine; `"intracellular"` keeps the rest; `"both"` keeps everything |
 | `use_topology` | `True` | Retrieve UniProt membrane topology and annotation (section 4.1). Needs network access on first use |
 | `topology_file_path` | `../data/gene_programs/humanppi_protein_topology.tsv` | Cache location for the UniProt annotation |
-| `ambiguous_locality` | `"extracellular"` | How to treat proteins whose extracellular face is neither established nor contradicted (section 5.3) |
+| `ambiguous_locality` | `"extracellular"` | How to treat proteins whose extracellular face is neither established nor contradicted (section 5.3). Inert unless `use_topology=False` |
 | `unresolved_locality` | `"exclude"` | How to treat interactions whose partner locations stay unresolved: `"exclude"` drops them, `"intracellular"` keeps them as target-only programs |
 | `detect_cis_complexes` | `True` | Reclassify subunits of a common complex as `cis_complex` or `extracellular_assembly` (section 6.1) |
 | `complex_portal_file_path` | `../data/gene_programs/complex_portal_human.tsv` | Cache location for the Complex Portal table |
