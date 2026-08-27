@@ -12,3 +12,17 @@ In summary, we recommend the following:
 - We recommend that users define prior GPs solely based on the biology that they are interested in (as opposed to including as many prior GPs as possible).
 - We recommend users to use a GATv2 encoder layer (as opposed to a GCNConv encoder layer) unless performance is a bottleneck or niche characterization is not a priority and the data has single-cell resolution. 
 - Since the use of prior GPs can significantly improve NID compared to a scenario without prior GPs, we recommend users to use the default set of prior GPs even if interpretability is not a main objective.
+
+## Prior gene program resources
+
+NicheCompass ships several prior gene program resources, retrieved through the functions documented in the
+API. Most are a direct translation of a curated database into gene programs. The human protein-protein
+interaction resource is the exception: because the predicted human interactome is undirected and dominated by
+intracellular complexes, it requires a substantial classification step before it can be used as a
+neighbour-to-self signalling prior. That workflow is documented in full, step by step, here:
+
+```{toctree}
+:maxdepth: 1
+
+humanppi_gene_programs
+```

@@ -58,6 +58,7 @@ If you find NicheCompass useful for your research, please consider citing the Ni
 
 installation
 tutorials/index
+user_guide/index
 api/index
 release_notes/index
 contributing.md

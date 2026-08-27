@@ -1,0 +1,467 @@
+# Human PPI gene programs
+
+This page documents, step by step, how `extract_gp_dict_from_humanppi_interactions` turns the predicted
+human interactome into prior gene programs for NicheCompass. It is written for a computational biologist or
+bioinformatician who wants to understand exactly what the resulting gene program mask contains, what
+evidence each decision rests on, and where the limits are.
+
+## 1. What this resource is and why it needs a classification step
+
+NicheCompass makes its latent space interpretable by masking the decoder with **prior gene programs**. Each
+gene program has two components, and the distinction is the reason a raw interactome cannot be used directly:
+
+- the **source component** holds genes whose expression is reconstructed from the **aggregated expression of
+  a cell's spatial neighbours**, i.e. the transmitting cells;
+- the **target component** holds genes whose expression is reconstructed from the **cell's own expression**,
+  i.e. the receiving cell.
+
+A gene program therefore encodes a statement of the form *"these genes in my neighbours, together with those
+genes in me"*. A program with an empty source component models a purely within-cell process, exactly as the
+CollecTRI transcription factor programs do.
+
+The source resource is the predicted human interactome of
+[Zhang, Humphreys et al., Science 390, eadt1630 (2025)](https://www.science.org/doi/10.1126/science.adt1630).
+The authors screened roughly 190 million human protein pairs with RoseTTAFold2-PPI and AlphaFold2 and
+released 17,849 predicted interactions at an expected precision of 90% and 29,257 at 80%, of which about
+3,600 were previously unreported. Two properties of that resource drive everything below:
+
+1. It is a **physical interaction** network, not a signalling network. It is dominated by intracellular
+   complexes: the proteasome, the mitochondrial respiratory chain, spliceosome subunits, chaperone pairs.
+   Feeding it in unfiltered would fill the latent space with within-cell complexes placed in a
+   neighbour-to-self signalling role.
+2. Interactions are **undirected**. Nothing in the table says which partner is the ligand and which the
+   receptor, so the assignment to the source and target component has to be derived.
+
+The classification below exists to solve both problems: it decides which interactions can plausibly act
+*between* cells, and for those it decides which partner belongs in which component.
+
+## 2. Retrieval, caching and provenance
+
+Three external resources are used. Each is downloaded on first use, cached, and accompanied by a
+`<file>.provenance.json` recording the source URL, the retrieval time in UTC and whatever version the server
+reports. Reusing a cache prints its provenance; a cache without provenance is reported as such. This matters
+because all three are updated independently of NicheCompass, so a gene program mask is only reproducible if
+the versions that produced it are known.
+
+| Resource | Source | Cached as | Version recorded |
+| :-- | :-- | :-- | :-- |
+| Interaction predictions | `conglab.swmed.edu/humanPPI` (archived on [Dryad](https://doi.org/10.5061/dryad.15dv41p84)) | `humanppi_network_<precision>.csv` | `Last-Modified`, size |
+| Protein annotation | UniProt REST | `humanppi_protein_topology.tsv` | UniProt release and release date |
+| Protein complexes | EBI Complex Portal, human | `complex_portal_human.tsv` | `Last-Modified`, size |
+
+The download server for the predictions presents an incomplete TLS certificate chain, so the first attempt is
+retried with certificate verification disabled and a warning. This is expected, not a failure.
+
+### What the prediction table contains
+
+28 columns per interaction. The classification uses only a few of them, so it is worth knowing what is
+there. Taking PD-1 / PD-L1 as an example:
+
+| Column | Value | Used? |
+| :-- | :-- | :-- |
+| `Protein1`, `Protein2` | `Q15116`, `Q9NZQ7` (UniProt accessions) | yes, to join UniProt and the Complex Portal |
+| `Name1`, `Name2` | `PDCD1`, `CD274` (gene symbols) | yes, these become the gene program genes |
+| `RFprob`, `AFprob` | 0.998, 0.998 | optional thresholds |
+| `AFprob5` / `CFprob`, `AFMprob` | 0.9995, 0.9976 | no (these columns differ between the two precision levels) |
+| `Source` | `S,P` (how the pair entered the screen) | no |
+| `PDBtemp`, `Exact_/Ortho_/Homo_templates` | `exact`, `5ius,4zqk`, ... | no |
+| `confDBs`, `allDBs`, `STRING` | `BIOGRID,STRING,UNIPROT`, 999 | no |
+| `Known1/2`, `Count1/2` | 4.1, 17.0, 17, 13 | no |
+| **`Locality1`, `Locality2`** | `Cell membrane,Membrane` / `Cell membrane,Endosome,Membrane,Nucleus,Secreted` | **yes, the primary evidence** |
+| `Process1`, `Process2` | `Adaptive immunity,Apoptosis,Immunity` | yes, as a last-resort fallback |
+| `Disease1/2`, `Function1/2` | ..., `Programmed cell death protein 1` | no |
+
+`Locality` holds **UniProt cellular-component keywords**, and it is a snapshot taken when the screen was
+run, which turns out to matter (see step 4.3).
+
+## 3. Preprocessing: which interactions are removed before classification
+
+Four filters run on the table, in this order. Each prints how many interactions it removed. Numbers below
+are for `precision="90"`, `species="human"`.
+
+### 3.1 Missing gene names (always applied)
+
+The table uses the **literal string `none`** as its placeholder for missing values, in every column
+including the gene name columns, so `dropna` does not catch it. 38 interactions involve a protein whose
+UniProt entry has no gene name at all: putative and uncharacterised proteins such as
+`Putative speedy protein-like protein 3`, and immunoglobulin variable segments. These are dropped for two
+reasons: a protein without a gene symbol can never be matched to a measured gene, and because *all* unnamed
+proteins share the single placeholder, keeping them would conflate 18 distinct proteins into one spurious
+gene called `none` and would make distinct interactions look like duplicates of each other.
+
+### 3.2 Immunoglobulin and T cell receptor gene segments (`filter_ig_tcr_segments`, default `True`)
+
+Removes **358 interactions**. Antibodies and T cell receptors are encoded as separate V, D and J gene
+segments that are somatically recombined into a single chain, so an interaction between two of them, or
+between a segment and the constant region of the same chain, is **intramolecular** rather than an interaction
+between two proteins. `IGLV10-54`-`IGLC2` is the variable and the constant region of one lambda light chain.
+
+The structural predictor produces many such pairs because every variable domain shares the immunoglobulin
+fold: `IGHV4-30-2`-`TRDV1`, an antibody heavy V region with a T cell receptor delta V region, scores
+`RFprob` 0.998. The pattern matches V, D and J segments only
+(`^(IG[HKL][VJ]\d|IGHD\d|TR[ABDG][VJ]\d|TR[BD]D\d)`); constant region genes such as `IGHG1`, `IGHM`,
+`IGLC2`, `TRAC` and `TRBC2` encode complete proteins and are deliberately kept. Note that `IGHD` without a
+digit is the IgD heavy constant region, while `IGHD3-3` is a D segment.
+
+### 3.3 Paralogue combinations that do not form (`filter_paralog_cross_pairs`, default `True`)
+
+Removes **80 interactions**. Close paralogues have interchangeable interfaces, so the predictor generalises
+across them and produces heterodimers that do not exist. Two families are constrained explicitly:
+
+- **Integrins**: only the 24 alpha-beta heterodimers that actually form are kept, so `ITGB4`-`ITGAL`,
+  `ITGB6`-`ITGAL` and `ITGA5`-`ITGB5` are dropped while `ITGAL`-`ITGB2` and `ITGAV`-`ITGB3` are kept.
+- **MHC class II**: only matching isotypes pair, so `HLA-DRA`-`HLA-DRB1` is kept while `HLA-DRA`-`HLA-DQB1`
+  and `HLA-DQB2`-`HLA-DPA1` are dropped.
+
+### 3.4 Prediction confidence (`min_rf_prob`, `min_af_prob`, default `None`)
+
+Optional. `RFprob` is the RoseTTAFold2-PPI probability from the fast coevolution-driven screen of all
+candidate pairs; `AFprob` is the AlphaFold2 probability from the slower structural rescoring of the pairs
+that passed. **A low score in one column does not mean the interaction is unreliable**: pairs entered the
+final set through several routes and the evidence-guided routes used relaxed cutoffs, so the released tables
+deliberately contain interactions with a very low score from one predictor but strong support overall. In the
+precision-90 table `RFprob` has a median of 0.678 with only 39.4% of entries at or above 0.9, while `AFprob`
+has a median of 0.943. Thresholds are therefore aggressive and the default is to trust the authors'
+own precision calibration.
+
+## 4. Gathering evidence about each protein
+
+### 4.1 UniProt annotation (`use_topology`, default `True`)
+
+One batched UniProt REST request per 100 accessions retrieves seven fields, all cached together. For the
+12,258 accessions across both precision levels:
+
+| Evidence | Field | Coverage |
+| :-- | :-- | --: |
+| Membrane anchor (transmembrane segment or GPI anchor) | `ft_transmem`, `ft_lipid` | 3,157 |
+| Topological domains annotated | `ft_topo_dom` | 2,431 |
+| ... of which an **extracellular** domain | `ft_topo_dom` | 1,695 |
+| Signal peptide | `ft_signal` | 2,248 |
+| Current cellular-component keywords | `keyword` | 11,168 |
+| Subcellular location comment | `cc_subcellular_location` | 11,104 |
+| Gene Ontology cellular components | `go_c` | 11,954 |
+
+Why topology matters so much: **cellular-component keywords describe whole proteins and say nothing about
+which side of a membrane a protein faces.** Peripheral proteins docked onto the cytoplasmic leaflet of the
+plasma membrane carry `Cell membrane` too. Without topology, the neuronal SNARE complex
+(`SNAP25`-`VAMP2`), the protein kinase A holoenzyme (`PRKACA`-`PRKAR2B`), adducin, the calpains and the
+cytoplasmic adherens plaque (`CTNNA1`-`CTNNB1`) are all classified as contact-dependent signalling.
+Membrane anchoring is a sequence-level property and resolves them.
+
+### 4.2 Protein complexes (`detect_cis_complexes`, default `True`)
+
+The human Complex Portal table yields **18,284 unordered accession pairs** that are subunits of a common
+complex. Two details:
+
+- **Complexes with fewer than three subunits are skipped.** The Complex Portal also registers
+  ligand-receptor pairs as complexes, and those are predominantly binary (tumour necrosis factor with its
+  receptors, lymphotoxin beta with its receptor, colony stimulating factor 1 with its receptor). Genuine
+  binary *cis* assemblies are covered by the curated families instead.
+- **24 curated gene family patterns** complement the Portal, because it covers only about a fifth of the
+  proteins in this network and is missing several prominent surface complexes outright, among them every MHC
+  class II alpha-beta pair, the CD79 heterodimer of the B cell receptor and the high-affinity IgE receptor.
+  The families cover MHC class I with beta-2 microglobulin, MHC class II, the T cell receptor chains, CD8,
+  CD79, FcεRI, CD94/NKG2, integrins, collagens, laminins, sarcoglycans, the BBSome, the AP-2 adaptor,
+  complement C1q, fibrinogen, GABA-A, ionotropic glutamate, glycine, nicotinic acetylcholine and serotonin-3
+  receptors, the epithelial sodium channel, heteromeric amino acid transporters, CatSper and the shared
+  gamma-chain cytokine receptors.
+
+## 5. Step one of the classification: the location class of each protein
+
+Every protein is assigned exactly one of five **location classes**.
+
+| Class | Meaning | Keyword set size | Examples |
+| :-- | :-- | --: | :-- |
+| `cell_surface` | membrane anchored with a necessarily extracellular face | 16 | `Cell membrane`, `Cell surface`, `Apical cell membrane`, `Sarcolemma`, `Membrane raft`, `Gap junction`, `MHC I`, `MHC II`, `T cell receptor`, `Target cell membrane` |
+| `secreted` | released extracellularly, not membrane anchored | 9 | `Secreted`, `Extracellular matrix`, `Basement membrane`, `Membrane attack complex`, `HDL`/`LDL`/`VLDL`/`Chylomicron`, `Surface film` |
+| `intracellular` | an intracellular location and no surface or secreted keyword | 67 | `Nucleus`, `Cytoplasm`, `Mitochondrion`, `Endoplasmic reticulum`, `Golgi apparatus`, `Lysosome`, `Cytoskeleton`, `Proteasome`, `Coated pit`, `Synaptosome`, `Flagellum`, `Exosome` |
+| `ambiguous` | compatible with an extracellular face without establishing one | 23 | `Membrane`, `Cell junction`, `Tight junction`, `Desmosome`, `Focal adhesion`, `Cell projection`, `Cilium`, `Synapse`, `Amyloid`, `Immunoglobulin`, `Virion` |
+| `unknown` | no usable evidence from any source | — | — |
+
+### 5.1 Why several plausible-sounding keywords are *not* treated as surface
+
+These assignments were reviewed independently and are the least obvious part of the design:
+
+- **`Membrane`** is the generic parent of the whole membrane branch and also covers the endoplasmic
+  reticulum, mitochondrial, Golgi, nuclear and endolysosomal membranes. Among proteins whose only
+  membrane evidence is this keyword, 23% are also annotated to the endoplasmic reticulum, 21% to
+  mitochondria and 16% to the Golgi. UniProt applies the specific child `Cell membrane` when plasma-membrane
+  localisation is known.
+- **`Cell junction`, `Tight junction`, `Synapse`, `Cell projection`, `Cilium`** denote compartments with a
+  membrane-embedded core **and** a large cytoplasmic component. They are carried by cytosolic plaque and
+  scaffold proteins (ZO-1, catenins, vinculin, talin, paxillin, PSD-95, synapsins) and by axonemal and
+  intraflagellar transport machinery. The genuinely surface-exposed proteins in those compartments virtually
+  always also carry `Cell membrane`, so excluding these keywords costs little coverage and removes a large
+  false-positive source; ZO-1 in particular is a high-degree hub.
+- **`Exosome`** in UniProt denotes the **exosome complex**, the nuclear and cytoplasmic 3'-5'
+  exoribonuclease machine of EXOSC subunits, **not** extracellular vesicles. It is a name trap.
+- **`Amyloid`** describes an aggregation propensity rather than a location, and `Immunoglobulin` is also
+  used for the immunoglobulin *domain*, which occurs in intracellular proteins such as titin and obscurin.
+
+Conversely, `MHC I`, `MHC II`, `T cell receptor` and `Target cell membrane` **are** surface keywords; leaving
+them out would have silently excluded antigen presentation from an immune analysis.
+
+### 5.2 Precedence rules
+
+Evidence is graded, and three precedence rules resolve conflicts. Each exists because of a concrete failure
+mode:
+
+1. **An extracellular face beats an intracellular location.** Secreted and surface proteins are routinely
+   also annotated with the compartments they traverse; interleukin 15 is `Cytoplasm,Nucleus,Secreted`.
+   Requiring the absence of intracellular keywords would discard genuine ligands.
+2. **Membrane anchoring beats secretion.** 345 proteins carry both, because many surface receptors have a
+   shed soluble isoform. PD-L1 is `Cell membrane,Endosome,Membrane,Nucleus,Secreted`; calling it secreted
+   would turn the contact-dependent PD-1 / PD-L1 axis into a paracrine one.
+3. **Antibody chains are an exception to rule 2.** Every immunoglobulin gene carries
+   `Cell membrane,Immunoglobulin,Membrane,Secreted`, for the B cell receptor form and the antibody form
+   respectively, and it is the secreted form that dominates their interactions with Fc receptors. Without
+   this exception the canonical `IGHG1`-`FCGR2B` pair is classified as contact-dependent.
+
+### 5.3 How topology modifies the keyword verdict
+
+Topology is consulted in **both** directions:
+
+- **Rejection.** A `cell_surface` keyword is not trusted if the protein has no membrane anchor, or if its
+  annotated topological domains contain no extracellular one. This is what demotes SNAP25, PKA, adducin,
+  the calpains and the catenins.
+- **Promotion.** An annotated **extracellular topological domain** is decisive positive evidence and
+  outweighs the keywords, because UniProt uses `Extracellular` only for the outside of the cell and
+  `Lumenal` for organelle interiors, so it cannot admit organelle membranes. Many cytokine receptors need
+  this: `IL15RA` and `IL10RB` are annotated with the generic `Membrane` keyword plus `Secreted` for a shed
+  form, and with the compartments they traverse, but never with `Cell membrane`. Without promotion they are
+  classified as secreted *ligands*, and `IL15`-`IL15RA` becomes a ligand-ligand pair.
+- A cell-surface keyword contradicted by the absence of an anchor yields `intracellular`, because such a
+  protein is peripheral, sitting on one side of the membrane rather than spanning it, and in practice on the
+  cytoplasmic side.
+
+`ambiguous_locality` (default `extracellular`) decides the remaining case, where a keyword is compatible with
+an extracellular face and topology neither confirms nor contradicts it. It has almost no effect while
+`use_topology` is `True`, but with topology disabled it is the deciding parameter: 2,527 against 1,776
+intercellular gene programs.
+
+### 5.4 The fallback chain for proteins with no cellular-component keyword
+
+Five fallbacks, in decreasing reliability. Weak sources are deliberately restricted to establishing an
+**intracellular** location, because mislabelling a within-cell complex as intercellular is the expensive
+error while missing a surface protein only costs coverage.
+
+| Order | Source | Can establish | Rationale |
+| --: | :-- | :-- | :-- |
+| 1 | Current UniProt cellular-component keywords | any class | The `Locality` column is a **stale snapshot**, not genuinely absent; refreshing it accounts for most of what the next fallback used to recover |
+| 2 | UniProt subcellular location comment | any class | Curated to the same standard as the keywords, occasionally present when no keyword was assigned |
+| 3 | Gene Ontology cellular components | **intracellular only** | Broadest coverage, but its extracellular calls are 84% wrong |
+| 4 | Signal peptide | `secreted`, or `cell_surface` if anchored | Sequence evidence that the protein enters the secretory pathway |
+| 5 | Biological-process keywords | **intracellular only** | 42 keywords such as `Transcription`, `mRNA splicing`, `Keratinization` |
+
+Two subtleties:
+
+- **Gene Ontology is restricted to a veto in the extracellular direction.** Proteomics of vesicle and granule
+  preparations attaches `extracellular exosome`, `extracellular vesicle` and `blood microparticle` to large
+  numbers of cytosolic proteins, and bare `plasma membrane` is attached to many proteins that only dock onto
+  the cytoplasmic leaflet. Those terms therefore establish nothing in either direction, while genuine
+  extracellular terms (`extracellular space`, `cell surface`, `external side of plasma membrane`) only
+  **prevent** an intracellular conclusion rather than asserting a surface.
+- **Gene Ontology is consulted before the signal peptide** so that proteins of the secretory pathway that are
+  resident in an organelle rather than released, such as endoplasmic reticulum chaperones, are recognised as
+  intracellular first.
+
+Interactions still unresolved after all five are governed by `unresolved_locality` (default `exclude`):
+524 at precision 90. They can never be classified as intercellular, so setting `intracellular` only ever
+moves them into the target component.
+
+## 6. Step two of the classification: the interaction class
+
+| Class | Condition | Gene program shape |
+| :-- | :-- | :-- |
+| `juxtacrine` | both partners extracellular facing, neither purely secreted | source → target |
+| `paracrine` | both extracellular facing, at least one secreted | source → target, **soluble partner in the source** |
+| `cis_complex` | both are subunits of a common complex | target only |
+| `extracellular_assembly` | two **secreted** subunits of a common complex | target only |
+| `intracellular` | at least one partner has no extracellular face | target only |
+| `unknown` | at least one partner unresolved | excluded, or target only |
+
+`program_type="intercellular"` keeps `paracrine` and `juxtacrine`; `"intracellular"` keeps the rest;
+`"both"` keeps everything.
+
+### 6.1 The cis-complex adjudication
+
+Two proteins on the same cell's surface can form a complex rather than signal between cells, and
+localisation cannot see the difference. Before this step, five of the six possible CD3 chain pairs, the CD8
+and CD79 heterodimers, every integrin alpha-beta pair and every MHC class II alpha-beta pair were classified
+as contact-dependent signalling.
+
+Adjudication is at **pair** level, never complex level, because the Complex Portal registers genuine
+ligand-receptor assemblies as complexes: interferon alpha with its receptor, erythropoietin with its
+receptor, CXCL8 with CXCR1. **A shared complex in which exactly one partner is soluble is a ligand-receptor
+assembly** and stays paracrine. If both partners are secreted it is an `extracellular_assembly` instead,
+because secreted multimers such as collagen and laminin trimers, fibrinogen and complement C1q are assembled
+by the cell that produces them.
+
+At precision 90 this reclassifies 147 interactions as `cis_complex` and 57 as `extracellular_assembly`.
+
+### 6.2 Orientation: which partner goes into the source component
+
+NicheCompass reconstructs the source component from the **neighbours** and the target component from the
+**cell itself**, so for a diffusible interaction the ligand belongs in the source and its receptor in the
+target. Where exactly one partner is soluble, it is placed in the source component. This resolves all 529
+secreted-to-cell-surface pairs and makes the gene program names read as ligand to receptor
+(`CCL19_CCR7_paracrine_ppi_GP`). Without it, 200 of 856 paracrine programs were inverted, asking the model to
+predict the chemokine in the receiving cell and its receptor in the neighbourhood.
+
+For a contact-dependent interaction between two membrane anchored partners, and for an interaction between
+two soluble partners, there is no principled ordering and the assignment is arbitrary but consistent.
+
+## 7. Gene program construction
+
+- **Name**: `<source gene>_<target gene>_<interaction class>_ppi_GP`, so the class is visible in gene
+  program summaries, differential gene program results and plots.
+- **Gene categories**: the location class of each gene (`cell_surface`, `secreted`, `intracellular`,
+  `ambiguous`), rather than a single flat label. They flow into the category masks and can be used with
+  `l1_targets_categories` and `l1_sources_categories`.
+- **Deduplication**: on the unordered, upper-cased gene pair, so a pair listed twice yields one program.
+- **Target-only programs** have an empty source component and therefore require
+  `min_source_genes_per_gp=0` downstream; the extractor emits a warning whenever it produces them.
+
+### Species
+
+The predictions are human. With `species="mouse"`, genes are mapped to mouse orthologs using the Ensembl
+BioMart mapping shipped with NicheCompass; one human gene can map to several mouse genes, in which case the
+gene category is repeated for each ortholog, and genes without a valid ortholog fall back to capitalisation.
+**Gene program names keep the human symbols**, as they do for the OmniPath programs, so a program named
+`TGFB1_..._GP` contains `Tgfb1`.
+
+## 8. Output at a glance
+
+At `precision="90"`, `species="human"`, `program_type="both"` and otherwise default settings:
+
+| Class | Count | Share |
+| :-- | --: | --: |
+| `paracrine` | 856 | 5.1% |
+| `juxtacrine` | 1,173 | 7.0% |
+| `cis_complex` | 147 | 0.9% |
+| `extracellular_assembly` | 57 | 0.3% |
+| `intracellular` | 14,614 | 86.7% |
+| **total** | **16,847** | |
+
+Intercellular programs total 2,029. At `precision="80"` the totals are 27,823 programs of which 4,136 are
+intercellular (1,535 paracrine, 2,601 juxtacrine).
+
+## 9. Downstream use and three caveats
+
+1. **Masking thresholds.** `add_gps_from_gp_dict_to_adata` decides which programs survive against the genes
+   actually measured. An intercellular program is two genes wide, so with
+   `min_source_genes_per_gp=0, min_target_genes_per_gp=0` a program survives when only *one* partner is
+   probed, leaving a single-gene program that encodes no interaction. Use `1` and `1` unless you also want
+   target-only programs, which require `min_source_genes_per_gp=0`. The two requirements are mutually
+   exclusive, because the threshold is global rather than per resource.
+2. **Combining discards the interaction class.** `filter_and_combine_gp_dict_gps_v2` merges programs sharing
+   a source gene and renames them `<GENE>_combined_GP`, which loses the `_paracrine_`/`_juxtacrine_` label.
+3. **Targeted panels.** An intercellular program needs *both* partners probed. On the 313-gene Xenium human
+   breast panel only 42 of 4,136 intercellular programs retain both partners. The resource is best suited to
+   whole-transcriptome data; on a targeted panel it is more informative as a supplement to
+   OmniPath, NicheNet and MEBOCOST than on its own.
+
+## 10. Validation
+
+- **Recall against curated ligand-receptor pairs.** Curated pairs are intercellular by definition, so every
+  such pair present in the interactome should be classified paracrine or juxtacrine. Measured against
+  OmniPath: **98.0%** (396 of 404 testable pairs). Four of the eight misses are cases where the reference is
+  wrong rather than the classification: `NCSTN`-`PSEN1` are gamma-secretase subunits in one membrane,
+  `LRPAP1`-`SORL1` is an endoplasmic reticulum chaperone pair, `CALM3`-`MYLK2` is cytosolic. The remaining
+  four are membrane-anchored ligands inside multi-subunit Complex Portal entries.
+  `tests/benchmark_humanppi_classification.py` reruns this and fails below a threshold.
+- **Unit tests.** `tests/test_humanppi_gene_programs.py` contains 103 offline tests pinning the protein and
+  interaction classification, the precedence rules, the fallback ordering, the segment and paralogue
+  patterns, the curated families and the orientation.
+
+## 11. Known limitations
+
+1. **Interface topology is not used.** Whether an interaction interface lies on the extracellular side is the
+   biologically correct criterion, and the resource ships residue-level contact matrices that would answer
+   it, but only inside a 67 GB archive. Everything here is a protein-level proxy.
+2. **cis coverage is a lower bound.** The Complex Portal covers about a fifth of these proteins;
+   `CD247`-`FCER1G` and `FCER1G`-`TREM2` are demonstrably uncaught.
+3. **Precision is not measured globally.** Every specific false positive found has been fixed, but there is
+   no clean negative gold standard, so the fraction of the 2,029 intercellular calls that are wrong is
+   unknown. Recall is measured; precision is argued.
+4. **524 interactions remain unresolved** and are dropped by default. Closing that would need sequence-based
+   prediction such as SignalP or DeepTMHMM rather than another annotation source, which is exhausted.
+5. **Two-gene programs are sparse** as single latent dimensions, and nothing checks that a program's partners
+   are ever co-expressed in adjacent cells in the data at hand.
+
+## 12. Complete parameter reference
+
+Grouped by what they control. Defaults are those of
+`extract_gp_dict_from_humanppi_interactions`; the training script exposes each one as
+`--humanppi_<name>` and the notebook as `humanppi_<name>`.
+
+### What is retrieved
+
+| Parameter | Default | Effect |
+| :-- | :-- | :-- |
+| `species` | required | `"human"` uses the predictions as they are; `"mouse"` maps genes to mouse orthologs |
+| `precision` | `"90"` | Which released table: `"90"` (17,849 rows) or `"80"` (29,257 rows, a superset) |
+| `load_from_disk` | `False` | Read the predictions from `ppi_network_file_path` instead of downloading |
+| `save_to_disk` | `False` | Cache the downloaded predictions, with a provenance file |
+| `ppi_network_file_path` | `../data/gene_programs/humanppi_network.csv` | Cache location for the predictions |
+| `humanppi_predictions_url` | `conglab.swmed.edu/...` | Where the prediction archive is downloaded from |
+
+### Which interactions are kept
+
+| Parameter | Default | Effect |
+| :-- | :-- | :-- |
+| `filter_ig_tcr_segments` | `True` | Drop immunoglobulin and T cell receptor V, D and J gene segments (section 3.2) |
+| `filter_paralog_cross_pairs` | `True` | Drop paralogue combinations that form no heterodimer (section 3.3) |
+| `min_rf_prob` | `None` | Minimum RoseTTAFold2-PPI probability (`RFprob`) |
+| `min_af_prob` | `None` | Minimum AlphaFold2 probability (`AFprob`) |
+
+### How interactions are classified
+
+| Parameter | Default | Effect |
+| :-- | :-- | :-- |
+| `program_type` | `"intercellular"` | `"intercellular"` keeps paracrine and juxtacrine; `"intracellular"` keeps the rest; `"both"` keeps everything |
+| `use_topology` | `True` | Retrieve UniProt membrane topology and annotation (section 4.1). Needs network access on first use |
+| `topology_file_path` | `../data/gene_programs/humanppi_protein_topology.tsv` | Cache location for the UniProt annotation |
+| `ambiguous_locality` | `"extracellular"` | How to treat proteins whose extracellular face is neither established nor contradicted (section 5.3) |
+| `unresolved_locality` | `"exclude"` | How to treat interactions whose partner locations stay unresolved: `"exclude"` drops them, `"intracellular"` keeps them as target-only programs |
+| `detect_cis_complexes` | `True` | Reclassify subunits of a common complex as `cis_complex` or `extracellular_assembly` (section 6.1) |
+| `complex_portal_file_path` | `../data/gene_programs/complex_portal_human.tsv` | Cache location for the Complex Portal table |
+| `complex_portal_url` | `ftp.ebi.ac.uk/...` | Where the Complex Portal table is downloaded from |
+| `gene_orthologs_mapping_file_path` | `../data/gene_annotations/human_mouse_gene_orthologs.csv` | Ensembl BioMart mapping, used only when `species="mouse"` |
+
+### Diagnostics
+
+| Parameter | Default | Effect |
+| :-- | :-- | :-- |
+| `plot_gp_gene_count_distributions` | `True` | Plot the distribution of gene programs by number of source and target genes |
+| `gp_gene_count_distributions_save_path` | `None` | Where to save that plot |
+
+### A worked invocation
+
+The settings used by the Xenium human breast cancer notebook, which isolates the intercellular
+contribution of this resource on a targeted panel:
+
+```python
+humanppi_gp_dict = extract_gp_dict_from_humanppi_interactions(
+    species="human",
+    precision="80",                     # broader set, since the panel is small
+    program_type="intercellular",       # paracrine and juxtacrine only
+    ambiguous_locality="extracellular",
+    unresolved_locality="exclude",
+    filter_ig_tcr_segments=True,
+    filter_paralog_cross_pairs=True,
+    use_topology=True,
+    detect_cis_complexes=True,
+    min_rf_prob=None,                   # trust the authors' calibration
+    min_af_prob=None)
+```
+
+## 13. References
+
+- Zhang, J., Humphreys, I. R. et al. Predicting protein-protein interactions in the human proteome.
+  *Science* **390**, eadt1630 (2025). doi:10.1126/science.adt1630
+- Birk, S. et al. Quantitative characterization of cell niches in spatially resolved omics data.
+  *Nature Genetics* **57**, 897-909 (2025). doi:10.1038/s41588-025-02120-6
+- Meldal, B. H. M. et al. Complex Portal 2022. *Nucleic Acids Research* **50**, D578-D586 (2022).
+- The UniProt Consortium. UniProt: the Universal Protein Knowledgebase in 2023.
+  *Nucleic Acids Research* **51**, D523-D531 (2023).
