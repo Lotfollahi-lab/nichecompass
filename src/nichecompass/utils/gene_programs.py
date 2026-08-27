@@ -1446,7 +1446,7 @@ def extract_gp_dict_from_humanppi_interactions(
             "intercellular", "intracellular", "both"]="intercellular",
         ambiguous_locality: Literal[
             "extracellular", "intracellular"]="extracellular",
-        unknown_locality: Literal["exclude", "intracellular"]="exclude",
+        unresolved_locality: Literal["exclude", "intracellular"]="exclude",
         filter_ig_tcr_segments: bool=True,
         filter_paralog_cross_pairs: bool=True,
         use_topology: bool=True,
@@ -1620,13 +1620,18 @@ def extract_gp_dict_from_humanppi_interactions(
         measured to discard a large amount of genuine biology: recall against
         curated ligand-receptor pairs drops from 97.4% to 79.7% when topology
         is unavailable and they are excluded.
-    unknown_locality:
-        Determines how interactions are handled in which at least one partner
-        has no usable localization annotation, which is the case for around a
-        tenth of the proteins in the resource. If ´exclude´ (default), these
-        interactions are dropped, since they cannot be classified either way.
-        If ´intracellular´, they are treated as intracellular, which retains
-        them at the risk of mislabeling genuine intercellular interactions.
+    unresolved_locality:
+        Determines how interactions are handled in which the location of at
+        least one partner remains unresolved after every available source of
+        evidence has been consulted, i.e. the partner has no cellular-component
+        keyword, no membrane topology and no decisive biological-process
+        keyword. This is the case for around a tenth of the interactions in the
+        resource. If ´exclude´ (default), these interactions are dropped, since
+        they cannot be classified either way. If ´intracellular´, they are
+        treated as intracellular, which retains them at the risk of mislabeling
+        genuine intercellular interactions; note that they can never be
+        classified as intercellular, so this only ever moves them into the
+        target component.
     filter_paralog_cross_pairs:
         If ´True´ (default), interactions between paralogues that do not form a
         heterodimer are dropped. Integrin alpha-beta pairs are restricted to
@@ -1725,8 +1730,8 @@ def extract_gp_dict_from_humanppi_interactions(
     if ambiguous_locality not in ("extracellular", "intracellular"):
         raise ValueError("´ambiguous_locality´ should be either "
                          "'extracellular' or 'intracellular'.")
-    if unknown_locality not in ("exclude", "intracellular"):
-        raise ValueError("´unknown_locality´ should be either 'exclude' or "
+    if unresolved_locality not in ("exclude", "intracellular"):
+        raise ValueError("´unresolved_locality´ should be either 'exclude' or "
                          "'intracellular'.")
 
     # Download (or load) the human interactome predictions and store in df
@@ -1820,7 +1825,7 @@ def extract_gp_dict_from_humanppi_interactions(
     gp_dict = {}
     seen_pairs = set()
     produced_source_empty_gp = False
-    n_unknown_locality = 0
+    n_unresolved_locality = 0
     n_cis_complex = 0
     n_extracellular_assembly = 0
     for _, row in ppi_df.iterrows():
@@ -1846,8 +1851,8 @@ def extract_gp_dict_from_humanppi_interactions(
         if interaction_class == "unknown":
             # At least one partner has no usable localization annotation, so
             # the interaction cannot be classified either way
-            n_unknown_locality += 1
-            if unknown_locality == "exclude":
+            n_unresolved_locality += 1
+            if unresolved_locality == "exclude":
                 continue
             interaction_class = "intracellular"
 
@@ -1954,10 +1959,10 @@ def extract_gp_dict_from_humanppi_interactions(
               "and the interaction therefore takes place within a single "
               "cell.")
 
-    if n_unknown_locality > 0:
-        print(f"Encountered {n_unknown_locality} interactions in which at "
-              "least one partner has no usable localization annotation. These "
-              + ("were excluded." if unknown_locality == "exclude" else
+    if n_unresolved_locality > 0:
+        print(f"Encountered {n_unresolved_locality} interactions in which the "
+              "location of at least one partner could not be resolved. These "
+              + ("were excluded." if unresolved_locality == "exclude" else
                  "were treated as intracellular."))
 
     if produced_source_empty_gp:
