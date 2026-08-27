@@ -88,7 +88,9 @@ HUMANPPI_AMBIGUOUS_LOCATION_KEYWORDS = {
     "Target membrane"}
 
 
-def _classify_humanppi_protein_location(localization) -> str:
+def _classify_humanppi_protein_location(
+        localization,
+        is_membrane_anchored: Optional[bool]=None) -> str:
     """
     Classify a protein into ´secreted´, ´cell_surface´, ´intracellular´,
     ´ambiguous´ or ´unknown´ based on its UniProt cellular-component keywords.
@@ -128,7 +130,28 @@ def _classify_humanppi_protein_location(localization) -> str:
             and any(keyword in HUMANPPI_SECRETED_KEYWORDS
                     for keyword in keywords)):
         return "secreted"
-    if any(keyword in HUMANPPI_CELL_SURFACE_KEYWORDS for keyword in keywords):
+    # A cell-surface keyword is only trusted if the protein is not known to
+    # lack a membrane anchor, since a protein without a transmembrane segment
+    # or GPI anchor cannot present a face at the cell surface. Secreted
+    # keywords are always trusted, because proteins can also be released
+    # through non-classical routes that leave no sequence signature.
+    if (is_membrane_anchored is not False
+            and any(keyword in HUMANPPI_CELL_SURFACE_KEYWORDS
+                    for keyword in keywords)):
+        return "cell_surface"
+    # A protein that UniProt annotates with a membrane anchor and that carries
+    # no intracellular keyword is at the cell surface even when its
+    # cellular-component keywords are only compatible with, rather than
+    # establishing, an extracellular face. Many cytokine receptors are
+    # annotated with the generic ´Membrane´ keyword and ´Secreted´ for a shed
+    # soluble form but never with ´Cell membrane´ (interleukin 15 receptor
+    # subunit alpha and interleukin 10 receptor subunit beta among them), and
+    # would otherwise be classified as secreted ligands.
+    if (is_membrane_anchored is True
+            and not any(keyword in HUMANPPI_INTRACELLULAR_KEYWORDS
+                        for keyword in keywords)
+            and any(keyword in HUMANPPI_AMBIGUOUS_LOCATION_KEYWORDS
+                    for keyword in keywords)):
         return "cell_surface"
     if any(keyword in HUMANPPI_SECRETED_KEYWORDS for keyword in keywords):
         return "secreted"
@@ -136,7 +159,10 @@ def _classify_humanppi_protein_location(localization) -> str:
         return "intracellular"
     if any(keyword in HUMANPPI_AMBIGUOUS_LOCATION_KEYWORDS
            for keyword in keywords):
-        return "ambiguous"
+        # An ambiguous keyword that is contradicted by the absence of a
+        # membrane anchor is evidence of an intracellular location
+        return "ambiguous" if is_membrane_anchored is not False else (
+            "intracellular")
     return "unknown"
 
 
@@ -173,6 +199,96 @@ HUMANPPI_CIS_COMPLEX_GENE_FAMILY_PATTERNS = {
     "catsper_channel": r"^CATSPER",
     "shared_gamma_chain_cytokine_receptor":
         r"^(IL2R[ABG]|IL4R|IL7R|IL9R|IL21R)$"}
+
+
+# Immunoglobulin and T cell receptor V, D and J gene segments. These are
+# somatically recombined into a single antibody or receptor chain, so an
+# interaction between two of them, or between a segment and the constant region
+# of the same chain, is intramolecular rather than an interaction between two
+# proteins. The structural predictor produces many such pairs because all
+# variable domains share the immunoglobulin fold. Constant region genes
+# (´IGHG1´, ´IGHM´, ´IGLC2´, ´TRAC´, ´TRBC1´, ...) encode real proteins and are
+# deliberately not matched.
+HUMANPPI_IG_TCR_SEGMENT_PATTERN = (
+    r"^(IG[HKL][VJ]\d|IGHD\d|TR[ABDG][VJ]\d|TR[BD]D\d)")
+
+
+def _is_humanppi_ig_tcr_segment(gene: str) -> bool:
+    """
+    Return whether a gene is an immunoglobulin or T cell receptor V, D or J
+    gene segment rather than a gene encoding a complete protein.
+    """
+    return re.match(HUMANPPI_IG_TCR_SEGMENT_PATTERN, gene.upper()) is not None
+
+
+def _load_humanppi_protein_topology(accessions: list,
+                                    topology_file_path: str) -> dict:
+    """
+    Retrieve membrane topology for a list of UniProt accessions and return a
+    mapping from accession to whether the protein is membrane anchored, i.e.
+    whether it has a transmembrane segment or a GPI anchor.
+
+    Cellular-component keywords describe whole proteins and do not indicate
+    which side of a membrane a protein faces, so proteins that are docked onto
+    the cytoplasmic leaflet of the plasma membrane (SNAP25, the protein kinase A
+    holoenzyme, adducin, calpains) carry the ´Cell membrane´ keyword even though
+    they cannot participate in intercellular interactions. Membrane anchoring is
+    a sequence-level property and resolves those cases.
+
+    Results are cached at ´topology_file_path´ and only accessions that are
+    missing from the cache are requested.
+
+    Parameters
+    ----------
+    accessions:
+        UniProt accessions for which topology is retrieved.
+    topology_file_path:
+        Path of the file where the retrieved topology is cached.
+
+    Returns
+    ----------
+    topology:
+        Mapping from UniProt accession to a bool indicating membrane anchoring.
+        Accessions for which UniProt returned no entry are absent.
+    """
+    topology = {}
+    if os.path.exists(topology_file_path):
+        topology_df = pd.read_csv(topology_file_path, sep="\t")
+        topology = dict(zip(topology_df["accession"].astype(str),
+                            topology_df["is_membrane_anchored"].astype(bool)))
+
+    missing = sorted({accession for accession in accessions
+                      if accession not in topology})
+    if missing:
+        print(f"Retrieving membrane topology for {len(missing)} proteins from "
+              "UniProt...")
+        batch_size = 100
+        fields = "accession,ft_transmem,ft_lipid"
+        for batch_start in range(0, len(missing), batch_size):
+            batch = missing[batch_start:batch_start + batch_size]
+            query = "+OR+".join(f"accession:{accession}"
+                                for accession in batch)
+            url = (f"https://rest.uniprot.org/uniprotkb/search?query={query}"
+                   f"&fields={fields}&format=tsv&size={batch_size}")
+            with urllib.request.urlopen(url) as response:
+                lines = response.read().decode("utf-8").splitlines()
+            for line in lines[1:]:
+                columns = line.split("\t")
+                if not columns or not columns[0]:
+                    continue
+                accession = columns[0]
+                transmem = columns[1] if len(columns) > 1 else ""
+                lipid = columns[2] if len(columns) > 2 else ""
+                topology[accession] = bool(
+                    "TRANSMEM" in transmem or "GPI-anchor" in lipid)
+
+        cache_dir = os.path.dirname(topology_file_path)
+        if cache_dir:
+            os.makedirs(cache_dir, exist_ok=True)
+        pd.DataFrame({"accession": list(topology.keys()),
+                      "is_membrane_anchored": list(topology.values())}).to_csv(
+                          topology_file_path, sep="\t", index=False)
+    return topology
 
 
 def _humanppi_cis_complex_gene_families(gene: str) -> set:
@@ -257,6 +373,15 @@ def _load_complex_portal_cis_pairs(complex_portal_file_path: str,
             if len(subunits) > 1:
                 break
         unique_subunits = sorted(set(subunits))
+        # Complexes of exactly two subunits are skipped, because the Complex
+        # Portal also registers ligand-receptor pairs as complexes and those
+        # are predominantly binary (tumor necrosis factor with its receptors,
+        # lymphotoxin beta with its receptor, colony stimulating factor 1 with
+        # its receptor). Genuine binary cis assemblies such as the CD8, CD79
+        # and integrin heterodimers are covered by the curated gene families
+        # instead.
+        if len(unique_subunits) < 3:
+            continue
         for i, accession_i in enumerate(unique_subunits):
             for accession_j in unique_subunits[i + 1:]:
                 cis_pairs.add(frozenset((accession_i, accession_j)))
@@ -1224,6 +1349,10 @@ def extract_gp_dict_from_humanppi_interactions(
         localization_filter: Literal[
             "strict", "include_ambiguous"]="include_ambiguous",
         unknown_locality: Literal["exclude", "intracellular"]="exclude",
+        filter_ig_tcr_segments: bool=True,
+        use_topology: bool=True,
+        topology_file_path: Optional[str]="../data/gene_programs/" \
+                                          "humanppi_protein_topology.tsv",
         detect_cis_complexes: bool=True,
         complex_portal_file_path: Optional[str]="../data/gene_programs/" \
                                                 "complex_portal_human.tsv",
@@ -1286,6 +1415,18 @@ def extract_gp_dict_from_humanppi_interactions(
     - ´intracellular´: anything else, i.e. at least one partner has no
       extracellular face.
     - ´unknown´: at least one partner could not be classified.
+
+    If ´use_topology´ is ´True´, a cell-surface keyword is only trusted for
+    proteins that UniProt annotates with a transmembrane segment or a GPI
+    anchor. Cellular-component keywords describe whole proteins and say nothing
+    about which side of a membrane a protein faces, so peripheral proteins
+    docked onto the cytoplasmic leaflet of the plasma membrane carry the
+    ´Cell membrane´ keyword as well; the neuronal SNARE complex, the protein
+    kinase A holoenzyme, adducin, the calpains and the cytoplasmic adherens
+    plaque are all of this kind. Membrane anchoring is a sequence-level
+    property and resolves those cases. Secreted keywords are always trusted,
+    since proteins can also be released through non-classical routes that leave
+    no sequence signature.
 
     Third, if ´detect_cis_complexes´ is ´True´, interactions that were called
     paracrine or juxtacrine are checked against the human protein complexes of
@@ -1379,6 +1520,21 @@ def extract_gp_dict_from_humanppi_interactions(
         interactions are dropped, since they cannot be classified either way.
         If ´intracellular´, they are treated as intracellular, which retains
         them at the risk of mislabeling genuine intercellular interactions.
+    filter_ig_tcr_segments:
+        If ´True´ (default), interactions involving an immunoglobulin or T cell
+        receptor V, D or J gene segment are dropped. These segments are
+        somatically recombined into a single antibody or receptor chain, so such
+        an interaction is intramolecular rather than an interaction between two
+        proteins. They are abundant in the predictions because all variable
+        domains share the immunoglobulin fold. Constant region genes such as
+        ´IGHG1´ and ´TRAC´ encode complete proteins and are retained.
+    use_topology:
+        If ´True´ (default), membrane topology is retrieved from UniProt and a
+        cell-surface keyword is only trusted for proteins that have a
+        transmembrane segment or a GPI anchor.
+    topology_file_path:
+        Path of the file where the retrieved membrane topology is cached. Only
+        accessions missing from the cache are requested from UniProt.
     detect_cis_complexes:
         If ´True´ (default), interactions whose two partners are subunits of a
         common protein complex in the EBI Complex Portal, or that belong to a
@@ -1488,6 +1644,20 @@ def extract_gp_dict_from_humanppi_interactions(
                               (gene_names.str.lower() == "none"))
     ppi_df = ppi_df[~gene_name_missing]
 
+    # Optionally drop immunoglobulin and T cell receptor gene segments
+    if filter_ig_tcr_segments:
+        is_segment = (ppi_df["Name1"].astype(str).apply(
+                          _is_humanppi_ig_tcr_segment) |
+                      ppi_df["Name2"].astype(str).apply(
+                          _is_humanppi_ig_tcr_segment))
+        n_segment = int(is_segment.sum())
+        if n_segment > 0:
+            print(f"Dropped {n_segment} interactions involving an "
+                  "immunoglobulin or T cell receptor gene segment, which are "
+                  "recombined into a single chain and therefore do not "
+                  "represent interactions between two proteins.")
+        ppi_df = ppi_df[~is_segment]
+
     # Optionally filter by interaction probabilities
     if min_rf_prob is not None:
         ppi_df = ppi_df[pd.to_numeric(ppi_df["RFprob"], errors="coerce")
@@ -1495,6 +1665,16 @@ def extract_gp_dict_from_humanppi_interactions(
     if min_af_prob is not None:
         ppi_df = ppi_df[pd.to_numeric(ppi_df["AFprob"], errors="coerce")
                         >= min_af_prob]
+
+    # Optionally retrieve membrane topology, used to reject cell-surface
+    # keywords for proteins that have no membrane anchor
+    topology = {}
+    if use_topology:
+        accessions = sorted(set(ppi_df["Protein1"].astype(str)) |
+                            set(ppi_df["Protein2"].astype(str)))
+        topology = _load_humanppi_protein_topology(
+            accessions=accessions,
+            topology_file_path=topology_file_path)
 
     # Optionally load the protein complexes used to detect cis interactions
     cis_pairs = None
@@ -1522,8 +1702,12 @@ def extract_gp_dict_from_humanppi_interactions(
         if pair_key in seen_pairs:
             continue
 
-        location_1 = _classify_humanppi_protein_location(row["Locality1"])
-        location_2 = _classify_humanppi_protein_location(row["Locality2"])
+        location_1 = _classify_humanppi_protein_location(
+            row["Locality1"],
+            is_membrane_anchored=topology.get(str(row["Protein1"])))
+        location_2 = _classify_humanppi_protein_location(
+            row["Locality2"],
+            is_membrane_anchored=topology.get(str(row["Protein2"])))
         interaction_class = _classify_humanppi_interaction(
             location_1, location_2, localization_filter)
 
@@ -1547,9 +1731,14 @@ def extract_gp_dict_from_humanppi_interactions(
             shares_curated_family = bool(
                 _humanppi_cis_complex_gene_families(gene_1) &
                 _humanppi_cis_complex_gene_families(gene_2))
+            # A shared complex in which exactly one partner is soluble is a
+            # ligand-receptor assembly rather than a cis complex: the ligand is
+            # released by one cell and engages the receptor of another. Both
+            # partners being soluble is not sufficient, since secreted
+            # multimers such as collagen and laminin trimers assemble within
+            # the cell that produces them.
             is_ligand_receptor_assembly = (
-                "secreted" in (location_1, location_2) and
-                "cell_surface" in (location_1, location_2))
+                (location_1 == "secreted") != (location_2 == "secreted"))
             if ((accession_pair in cis_pairs or shares_curated_family)
                     and not is_ligand_receptor_assembly):
                 interaction_class = "cis_complex"
