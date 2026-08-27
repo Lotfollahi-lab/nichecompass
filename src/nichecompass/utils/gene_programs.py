@@ -104,6 +104,11 @@ def _classify_humanppi_protein_location(localization) -> str:
     ´Cell membrane,Endosome,Membrane,Nucleus,Secreted´). Classifying those as
     secreted would turn contact-dependent interactions such as PD-1 / PD-L1
     into paracrine ones.
+
+    Antibody chains are an exception to that second rule, since they carry
+    ´Cell membrane´ for the B cell receptor form and ´Secreted´ for the
+    antibody form, and it is the secreted form that dominates their
+    interactions with Fc receptors.
     """
     if pd.isna(localization):
         return "unknown"
@@ -112,6 +117,16 @@ def _classify_humanppi_protein_location(localization) -> str:
                 if keyword and keyword.lower() != "none"]
     if not keywords:
         return "unknown"
+    # Antibody chains are an exception to the precedence of membrane anchoring
+    # over secretion: they carry ´Cell membrane´ for the B cell receptor form
+    # and ´Secreted´ for the antibody form, and it is the secreted form that
+    # dominates their interactions with Fc receptors. Without this exception,
+    # canonical secreted-antibody to surface-receptor interactions such as
+    # IgG1 / Fc-gamma-receptor-IIb would be classified as contact dependent.
+    if ("Immunoglobulin" in keywords
+            and any(keyword in HUMANPPI_SECRETED_KEYWORDS
+                    for keyword in keywords)):
+        return "secreted"
     if any(keyword in HUMANPPI_CELL_SURFACE_KEYWORDS for keyword in keywords):
         return "cell_surface"
     if any(keyword in HUMANPPI_SECRETED_KEYWORDS for keyword in keywords):
@@ -130,7 +145,22 @@ def _classify_humanppi_interaction(location_1: str,
     """
     Classify an interaction into ´paracrine´, ´juxtacrine´, ´intracellular´ or
     ´unknown´ based on the location classes of its two partners.
+
+    Note that the two location arguments are location classes as returned by
+    ´_classify_humanppi_protein_location´, not raw localization strings.
     """
+    valid_locations = {"secreted", "cell_surface", "intracellular",
+                       "ambiguous", "unknown"}
+    for location in (location_1, location_2):
+        if location not in valid_locations:
+            raise ValueError(
+                f"'{location}' is not a location class. Expected one of "
+                f"{sorted(valid_locations)}, as returned by "
+                "´_classify_humanppi_protein_location´. Note that raw UniProt "
+                "localization strings have to be classified first.")
+    if localization_filter not in ("strict", "include_ambiguous"):
+        raise ValueError("´localization_filter´ should be either 'strict' or "
+                         "'include_ambiguous'.")
     if "unknown" in (location_1, location_2):
         return "unknown"
     extracellular_facing = {"secreted", "cell_surface"}
