@@ -76,8 +76,8 @@ HUMANPPI_INTRACELLULAR_KEYWORDS = {
 # (´Membrane´), because they denote a compartment with a large cytoplasmic
 # component (junctions, projections, synapses), or because they describe a
 # property rather than a location (´Amyloid´). These count as evidence of an
-# extracellular face only when ´localization_filter´ is ´membrane_strict´, and
-# then only if the protein carries no intracellular keyword.
+# extracellular face only when ´localization_filter´ is ´include_ambiguous´,
+# and then only if the protein carries no intracellular keyword.
 HUMANPPI_AMBIGUOUS_LOCATION_KEYWORDS = {
     "Membrane", "Cell junction", "Tight junction", "Adherens junction",
     "Desmosome", "Hemidesmosome", "Focal adhesion", "Cell projection",
@@ -134,7 +134,7 @@ def _classify_humanppi_interaction(location_1: str,
     if "unknown" in (location_1, location_2):
         return "unknown"
     extracellular_facing = {"secreted", "cell_surface"}
-    if localization_filter == "membrane_strict":
+    if localization_filter == "include_ambiguous":
         extracellular_facing = extracellular_facing | {"ambiguous"}
     if location_1 in extracellular_facing and location_2 in extracellular_facing:
         if "secreted" in (location_1, location_2):
@@ -1068,7 +1068,7 @@ def extract_gp_dict_from_humanppi_interactions(
         program_type: Literal[
             "intercellular", "intracellular", "both"]="intercellular",
         localization_filter: Literal[
-            "surface_secreted", "membrane_strict"]="surface_secreted",
+            "strict", "include_ambiguous"]="strict",
         unknown_locality: Literal["exclude", "intracellular"]="exclude",
         min_rf_prob: Optional[float]=None,
         min_af_prob: Optional[float]=None,
@@ -1185,18 +1185,21 @@ def extract_gp_dict_from_humanppi_interactions(
         downstream (see above).
     localization_filter:
         Determines whether proteins with an ´ambiguous´ location class count as
-        extracellular facing. If ´surface_secreted´ (default), they do not, so
-        an interaction is only intercellular if both partners carry a keyword
-        that establishes an extracellular face. If ´membrane_strict´, a protein
-        whose only evidence is an ambiguous keyword additionally counts as
+        extracellular facing, and therefore how conservatively interactions are
+        called intercellular. If ´strict´ (default), they do not count, so an
+        interaction is only intercellular if both partners carry a keyword that
+        establishes an extracellular face. If ´include_ambiguous´, a protein
+        whose only evidence is an ambiguous keyword also counts as
         extracellular facing, provided it carries no intracellular keyword;
-        this recovers proteins that are annotated with the generic ´Membrane´
-        keyword alone, at the cost of some false positives. The previously
-        available values ´membrane´ and ´all´ were removed because they
-        classified interactions between intracellular proteins as intercellular
-        (´membrane´ admitted the generic ´Membrane´ keyword, which also covers
-        the endoplasmic reticulum, mitochondrial, Golgi and nuclear membranes,
-        and ´all´ admitted every protein regardless of localization).
+        this recovers proteins annotated with the generic ´Membrane´ keyword
+        alone, at the cost of some false positives.
+
+        Earlier values are rejected with an explanatory error: ´membrane´ and
+        ´all´ were removed because they classified interactions between
+        intracellular proteins as intercellular, and ´surface_secreted´ and
+        ´membrane_strict´ were renamed to ´strict´ and ´include_ambiguous´
+        respectively (´membrane_strict´ was misleading, being the more
+        permissive of the two settings).
     unknown_locality:
         Determines how interactions are handled in which at least one partner
         has no usable localization annotation, which is the case for around a
@@ -1264,14 +1267,25 @@ def extract_gp_dict_from_humanppi_interactions(
         raise ValueError(
             f"´localization_filter´ '{localization_filter}' is no longer "
             "supported because it classified interactions between "
-            "intracellular proteins as intercellular. Use 'surface_secreted' "
-            "(default) or 'membrane_strict' instead. To retrieve the complete "
-            "interactome, use ´program_type´ 'both', which retains every "
-            "interaction and assigns each one to the appropriate gene program "
-            "component.")
-    if localization_filter not in ("surface_secreted", "membrane_strict"):
-        raise ValueError("´localization_filter´ should be either "
-                         "'surface_secreted' or 'membrane_strict'.")
+            "intracellular proteins as intercellular ('membrane' admitted the "
+            "generic 'Membrane' keyword, which also covers the endoplasmic "
+            "reticulum, mitochondrial, Golgi and nuclear membranes, and 'all' "
+            "admitted every protein regardless of localization). Use 'strict' "
+            "(default) or 'include_ambiguous' instead. To retrieve the "
+            "complete interactome, use ´program_type´ 'both', which retains "
+            "every interaction and assigns each one to the appropriate gene "
+            "program component.")
+    if localization_filter == "surface_secreted":
+        raise ValueError("´localization_filter´ 'surface_secreted' was renamed "
+                         "to 'strict'.")
+    if localization_filter == "membrane_strict":
+        raise ValueError("´localization_filter´ 'membrane_strict' was renamed "
+                         "to 'include_ambiguous', which describes it more "
+                         "accurately: it is the more permissive of the two "
+                         "settings.")
+    if localization_filter not in ("strict", "include_ambiguous"):
+        raise ValueError("´localization_filter´ should be either 'strict' or "
+                         "'include_ambiguous'.")
     if unknown_locality not in ("exclude", "intracellular"):
         raise ValueError("´unknown_locality´ should be either 'exclude' or "
                          "'intracellular'.")
