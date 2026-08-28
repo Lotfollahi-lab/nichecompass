@@ -18,11 +18,60 @@ from anndata import AnnData
 
 from nichecompass.data import initialize_dataloaders, prepare_data
 from .basetrainermixin import BaseTrainerMixin
+from .distributed import (all_gather_numpy,
+                          all_reduce_sum_scalar,
+                          barrier,
+                          broadcast_object,
+                          cleanup_distributed,
+                          get_local_rank,
+                          get_rank,
+                          get_world_size,
+                          init_distributed,
+                          is_initialized,
+                          is_main_process,
+                          shard_indices,
+                          unwrap_model)
 from .metrics import eval_metrics, plot_eval_metrics
 from .utils import (_cycle_iterable,
                     plot_loss_curves,
                     print_progress,
                     EarlyStopping)
+
+
+class _JointForwardModule(nn.Module):
+    """
+    Run the node-level (omics) and the edge-level (graph) forward pass of a
+    NicheCompass model in a single call.
+
+    ´DistributedDataParallel´ prepares its gradient reduction at the end of
+    every forward pass and expects exactly one forward per backward. The
+    training step calls the model twice, once per decoder, before a single
+    backward over the combined loss, which would leave the first pass's
+    gradients unreduced. Joining the two passes into one forward restores the
+    contract without changing what is computed: the two passes are independent
+    given the same parameters, so the outputs are identical to calling the
+    model twice.
+
+    Only used for distributed training. On a single device the model is called
+    directly, exactly as before.
+    """
+    def __init__(self, model: nn.Module):
+        super().__init__()
+        self.model = model
+
+    def forward(self,
+                node_data_batch,
+                edge_data_batch,
+                use_only_active_gps: bool) -> tuple:
+        node_model_output = self.model(
+            data_batch=node_data_batch,
+            decoder="omics",
+            use_only_active_gps=use_only_active_gps)
+        edge_model_output = self.model(
+            data_batch=edge_data_batch,
+            decoder="graph",
+            use_only_active_gps=use_only_active_gps)
+        return node_model_output, edge_model_output
 
 
 class Trainer(BaseTrainerMixin):
@@ -106,6 +155,7 @@ class Trainer(BaseTrainerMixin):
                  reload_best_model: bool=True,
                  early_stopping_kwargs: Optional[dict]=None,
                  use_cuda_if_available: bool=True,
+                 multi_gpu: bool=False,
                  seed: int=0,
                  monitor: bool=True,
                  verbose: bool=False,
@@ -152,14 +202,38 @@ class Trainer(BaseTrainerMixin):
         self.best_epoch = None
         self.best_model_state_dict = None
 
-        print("\n--- INITIALIZING TRAINER ---")
-        
-        # Set seed and use GPU if available
+        # Join the process group before anything else, so that the rank is
+        # known when the device is chosen and when output is printed
+        self.multi_gpu_ = multi_gpu
+        self.distributed_ = init_distributed() if multi_gpu else False
+        self.world_size_ = get_world_size()
+        self.rank_ = get_rank()
+        if multi_gpu and not self.distributed_:
+            raise RuntimeError(
+                "´multi_gpu´ was requested but this process was not launched "
+                "as part of a distributed job, so there is only one process "
+                "to train with. Launch the script with, for example, "
+                "´torchrun --nproc_per_node=4 your_script.py´. See the "
+                "multi-GPU section of the user guide.")
+
+        if is_main_process():
+            print("\n--- INITIALIZING TRAINER ---")
+            if self.distributed_:
+                print(f"Distributed training across {self.world_size_} "
+                      "processes.")
+
+        # Set seed and use GPU if available. Every process seeds identically
+        # here, so that the model is initialized identically and so that the
+        # train/validation split below is the same everywhere. The per process
+        # seed is only diverged afterwards, once the split exists.
         np.random.seed(self.seed_)
         if use_cuda_if_available & torch.cuda.is_available():
             torch.cuda.manual_seed(self.seed_)
             torch.manual_seed(self.seed_)
-            self.device = torch.device("cuda")
+            # Each process owns exactly one device, identified by its rank
+            # within the node
+            self.device = (torch.device("cuda", get_local_rank())
+                           if self.distributed_ else torch.device("cuda"))
         else:
             torch.manual_seed(self.seed_)
             self.device = torch.device("cpu")
@@ -185,18 +259,42 @@ class Trainer(BaseTrainerMixin):
         self.n_nodes_val = self.node_masked_data.val_mask.sum().item()
         self.n_edges_train = self.edge_train_data.edge_label_index.size(1)
         self.n_edges_val = self.edge_val_data.edge_label_index.size(1)
-        print(f"Number of training nodes: {self.n_nodes_train}")
-        print(f"Number of validation nodes: {self.n_nodes_val}")
-        print(f"Number of training edges: {self.n_edges_train}")
-        print(f"Number of validation edges: {self.n_edges_val}")
+        if is_main_process():
+            print(f"Number of training nodes: {self.n_nodes_train}")
+            print(f"Number of validation nodes: {self.n_nodes_val}")
+            print(f"Number of training edges: {self.n_edges_train}")
+            print(f"Number of validation edges: {self.n_edges_val}")
 
         # Determine node batch size automatically if not specified
         if self.node_batch_size_ is None:
             self.node_batch_size_ = int(self.edge_batch_size_ / math.floor(
                 self.n_edges_train / self.n_nodes_train))
         
-        print(f"Edge batch size: {edge_batch_size}")
-        print(f"Node batch size: {node_batch_size}")
+        # The batch sizes are the GLOBAL batch sizes, so that a distributed
+        # run performs the same number of optimizer steps over the same
+        # effective batches as a single device run. Each process therefore
+        # takes a ´world_size´-th of every batch, which is where the speedup
+        # comes from, rather than making the batch larger.
+        self.global_edge_batch_size_ = self.edge_batch_size_
+        self.global_node_batch_size_ = self.node_batch_size_
+        if self.distributed_:
+            if self.edge_batch_size_ % self.world_size_ != 0:
+                warnings.warn(
+                    f"The edge batch size {self.edge_batch_size_} is not "
+                    f"divisible by the number of processes "
+                    f"{self.world_size_}, so the effective global edge batch "
+                    "size is rounded down.")
+            self.edge_batch_size_ = max(
+                1, self.edge_batch_size_ // self.world_size_)
+            self.node_batch_size_ = max(
+                1, self.node_batch_size_ // self.world_size_)
+        if is_main_process():
+            print(f"Edge batch size: {self.global_edge_batch_size_}"
+                  + (f" ({self.edge_batch_size_} per process)"
+                     if self.distributed_ else ""))
+            print(f"Node batch size: {self.global_node_batch_size_}"
+                  + (f" ({self.node_batch_size_} per process)"
+                     if self.distributed_ else ""))
 
         # Initialize node-level and edge-level dataloaders
         loader_dict = initialize_dataloaders(
@@ -208,11 +306,54 @@ class Trainer(BaseTrainerMixin):
             n_direct_neighbors=self.n_sampled_neighbors_,
             n_hops=self.loaders_n_hops_,
             edges_directed=False,
-            neg_edge_sampling_ratio=1.)
+            neg_edge_sampling_ratio=1.,
+            node_input_shard_fn=(shard_indices if self.distributed_ else None),
+            edge_input_shard_fn=(
+                (lambda edge_label_index: edge_label_index[
+                    :, shard_indices(torch.arange(
+                        edge_label_index.size(1)))])
+                if self.distributed_ else None),
+            drop_last=self.distributed_)
         self.edge_train_loader = loader_dict["edge_train_loader"]
         self.edge_val_loader = loader_dict.pop("edge_val_loader", None)
         self.node_train_loader = loader_dict["node_train_loader"]
         self.node_val_loader = loader_dict.pop("node_val_loader", None)
+
+        if self.distributed_:
+            # Diverge the random state per process, but only now that the
+            # split and the loaders exist. Everything above had to be
+            # identical across processes; from here on the processes must
+            # differ, because the negative edges are drawn from the global
+            # torch generator at iteration time. With a shared seed every
+            # process would draw the same negative edges, so the extra devices
+            # would recompute the same negatives instead of covering more of
+            # them.
+            torch.manual_seed(self.seed_ + self.rank_)
+            np.random.seed(self.seed_ + self.rank_)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed(self.seed_ + self.rank_)
+
+            # The wrapper is held only by the trainer. ´self.model´ stays the
+            # bare model, so that saving, loading and every attribute lookup on
+            # the model keep working and checkpoints stay compatible.
+            self.ddp_model = nn.parallel.DistributedDataParallel(
+                _JointForwardModule(self.model),
+                device_ids=([self.device.index]
+                            if self.device.type == "cuda" else None),
+                output_device=(self.device.index
+                               if self.device.type == "cuda" else None),
+                # The gene program pruning state is reduced explicitly in the
+                # model, so letting the wrapper overwrite every process's
+                # buffers with the ones of the first process would replace a
+                # global mean by the first process's local mean
+                broadcast_buffers=False,
+                # Add-on gene program parameters receive no gradient when
+                # there are no add-on gene programs, and the categorical
+                # covariate embeddings receive none while the contrastive loss
+                # is still disabled
+                find_unused_parameters=True)
+        else:
+            self.ddp_model = None
 
     def train(self,
               n_epochs: int=100,
@@ -325,10 +466,13 @@ class Trainer(BaseTrainerMixin):
         self.lambda_l1_addon_ = lambda_l1_addon
         self.mlflow_experiment_id = mlflow_experiment_id
 
-        print("\n--- MODEL TRAINING ---")
+        if is_main_process():
+            print("\n--- MODEL TRAINING ---")
         
-        # Log hyperparameters
-        if self.mlflow_experiment_id is not None:
+        # Log hyperparameters. Only the main process writes to MLflow, so
+        # that a distributed run produces one record rather than one per
+        # process.
+        if self.mlflow_experiment_id is not None and is_main_process():
             for attr, attr_value in self._get_public_attributes().items():
                 mlflow.log_param(attr, attr_value)
             self.model.log_module_hyperparams_to_mlflow()
@@ -366,19 +510,28 @@ class Trainer(BaseTrainerMixin):
                     _cycle_iterable(self.node_train_loader)): # itertools.cycle
                                                               # resulted in
                                                               # memory leak
-                # Forward pass node-level batch
                 node_train_data_batch = node_train_data_batch.to(self.device)
-                node_train_model_output = self.model(
-                    data_batch=node_train_data_batch,
-                    decoder="omics",
-                    use_only_active_gps=self.use_only_active_gps)
-
-                # Forward pass edge-level batch
                 edge_train_data_batch = edge_train_data_batch.to(self.device)
-                edge_train_model_output = self.model(
-                    data_batch=edge_train_data_batch,
-                    decoder="graph",
-                    use_only_active_gps=self.use_only_active_gps)
+                if self.ddp_model is not None:
+                    # Both passes go through one call, so that the gradient
+                    # reduction of the wrapper covers both of them
+                    (node_train_model_output,
+                     edge_train_model_output) = self.ddp_model(
+                        node_train_data_batch,
+                        edge_train_data_batch,
+                        self.use_only_active_gps)
+                else:
+                    # Forward pass node-level batch
+                    node_train_model_output = self.model(
+                        data_batch=node_train_data_batch,
+                        decoder="omics",
+                        use_only_active_gps=self.use_only_active_gps)
+
+                    # Forward pass edge-level batch
+                    edge_train_model_output = self.model(
+                        data_batch=edge_train_data_batch,
+                        decoder="graph",
+                        use_only_active_gps=self.use_only_active_gps)
 
                 # Calculate training loss
                 train_loss_dict = self.model.loss(
@@ -433,34 +586,58 @@ class Trainer(BaseTrainerMixin):
                 warnings.warn("You have specified an edge validation set but no"
                               " node validation set. Skipping validation...")
     
-            # Convert iteration level logs into epoch level logs
-            for key in self.iter_logs:
+            # Convert iteration level logs into epoch level logs. Every
+            # process ran the same number of iterations over a disjoint part of
+            # the same data, so averaging the per process means across
+            # processes gives the mean over the whole epoch.
+            for key in sorted(self.iter_logs):
                 if key.startswith("train"):
-                    self.epoch_logs[key].append(
-                        np.array(self.iter_logs[key]).sum() / 
-                        self.iter_logs["n_train_iter"])
-                if key.startswith("val"):
-                    self.epoch_logs[key].append(
-                        np.array(self.iter_logs[key]).sum() /
-                        self.iter_logs["n_val_iter"])
+                    epoch_value = (np.array(self.iter_logs[key]).sum() /
+                                   self.iter_logs["n_train_iter"])
+                elif key.startswith("val"):
+                    epoch_value = (np.array(self.iter_logs[key]).sum() /
+                                   self.iter_logs["n_val_iter"])
+                else:
+                    continue
+                if self.distributed_:
+                    epoch_value = (all_reduce_sum_scalar(float(epoch_value),
+                                                         self.device)
+                                   / self.world_size_)
+                self.epoch_logs[key].append(epoch_value)
 
             # Monitor epoch level logs
-            if self.monitor_:
+            if self.monitor_ and is_main_process():
                 print_progress(self.epoch, self.epoch_logs, self.n_epochs_)
 
-            # Check early stopping
+            # Check early stopping. The decision is taken on the main process
+            # and broadcast, so that every process leaves the loop in the same
+            # epoch. A process that kept training while the others stopped
+            # would wait forever on the next gradient reduction.
             if self.use_early_stopping_:
-                if self.is_early_stopping():
+                stop_training = (self.is_early_stopping()
+                                 if is_main_process() else None)
+                if self.distributed_:
+                    stop_training = broadcast_object(stop_training)
+                if stop_training:
                     break
 
         # Track training time and load best model
         self.training_time += (time.time() - start_time)
         minutes, seconds = divmod(self.training_time, 60)
-        print(f"Model training finished after {int(minutes)} min {int(seconds)}"
-               " sec.")
+        if is_main_process():
+            print(f"Model training finished after {int(minutes)} min "
+                  f"{int(seconds)} sec.")
+        # The best model state is only tracked on the main process, so it is
+        # broadcast before it is loaded, to leave every process holding the
+        # same weights
+        if self.distributed_:
+            self.best_model_state_dict = broadcast_object(
+                self.best_model_state_dict)
+            self.best_epoch = broadcast_object(self.best_epoch)
         if self.best_model_state_dict is not None and self.reload_best_model_:
-            print("Using best model state, which was in epoch "
-                  f"{self.best_epoch + 1}.")
+            if is_main_process():
+                print("Using best model state, which was in epoch "
+                      f"{self.best_epoch + 1}.")
             self.model.load_state_dict(self.best_model_state_dict)
 
         self.model.eval()
@@ -478,10 +655,10 @@ class Trainer(BaseTrainerMixin):
             "best_f1": self.epoch_logs["val_best_f1_score"]}
 
         fig = plot_loss_curves(losses)
-        if self.mlflow_experiment_id is not None:
+        if self.mlflow_experiment_id is not None and is_main_process():
             mlflow.log_figure(fig, "loss_curves.png")
         fig = plot_eval_metrics(val_eval_metrics_over_epochs) 
-        if self.mlflow_experiment_id is not None:
+        if self.mlflow_experiment_id is not None and is_main_process():
             mlflow.log_figure(fig, "val_eval_metrics.png")
         """
 
@@ -657,12 +834,34 @@ class Trainer(BaseTrainerMixin):
                         omics_pred_dict_val_accumulated[f"{entity}_{modality}"],
                         node_val_model_output["node_labels"][f"{entity}_{modality}"].detach().cpu().numpy())
 
+        # Every process only saw its own shard of the validation set, so the
+        # predictions and labels are concatenated across processes before the
+        # metrics are computed. Otherwise each process would report a metric
+        # over a ´world_size´-th of the validation data.
+        if self.distributed_:
+            edge_recon_probs_val_accumulated = all_gather_numpy(
+                edge_recon_probs_val_accumulated, self.device)
+            edge_recon_labels_val_accumulated = all_gather_numpy(
+                edge_recon_labels_val_accumulated, self.device)
+            if edge_incl_val_accumulated is not None:
+                edge_incl_val_accumulated = all_gather_numpy(
+                    edge_incl_val_accumulated, self.device)
+            if edge_same_cat_covariates_cat_val_accumulated is not None:
+                edge_same_cat_covariates_cat_val_accumulated = [
+                    all_gather_numpy(accumulated, self.device) for accumulated
+                    in edge_same_cat_covariates_cat_val_accumulated]
+            omics_pred_dict_val_accumulated = {
+                key: all_gather_numpy(value, self.device) for key, value
+                in omics_pred_dict_val_accumulated.items()}
+
         val_eval_dict = eval_metrics(
             edge_recon_probs=edge_recon_probs_val_accumulated,
             edge_labels=edge_recon_labels_val_accumulated,
             edge_same_cat_covariates_cat=edge_same_cat_covariates_cat_val_accumulated,
             edge_incl=edge_incl_val_accumulated,
             omics_pred_dict=omics_pred_dict_val_accumulated)
+        if not is_main_process():
+            return
         print("\n--- MODEL EVALUATION ---")
         print(f"val AUROC score: {val_eval_dict['auroc_score']:.4f}")
         print(f"val AUPRC score: {val_eval_dict['auprc_score']:.4f}")

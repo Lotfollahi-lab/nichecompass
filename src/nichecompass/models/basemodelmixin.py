@@ -14,6 +14,8 @@ import scipy.sparse as sp
 import torch
 from anndata import AnnData
 
+from nichecompass.train.distributed import (get_local_rank,
+                                            unwrap_model)
 from .utils import initialize_model, load_saved_files, validate_var_names
 
 
@@ -136,7 +138,12 @@ class BaseModelMixin():
         var_names = self.adata.var_names.astype(str).to_numpy()
         public_attributes = self._get_public_attributes()
         
-        torch.save(self.model.state_dict(), model_save_path)
+        # Distributed training keeps the wrapper inside the trainer and leaves
+        # ´self.model´ as the bare model, so this is already the unprefixed
+        # state dict. The unwrap only guards against a future change that
+        # stores the wrapper here, which would otherwise write keys prefixed
+        # with ´module.´ that ´load´ cannot read back.
+        torch.save(unwrap_model(self.model).state_dict(), model_save_path)
         np.savetxt(var_names_save_path, var_names, fmt="%s")
         with open(attr_save_path, "wb") as f:
             pickle.dump(public_attributes, f)
@@ -271,7 +278,11 @@ class BaseModelMixin():
             model.model.load_state_dict(model_state_dict)
 
         if use_cuda:
-            model.model.cuda()
+            # Bind to the device this process owns rather than to ´cuda:0´, so
+            # that the processes of a distributed job do not all load onto the
+            # first device
+            model.model.cuda(get_local_rank()
+                             if torch.cuda.is_available() else None)
         model.model.eval()
 
         # First freeze all parameters and then subsequently unfreeze based on

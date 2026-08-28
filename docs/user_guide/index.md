@@ -13,6 +13,14 @@ In summary, we recommend the following:
 - We recommend users to use a GATv2 encoder layer (as opposed to a GCNConv encoder layer) unless performance is a bottleneck or niche characterization is not a priority and the data has single-cell resolution. 
 - Since the use of prior GPs can significantly improve NID compared to a scenario without prior GPs, we recommend users to use the default set of prior GPs even if interpretability is not a main objective.
 
+## Training on several GPUs
+
+Training can be split across several GPUs, with one process per GPU. The batch sizes keep their meaning as
+global batch sizes, so the number of optimizer steps per epoch is unchanged and only the work per step is
+divided between the devices. Single-device training is unaffected and is what the option defaults to.
+See [multi_gpu_training](multi_gpu_training.md) for how to launch it, what it guarantees numerically, and
+what has and has not been verified.
+
 ## Prior gene program resources
 
 NicheCompass ships several prior gene program resources, retrieved through the functions documented in the
@@ -25,4 +33,5 @@ neighbour-to-self signalling prior. That workflow is documented in full, step by
 :maxdepth: 1
 
 humanppi_gene_programs
+multi_gpu_training
 ```

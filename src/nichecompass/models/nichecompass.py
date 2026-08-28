@@ -18,6 +18,9 @@ from nichecompass.data import (initialize_dataloaders,
                                prepare_data)
 from nichecompass.modules import VGPGAE
 from nichecompass.train import Trainer
+from nichecompass.train.distributed import (barrier,
+                                            cleanup_distributed,
+                                            is_main_process)
 from .basemodelmixin import BaseModelMixin
 
 
@@ -614,6 +617,7 @@ class NicheCompass(BaseModelMixin):
               retrieve_recon_edge_probs: bool=False,
               retrieve_agg_weights: bool=False,
               use_cuda_if_available: bool=True,
+              multi_gpu: bool=False,
               n_sampled_neighbors: int=-1,
               latent_dtype: type=np.float64,
               **trainer_kwargs):
@@ -714,6 +718,18 @@ class NicheCompass(BaseModelMixin):
             training is finished.
         use_cuda_if_available:
             If `True`, use cuda if available.
+        multi_gpu:
+            If `True`, split training across all processes of a distributed
+            job, so that every process holds a copy of the model and works on a
+            disjoint part of the training edges and nodes. Gradients are
+            averaged across processes, so ´edge_batch_size´ and
+            ´node_batch_size´ keep their meaning as the global batch sizes and
+            the number of optimizer steps per epoch is unchanged; the speedup
+            comes from each process computing a ´world_size´-th of every batch.
+            Requires the script to be launched as a distributed job, for
+            example with ´torchrun --nproc_per_node=4 your_script.py´, and
+            raises otherwise. Leaving this at `False` reproduces the previous
+            behavior exactly.
         n_sampled_neighbors:
             Number of neighbors that are sampled during model training from the spatial
             neighborhood graph.
@@ -737,6 +753,7 @@ class NicheCompass(BaseModelMixin):
             edge_batch_size=edge_batch_size,
             node_batch_size=node_batch_size,
             use_cuda_if_available=use_cuda_if_available,
+            multi_gpu=multi_gpu,
             n_sampled_neighbors=n_sampled_neighbors,
             latent_dtype=latent_dtype,
             **trainer_kwargs)
@@ -791,10 +808,22 @@ class NicheCompass(BaseModelMixin):
             lambda_l1_addon=lambda_l1_addon,
             mlflow_experiment_id=mlflow_experiment_id)
         
-        self.node_batch_size_ = self.trainer.node_batch_size_
+        # The per process batch size is not the batch size the user asked for,
+        # so the global one is kept for everything that follows training
+        self.node_batch_size_ = self.trainer.global_node_batch_size_
         
         self.is_trained_ = True
         self.model.eval()
+
+        # Everything below writes into ´adata´ and runs over the whole dataset.
+        # Every process holds its own copy of ´adata´, so letting all of them
+        # do it would duplicate the work and leave the copies of every process
+        # other than the main one unused. The other processes wait at the
+        # barrier and then release the process group together.
+        if not is_main_process():
+            barrier()
+            cleanup_distributed()
+            return
 
         self.adata.obsm[self.latent_key_], _ = self.get_latent_representation(
            adata=self.adata,
@@ -826,6 +855,9 @@ class NicheCompass(BaseModelMixin):
         if mlflow_experiment_id is not None:
             mlflow.log_metric("n_active_gps",
                               len(self.adata.uns[self.active_gp_names_key_]))
+
+        barrier()
+        cleanup_distributed()
 
     def run_differential_gp_tests(
             self,

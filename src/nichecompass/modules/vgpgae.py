@@ -8,6 +8,7 @@ from typing import List, Literal, Optional, Tuple, Union
 import mlflow
 import numpy as np
 import torch
+import torch.distributed
 import torch.nn as nn
 from mlflow.exceptions import MlflowException
 from torch_geometric.data import Data
@@ -27,6 +28,18 @@ from .losses import (compute_cat_covariates_contrastive_loss,
                      compute_kl_reg_loss,
                      compute_omics_recon_nb_loss)
 from .vgaemodulemixin import VGAEModuleMixin
+
+
+def _distributed_is_initialized() -> bool:
+    """
+    Indicate whether a distributed process group is active.
+
+    Kept local to this module so that the quantities that drive gene program
+    pruning can be reduced across processes without the module importing the
+    training package.
+    """
+    return (torch.distributed.is_available()
+            and torch.distributed.is_initialized())
 
 
 class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
@@ -441,11 +454,21 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.register_buffer("running_mean_abs_mu",
                              torch.zeros(n_prior_gp + n_addon_gp))
         
-        # Initialize rna dynamic decoder masks
-        self.target_rna_dynamic_decoder_mask = torch.ones(
-            (n_prior_gp + n_addon_gp), n_output_genes, dtype=torch.bool)
-        self.source_rna_dynamic_decoder_mask = torch.ones(
-            (n_prior_gp + n_addon_gp), n_output_genes, dtype=torch.bool)
+        # Initialize rna dynamic decoder masks. These are registered as
+        # buffers so that ´Module.to´ moves them with the model and so that
+        # distributed training can keep them identical across processes. They
+        # are non persistent, so that the state dict is unchanged and models
+        # saved before this remain loadable.
+        self.register_buffer(
+            "target_rna_dynamic_decoder_mask",
+            torch.ones((n_prior_gp + n_addon_gp), n_output_genes,
+                       dtype=torch.bool),
+            persistent=False)
+        self.register_buffer(
+            "source_rna_dynamic_decoder_mask",
+            torch.ones((n_prior_gp + n_addon_gp), n_output_genes,
+                       dtype=torch.bool),
+            persistent=False)
         
         if "atac" in self.modalities_:
             if not use_fc_decoder:
@@ -532,11 +555,18 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             self.source_atac_theta = torch.nn.Parameter(torch.randn(
                 n_output_peaks))
             
-            # Initialize atac dynamic decoder masks
-            self.target_atac_dynamic_decoder_mask = torch.ones(
-                (n_prior_gp + n_addon_gp), n_output_peaks, dtype=torch.bool)
-            self.source_atac_dynamic_decoder_mask = torch.ones(
-                (n_prior_gp + n_addon_gp), n_output_peaks, dtype=torch.bool)
+            # Initialize atac dynamic decoder masks. Registered as non
+            # persistent buffers for the same reasons as the rna ones above.
+            self.register_buffer(
+                "target_atac_dynamic_decoder_mask",
+                torch.ones((n_prior_gp + n_addon_gp), n_output_peaks,
+                           dtype=torch.bool),
+                persistent=False)
+            self.register_buffer(
+                "source_atac_dynamic_decoder_mask",
+                torch.ones((n_prior_gp + n_addon_gp), n_output_peaks,
+                           dtype=torch.bool),
+                persistent=False)
 
     def forward(self,
                 data_batch: Data,
@@ -640,8 +670,23 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             with torch.no_grad():
                 if self.training:
                     # Update running mean absolute gp scores using exponential
-                    # moving average with momentum of 0.1
-                    mean_abs_mu = self.mu.norm(p=1, dim=0) / self.mu.size(0)
+                    # moving average with momentum of 0.1. The sum of the
+                    # absolute scores and the number of nodes are reduced
+                    # separately across processes, so that the mean is the mean
+                    # over the whole global batch and not over the shard that
+                    # this process happened to receive. Gene program pruning is
+                    # driven by this quantity and is irreversible, so processes
+                    # that disagreed here would permanently prune different
+                    # gene programs and silently train different models.
+                    abs_mu_sum = self.mu.norm(p=1, dim=0)
+                    n_nodes = torch.tensor([float(self.mu.size(0))],
+                                           device=self.mu.device)
+                    if _distributed_is_initialized():
+                        torch.distributed.all_reduce(
+                            abs_mu_sum, op=torch.distributed.ReduceOp.SUM)
+                        torch.distributed.all_reduce(
+                            n_nodes, op=torch.distributed.ReduceOp.SUM)
+                    mean_abs_mu = abs_mu_sum / n_nodes
                     self.running_mean_abs_mu = (
                         0.1 * mean_abs_mu + 0.9 * self.running_mean_abs_mu)
                     
