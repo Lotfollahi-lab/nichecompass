@@ -92,22 +92,38 @@ def init_distributed(backend: Optional[str]=None) -> bool:
         return False
     if backend is None:
         backend = "nccl" if torch.cuda.is_available() else "gloo"
-    dist.init_process_group(backend=backend)
+    # The device is bound BEFORE the process group is created. NCCL binds its
+    # communicator to whichever device is current, so a process that joined the
+    # group before selecting its device would create its context on device 0
+    # along with every other process. Under an exclusive compute mode that is
+    # an abort rather than merely wasted memory, and it presents as the GPU
+    # mode being at fault when it is not.
     if torch.cuda.is_available():
         torch.cuda.set_device(get_local_rank())
+    dist.init_process_group(backend=backend)
     return True
 
 
 def cleanup_distributed():
     """Destroy the process group if one exists."""
     if is_initialized():
-        dist.barrier()
+        barrier()
         dist.destroy_process_group()
 
 
 def barrier():
-    """Synchronize all processes, and do nothing if not distributed."""
-    if is_initialized():
+    """
+    Synchronize all processes, and do nothing if not distributed.
+
+    The device is named explicitly, because a bare barrier lets NCCL pick one
+    and every process would pick device 0, which is an abort under an exclusive
+    compute mode.
+    """
+    if not is_initialized():
+        return
+    if torch.cuda.is_available() and dist.get_backend() == "nccl":
+        dist.barrier(device_ids=[get_local_rank()])
+    else:
         dist.barrier()
 
 
