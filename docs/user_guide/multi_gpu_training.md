@@ -26,6 +26,73 @@ model.train(n_epochs=400,
 `torchrun` runs the whole script once per GPU. `multi_gpu=True` without such a launch raises immediately
 with an explanatory error, rather than silently training on one device.
 
+### On an HPC cluster
+
+Ready-to-edit submission scripts are in the reproducibility repository at
+`analysis/data_analysis/submit_lsf.sh` and `analysis/data_analysis/submit_slurm.sh`.
+
+**LSF** (`bsub < submit_lsf.sh`). Request the GPUs on one host and let `torchrun` start one process per
+GPU:
+
+```bash
+#BSUB -q gpu-normal
+#BSUB -gpu "num=4:mode=exclusive_process:j_exclusive=yes"
+#BSUB -n 16
+#BSUB -R "span[hosts=1] select[mem>200000] rusage[mem=200000]"
+#BSUB -M 200000
+
+torchrun --standalone --nnodes=1 --nproc_per_node=4 \
+    train_nichecompass_reference_model.py --multi_gpu <other arguments>
+```
+
+`span[hosts=1]` is what keeps the four GPUs on one machine. `--standalone` sets up the rendezvous locally
+and picks a free port, which avoids clashing with another job on a shared node.
+
+**Slurm, one node** (`sbatch submit_slurm.sh`):
+
+```bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-node=4
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=200G
+
+torchrun --standalone --nnodes=1 --nproc_per_node=4 \
+    train_nichecompass_reference_model.py --multi_gpu <other arguments>
+```
+
+Request **one task per node**, not one per GPU. `torchrun` starts the per-GPU processes itself; asking
+Slurm for four tasks as well would start four copies of `torchrun` and hence sixteen processes.
+
+**Slurm, several nodes** (`sbatch --nodes=2 submit_slurm.sh`). The nodes have to find each other, so a
+rendezvous endpoint on the first node is needed:
+
+```bash
+MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
+MASTER_PORT=$(( 20000 + SLURM_JOB_ID % 20000 ))
+
+srun --kill-on-bad-exit=1 torchrun \
+    --nnodes="$SLURM_NNODES" --nproc_per_node=4 \
+    --rdzv_id="$SLURM_JOB_ID" --rdzv_backend=c10d \
+    --rdzv_endpoint="$MASTER_ADDR:$MASTER_PORT" \
+    train_nichecompass_reference_model.py --multi_gpu <other arguments>
+```
+
+Deriving the port from the job id keeps two jobs that share a node from colliding. Multi-node runs are
+only worth it once a single node's GPUs are saturated: the gradient reduction then crosses the network on
+every step.
+
+Multi-node under LSF is possible with `blaunch` but is more awkward, since LSF gives the allocation as
+`$LSB_DJOB_HOSTFILE` rather than through the environment `torchrun` expects. If you need it, run the
+single-node script on the largest GPU node available first — that is almost always enough here.
+
+### Three things that will bite you
+
+- **`--nproc_per_node=1` with `--multi_gpu` raises.** One process is the single-device path, so ask for
+  `--multi_gpu` only when you are actually requesting several GPUs.
+- **Host memory scales with the number of processes**, not GPU memory. See section 6.
+- **Populate the gene program caches first.** See section 7.
+
 **Notebooks.** A notebook is a single process, so it cannot drive several GPUs this way. Run the
 single-device path in notebooks, or move training into a script and launch it with `torchrun`. This is a
 real limitation and not an oversight: the alternative, spawning worker processes from inside `train`, would
