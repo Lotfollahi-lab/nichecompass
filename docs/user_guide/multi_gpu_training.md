@@ -28,25 +28,56 @@ with an explanatory error, rather than silently training on one device.
 
 ### On an HPC cluster
 
-Ready-to-edit submission scripts are in the reproducibility repository at
-`analysis/data_analysis/submit_lsf.sh` and `analysis/data_analysis/submit_slurm.sh`.
+Ready-to-edit submitters are in the reproducibility repository at
+`analysis/data_analysis/submit_lsf_sanger.sh` and `analysis/data_analysis/submit_slurm.sh`.
 
-**LSF** (`bsub < submit_lsf.sh`). Request the GPUs on one host and let `torchrun` start one process per
-GPU:
+**LSF.** Which launcher starts the per-GPU processes is a property of the cluster, not of NicheCompass.
+`torchrun` is the PyTorch default, but LSF sites commonly start one rank per GPU with `mpirun` under the
+scheduler instead, and `init_distributed` supports both: it reads the rank from whichever launcher's
+environment variables are present (`RANK`/`WORLD_SIZE`/`LOCAL_RANK` for `torchrun`,
+`OMPI_COMM_WORLD_*`, `PMI_*` or `PMIX_*` for an MPI launcher).
+
+An MPI launcher does not set the rendezvous address, so the submitting script has to export
+`MASTER_ADDR` and `MASTER_PORT` and forward them to the ranks — for `mpirun` that means
+`-x MASTER_ADDR -x MASTER_PORT`. If they are missing, `init_distributed` raises and says so rather than
+hanging.
+
+The submitter for the Sanger farm is `analysis/data_analysis/submit_lsf_sanger.sh`:
 
 ```bash
-#BSUB -q gpu-normal
-#BSUB -gpu "num=4:mode=exclusive_process:j_exclusive=yes"
-#BSUB -n 16
-#BSUB -R "span[hosts=1] select[mem>200000] rusage[mem=200000]"
-#BSUB -M 200000
-
-torchrun --standalone --nnodes=1 --nproc_per_node=4 \
-    train_nichecompass_reference_model.py --multi_gpu <other arguments>
+bash submit_lsf_sanger.sh --n_epochs 1 --n_epochs_all_gps 0   # 4 GPU smoke run
+N_GPUS=1 bash submit_lsf_sanger.sh --n_epochs 1               # single device baseline
+DRY_RUN=1 bash submit_lsf_sanger.sh                           # print the job, submit nothing
 ```
 
-`span[hosts=1]` is what keeps the four GPUs on one machine. `--standalone` sets up the rendezvous locally
-and picks a free port, which avoids clashing with another job on a shared node.
+It is a submitter rather than a job script, because `#BSUB` directives are read before any shell runs and
+cannot reference variables: building the job body from variables is the only way to keep the `-gpu num=`
+request and the launcher's process count from drifting apart. It emits, for four GPUs:
+
+```bash
+#BSUB -q training-parallel
+#BSUB -G team361                     # REQUIRED, see below
+#BSUB -U lotfollahi-training-parallel
+#BSUB -n 24
+#BSUB -gpu "num=4:gmem=80000:mode=exclusive_process:block=yes"
+#BSUB -M 200G
+#BSUB -R "select[mem>200G] rusage[mem=200G] span[ptile=24]"
+```
+
+Three of those are site requirements that are easy to miss:
+
+- **`-G <group>` is mandatory.** Without it the esub rejects the job before it is queued, with
+  *"Sorry no available user group specified for this job"*. `bugroup -w | grep -w "$USER"` lists the groups
+  you belong to.
+- **The `training-parallel` queue is used together with an advance reservation** (`-U`). `brsvs` lists the
+  reservations available to you.
+- **`unset LSB_AFFINITY_HOSTFILE`** before `mpirun`, and load the scheduler-aware OpenMPI module
+  (`ISG/experimental/fg12/openmpi/...-lsf`). NCCL also needs `NCCL_NVLS_ENABLE=0` on NVSwitch nodes whose
+  driver rejects the multicast setup.
+
+Run `probe_lsf_gpu_allocation.sh` once before a long run. It submits the same resource request and reports
+whether the queue starts the job once or once per slot, how `num=` was interpreted, the memory limit with
+its unit, and whether the ranks can bind to distinct GPUs and all-reduce over NCCL.
 
 **Slurm, one node** (`sbatch submit_slurm.sh`):
 
@@ -82,9 +113,10 @@ Deriving the port from the job id keeps two jobs that share a node from collidin
 only worth it once a single node's GPUs are saturated: the gradient reduction then crosses the network on
 every step.
 
-Multi-node under LSF is possible with `blaunch` but is more awkward, since LSF gives the allocation as
-`$LSB_DJOB_HOSTFILE` rather than through the environment `torchrun` expects. If you need it, run the
-single-node script on the largest GPU node available first — that is almost always enough here.
+Multi-node under LSF works the same way as the single-node case, since `mpirun` already reads the
+allocation from the scheduler: raise the node count and set `MASTER_ADDR` to the first host of
+`$LSB_MCPU_HOSTS`, which the submitter does. It is only worth it once a single node's GPUs are saturated,
+because the gradient reduction then crosses the network on every step.
 
 ### Three things that will bite you
 

@@ -27,8 +27,11 @@ import torch
 
 from nichecompass.train.distributed import (all_gather_numpy,
                                             all_reduce_mean,
+                                            detect_launcher,
+                                            get_local_rank,
                                             get_rank,
                                             get_world_size,
+                                            init_distributed,
                                             is_distributed_launch,
                                             is_main_process,
                                             shard_indices,
@@ -145,6 +148,90 @@ def test_a_world_size_of_one_is_not_a_distributed_launch(monkeypatch):
 def test_unwrap_model_passes_through_an_unwrapped_model():
     model = torch.nn.Linear(2, 2)
     assert unwrap_model(model) is model
+
+
+###############################################################################
+## Which launcher started the process ##
+###############################################################################
+
+LAUNCHER_ENVIRONMENTS = [
+    ("torchrun", {"RANK": "2", "WORLD_SIZE": "4", "LOCAL_RANK": "2"}),
+    ("Open MPI", {"OMPI_COMM_WORLD_RANK": "2", "OMPI_COMM_WORLD_SIZE": "4",
+                  "OMPI_COMM_WORLD_LOCAL_RANK": "2"}),
+    ("MPICH", {"PMI_RANK": "2", "PMI_SIZE": "4", "MPI_LOCALRANKID": "2"}),
+    ("PMIx", {"PMIX_RANK": "2", "PMIX_SIZE": "4", "PMIX_LOCAL_RANK": "2"}),
+]
+LAUNCHER_VARIABLES = [variable for _, environment in LAUNCHER_ENVIRONMENTS
+                      for variable in environment]
+
+
+@pytest.fixture
+def no_launcher(monkeypatch):
+    """Remove every launcher variable, so each test starts from a clean slate."""
+    for variable in LAUNCHER_VARIABLES:
+        monkeypatch.delenv(variable, raising=False)
+    return monkeypatch
+
+
+@pytest.mark.parametrize("name,environment", LAUNCHER_ENVIRONMENTS)
+def test_every_supported_launcher_is_detected(no_launcher, name, environment):
+    # An LSF site commonly starts one process per GPU with mpirun rather than
+    # torchrun, so the MPI variables have to be understood too
+    for variable, value in environment.items():
+        no_launcher.setenv(variable, value)
+    launcher = detect_launcher()
+    assert launcher is not None
+    assert launcher == (name, 2, 4, 2)
+    assert is_distributed_launch() is True
+    assert get_local_rank() == 2
+
+
+@pytest.mark.parametrize("name,environment", LAUNCHER_ENVIRONMENTS)
+def test_one_process_is_not_a_distributed_launch(no_launcher, name,
+                                                 environment):
+    # One process is the single device path, whichever launcher nominally
+    # started it
+    for variable, value in environment.items():
+        no_launcher.setenv(variable, "0" if "RANK" in variable
+                           or "LOCALRANKID" in variable else "1")
+    assert detect_launcher() is None
+    assert is_distributed_launch() is False
+
+
+def test_no_launcher_is_not_a_distributed_launch(no_launcher):
+    assert detect_launcher() is None
+    assert is_distributed_launch() is False
+
+
+def test_torchrun_wins_over_a_stale_mpi_environment(no_launcher):
+    # Both sets present should resolve to torchrun, which is the explicit one
+    no_launcher.setenv("RANK", "1")
+    no_launcher.setenv("WORLD_SIZE", "2")
+    no_launcher.setenv("LOCAL_RANK", "1")
+    no_launcher.setenv("OMPI_COMM_WORLD_RANK", "3")
+    no_launcher.setenv("OMPI_COMM_WORLD_SIZE", "8")
+    assert detect_launcher()[0] == "torchrun"
+    assert detect_launcher()[1:] == (1, 2, 1)
+
+
+def test_a_missing_local_rank_falls_back_to_the_global_rank(no_launcher):
+    # Some MPI builds do not export a local rank; on one node it equals the
+    # global rank
+    no_launcher.setenv("OMPI_COMM_WORLD_RANK", "3")
+    no_launcher.setenv("OMPI_COMM_WORLD_SIZE", "4")
+    assert detect_launcher() == ("Open MPI", 3, 4, 3)
+
+
+def test_an_mpi_launch_without_a_rendezvous_raises_explaining_itself(
+        no_launcher):
+    # torchrun sets MASTER_ADDR and MASTER_PORT; mpirun does not, so the
+    # submission script has to, and the failure has to say so
+    no_launcher.setenv("OMPI_COMM_WORLD_RANK", "0")
+    no_launcher.setenv("OMPI_COMM_WORLD_SIZE", "2")
+    no_launcher.delenv("MASTER_ADDR", raising=False)
+    no_launcher.delenv("MASTER_PORT", raising=False)
+    with pytest.raises(RuntimeError, match="MASTER_ADDR and MASTER_PORT"):
+        init_distributed(backend="gloo")
 
 
 ###############################################################################

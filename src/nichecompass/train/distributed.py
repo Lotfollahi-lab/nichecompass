@@ -22,18 +22,55 @@ import torch
 import torch.distributed as dist
 
 
+# Environment variables through which each supported launcher reports the rank
+# of a process, the total number of processes and the rank within the node.
+# ´torchrun´ is listed first, so an explicit torchrun environment always wins.
+# The MPI entries matter because on an LSF cluster the established way to start
+# one process per GPU is usually ´mpirun´ under the scheduler, not ´torchrun´.
+_LAUNCHER_ENVIRONMENTS = (
+    ("torchrun", "RANK", "WORLD_SIZE", "LOCAL_RANK"),
+    ("Open MPI", "OMPI_COMM_WORLD_RANK", "OMPI_COMM_WORLD_SIZE",
+     "OMPI_COMM_WORLD_LOCAL_RANK"),
+    ("MPICH", "PMI_RANK", "PMI_SIZE", "MPI_LOCALRANKID"),
+    ("PMIx", "PMIX_RANK", "PMIX_SIZE", "PMIX_LOCAL_RANK"),
+)
+
+
+def detect_launcher() -> Optional[tuple]:
+    """
+    Return the launcher that started this process, as a tuple of its name and
+    the rank, world size and local rank it reported, or ´None´ if the process
+    was not started by a recognized launcher with more than one process.
+
+    Both ´torchrun´ and an MPI launcher are supported, because which one is
+    used is a property of the cluster rather than of NicheCompass: ´torchrun´
+    is the PyTorch default, while LSF sites commonly start one process per GPU
+    with ´mpirun´ under the scheduler.
+    """
+    for name, rank_var, size_var, local_rank_var in _LAUNCHER_ENVIRONMENTS:
+        if rank_var not in os.environ or size_var not in os.environ:
+            continue
+        world_size = int(os.environ[size_var])
+        if world_size <= 1:
+            # One process is the single device path, whichever launcher
+            # nominally started it
+            continue
+        rank = int(os.environ[rank_var])
+        local_rank = int(os.environ.get(local_rank_var, rank))
+        return name, rank, world_size, local_rank
+    return None
+
+
 def is_distributed_launch() -> bool:
     """
     Indicate whether the current process was launched as part of a distributed
-    job, by checking the environment variables that ´torchrun´ sets.
+    job with more than one process.
 
     This is deliberately a check of the environment rather than of
     ´torch.distributed.is_initialized´, so that it can be called before the
     process group exists.
     """
-    return ("RANK" in os.environ
-            and "WORLD_SIZE" in os.environ
-            and int(os.environ.get("WORLD_SIZE", "1")) > 1)
+    return detect_launcher() is not None
 
 
 def is_initialized() -> bool:
@@ -55,9 +92,15 @@ def get_local_rank() -> int:
     """
     Return the rank of the current process within its node, which is the index
     of the device it should use. Falls back to ´0´ if not distributed.
+
+    The local rank comes from whichever launcher started the process, since it
+    is the only reliable way to know which of the node's devices belongs to
+    this process. Deriving it from the global rank would be wrong on any run
+    that spans more than one node.
     """
-    if "LOCAL_RANK" in os.environ:
-        return int(os.environ["LOCAL_RANK"])
+    launcher = detect_launcher()
+    if launcher is not None:
+        return launcher[3]
     return get_rank()
 
 
@@ -71,8 +114,14 @@ def is_main_process() -> bool:
 
 def init_distributed(backend: Optional[str]=None) -> bool:
     """
-    Initialize the process group from the environment that ´torchrun´ provides,
-    and bind this process to its device.
+    Initialize the process group from the environment that the launcher
+    provides, and bind this process to its device.
+
+    Works with ´torchrun´ and with an MPI launcher such as ´mpirun´, since
+    which of the two starts one process per GPU is a property of the cluster.
+    An MPI launcher reports the rank under its own variable names and does not
+    set the rendezvous address, so the submission script has to export
+    ´MASTER_ADDR´ and ´MASTER_PORT´ and forward them to the ranks.
 
     Parameters
     ----------
@@ -88,8 +137,28 @@ def init_distributed(backend: Optional[str]=None) -> bool:
     """
     if is_initialized():
         return True
-    if not is_distributed_launch():
+    launcher = detect_launcher()
+    if launcher is None:
         return False
+    launcher_name, rank, world_size, local_rank = launcher
+
+    # ´torch.distributed´ reads the rendezvous from RANK, WORLD_SIZE,
+    # MASTER_ADDR and MASTER_PORT. ´torchrun´ sets all four; an MPI launcher
+    # sets none of them under those names, so they are filled in from what it
+    # did report. The submit script is responsible for exporting MASTER_ADDR
+    # and MASTER_PORT and for forwarding them to the ranks, since only it knows
+    # the allocation.
+    os.environ.setdefault("RANK", str(rank))
+    os.environ.setdefault("WORLD_SIZE", str(world_size))
+    os.environ.setdefault("LOCAL_RANK", str(local_rank))
+    if "MASTER_ADDR" not in os.environ or "MASTER_PORT" not in os.environ:
+        raise RuntimeError(
+            f"Started by {launcher_name} with {world_size} processes, but "
+            "MASTER_ADDR and MASTER_PORT are not set, so the processes cannot "
+            "find each other. Export both in the submission script and "
+            "forward them to the ranks, which for ´mpirun´ means "
+            "´-x MASTER_ADDR -x MASTER_PORT´. ´torchrun´ sets them itself.")
+
     if backend is None:
         backend = "nccl" if torch.cuda.is_available() else "gloo"
     # The device is bound BEFORE the process group is created. NCCL binds its
