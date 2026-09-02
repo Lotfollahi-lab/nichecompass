@@ -79,13 +79,31 @@ def is_initialized() -> bool:
 
 
 def get_rank() -> int:
-    """Return the rank of the current process, or ´0´ if not distributed."""
-    return dist.get_rank() if is_initialized() else 0
+    """
+    Return the rank of the current process, or ´0´ if not distributed.
+
+    Falls back to the rank the launcher reported when no process group exists,
+    which is what makes this usable BEFORE the group is created and AFTER it is
+    destroyed. Asking ´torch.distributed´ alone would answer ´0´ on every
+    process at those moments, so every process would believe it is the main one
+    and would duplicate the work that only one of them should do.
+    """
+    if is_initialized():
+        return dist.get_rank()
+    launcher = detect_launcher()
+    return launcher[1] if launcher is not None else 0
 
 
 def get_world_size() -> int:
-    """Return the number of processes, or ´1´ if not distributed."""
-    return dist.get_world_size() if is_initialized() else 1
+    """
+    Return the number of processes, or ´1´ if not distributed.
+
+    Falls back to the launcher for the same reason as ´get_rank´.
+    """
+    if is_initialized():
+        return dist.get_world_size()
+    launcher = detect_launcher()
+    return launcher[2] if launcher is not None else 1
 
 
 def get_local_rank() -> int:
@@ -108,6 +126,11 @@ def is_main_process() -> bool:
     """
     Indicate whether the current process is the one that should print, log,
     write files and mutate ´adata´.
+
+    Correct at any point in the run, including before the process group is
+    created and after it is destroyed, because it goes through ´get_rank´.
+    That matters: the guards around experiment tracking run before training
+    starts, and the guards around writing results run after it finishes.
     """
     return get_rank() == 0
 

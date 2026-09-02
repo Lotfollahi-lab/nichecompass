@@ -234,6 +234,31 @@ def test_an_mpi_launch_without_a_rendezvous_raises_explaining_itself(
         init_distributed(backend="gloo")
 
 
+def test_only_one_process_is_main_before_the_group_exists(no_launcher):
+    """
+    The guards that keep experiment tracking and writing results to one process
+    run BEFORE the process group is created and AFTER it is destroyed. Asking
+    torch.distributed at those moments answers 0 on every process, so every
+    process would believe it is the main one. This is the bug that made four
+    ranks race to create the same MLflow tables.
+    """
+    no_launcher.setenv("OMPI_COMM_WORLD_SIZE", "4")
+    mains = []
+    for rank in range(4):
+        no_launcher.setenv("OMPI_COMM_WORLD_RANK", str(rank))
+        assert get_rank() == rank
+        assert get_world_size() == 4
+        mains.append(is_main_process())
+    assert mains == [True, False, False, False], (
+        "exactly one process may be the main one")
+
+
+def test_rank_is_zero_and_world_size_one_without_any_launcher(no_launcher):
+    assert get_rank() == 0
+    assert get_world_size() == 1
+    assert is_main_process() is True
+
+
 ###############################################################################
 ## The claim the feature rests on ##
 ###############################################################################
