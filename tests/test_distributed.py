@@ -329,36 +329,59 @@ def test_rank_helpers_report_the_process_group(tmp_path):
 def test_every_decoder_mask_is_a_buffer_so_module_to_moves_it():
     """
     The decoder masks are combined with each other in the forward pass: the
-    static mask with the add-on mask, and the result with the dynamic mask. If
-    any of them is a plain attribute rather than a registered buffer, then
-    ´Module.to´ leaves that one behind on the CPU while moving the others, and
-    the forward pass fails with a device mismatch as soon as the model is moved
-    to a GPU.
+    static mask is concatenated with the add-on mask, and the result is
+    multiplied by the dynamic mask. If any of them is a plain attribute rather
+    than a registered buffer, ´Module.to´ leaves that one on the CPU while
+    moving the others, and the forward pass fails with a device mismatch as
+    soon as the model is moved to a GPU.
 
-    This is checked by reading the source rather than by building a model,
-    because constructing a VGPGAE needs the full data pipeline, and because the
-    property being asserted is a property of the source: that no mask is
-    assigned as a plain attribute.
+    The check walks the syntax tree rather than matching text, because an
+    earlier version of this test matched only ´self.x = ...´ assignments and
+    was therefore blind to the add-on masks, which are registered under a
+    computed name. Those masks then broke a four GPU run at the concatenation.
+    Every mechanism that can bind an attribute is covered here.
 
-    ´gene_peaks_mask_´ is deliberately exempt. Its trailing underscore makes it
-    one of the public attributes that are pickled when a model is saved, so it
-    stays a plain attribute and is aligned at each point of use instead.
+    ´gene_peaks_mask_´ is deliberately exempt: its trailing underscore marks it
+    as one of the public attributes pickled when a model is saved, so it stays
+    a plain attribute and each of its uses aligns its device explicitly.
     """
-    import re
+    import ast
     from pathlib import Path
 
-    # Located by path rather than imported, so that the check stays free of the
-    # module's heavy dependencies and this file remains runnable anywhere
+    # Located by path rather than imported, so the check stays free of the
+    # module's heavy dependencies
     module_path = (Path(__file__).resolve().parent.parent
                    / "src" / "nichecompass" / "modules" / "vgpgae.py")
     assert module_path.is_file(), f"cannot find {module_path}"
-    source = module_path.read_text()
-    registered = set(re.findall(r'register_buffer\(\s*\n?\s*f?"([^"]+)"',
-                                source))
-    plain = {name for name in
-             re.findall(r'^\s*self\.(\w*decoder_mask\w*)\s*=\s*\w', source,
-                        re.M)
-             if name not in registered}
-    assert not plain, (
-        "these decoder masks are plain attributes, so Module.to will not move "
-        f"them and the forward pass will break on a GPU: {sorted(plain)}")
+    tree = ast.parse(module_path.read_text())
+
+    exempt = {"gene_peaks_mask_"}
+    registered = {ast.unparse(node.args[0]).strip("'\"")
+                  for node in ast.walk(tree)
+                  if isinstance(node, ast.Call)
+                  and getattr(node.func, "attr", "") == "register_buffer"
+                  and node.args}
+    offenders = []
+    for node in ast.walk(tree):
+        # self.<name> = ...
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if (isinstance(target, ast.Attribute)
+                        and "mask" in target.attr.lower()
+                        and getattr(target.value, "id", "") == "self"
+                        and target.attr not in exempt
+                        and target.attr not in registered):
+                    offenders.append(f"line {node.lineno}: self.{target.attr}")
+        # setattr(self, "<name>", ...), including a computed name
+        if (isinstance(node, ast.Call)
+                and getattr(node.func, "id", "") == "setattr"
+                and len(node.args) >= 2
+                and getattr(node.args[0], "id", "") == "self"):
+            name = ast.unparse(node.args[1])
+            if "mask" in name.lower():
+                offenders.append(f"line {node.lineno}: setattr {name}")
+
+    assert not offenders, (
+        "these masks are bound as plain attributes, so Module.to will not "
+        "move them and the forward pass will break on a GPU: "
+        + "; ".join(offenders))

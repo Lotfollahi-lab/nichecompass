@@ -359,9 +359,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                         dtype=torch.float32)
                     rna_decoder_addon_mask[
                         :, features_idx_dict[f"{entity}_unmasked_rna_idx"]] = 1.
-                    setattr(self,
-                            f"{entity}_rna_decoder_addon_mask",
-                            rna_decoder_addon_mask)
+                    # A buffer, not a plain attribute: this mask is
+                    # concatenated with the static mask in the forward pass,
+                    # so ´Module.to´ has to move it as well
+                    self.register_buffer(
+                        f"{entity}_rna_decoder_addon_mask",
+                        rna_decoder_addon_mask, persistent=False)
                     
                     # Set add-on rna idx to unmasked rna idx as all unmasked
                     # genes are part of add-on gps
@@ -382,9 +385,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                             self.gene_peaks_mask_.to(
                                 device=rna_addon_mask.device,
                                 dtype=torch.int)).to(torch.bool)
-                        setattr(self,
-                                f"{entity}_atac_decoder_addon_mask",
-                                atac_decoder_addon_mask)
+                        self.register_buffer(
+                            f"{entity}_atac_decoder_addon_mask",
+                            atac_decoder_addon_mask, persistent=False)
 
                         # Determine add-on atac idx based on peaks that are
                         # mapped to unmasked genes
@@ -394,9 +397,11 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                             ).squeeze().tolist())
                 else:
                     for modality in self.modalities_:
-                        setattr(self,
-                                f"{entity}_{modality}_decoder_addon_mask",
-                                None)
+                        # Registered even when ´None´, so that the attribute is
+                        # always a buffer rather than sometimes a plain one
+                        self.register_buffer(
+                            f"{entity}_{modality}_decoder_addon_mask",
+                            None, persistent=False)
                         features_idx_dict[f"{entity}_addon_{modality}_idx"] = None   
 
             # Initialize masked gene expression decoders
