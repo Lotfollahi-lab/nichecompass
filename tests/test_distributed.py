@@ -320,3 +320,45 @@ def test_rank_helpers_report_the_process_group(tmp_path):
     assert all(result["world_size"] == 2 for result in results)
     assert [result["is_main"] for result in results] == [True, False]
     assert all(result["unwraps"] for result in results)
+
+
+###############################################################################
+## Every mask has to travel with the model ##
+###############################################################################
+
+def test_every_decoder_mask_is_a_buffer_so_module_to_moves_it():
+    """
+    The decoder masks are combined with each other in the forward pass: the
+    static mask with the add-on mask, and the result with the dynamic mask. If
+    any of them is a plain attribute rather than a registered buffer, then
+    ´Module.to´ leaves that one behind on the CPU while moving the others, and
+    the forward pass fails with a device mismatch as soon as the model is moved
+    to a GPU.
+
+    This is checked by reading the source rather than by building a model,
+    because constructing a VGPGAE needs the full data pipeline, and because the
+    property being asserted is a property of the source: that no mask is
+    assigned as a plain attribute.
+
+    ´gene_peaks_mask_´ is deliberately exempt. Its trailing underscore makes it
+    one of the public attributes that are pickled when a model is saved, so it
+    stays a plain attribute and is aligned at each point of use instead.
+    """
+    import re
+    from pathlib import Path
+
+    # Located by path rather than imported, so that the check stays free of the
+    # module's heavy dependencies and this file remains runnable anywhere
+    module_path = (Path(__file__).resolve().parent.parent
+                   / "src" / "nichecompass" / "modules" / "vgpgae.py")
+    assert module_path.is_file(), f"cannot find {module_path}"
+    source = module_path.read_text()
+    registered = set(re.findall(r'register_buffer\(\s*\n?\s*f?"([^"]+)"',
+                                source))
+    plain = {name for name in
+             re.findall(r'^\s*self\.(\w*decoder_mask\w*)\s*=\s*\w', source,
+                        re.M)
+             if name not in registered}
+    assert not plain, (
+        "these decoder masks are plain attributes, so Module.to will not move "
+        f"them and the forward pass will break on a GPU: {sorted(plain)}")

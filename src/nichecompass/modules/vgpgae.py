@@ -227,11 +227,24 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.n_addon_gp_ = n_addon_gp
         self.cat_covariates_embeds_nums_ = cat_covariates_embeds_nums
         self.n_output_genes_ = n_output_genes
-        self.target_rna_decoder_mask = target_rna_decoder_mask
-        self.source_rna_decoder_mask = source_rna_decoder_mask
+        # Registered as non persistent buffers so that ´Module.to´ moves them
+        # with the model. They are combined with the add-on masks, which are
+        # buffers, and with the dynamic masks, so any of them living on a
+        # different device than the rest is a device mismatch in the forward
+        # pass. Non persistent keeps the state dict unchanged, so models saved
+        # before this remain loadable.
+        self.register_buffer("target_rna_decoder_mask",
+                             target_rna_decoder_mask, persistent=False)
+        self.register_buffer("source_rna_decoder_mask",
+                             source_rna_decoder_mask, persistent=False)
         self.n_output_peaks_ = n_output_peaks
-        self.target_atac_decoder_mask = target_atac_decoder_mask
-        self.source_atac_decoder_mask = source_atac_decoder_mask
+        # Non persistent buffers for the same reason as the rna masks above.
+        # ´None´ is allowed for a buffer, which is what the rna only case
+        # passes.
+        self.register_buffer("target_atac_decoder_mask",
+                             target_atac_decoder_mask, persistent=False)
+        self.register_buffer("source_atac_decoder_mask",
+                             source_atac_decoder_mask, persistent=False)
         self.features_idx_dict_ = features_idx_dict
         self.features_scale_factors_ = features_scale_factors
         self.gene_peaks_mask_ = gene_peaks_mask
@@ -359,10 +372,16 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                         # Initialize atac add-on masks which are 0 everywhere
                         # except for the peaks that are mapped to genes that are
                         # unmasked, in which case they are 1
+                        rna_addon_mask = getattr(
+                            self, f"{entity}_rna_decoder_addon_mask")
+                        # ´gene_peaks_mask_´ is a pickled public attribute
+                        # rather than a buffer, so it is not moved by
+                        # ´Module.to´ and has to be aligned here
                         atac_decoder_addon_mask = torch.mm(
-                            getattr(self,
-                                    f"{entity}_rna_decoder_addon_mask").to(torch.int),
-                            self.gene_peaks_mask_.to(torch.int)).to(torch.bool)
+                            rna_addon_mask.to(torch.int),
+                            self.gene_peaks_mask_.to(
+                                device=rna_addon_mask.device,
+                                dtype=torch.int)).to(torch.bool)
                         setattr(self,
                                 f"{entity}_atac_decoder_addon_mask",
                                 atac_decoder_addon_mask)
@@ -882,12 +901,16 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                         target_atac_dynamic_decoder_mask = torch.mm(
                             non_zero_target_gene_weights.t().to(torch.float32), # dim: (n_gps,
                                                               #       n_genes)
-                            self.gene_peaks_mask_.to(torch.float32)).to(torch.bool) # dim: (n_genes,
+                            self.gene_peaks_mask_.to(
+                                device=non_zero_target_gene_weights.device,
+                                dtype=torch.float32)).to(torch.bool) # dim: (n_genes,
                                                    # n_peaks)
                             # dim: (n_gps, n_peaks)
                         source_atac_dynamic_decoder_mask = torch.mm(
                             non_zero_source_gene_weights.t().to(torch.float32),
-                            self.gene_peaks_mask_.to(torch.float32)).to(torch.bool)
+                            self.gene_peaks_mask_.to(
+                                device=non_zero_source_gene_weights.device,
+                                dtype=torch.float32)).to(torch.bool)
                         
                         # Create boolean mask of peaks (until here multiple
                         # active genes in a gp can be mapped to the same peak,
