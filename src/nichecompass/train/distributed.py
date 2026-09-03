@@ -15,7 +15,9 @@ not pay for it.
 """
 
 import os
+import warnings
 from collections import OrderedDict
+from datetime import timedelta
 from typing import Optional
 
 import numpy as np
@@ -136,7 +138,19 @@ def is_main_process() -> bool:
     return get_rank() == 0
 
 
-def init_distributed(backend: Optional[str]=None) -> bool:
+# How long a process may sit in one collective before the watchdog aborts it.
+# Torch's own default for ´nccl´ is ten minutes, which is not enough here: at
+# the end of training the other processes wait in a barrier while the main
+# process computes the latent representation over the WHOLE dataset, and on an
+# atlas that single pass can take longer than ten minutes. Overrun there would
+# abort the waiting processes and take the run down after training had already
+# succeeded. An hour is far longer than any legitimate collective and still
+# short enough to surface a genuine deadlock in one job's wall clock.
+DEFAULT_COLLECTIVE_TIMEOUT_MINUTES = 60
+
+
+def init_distributed(backend: Optional[str]=None,
+                     timeout_minutes: Optional[float]=None) -> bool:
     """
     Initialize the process group from the environment that the launcher
     provides, and bind this process to its device.
@@ -149,6 +163,11 @@ def init_distributed(backend: Optional[str]=None) -> bool:
 
     Parameters
     ----------
+    timeout_minutes:
+        How long a process may wait in a single collective before the watchdog
+        aborts it. Defaults to ´DEFAULT_COLLECTIVE_TIMEOUT_MINUTES´, or to the
+        environment variable ´NICHECOMPASS_COLLECTIVE_TIMEOUT_MINUTES´ when
+        that is set.
     backend:
         Communication backend. Defaults to ´nccl´ when CUDA is available, which
         is the only backend that is fast for GPU tensors, and to ´gloo´
@@ -193,15 +212,55 @@ def init_distributed(backend: Optional[str]=None) -> bool:
     # mode being at fault when it is not.
     if torch.cuda.is_available():
         torch.cuda.set_device(get_local_rank())
-    dist.init_process_group(backend=backend)
+    if timeout_minutes is None:
+        timeout_minutes = float(os.environ.get(
+            "NICHECOMPASS_COLLECTIVE_TIMEOUT_MINUTES",
+            DEFAULT_COLLECTIVE_TIMEOUT_MINUTES))
+    dist.init_process_group(backend=backend,
+                            timeout=timedelta(minutes=timeout_minutes))
     return True
 
 
 def cleanup_distributed():
-    """Destroy the process group if one exists."""
-    if is_initialized():
+    """
+    Release the process group, if one exists.
+
+    Every step is tolerant of failure, and that is deliberate. By the time this
+    runs the model is trained, the best state is loaded and every metric is
+    computed, so failing to hand the communicator back is not a reason to fail
+    the run. And it does fail on a cluster that allocates its GPUs in an
+    exclusive compute mode: NCCL's teardown releases the peer resources it
+    opened on the OTHER processes' devices, and ´cudaSetDevice´ on a device
+    another process holds exclusively is refused, so three of four ranks died
+    with
+
+        NCCL WARN Cuda failure 'CUDA-capable device(s) is/are busy or
+        unavailable'
+        ncclUnhandledCudaError: Call to CUDA function failed.
+
+    on device 0, which belongs to the one rank that got through. Reported as a
+    warning and then left alone: the processes are about to exit and the driver
+    reclaims everything they held.
+    """
+    if not is_initialized():
+        return
+    try:
         barrier()
+    except Exception as error:
+        warnings.warn(f"Synchronizing the processes before releasing the "
+                      f"process group failed: {error}. Training itself had "
+                      f"already finished, so this is reported rather than "
+                      f"raised.")
+    try:
         dist.destroy_process_group()
+    except Exception as error:
+        warnings.warn(f"Releasing the process group failed: {error}. This "
+                      f"happens on clusters whose GPUs are allocated in an "
+                      f"exclusive compute mode, where NCCL cannot touch the "
+                      f"peer devices it needs to release. Everything the run "
+                      f"produced is already complete, and the driver reclaims "
+                      f"what the processes held when they exit, so this is "
+                      f"reported rather than raised.")
 
 
 def barrier():

@@ -217,9 +217,30 @@ def plot_loss_curves(loss_dict: dict) -> plt.figure:
 
 
 def _cycle_iterable(iterable):
+    """
+    Yield from ´iterable´ forever, restarting it whenever it runs out.
+
+    Raises on an EMPTY iterable rather than restarting it. Spinning there would
+    loop forever inside pure python, where no collective watchdog can fire, so
+    a distributed run would hang with no output and no error until its wall
+    clock ran out. A data loader can come out empty only when ´drop_last´ is
+    set, which distributed runs do so that every process performs the same
+    number of iterations, and then a split shorter than a single batch yields
+    nothing at all.
+    """
     iterator = iter(iterable)
     while True:
         try:
             yield next(iterator)
         except StopIteration:
             iterator = iter(iterable)
+            empty = object()
+            first = next(iterator, empty)
+            if first is empty:
+                raise ValueError(
+                    "A data loader yielded no batches at all, so cycling over "
+                    "it would never return. This happens when a split is "
+                    "shorter than one batch and the last incomplete batch is "
+                    "dropped. Use fewer processes, or a smaller batch size, or "
+                    "a larger validation ratio.")
+            yield first

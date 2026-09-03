@@ -436,6 +436,126 @@ def test_a_state_dictionary_broadcast_arrives_in_host_memory(
 
 
 ###############################################################################
+## Releasing the process group ##
+###############################################################################
+
+@pytest.mark.parametrize("failing", ["barrier", "destroy_process_group"])
+def test_a_failed_teardown_is_reported_and_not_raised(monkeypatch, failing):
+    """
+    On a cluster whose GPUs are allocated in an exclusive compute mode, NCCL's
+    teardown cannot touch the peer devices it opened on the other processes,
+    and three of four ranks died with
+
+        ncclUnhandledCudaError: Call to CUDA function failed.
+        Cuda failure 'CUDA-capable device(s) is/are busy or unavailable'
+
+    after a run that had already trained, reloaded its best state and computed
+    every metric. Losing all of that because the communicator could not be
+    handed back is the wrong trade.
+    """
+    from nichecompass.train import distributed as module
+
+    monkeypatch.setattr(module, "is_initialized", lambda: True)
+    def explode(*args, **kwargs):
+        raise RuntimeError("Cuda failure 'CUDA-capable device(s) is/are busy'")
+    if failing == "barrier":
+        monkeypatch.setattr(module, "barrier", explode)
+        monkeypatch.setattr(module.dist, "destroy_process_group",
+                            lambda *a, **k: None)
+    else:
+        monkeypatch.setattr(module, "barrier", lambda *a, **k: None)
+        monkeypatch.setattr(module.dist, "destroy_process_group", explode)
+
+    with pytest.warns(UserWarning, match="process group"):
+        module.cleanup_distributed()
+
+
+def test_the_group_is_released_exactly_once_per_process():
+    # ´cleanup_distributed´ synchronizes before it releases, so a barrier at
+    # the call site as well made every process wait twice for nothing
+    source = io.open(os.path.join(os.path.dirname(os.path.dirname(
+        TRAINER_PATH)), "models", "nichecompass.py"), encoding="utf-8").read()
+    tree = ast.parse(source)
+    train = next(node for node in ast.walk(tree)
+                 if isinstance(node, ast.FunctionDef) and node.name == "train")
+    calls = [ast.unparse(node.func) for node in ast.walk(train)
+             if isinstance(node, ast.Call)]
+    assert calls.count("barrier") == 0, (
+        "cleanup_distributed already synchronizes, so a barrier beside it "
+        "makes every process wait twice")
+    assert calls.count("cleanup_distributed") == 2, (
+        "both the main and the non-main path have to release the group")
+
+
+###############################################################################
+## Failure modes with no symptom ##
+###############################################################################
+
+def test_cycling_an_empty_loader_raises_instead_of_spinning():
+    """
+    The node loaders are consumed through ´_cycle_iterable´, which rebuilds its
+    iterator whenever it runs out. On an EMPTY loader that is an infinite loop
+    in pure python: no collective is entered, so no watchdog fires, and a
+    distributed run hangs with no output and no error until its wall clock
+    expires. ´drop_last´ is set for distributed runs, so a split shorter than
+    one batch does produce an empty loader.
+    """
+    # Compiled out of the source rather than imported, so that the test does
+    # not pull in the plotting dependencies the rest of that module has
+    utils_path = os.path.join(os.path.dirname(TRAINER_PATH), "utils.py")
+    tree = ast.parse(io.open(utils_path, encoding="utf-8").read())
+    function = next(node for node in ast.walk(tree)
+                    if isinstance(node, ast.FunctionDef)
+                    and node.name == "_cycle_iterable")
+    namespace = {}
+    exec(compile(ast.Module(body=[function], type_ignores=[]),
+                 utils_path, "exec"), namespace)
+    _cycle_iterable = namespace["_cycle_iterable"]
+
+    with pytest.raises(ValueError, match="no batches"):
+        next(_cycle_iterable([]))
+
+    # and it still cycles, which is the whole point of it
+    cycled = _cycle_iterable([1, 2])
+    assert [next(cycled) for _ in range(5)] == [1, 2, 1, 2, 1]
+
+
+def test_an_empty_loader_is_rejected_before_the_first_epoch():
+    # The message at setup is worth more than the hang, and it also catches an
+    # empty EDGE loader, which does not hang but silently gives an epoch of no
+    # iterations and NaN logs
+    # In Trainer.__init__, which is before any epoch and before any collective
+    tree = ast.parse(io.open(TRAINER_PATH, encoding="utf-8").read())
+    trainer = next(node for node in ast.walk(tree)
+                   if isinstance(node, ast.ClassDef) and node.name == "Trainer")
+    setup = next(node for node in trainer.body
+                 if isinstance(node, ast.FunctionDef)
+                 and node.name == "__init__")
+    assert "yields no batches" in ast.unparse(setup)
+
+
+def test_the_process_group_is_given_an_explicit_timeout():
+    """
+    Torch's default for ´nccl´ is ten minutes. At the end of training the other
+    processes wait in a barrier while the main process computes the latent
+    representation over the whole dataset, and on an atlas that single pass can
+    exceed ten minutes -- which would abort the waiting processes after training
+    had already succeeded.
+    """
+    source = io.open(os.path.join(os.path.dirname(TRAINER_PATH),
+                                 "distributed.py"), encoding="utf-8").read()
+    function = next(node for node in ast.walk(ast.parse(source))
+                    if isinstance(node, ast.FunctionDef)
+                    and node.name == "init_distributed")
+    call = next(node for node in ast.walk(function)
+                if isinstance(node, ast.Call)
+                and getattr(node.func, "attr", "") == "init_process_group")
+    assert "timeout" in [keyword.arg for keyword in call.keywords], (
+        "init_process_group is called without a timeout, so the ten minute "
+        "nccl default applies")
+
+
+###############################################################################
 ## Side effects that every process needs ##
 ###############################################################################
 

@@ -18,8 +18,7 @@ from nichecompass.data import (initialize_dataloaders,
                                prepare_data)
 from nichecompass.modules import VGPGAE
 from nichecompass.train import Trainer
-from nichecompass.train.distributed import (barrier,
-                                            cleanup_distributed,
+from nichecompass.train.distributed import (cleanup_distributed,
                                             is_main_process)
 from .basemodelmixin import BaseModelMixin
 
@@ -818,10 +817,11 @@ class NicheCompass(BaseModelMixin):
         # Everything below writes into ´adata´ and runs over the whole dataset.
         # Every process holds its own copy of ´adata´, so letting all of them
         # do it would duplicate the work and leave the copies of every process
-        # other than the main one unused. The other processes wait at the
-        # barrier and then release the process group together.
+        # other than the main one unused. The other processes wait inside
+        # ´cleanup_distributed´, which synchronizes before it releases the
+        # process group, so that no process tears the group down while another
+        # is still inside a collective.
         if not is_main_process():
-            barrier()
             cleanup_distributed()
             return
 
@@ -856,7 +856,6 @@ class NicheCompass(BaseModelMixin):
             mlflow.log_metric("n_active_gps",
                               len(self.adata.uns[self.active_gp_names_key_]))
 
-        barrier()
         cleanup_distributed()
 
     def run_differential_gp_tests(

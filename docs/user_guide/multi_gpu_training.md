@@ -206,7 +206,7 @@ loaded. If one process stopped while the others continued, the others would hang
 concatenated across processes before AUROC, AUPRC and the MSE scores are computed. Otherwise every process
 would report a metric over a `world_size`-th of the validation set.
 
-## 5. Five structural details
+## 5. Eight structural details
 
 **Two forward passes, one backward.** A training step runs the model twice, once for the node-level omics
 decoder and once for the edge-level graph decoder, and then backpropagates a single combined loss.
@@ -261,6 +261,34 @@ same reason `eval_end` does — and additionally because those entries go straig
 passing through the all-reduce the iteration-level logs get. Computed per shard they would differ between
 processes, would not be comparable to a single-GPU run, and `early_stopping_metric` may name one of them.
 
+**Releasing the process group is allowed to fail.** `cleanup_distributed` synchronizes and then releases the
+group, and both steps are wrapped: a failure is warned about, not raised. On a cluster whose GPUs are
+allocated in an exclusive compute mode, NCCL's teardown releases the peer resources it opened on the *other*
+processes' devices, and `cudaSetDevice` on a device another process holds exclusively is refused:
+
+```
+NCCL WARN Cuda failure 'CUDA-capable device(s) is/are busy or unavailable'
+ncclUnhandledCudaError: Call to CUDA function failed.
+```
+
+That killed three of four ranks *after* a run had trained, reloaded its best state and computed every
+metric — on device 0, which belonged to the one rank that got through. Losing all of that because the
+communicator could not be handed back is the wrong trade: the processes are about to exit and the driver
+reclaims what they held.
+
+**The collective timeout is set explicitly.** Torch's default for `nccl` is ten minutes, and at the end of
+training the other processes wait while the main process computes the latent representation over the whole
+dataset. On an atlas that single pass can take longer than ten minutes, and overrunning would abort the
+waiting processes after training had already succeeded. `init_distributed` therefore asks for an hour, or for
+whatever `NICHECOMPASS_COLLECTIVE_TIMEOUT_MINUTES` says.
+
+**An empty data loader is rejected up front.** `drop_last` is set for distributed runs so that every process
+performs the same number of iterations, which means a split shorter than one batch yields *nothing*. The node
+loaders are consumed through a cycling generator that rebuilds its iterator when it runs out, so an empty one
+is an infinite loop in pure Python — no collective is entered, no watchdog fires, and the run hangs with no
+output and no error until its wall clock expires. Both the trainer and the generator now refuse it with a
+message naming the fix.
+
 **The wrapper is never stored on the model.** `self.model` stays the bare module and the
 `DistributedDataParallel` wrapper lives only inside the trainer. This keeps `save`, `load` and every
 `self.model.<attribute>` access working, and it means a checkpoint from a multi-GPU run has exactly the same
@@ -288,6 +316,13 @@ the caches under `data/gene_programs/`, then launch the multi-GPU run.
 The tests in `tests/test_distributed.py` run real multi-process training over the `gloo` backend on CPU and
 check the gradient equivalence claim, the shard properties, the collective reductions and the rank helpers.
 They do not need a GPU, because the correctness of the split is not a property of the device.
+
+One known caveat that is not fixed in code: with `n_fc_layers_encoder=2` the encoder gains a `BatchNorm1d`,
+whose running statistics are per process and are never synchronized (`broadcast_buffers=False`, and torch's
+`broadcast_buffers=True` would broadcast rank 0's rather than average them). The checkpoint then holds one
+process's statistics. This is stock behaviour for plain BatchNorm under data parallelism, whose documented
+remedy is `nn.SyncBatchNorm.convert_sync_batchnorm`; the default `n_fc_layers_encoder=1` constructs no
+BatchNorm at all, so it does not arise unless you ask for it.
 
 Not covered, because they need a machine with several GPUs: the `nccl` backend, binding each process to its
 device by local rank, and the actual speedup. These follow standard PyTorch practice, but they are

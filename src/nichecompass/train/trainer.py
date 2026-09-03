@@ -351,6 +351,29 @@ class Trainer(BaseTrainerMixin):
         self.node_val_loader = loader_dict.pop("node_val_loader", None)
 
         if self.distributed_:
+            # Checked up front, because an empty loader has no symptom later.
+            # ´drop_last´ is set for distributed runs so that every process
+            # performs the same number of iterations, and a split shorter than
+            # one batch then yields nothing: cycling over an empty node loader
+            # never returns, and an empty edge loader silently produces an
+            # epoch of no iterations and NaN logs. Both are worse than a
+            # message here.
+            for description, loader in [
+                    ("edge training", self.edge_train_loader),
+                    ("node training", self.node_train_loader),
+                    ("edge validation", self.edge_val_loader),
+                    ("node validation", self.node_val_loader)]:
+                if loader is not None and len(loader) == 0:
+                    raise ValueError(
+                        f"The {description} loader yields no batches on each "
+                        f"of the {self.world_size_} processes. Its per process "
+                        "share of the split is smaller than one per process "
+                        "batch, and the last incomplete batch is dropped so "
+                        "that every process runs the same number of "
+                        "iterations. Train on fewer processes, or lower the "
+                        "batch size, or raise the validation ratio.")
+
+        if self.distributed_:
             # Diverge the random state per process, but only now that the
             # split and the loaders exist. Everything above had to be
             # identical across processes; from here on the processes must
