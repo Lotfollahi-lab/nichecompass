@@ -206,7 +206,7 @@ loaded. If one process stopped while the others continued, the others would hang
 concatenated across processes before AUROC, AUPRC and the MSE scores are computed. Otherwise every process
 would report a metric over a `world_size`-th of the validation set.
 
-## 5. Eight structural details
+## 5. Nine structural details
 
 **Two forward passes, one backward.** A training step runs the model twice, once for the node-level omics
 decoder and once for the edge-level graph decoder, and then backpropagates a single combined loss.
@@ -271,10 +271,22 @@ NCCL WARN Cuda failure 'CUDA-capable device(s) is/are busy or unavailable'
 ncclUnhandledCudaError: Call to CUDA function failed.
 ```
 
-That killed three of four ranks *after* a run had trained, reloaded its best state and computed every
-metric — on device 0, which belonged to the one rank that got through. Losing all of that because the
-communicator could not be handed back is the wrong trade: the processes are about to exit and the driver
-reclaims what they held.
+That killed three of four ranks after a run had trained, reloaded its best state and computed every metric.
+
+The reason a warning is right here is stronger than "nothing follows the teardown", and worth stating
+correctly: on the main process `cleanup_distributed()` is the **last statement of `train()`**, and every
+output — the neighbour graph, the UMAP, `adata.write`, `model.save` — happens *afterwards*, in the caller.
+So on the process that matters, the teardown sits *before* 100% of the run's on-disk output. Letting it raise
+would kill that process with everything still in memory, which is exactly what happened once already.
+
+The two ways it can fail are not treated alike. The synchronisation comes first and doubles as a health
+check: if every process completed a collective there, the collectives the run depended on completed too, and
+a later failure is confined to handing the communicator back. If the *synchronisation* is what failed, the
+communicator was already unhealthy, the gradient reduction and gathered metrics cannot be assumed to have
+completed, and the warning says to treat the results as unverified. A failed release also records that the
+group is gone, because torch clears its own record of the default group only *after* the shutdown that
+failed — so `torch.distributed.is_initialized()` would otherwise keep answering `True` over a dead
+communicator, and a second `train(multi_gpu=True)` in the same process would build on it.
 
 **The collective timeout is set explicitly.** Torch's default for `nccl` is ten minutes, and at the end of
 training the other processes wait while the main process computes the latent representation over the whole
@@ -288,6 +300,29 @@ loaders are consumed through a cycling generator that rebuilds its iterator when
 is an infinite loop in pure Python — no collective is entered, no watchdog fires, and the run hangs with no
 output and no error until its wall clock expires. Both the trainer and the generator now refuse it with a
 message naming the fix.
+
+**Two loss terms are not plain batch means, and they are handled explicitly.** The argument that N
+processes reproduce one process rests on every loss term being a mean over the batch, so that a mean of
+per-process means is the mean over the global batch. That holds only when every process averaged over the
+*same number of items*, and two terms break it.
+
+The **edge reconstruction loss** is the important one, because it carries `lambda_edge_recon` — the largest
+weight in the model. When `cat_covariates_no_edges` drops the edges whose endpoints belong to different
+categories of a covariate, the positives all survive (they are within-category) while the negatives are
+sampled across the whole graph and mostly do not, so the number of surviving edges differs from process to
+process. Both `pos_weight` and the mean's denominator then become per-process quantities. `compute_edge_recon_loss`
+therefore sums the positive count, the negative count and the included-edge count across processes first,
+computes the loss with `reduction="sum"`, and divides by the global count — with a factor of `world_size` to
+undo the averaging the gradient reduction applies. The single-device path is untouched and still uses
+`reduction="mean"`.
+
+The **categorical covariates contrastive loss** cannot be repaired this way. It relabels the most and least
+confident of the different-category edges and finds them with a `topk` over whatever edges the process was
+given, so four processes each take the top fraction of their own quarter — and the union of four per-shard
+quantiles is not the global quantile. A different set of edges is relabelled than one process would relabel;
+the pseudo-labels themselves diverge, and no factor fixes that. `lambda_cat_covariates_contrastive > 0` with
+`multi_gpu=True` therefore raises `NotImplementedError` rather than silently training a different model. It
+defaults to `0.` in the reference pipeline, so this does not arise there.
 
 **The wrapper is never stored on the model.** `self.model` stays the bare module and the
 `DistributedDataParallel` wrapper lives only inside the trainer. This keeps `save`, `load` and every

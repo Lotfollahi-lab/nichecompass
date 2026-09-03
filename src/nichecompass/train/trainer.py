@@ -520,6 +520,31 @@ class Trainer(BaseTrainerMixin):
         self.lambda_l1_addon_ = lambda_l1_addon
         self.mlflow_experiment_id = mlflow_experiment_id
 
+        # The contrastive loss cannot be reproduced across processes, and
+        # unlike every other term the difference cannot be rescaled away. It
+        # relabels the most and least confident of the edges whose endpoints
+        # belong to DIFFERENT categories, and it finds them with a ´topk´ over
+        # whatever edges the process was given. Four processes therefore each
+        # take the top fraction of their own quarter, and the union of four per
+        # shard quantiles is not the global quantile: a different set of edges
+        # is relabelled than one process over the same global batch would
+        # relabel. The pseudo-labels themselves diverge, so no factor fixes it.
+        #
+        # Refused rather than warned about, because the result would be a
+        # trained model that silently differs from the single device one with
+        # nothing in the log to say so.
+        if self.distributed_ and lambda_cat_covariates_contrastive > 0:
+            raise NotImplementedError(
+                "´lambda_cat_covariates_contrastive´ is "
+                f"{lambda_cat_covariates_contrastive}, and the categorical "
+                "covariates contrastive loss is not supported with "
+                "´multi_gpu=True´. It selects its contrastive examples with a "
+                "´topk´ over the edges in the batch, so each process would "
+                "take the top fraction of its OWN share and relabel a "
+                "different set of edges than a single device run, which no "
+                "rescaling can correct. Train on one device, or set "
+                "´lambda_cat_covariates_contrastive=0´.")
+
         if is_main_process():
             print("\n--- MODEL TRAINING ---")
         

@@ -76,6 +76,15 @@ def is_distributed_launch() -> bool:
     return detect_launcher() is not None
 
 
+# Set once ´cleanup_distributed´ has run. Needed because
+# ´destroy_process_group´ shuts the backends down BEFORE it clears torch's own
+# record of the default group, so a shutdown that raises leaves
+# ´torch.distributed.is_initialized()´ answering True over a communicator that
+# is already dead. Anything that trusted that flag afterwards -- a second
+# ´train´ call in the same process, or a second cleanup -- would act on it.
+_group_released = False
+
+
 def is_initialized() -> bool:
     """Indicate whether a process group has been initialized."""
     return dist.is_available() and dist.is_initialized()
@@ -178,7 +187,17 @@ def init_distributed(backend: Optional[str]=None,
     initialized:
         ´True´ if this process is part of an initialized process group.
     """
+    global _group_released
     if is_initialized():
+        if _group_released:
+            raise RuntimeError(
+                "A process group already exists in this process but has "
+                "already been released, so it cannot be used again and "
+                "cannot be replaced: torch does not clear its own record of "
+                "the default group when the shutdown that would have cleared "
+                "it fails. This happens when ´train(multi_gpu=True)´ is "
+                "called a second time in one process. Run each distributed "
+                "training in a fresh process.")
         return True
     launcher = detect_launcher()
     if launcher is None:
@@ -218,6 +237,8 @@ def init_distributed(backend: Optional[str]=None,
             DEFAULT_COLLECTIVE_TIMEOUT_MINUTES))
     dist.init_process_group(backend=backend,
                             timeout=timedelta(minutes=timeout_minutes))
+    # A fresh group has not been released, whatever happened to any earlier one
+    _group_released = False
     return True
 
 
@@ -254,7 +275,8 @@ def cleanup_distributed():
     have completed. That is a different situation and gets a warning that says
     so, because results from such a run should not be trusted without checking.
     """
-    if not is_initialized():
+    global _group_released
+    if not is_initialized() or _group_released:
         return
     healthy = True
     try:
@@ -287,6 +309,12 @@ def cleanup_distributed():
                 f"Releasing the process group also failed: {error}. Taken "
                 f"together with the failed synchronization above, treat this "
                 f"run's results as unverified.")
+    finally:
+        # Recorded whether or not the release succeeded. A failed release still
+        # leaves the communicator unusable, and torch's own flag does not say
+        # so, because it clears that flag only after the shutdown it never
+        # reached.
+        _group_released = True
 
 
 def barrier():

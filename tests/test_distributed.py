@@ -444,6 +444,9 @@ def _cleanup_with(monkeypatch, barrier_fails: bool, destroy_fails: bool):
 
     def explode(*args, **kwargs):
         raise RuntimeError("Cuda failure 'CUDA-capable device(s) is/are busy'")
+    # Reset per test: ´_group_released´ is process-global by design, so a
+    # cleanup in one test would turn every later one into a no-op
+    monkeypatch.setattr(module, "_group_released", False)
     monkeypatch.setattr(module, "is_initialized", lambda: True)
     monkeypatch.setattr(module, "barrier",
                         explode if barrier_fails else lambda *a, **k: None)
@@ -522,6 +525,81 @@ def test_the_group_is_released_exactly_once_per_process():
         "both the main and the non-main path have to release the group")
 
 
+def test_a_released_process_group_cannot_report_itself_usable():
+    """
+    ´destroy_process_group´ shuts the backends down BEFORE it clears torch's
+    record of the default group, so a shutdown that raises -- which is what the
+    farm does on three of four ranks -- leaves
+    ´torch.distributed.is_initialized()´ answering True over a dead
+    communicator. A second ´train(multi_gpu=True)´ in the same process would
+    then build on it and hang, and a second cleanup would raise a false alarm
+    about the run's results.
+    """
+    from nichecompass.train import distributed as module
+
+    source = io.open(os.path.join(os.path.dirname(TRAINER_PATH),
+                                 "distributed.py"), encoding="utf-8").read()
+    tree = ast.parse(source)
+    cleanup = next(node for node in ast.walk(tree)
+                   if isinstance(node, ast.FunctionDef)
+                   and node.name == "cleanup_distributed")
+    body = ast.unparse(cleanup)
+    # recorded in a finally, so a failed release records it too
+    assert "finally" in body and "_group_released = True" in body
+    assert "_group_released" in ast.unparse(cleanup.body[0]) or \
+        "_group_released" in body
+    init = next(node for node in ast.walk(tree)
+                if isinstance(node, ast.FunctionDef)
+                and node.name == "init_distributed")
+    assert "_group_released" in ast.unparse(init), (
+        "init_distributed still returns early on a released group")
+    # and a newly created group clears the record, so that a process which
+    # legitimately initializes twice is not left unable to release the second
+    assert "_group_released = False" in ast.unparse(init)
+
+
+def test_a_second_cleanup_on_a_released_group_says_nothing(monkeypatch):
+    module = _cleanup_with(monkeypatch, barrier_fails=False,
+                           destroy_fails=False)
+    monkeypatch.setattr(module, "_group_released", True)
+    import warnings as _warnings
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("error")
+        module.cleanup_distributed()  # must be a no-op, not a false alarm
+
+
+def test_no_model_tensor_is_read_straight_into_numpy():
+    """
+    The decoder masks used to be plain attributes, which ´Module.to´ never
+    touched, so they stayed in host memory and ´np.array(mask)´ worked.
+    Registering them as buffers -- which distributed training needs, so that
+    every process has them on its own device -- means ´Module.to´ now moves
+    them, and ´np.array´ refuses a CUDA tensor with
+
+        TypeError: can't convert cuda:0 device type tensor to numpy
+
+    That would break ´get_gp_summary´ after ANY run on a GPU, single device
+    included, and nothing else in this suite exercises it.
+    """
+    path = os.path.join(os.path.dirname(os.path.dirname(TRAINER_PATH)),
+                        "models", "nichecompass.py")
+    tree = ast.parse(io.open(path, encoding="utf-8").read())
+    offenders = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call)
+                and ast.unparse(node.func) in ("np.array", "np.asarray")):
+            continue
+        if not node.args:
+            continue
+        argument = ast.unparse(node.args[0])
+        # A model attribute reaching numpy without being brought to the host
+        if "self.model." in argument and ".cpu()" not in argument:
+            offenders.append(f"line {node.lineno}: np.array({argument})")
+    assert not offenders, (
+        "a model tensor is read straight into numpy, which raises once the "
+        "model is on a GPU:\n  " + "\n  ".join(offenders))
+
+
 def test_loading_onto_a_gpu_does_not_move_a_single_process_run():
     """
     ´load(use_cuda=True)´ used to be ´model.model.cuda()´, which loads onto
@@ -543,6 +621,60 @@ def test_loading_onto_a_gpu_does_not_move_a_single_process_run():
         f"longer honours the current device: {argument}")
     # None is what restores Module.cuda()'s own default
     assert "None" in argument
+
+
+###############################################################################
+## Loss terms that are not plain batch means ##
+###############################################################################
+
+def _losses_function(name: str) -> ast.FunctionDef:
+    path = os.path.join(os.path.dirname(os.path.dirname(TRAINER_PATH)),
+                        "modules", "losses.py")
+    tree = ast.parse(io.open(path, encoding="utf-8").read())
+    return next(node for node in ast.walk(tree)
+                if isinstance(node, ast.FunctionDef) and node.name == name)
+
+
+def test_the_edge_loss_is_formed_from_global_counts_when_distributed():
+    """
+    The equivalence argument needs every term to be a mean over the batch, and
+    a mean of per-process means is the mean over the global batch only when
+    every process averaged over the SAME number of items. This term is the
+    exception: ´edge_incl´ keeps all the positives, which are within-category,
+    and drops most of the negatives, which are sampled across the whole graph,
+    so the surviving count differs per process. It carries
+    ´lambda_edge_recon´, the largest weight in the model.
+    """
+    body = ast.unparse(_losses_function("compute_edge_recon_loss"))
+    assert "all_reduce" in body, "the counts are still per process"
+    assert "reduction='sum'" in body or 'reduction="sum"' in body
+    assert "get_world_size()" in body, (
+        "the gradient reduction averages, so each process's share of a global "
+        "sum has to be scaled back up")
+    # and the single device path has to be the untouched mean
+    assert body.count("binary_cross_entropy_with_logits") == 2
+    assert "if not _distributed_is_initialized():" in body
+
+
+def test_the_contrastive_loss_refuses_to_run_distributed():
+    """
+    Its contrastive examples come from a ´topk´ over the edges the process was
+    given, so the union of four per-shard quantiles is not the global quantile
+    and a different set of edges is relabelled. The pseudo-labels themselves
+    diverge, so no rescaling repairs it -- which makes refusing the only honest
+    option, since the alternative is a model that silently differs from the
+    single-device one.
+    """
+    train = _trainer_function("train")
+    raises = [node for node in ast.walk(train)
+              if isinstance(node, ast.Raise)
+              and "NotImplementedError" in ast.unparse(node)]
+    assert raises, "nothing refuses the contrastive loss under multi_gpu"
+    guard = next(node for node in ast.walk(train)
+                 if isinstance(node, ast.If)
+                 and any(r in ast.walk(node) for r in raises))
+    test = ast.unparse(guard.test)
+    assert "distributed_" in test and "contrastive" in test, test
 
 
 ###############################################################################

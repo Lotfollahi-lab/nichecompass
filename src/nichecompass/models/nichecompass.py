@@ -23,6 +23,24 @@ from nichecompass.train.distributed import (cleanup_distributed,
 from .basemodelmixin import BaseModelMixin
 
 
+def _mask_to_numpy(mask: torch.Tensor) -> np.ndarray:
+    """
+    Read a decoder mask into host memory as a numpy array.
+
+    The masks are registered buffers, so ´Module.to´ moves them onto whichever
+    device the model is on, and ´np.array´ refuses a CUDA tensor with
+
+        TypeError: can't convert cuda:0 device type tensor to numpy
+
+    They used to be plain attributes that ´Module.to´ never touched, which is
+    why reading them directly worked for as long as it did. Sparse masks are
+    densified first, as they were before.
+    """
+    if mask.is_sparse:
+        mask = mask.to_dense()
+    return mask.detach().cpu().numpy()
+
+
 class NicheCompass(BaseModelMixin):
     """
     NicheCompass model class.
@@ -1751,16 +1769,16 @@ class NicheCompass(BaseModelMixin):
         
         # Get source and target gene masks
         gp_gene_mask_source = np.transpose(
-            np.array(self.model.source_rna_decoder_mask).T != 0)
+            _mask_to_numpy(self.model.source_rna_decoder_mask).T != 0)
         gp_gene_mask_target = np.transpose(
-            np.array(self.model.target_rna_decoder_mask).T != 0)
+            _mask_to_numpy(self.model.target_rna_decoder_mask).T != 0)
         
         # Add entries to gp mask for addon gps
         if self.n_addon_gp_ > 0:
             gp_gene_addon_mask_source = np.transpose(
-            np.array(self.model.source_rna_decoder_addon_mask).T != 0)
+            _mask_to_numpy(self.model.source_rna_decoder_addon_mask).T != 0)
             gp_gene_addon_mask_target = np.transpose(
-            np.array(self.model.target_rna_decoder_addon_mask).T != 0)
+            _mask_to_numpy(self.model.target_rna_decoder_addon_mask).T != 0)
             gp_gene_mask_source = np.concatenate(
                 (gp_gene_mask_source, gp_gene_addon_mask_source), axis=0)
             gp_gene_mask_target = np.concatenate(
@@ -1893,18 +1911,16 @@ class NicheCompass(BaseModelMixin):
 
             # Get source and target peak masks
             gp_peak_mask_source = np.transpose(
-                np.array(
-                    self.model.source_atac_decoder_mask.to_dense()).T != 0)
+                _mask_to_numpy(self.model.source_atac_decoder_mask).T != 0)
             gp_peak_mask_target = np.transpose(
-                np.array(
-                    self.model.target_atac_decoder_mask.to_dense()).T != 0)
+                _mask_to_numpy(self.model.target_atac_decoder_mask).T != 0)
 
             # Add entries to gp mask for addon gps
             if self.n_addon_gp_ > 0:
                 gp_peak_addon_mask_source = np.transpose(
-                np.array(self.model.source_atac_decoder_addon_mask).T != 0)
+                _mask_to_numpy(self.model.source_atac_decoder_addon_mask).T != 0)
                 gp_peak_addon_mask_target = np.transpose(
-                np.array(self.model.target_atac_decoder_addon_mask).T != 0)
+                _mask_to_numpy(self.model.target_atac_decoder_addon_mask).T != 0)
                 gp_peak_mask_source = np.concatenate(
                     (gp_peak_mask_source, gp_peak_addon_mask_source), axis=0)
                 gp_peak_mask_target = np.concatenate(

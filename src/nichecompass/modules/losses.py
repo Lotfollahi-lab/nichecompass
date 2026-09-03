@@ -12,6 +12,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def _distributed_is_initialized() -> bool:
+    """
+    Indicate whether a process group exists, without importing anything that a
+    single device run does not need.
+    """
+    return (torch.distributed.is_available()
+            and torch.distributed.is_initialized())
+
+
 def compute_cat_covariates_contrastive_loss(
         edge_recon_logits: torch.Tensor,
         edge_recon_labels: torch.Tensor,
@@ -157,12 +166,50 @@ def compute_edge_recon_loss(
     # Determine weighting of positive examples
     pos_labels = (edge_recon_labels == 1.).sum(dim=0)
     neg_labels = (edge_recon_labels == 0.).sum(dim=0)
-    pos_weight = neg_labels / pos_labels
 
-    # Compute weighted bce loss from logits for numerical stability
-    edge_recon_loss = F.binary_cross_entropy_with_logits(edge_recon_logits,
-                                                         edge_recon_labels,
-                                                         pos_weight=pos_weight)
+    if not _distributed_is_initialized():
+        pos_weight = neg_labels / pos_labels
+        # Compute weighted bce loss from logits for numerical stability
+        edge_recon_loss = F.binary_cross_entropy_with_logits(
+            edge_recon_logits, edge_recon_labels, pos_weight=pos_weight)
+        return edge_recon_loss
+
+    # Across processes this term has to be formed from the GLOBAL counts rather
+    # than from each process's own, and that is not a refinement: it is what
+    # makes distributed training compute the same loss as one process.
+    #
+    # ´DistributedDataParallel´ averages gradients, so the argument that
+    # several processes reproduce one process rests on every loss term being a
+    # mean over the batch -- a mean of per process means is the mean over the
+    # global batch only when every process averaged over the SAME number of
+    # items. This term is the exception. When ´edge_incl´ drops the edges whose
+    # endpoints belong to different categories of a covariate that has no
+    # cross-category edges, which is what ´cat_covariates_no_edges´ asks for,
+    # the number of surviving edges differs from process to process: the
+    # positives are all within-category and survive, while the negatives are
+    # sampled across the whole graph and mostly do not. Both the weighting and
+    # the denominator then become per process quantities, and the term carries
+    # ´lambda_edge_recon´, which is the largest weight in the model.
+    #
+    # So the three counts are summed across processes first, and the loss is
+    # summed rather than averaged and divided by the global count. The factor
+    # of ´world_size´ undoes the averaging the gradient reduction applies:
+    # every process contributes its share of one global sum, and shares have
+    # to add up rather than average.
+    n_included = torch.tensor(float(edge_recon_labels.numel()),
+                              device=edge_recon_labels.device)
+    counts = torch.stack([pos_labels.to(torch.float64),
+                          neg_labels.to(torch.float64),
+                          n_included.to(torch.float64)])
+    torch.distributed.all_reduce(counts, op=torch.distributed.ReduceOp.SUM)
+    world_size = float(torch.distributed.get_world_size())
+
+    pos_weight = (counts[1] / counts[0]).to(edge_recon_logits.dtype)
+    edge_recon_loss = (F.binary_cross_entropy_with_logits(
+        edge_recon_logits,
+        edge_recon_labels,
+        pos_weight=pos_weight,
+        reduction="sum") * world_size / counts[2])
     return edge_recon_loss
 
 
