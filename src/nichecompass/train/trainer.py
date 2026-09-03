@@ -643,13 +643,23 @@ class Trainer(BaseTrainerMixin):
             if self.monitor_ and is_main_process():
                 print_progress(self.epoch, self.epoch_logs, self.n_epochs_)
 
-            # Check early stopping. The decision is taken on the main process
-            # and broadcast, so that every process leaves the loop in the same
-            # epoch. A process that kept training while the others stopped
+            # Check early stopping. This runs on EVERY process, not just the
+            # main one, because ´is_early_stopping´ does two other things
+            # besides returning a decision: it reduces the learning rate on
+            # the optimizer, and it records the best model state. Running it
+            # on the main process alone would leave the other processes with
+            # the ORIGINAL learning rate as soon as the scheduler fired, and
+            # from that step on they would apply different updates to the same
+            # averaged gradients and silently train a different model.
+            #
+            # It is safe to run everywhere because it reads only
+            # ´epoch_logs´, whose entries are all-reduced above and are
+            # therefore the same number on every process. The decision is
+            # still broadcast, so that agreement is guaranteed rather than
+            # inferred: a process that kept training while the others stopped
             # would wait forever on the next gradient reduction.
             if self.use_early_stopping_:
-                stop_training = (self.is_early_stopping()
-                                 if is_main_process() else None)
+                stop_training = self.is_early_stopping()
                 if self.distributed_:
                     stop_training = broadcast_object(stop_training)
                 if stop_training:
@@ -661,13 +671,15 @@ class Trainer(BaseTrainerMixin):
         if is_main_process():
             print(f"Model training finished after {int(minutes)} min "
                   f"{int(seconds)} sec.")
-        # The best model state is only tracked on the main process, so it is
-        # broadcast before it is loaded, to leave every process holding the
-        # same weights
-        if self.distributed_:
-            self.best_model_state_dict = broadcast_object(
-                self.best_model_state_dict)
-            self.best_epoch = broadcast_object(self.best_epoch)
+        # Every process recorded the best model state itself, at the epoch
+        # every process agreed was the best, so there is nothing to broadcast.
+        # It used to be broadcast from the main process, which crashed: the
+        # state dictionary holds tensors on the main process's device, pickle
+        # records that device, and under ´mode=exclusive_process´ no other
+        # process may open a context there. Broadcasting it would also send a
+        # full copy of the weights over the interconnect once per run for no
+        # gain, since ´DistributedDataParallel´ has kept the parameters
+        # identical all along.
         if self.best_model_state_dict is not None and self.reload_best_model_:
             if is_main_process():
                 print("Using best model state, which was in epoch "
@@ -782,6 +794,30 @@ class Trainer(BaseTrainerMixin):
             else:
                 edge_same_cat_covariates_cat_val_accumulated = None
                 edge_incl_val_accumulated = None
+
+        # Every process only validated its own shard, so the predictions and
+        # labels are concatenated across processes before the metrics are
+        # computed, exactly as ´eval_end´ does. Averaging per shard metrics
+        # afterwards would not do: an AUROC over a quarter of the validation
+        # edges is a different quantity from the AUROC over all of them, so the
+        # epoch would not be comparable to a single device run. It also has to
+        # be the same number on every process, because these entries go
+        # straight into ´epoch_logs´ without passing through the all-reduce
+        # that the iteration level logs get, and ´early_stopping_metric´ may
+        # name one of them.
+        if self.distributed_:
+            edge_recon_probs_val_accumulated = all_gather_numpy(
+                edge_recon_probs_val_accumulated, self.device)
+            edge_recon_labels_val_accumulated = all_gather_numpy(
+                edge_recon_labels_val_accumulated, self.device)
+            if edge_incl_val_accumulated is not None:
+                edge_incl_val_accumulated = all_gather_numpy(
+                    edge_incl_val_accumulated, self.device)
+            if edge_same_cat_covariates_cat_val_accumulated is not None:
+                edge_same_cat_covariates_cat_val_accumulated = [
+                    all_gather_numpy(accumulated, self.device) for accumulated
+                    in edge_same_cat_covariates_cat_val_accumulated]
+
         val_eval_dict = eval_metrics(
             edge_recon_probs=edge_recon_probs_val_accumulated,
             edge_labels=edge_recon_labels_val_accumulated,
@@ -920,6 +956,13 @@ class Trainer(BaseTrainerMixin):
         Check whether to apply early stopping, update learning rate and save 
         best model state.
 
+        Runs on every process when training is distributed, and must: two of
+        the three things it does are per process side effects, namely reducing
+        the learning rate on that process's optimizer and recording that
+        process's best model state. It reads only ´epoch_logs´, which is
+        all-reduced, so every process reaches the same decision from the same
+        numbers.
+
         Returns
         ----------
         stop_training:
@@ -935,6 +978,7 @@ class Trainer(BaseTrainerMixin):
         if reduce_lr:
             for param_group in self.optimizer.param_groups:
                 param_group["lr"] *= self.early_stopping.lr_factor
-            print(f"New learning rate is {param_group['lr']}.\n")
+            if is_main_process():
+                print(f"New learning rate is {param_group['lr']}.\n")
         stop_training = not continue_training
         return stop_training

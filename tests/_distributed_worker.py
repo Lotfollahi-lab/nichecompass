@@ -14,6 +14,7 @@ it.
 import argparse
 import os
 import sys
+from collections import OrderedDict
 
 import numpy as np
 import torch
@@ -21,6 +22,7 @@ import torch.nn as nn
 
 from nichecompass.train.distributed import (all_gather_numpy,
                                             all_reduce_mean,
+                                            broadcast_object,
                                             cleanup_distributed,
                                             get_rank,
                                             get_world_size,
@@ -202,6 +204,16 @@ def main():
                        node_y[shard], edge_y[shard])
     second["optim_loss"].backward()
 
+    # A state dictionary sized object, broadcast from the main process. What
+    # is asserted about it is that every process, the sender included, ends up
+    # with the tensors in HOST memory: a pickled tensor carries the device it
+    # was on, and restoring it puts it back on the SENDER's device, which no
+    # other process may open under mode=exclusive_process.
+    state = OrderedDict(
+        (name, parameter.detach() * (rank + 1))
+        for name, parameter in model.named_parameters()) if rank == 0 else None
+    received = broadcast_object(state)
+
     torch.save({"rank": rank,
                 "world_size": world_size,
                 "is_main": is_main_process(),
@@ -209,7 +221,12 @@ def main():
                 "shard": shard,
                 "reduced": reduced,
                 "gathered": torch.as_tensor(gathered),
-                "gradients": gradients},
+                "gradients": gradients,
+                "received_devices": sorted({str(tensor.device) for tensor
+                                            in received.values()}),
+                "received_keys": list(received.keys()),
+                "received_sum": float(sum(tensor.sum()
+                                          for tensor in received.values()))},
                os.path.join(args.out_dir, f"rank_{rank}.pt"))
     cleanup_distributed()
 

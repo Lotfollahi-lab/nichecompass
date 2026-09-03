@@ -15,6 +15,7 @@ not pay for it.
 """
 
 import os
+from collections import OrderedDict
 from typing import Optional
 
 import numpy as np
@@ -276,6 +277,28 @@ def all_gather_numpy(array: np.ndarray, device: torch.device) -> np.ndarray:
                            for i in range(world_size)])
 
 
+def _tensors_to_cpu(obj):
+    """
+    Copy every tensor in ´obj´ to host memory, leaving the structure around
+    them intact. Recurses through dicts, lists and tuples; anything else is
+    returned unchanged.
+    """
+    if torch.is_tensor(obj):
+        return obj.detach().cpu()
+    if isinstance(obj, OrderedDict):
+        return OrderedDict((key, _tensors_to_cpu(value))
+                           for key, value in obj.items())
+    if isinstance(obj, dict):
+        return {key: _tensors_to_cpu(value) for key, value in obj.items()}
+    if isinstance(obj, list):
+        return [_tensors_to_cpu(item) for item in obj]
+    if isinstance(obj, tuple):
+        items = tuple(_tensors_to_cpu(item) for item in obj)
+        # namedtuples take their fields positionally, not as one iterable
+        return type(obj)(*items) if hasattr(obj, "_fields") else items
+    return obj
+
+
 def broadcast_object(obj, source_rank: int=0):
     """
     Broadcast a picklable python object from ´source_rank´ to every process,
@@ -283,10 +306,23 @@ def broadcast_object(obj, source_rank: int=0):
 
     Used so that decisions taken on one process, such as whether early stopping
     has triggered, are taken by every process identically.
+
+    Tensors are moved to host memory before they are broadcast. This is not an
+    optimization: ´broadcast_object_list´ works by pickling, and pickling a
+    tensor records the device it is on. Every receiving process would then
+    restore it onto the SENDER's device, and under the exclusive process
+    compute mode that GPUs are usually allocated with on a cluster, only the
+    sender may open a context there. The others fail with
+
+        CUDA error: CUDA-capable device(s) is/are busy or unavailable
+
+    which is what a state dictionary broadcast from the main process did on
+    four H100s. Host tensors carry no device, so every process restores them
+    locally and can move them wherever it needs them.
     """
     if not is_initialized():
         return obj
-    object_list = [obj if get_rank() == source_rank else None]
+    object_list = [_tensors_to_cpu(obj) if get_rank() == source_rank else None]
     dist.broadcast_object_list(object_list, src=source_rank)
     return object_list[0]
 

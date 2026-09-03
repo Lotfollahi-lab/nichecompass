@@ -206,7 +206,7 @@ loaded. If one process stopped while the others continued, the others would hang
 concatenated across processes before AUROC, AUPRC and the MSE scores are computed. Otherwise every process
 would report a metric over a `world_size`-th of the validation set.
 
-## 5. Three structural details
+## 5. Five structural details
 
 **Two forward passes, one backward.** A training step runs the model twice, once for the node-level omics
 decoder and once for the edge-level graph decoder, and then backpropagates a single combined loss.
@@ -232,6 +232,34 @@ graph of everything the forward returns and `global_loss` deliberately carries t
 while they warm up. The trainer only calls `.item()` on those entries, so nothing observable changes.
 
 On a single device the loss is still called directly by the trainer, exactly as before.
+
+**Nothing carrying a device crosses the process boundary.** `broadcast_object` moves every tensor it is
+given into host memory before it broadcasts. This is not an optimization. `broadcast_object_list` works by
+pickling, and pickling a tensor records the device it was on, so every receiving process restores it onto the
+*sender's* device — which, under the `mode=exclusive_process` that GPUs are normally allocated with on a
+cluster, only the sender may open. A state dictionary broadcast from the main process therefore died on three
+of four H100s with
+
+```
+RuntimeError: CUDA error: CUDA-capable device(s) is/are busy or unavailable
+```
+
+For the same reason the best model state is no longer broadcast at all: every process records it itself, at
+the epoch every process agreed was the best, so `DistributedDataParallel` has already kept the two copies
+identical and sending a full set of weights over the interconnect bought nothing.
+
+**Everything a rank guard hides has to be free of per-process side effects.** `is_early_stopping` runs on
+*every* process, not just the main one, because two of the three things it does are per-process: it reduces
+the learning rate on that process's optimizer, and it records that process's best model state. Running it on
+the main process alone left the others on the original learning rate as soon as the scheduler fired, and from
+that step on they applied different updates to the same averaged gradients — a silent divergence that no
+1-epoch smoke test can reach. It is safe to run everywhere because it reads only `epoch_logs`, which is
+all-reduced. The decision is still broadcast, so agreement is guaranteed rather than inferred.
+
+`eval_epoch` gathers the validation predictions across processes before computing AUROC and friends, for the
+same reason `eval_end` does — and additionally because those entries go straight into `epoch_logs` without
+passing through the all-reduce the iteration-level logs get. Computed per shard they would differ between
+processes, would not be comparable to a single-GPU run, and `early_stopping_metric` may name one of them.
 
 **The wrapper is never stored on the model.** `self.model` stays the bare module and the
 `DistributedDataParallel` wrapper lives only inside the trainer. This keeps `save`, `load` and every

@@ -18,6 +18,7 @@ with several GPUs.
 """
 
 import ast
+import collections
 import io
 import os
 import subprocess
@@ -27,7 +28,8 @@ import numpy as np
 import pytest
 import torch
 
-from nichecompass.train.distributed import (all_gather_numpy,
+from nichecompass.train.distributed import (_tensors_to_cpu,
+                                            all_gather_numpy,
                                             all_reduce_mean,
                                             detect_launcher,
                                             get_local_rank,
@@ -346,6 +348,174 @@ def test_the_wrapper_returns_only_the_optimized_loss_with_its_graph():
     assert ".loss(" in body
     assert "detach()" in body
     assert "'optim_loss'" in body or '"optim_loss"' in body
+
+
+###############################################################################
+## What crosses the process boundary ##
+###############################################################################
+
+TRAINER_PATH = os.path.join(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))), "src", "nichecompass", "train", "trainer.py")
+
+
+def _trainer_function(name: str) -> ast.FunctionDef:
+    tree = ast.parse(io.open(TRAINER_PATH, encoding="utf-8").read())
+    return next(node for node in ast.walk(tree)
+                if isinstance(node, ast.FunctionDef) and node.name == name)
+
+
+def test_tensors_are_moved_to_host_and_the_structure_is_kept():
+    Pair = collections.namedtuple("Pair", ["left", "right"])
+    original = {"weights": collections.OrderedDict(a=torch.ones(2)),
+                "list": [torch.zeros(1), 3, "text"],
+                "pair": Pair(torch.ones(1), None),
+                "scalar": 7,
+                "none": None}
+    mapped = _tensors_to_cpu(original)
+
+    assert isinstance(mapped["weights"], collections.OrderedDict)
+    assert isinstance(mapped["pair"], Pair) and mapped["pair"].right is None
+    assert isinstance(mapped["list"], list)
+    assert mapped["list"][1] == 3 and mapped["list"][2] == "text"
+    assert mapped["scalar"] == 7 and mapped["none"] is None
+    for tensor in (mapped["weights"]["a"], mapped["list"][0],
+                   mapped["pair"].left):
+        assert tensor.device.type == "cpu"
+    torch.testing.assert_close(mapped["weights"]["a"], torch.ones(2))
+
+
+def test_tensors_to_cpu_detaches_so_a_graph_is_never_pickled():
+    # Pickling a tensor that still carries a graph raises, and a state dict
+    # taken from a model mid-training can hold one
+    parameter = torch.nn.Parameter(torch.ones(2))
+    mapped = _tensors_to_cpu({"grad": parameter * 2})
+    assert mapped["grad"].requires_grad is False
+
+
+def test_broadcast_object_maps_to_host_before_it_pickles():
+    """
+    Asserted on the source rather than by running it, because the failure needs
+    two GPUs in exclusive process mode: a pickled tensor records its device,
+    and every receiver restores it onto the SENDER's device, which it is not
+    allowed to open.
+    """
+    source = io.open(os.path.join(os.path.dirname(TRAINER_PATH),
+                                 "distributed.py"), encoding="utf-8").read()
+    function = next(node for node in ast.walk(ast.parse(source))
+                    if isinstance(node, ast.FunctionDef)
+                    and node.name == "broadcast_object")
+    # Walked as a tree rather than matched as text, so that the explanation in
+    # the docstring cannot satisfy the test on its own
+    mapped_at, collective_at = None, None
+    for node in ast.walk(function):
+        if isinstance(node, ast.Call):
+            if getattr(node.func, "id", "") == "_tensors_to_cpu":
+                assert [ast.unparse(argument) for argument in node.args] == \
+                    ["obj"]
+                mapped_at = node.lineno if mapped_at is None else mapped_at
+            if getattr(node.func, "attr", "") == "broadcast_object_list":
+                collective_at = node.lineno
+    assert mapped_at is not None, "the object is pickled with its devices"
+    assert collective_at is not None
+    assert mapped_at < collective_at, "mapped to host after the broadcast"
+
+
+@pytest.mark.parametrize("world_size,port", [(2, 29529), (4, 29530)])
+def test_a_state_dictionary_broadcast_arrives_in_host_memory(
+        world_size, port, tmp_path):
+    results = run_workers(world_size, 8 * world_size, str(tmp_path), port)
+    for result in results:
+        # Including the sender, so that every process then moves the weights to
+        # its own device by the same route
+        assert result["received_devices"] == ["cpu"], (
+            f"rank {result['rank']} received tensors on "
+            f"{result['received_devices']}")
+        assert result["received_keys"] == results[0]["received_keys"]
+        torch.testing.assert_close(result["received_sum"],
+                                   results[0]["received_sum"])
+
+
+###############################################################################
+## Side effects that every process needs ##
+###############################################################################
+
+def test_early_stopping_is_not_called_on_the_main_process_only():
+    """
+    ´is_early_stopping´ reduces the learning rate on the optimizer and records
+    the best model state, both of which are per process. Calling it on the main
+    process alone left the others on the original learning rate as soon as the
+    scheduler fired, so they applied different updates to the same averaged
+    gradients from that step on.
+    """
+    train = _trainer_function("train")
+    for node in ast.walk(train):
+        if not (isinstance(node, ast.Call)
+                and getattr(node.func, "attr", "") == "is_early_stopping"):
+            continue
+        # Not the ´x if is_main_process() else None´ shape that caused it
+        for parent in ast.walk(train):
+            if isinstance(parent, ast.IfExp) and any(
+                    call is node for call in ast.walk(parent)):
+                pytest.fail("is_early_stopping is guarded by a conditional "
+                            f"expression: {ast.unparse(parent)}")
+    assert any(isinstance(node, ast.Call)
+               and getattr(node.func, "attr", "") == "is_early_stopping"
+               for node in ast.walk(train)), "the call disappeared"
+
+
+def test_no_main_process_guard_mutates_the_learning_rate():
+    """
+    The general shape of the bug above: a per process side effect inside a
+    block that only one process runs. The learning rate is the one that
+    actually bit, so it is the one guarded here.
+    """
+    tree = ast.parse(io.open(TRAINER_PATH, encoding="utf-8").read())
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If):
+            continue
+        if not any(isinstance(call, ast.Call)
+                   and getattr(call.func, "id", "") == "is_main_process"
+                   for call in ast.walk(node.test)):
+            continue
+        for statement in ast.walk(ast.Module(body=node.body,
+                                             type_ignores=[])):
+            # A write to param_group["lr"], not merely a mention of it: the
+            # message that reports the new learning rate reads it, and only
+            # one process should print that
+            targets = (statement.targets
+                       if isinstance(statement, ast.Assign)
+                       else [statement.target]
+                       if isinstance(statement, ast.AugAssign) else [])
+            for target in targets:
+                assert not (isinstance(target, ast.Subscript)
+                            and getattr(target.value, "id", "")
+                            == "param_group"), (
+                    "a block only the main process runs changes the learning "
+                    f"rate: {ast.unparse(statement)}")
+
+
+def test_the_best_model_state_is_not_sent_over_the_interconnect():
+    # Every process records it from the epoch every process agreed on, so
+    # broadcasting it only risked the device tagging failure and a full copy
+    # of the weights on the wire
+    train = _trainer_function("train")
+    for node in ast.walk(train):
+        if (isinstance(node, ast.Call)
+                and getattr(node.func, "id", "") == "broadcast_object"):
+            argument = ast.unparse(node.args[0])
+            assert "state_dict" not in argument, argument
+
+
+def test_the_per_epoch_metrics_are_gathered_before_they_are_computed():
+    """
+    ´eval_epoch´ appends the AUROC and friends straight to ´epoch_logs´, which
+    does NOT go through the all-reduce the iteration level logs get. Computed
+    per shard they would differ between processes and would not be comparable
+    to a single device run, and ´early_stopping_metric´ may name one of them.
+    """
+    body = ast.unparse(_trainer_function("eval_epoch"))
+    assert "all_gather_numpy" in body
+    assert body.index("all_gather_numpy") < body.index("eval_metrics(")
 
 
 def test_every_process_ends_up_with_the_same_pruning_quantity(tmp_path):
