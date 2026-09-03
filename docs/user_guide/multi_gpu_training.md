@@ -311,11 +311,21 @@ The gene program resources download and cache on first use. Under `torchrun` all
 at once and would race to write the same cache files. Run the pipeline once on a single process to populate
 the caches under `data/gene_programs/`, then launch the multi-GPU run.
 
-## 8. What has not been verified
+## 8. What has been verified, and what has not
 
-The tests in `tests/test_distributed.py` run real multi-process training over the `gloo` backend on CPU and
-check the gradient equivalence claim, the shard properties, the collective reductions and the rank helpers.
-They do not need a GPU, because the correctness of the split is not a property of the device.
+**Verified on four H100s.** A one-epoch run of the Xenium human breast cancer reference model
+(`n_epochs 1`, 254,127 training nodes, 1,155,480 training edges, 313 genes, 131 prior + 100 add-on gene
+programs) completed end to end on 4×H100 under LSF, `mode=exclusive_process`, launched with `mpirun`:
+the `nccl` backend, per-process device binding by local rank, the gradient reduction, the all-reduced epoch
+logs, the gathered validation metrics, the best-model reload, and the whole post-training path down to
+`adata.write` and `model.save`. Reported `val AUROC 0.9543`, `AUPRC 0.9687`, target/source RNA MSE
+1.2872 / 0.6459. Three consecutive runs gave AUROC 0.9552, 0.9552 and 0.9543 — the spread is expected, since
+the processes draw different negative edges (see section 3).
+
+**The tests** in `tests/test_distributed.py` run real multi-process training over the `gloo` backend on CPU
+and check the gradient equivalence claim, the shard properties, the collective reductions, the rank helpers,
+and every failure mode listed in section 5. They do not need a GPU, because the correctness of the split is
+not a property of the device.
 
 One known caveat that is not fixed in code: with `n_fc_layers_encoder=2` the encoder gains a `BatchNorm1d`,
 whose running statistics are per process and are never synchronized (`broadcast_buffers=False`, and torch's
@@ -324,6 +334,11 @@ process's statistics. This is stock behaviour for plain BatchNorm under data par
 remedy is `nn.SyncBatchNorm.convert_sync_batchnorm`; the default `n_fc_layers_encoder=1` constructs no
 BatchNorm at all, so it does not arise unless you ask for it.
 
-Not covered, because they need a machine with several GPUs: the `nccl` backend, binding each process to its
-device by local rank, and the actual speedup. These follow standard PyTorch practice, but they are
-untested here and should be confirmed on the target machine before a long run.
+**Still not measured: the speedup.** The one-epoch 4-GPU run above spent 1 min 25 s in training. Nothing
+here compares that against one GPU, so this document makes no claim about how much faster four are. The
+comparison is one command — `N_GPUS=1 bash submit_lsf_sanger.sh --n_epochs 1 --n_epochs_all_gps 0`, whose
+job is labelled `humanppi_singlegpu` — and it should be run before committing to a long multi-GPU job.
+
+**Still not measured: whether a full-length run agrees with one GPU.** Results are deliberately not
+bit-identical, for the reason in section 3. A one-epoch run cannot tell you whether 400 epochs converge to
+the same place. For reproducing published results, train on one GPU.
