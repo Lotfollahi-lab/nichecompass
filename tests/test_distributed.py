@@ -439,6 +439,51 @@ def test_a_state_dictionary_broadcast_arrives_in_host_memory(
 ## Releasing the process group ##
 ###############################################################################
 
+def _cleanup_with(monkeypatch, barrier_fails: bool, destroy_fails: bool):
+    from nichecompass.train import distributed as module
+
+    def explode(*args, **kwargs):
+        raise RuntimeError("Cuda failure 'CUDA-capable device(s) is/are busy'")
+    monkeypatch.setattr(module, "is_initialized", lambda: True)
+    monkeypatch.setattr(module, "barrier",
+                        explode if barrier_fails else lambda *a, **k: None)
+    monkeypatch.setattr(module.dist, "destroy_process_group",
+                        explode if destroy_fails else lambda *a, **k: None)
+    return module
+
+
+def test_a_healthy_run_whose_release_fails_is_told_it_is_unaffected(
+        monkeypatch):
+    """
+    The synchronization inside ´cleanup_distributed´ doubles as a health check:
+    if every process completed a collective there, the collectives the run
+    depended on completed too, and a later failure is confined to handing the
+    communicator back. This is the case the farm hits on three of four ranks.
+    """
+    module = _cleanup_with(monkeypatch, barrier_fails=False, destroy_fails=True)
+    with pytest.warns(UserWarning) as recorded:
+        module.cleanup_distributed()
+    messages = " ".join(str(warning.message) for warning in recorded)
+    assert "nothing this run produced is affected" in messages
+    assert "unverified" not in messages
+
+
+def test_an_unhealthy_communicator_is_not_reported_as_benign(monkeypatch):
+    """
+    A failure of the synchronization itself is a different situation: the
+    communicator was already unhealthy, so the gradient reduction and the
+    gathered metrics cannot be assumed to have completed. Reporting that as
+    the benign teardown failure would hide a run whose results are wrong.
+    """
+    module = _cleanup_with(monkeypatch, barrier_fails=True, destroy_fails=True)
+    with pytest.warns(UserWarning) as recorded:
+        module.cleanup_distributed()
+    messages = " ".join(str(warning.message) for warning in recorded)
+    assert "cannot be assumed to have completed" in messages
+    assert "unverified" in messages
+    assert "nothing this run produced is affected" not in messages
+
+
 @pytest.mark.parametrize("failing", ["barrier", "destroy_process_group"])
 def test_a_failed_teardown_is_reported_and_not_raised(monkeypatch, failing):
     """
@@ -453,19 +498,9 @@ def test_a_failed_teardown_is_reported_and_not_raised(monkeypatch, failing):
     every metric. Losing all of that because the communicator could not be
     handed back is the wrong trade.
     """
-    from nichecompass.train import distributed as module
-
-    monkeypatch.setattr(module, "is_initialized", lambda: True)
-    def explode(*args, **kwargs):
-        raise RuntimeError("Cuda failure 'CUDA-capable device(s) is/are busy'")
-    if failing == "barrier":
-        monkeypatch.setattr(module, "barrier", explode)
-        monkeypatch.setattr(module.dist, "destroy_process_group",
-                            lambda *a, **k: None)
-    else:
-        monkeypatch.setattr(module, "barrier", lambda *a, **k: None)
-        monkeypatch.setattr(module.dist, "destroy_process_group", explode)
-
+    module = _cleanup_with(monkeypatch,
+                           barrier_fails=(failing == "barrier"),
+                           destroy_fails=(failing == "destroy_process_group"))
     with pytest.warns(UserWarning, match="process group"):
         module.cleanup_distributed()
 
@@ -485,6 +520,29 @@ def test_the_group_is_released_exactly_once_per_process():
         "makes every process wait twice")
     assert calls.count("cleanup_distributed") == 2, (
         "both the main and the non-main path have to release the group")
+
+
+def test_loading_onto_a_gpu_does_not_move_a_single_process_run():
+    """
+    ´load(use_cuda=True)´ used to be ´model.model.cuda()´, which loads onto
+    whichever device is CURRENT. Binding it to the local rank fixes the case
+    the feature is for -- four processes must not all load onto device 0 -- but
+    naming device 0 unconditionally would silently relocate a single process
+    load that a caller had aimed elsewhere with ´torch.cuda.set_device´.
+    """
+    source = io.open(os.path.join(os.path.dirname(os.path.dirname(
+        TRAINER_PATH)), "models", "basemodelmixin.py"),
+        encoding="utf-8").read()
+    call = next(node for node in ast.walk(ast.parse(source))
+                if isinstance(node, ast.Call)
+                and getattr(node.func, "attr", "") == "cuda")
+    argument = ast.unparse(call.args[0])
+    assert "get_local_rank()" in argument
+    assert "is_distributed_launch()" in argument, (
+        "the device is named unconditionally, so a single process load no "
+        f"longer honours the current device: {argument}")
+    # None is what restores Module.cuda()'s own default
+    assert "None" in argument
 
 
 ###############################################################################

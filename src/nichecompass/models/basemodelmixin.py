@@ -15,6 +15,7 @@ import torch
 from anndata import AnnData
 
 from nichecompass.train.distributed import (get_local_rank,
+                                            is_distributed_launch,
                                             unwrap_model)
 from .utils import initialize_model, load_saved_files, validate_var_names
 
@@ -278,11 +279,14 @@ class BaseModelMixin():
             model.model.load_state_dict(model_state_dict)
 
         if use_cuda:
-            # Bind to the device this process owns rather than to ´cuda:0´, so
-            # that the processes of a distributed job do not all load onto the
-            # first device
-            model.model.cuda(get_local_rank()
-                             if torch.cuda.is_available() else None)
+            # Bind to the device this process owns, so that the processes of a
+            # distributed job do not all load onto the first device. Outside a
+            # distributed launch, pass ´None´ to keep the old behaviour of
+            # loading onto whichever device is CURRENT, which a caller may have
+            # chosen with ´torch.cuda.set_device´. Naming device 0
+            # unconditionally would silently move such a load.
+            model.model.cuda(get_local_rank() if is_distributed_launch()
+                             else None)
         model.model.eval()
 
         # First freeze all parameters and then subsequently unfreeze based on

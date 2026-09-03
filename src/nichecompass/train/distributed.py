@@ -225,42 +225,68 @@ def cleanup_distributed():
     """
     Release the process group, if one exists.
 
-    Every step is tolerant of failure, and that is deliberate. By the time this
-    runs the model is trained, the best state is loaded and every metric is
-    computed, so failing to hand the communicator back is not a reason to fail
-    the run. And it does fail on a cluster that allocates its GPUs in an
-    exclusive compute mode: NCCL's teardown releases the peer resources it
-    opened on the OTHER processes' devices, and ´cudaSetDevice´ on a device
-    another process holds exclusively is refused, so three of four ranks died
-    with
+    Failure is tolerated, but the two ways it can fail are NOT the same and are
+    not treated the same.
 
-        NCCL WARN Cuda failure 'CUDA-capable device(s) is/are busy or
-        unavailable'
+    The synchronization comes first and acts as a health check on the
+    communicator. If it succeeds, every process was still able to complete a
+    collective at this point, which means the collectives the run depended on
+    completed too. A failure of the release AFTER that is confined to handing
+    the communicator back, and is reported as such: nothing the run produced is
+    at risk, the processes are about to exit, and the driver reclaims what they
+    held. This is what happens on a cluster that allocates its GPUs in an
+    exclusive compute mode, where three of four ranks report
+
         ncclUnhandledCudaError: Call to CUDA function failed.
+        Cuda failure 'CUDA-capable device(s) is/are busy or unavailable'
 
-    on device 0, which belongs to the one rank that got through. Reported as a
-    warning and then left alone: the processes are about to exit and the driver
-    reclaims everything they held.
+    from inside NCCL's communicator teardown. What that error establishes is
+    that a CUDA call made while destroying the communicator was refused; the
+    likely reason is the resources NCCL opened on the other processes' devices,
+    which it may not touch back under an exclusive compute mode. That
+    explanation is not proven -- NCCL's own log names device 0 in processes
+    that own devices 1, 2 and 3, which may be a default in its logging rather
+    than the device it failed on -- so it is offered as the likely cause and
+    not as a diagnosis.
+
+    If the SYNCHRONIZATION fails, the communicator was already unhealthy before
+    teardown began, and then the run's own collectives cannot be assumed to
+    have completed. That is a different situation and gets a warning that says
+    so, because results from such a run should not be trusted without checking.
     """
     if not is_initialized():
         return
+    healthy = True
     try:
         barrier()
     except Exception as error:
-        warnings.warn(f"Synchronizing the processes before releasing the "
-                      f"process group failed: {error}. Training itself had "
-                      f"already finished, so this is reported rather than "
-                      f"raised.")
+        healthy = False
+        warnings.warn(
+            f"The processes could not synchronize before releasing the "
+            f"process group: {error}. This is NOT the benign teardown failure "
+            f"that an exclusive GPU compute mode causes, because it means the "
+            f"communicator was already unhealthy. The collectives this run "
+            f"depended on -- the gradient reduction, the averaged epoch logs, "
+            f"the gathered validation metrics -- cannot be assumed to have "
+            f"completed, so check the results before trusting them.")
     try:
         dist.destroy_process_group()
     except Exception as error:
-        warnings.warn(f"Releasing the process group failed: {error}. This "
-                      f"happens on clusters whose GPUs are allocated in an "
-                      f"exclusive compute mode, where NCCL cannot touch the "
-                      f"peer devices it needs to release. Everything the run "
-                      f"produced is already complete, and the driver reclaims "
-                      f"what the processes held when they exit, so this is "
-                      f"reported rather than raised.")
+        if healthy:
+            warnings.warn(
+                f"Releasing the process group failed: {error}. Every process "
+                f"completed a collective immediately before this, so the "
+                f"failure is confined to handing the communicator back and "
+                f"nothing this run produced is affected. It is expected on a "
+                f"cluster whose GPUs are allocated in an exclusive compute "
+                f"mode, where NCCL is likely being refused the resources it "
+                f"opened on the other processes' devices. The processes are "
+                f"about to exit and the driver reclaims what they held.")
+        else:
+            warnings.warn(
+                f"Releasing the process group also failed: {error}. Taken "
+                f"together with the failed synchronization above, treat this "
+                f"run's results as unverified.")
 
 
 def barrier():
