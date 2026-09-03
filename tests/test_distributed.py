@@ -17,6 +17,8 @@ local rank, the ´nccl´ backend, and the actual speedup. Those need a machine
 with several GPUs.
 """
 
+import ast
+import io
 import os
 import subprocess
 import sys
@@ -42,11 +44,12 @@ WORKER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 
 def run_workers(world_size: int, n_obs: int, out_dir: str,
-                port: int) -> list:
+                port: int, extra_args: list=None) -> list:
     """
     Launch ´world_size´ worker processes with the environment that ´torchrun´
     sets, and return what each of them wrote.
     """
+    extra_args = extra_args or []
     processes = []
     for rank in range(world_size):
         env = dict(os.environ,
@@ -58,7 +61,7 @@ def run_workers(world_size: int, n_obs: int, out_dir: str,
                    OMP_NUM_THREADS="1")
         processes.append(subprocess.Popen(
             [sys.executable, WORKER_PATH,
-             "--n_obs", str(n_obs), "--out_dir", out_dir],
+             "--n_obs", str(n_obs), "--out_dir", out_dir] + extra_args,
             env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE))
     results = []
     for rank, process in enumerate(processes):
@@ -284,6 +287,65 @@ def test_gradients_match_a_single_process(world_size, port, tmp_path):
                 result["gradients"][name], expected_gradient,
                 rtol=1e-5, atol=1e-6,
                 msg=f"gradient of {name} diverged on rank {result['rank']}")
+
+
+@pytest.mark.parametrize("world_size,port", [(2, 29527), (4, 29528)])
+def test_gradients_match_while_a_loss_term_is_still_warming_up(
+        world_size, port, tmp_path):
+    """
+    NicheCompass reports the edge reconstruction loss in ´global_loss´ from the
+    first epoch but leaves it out of ´optim_loss´ for the first
+    ´n_epochs_no_edge_recon´ epochs, and does the same with the contrastive
+    loss. Those epochs therefore run a different set of parameters through the
+    backward pass than through the forward, and the gradients still have to
+    match a single process. The worker runs two iterations, since a reducer
+    left in a bad state after one only shows it on the next forward.
+    """
+    sys.path.insert(0, os.path.dirname(WORKER_PATH))
+    from _distributed_worker import single_process_gradients
+
+    n_obs = 8 * world_size
+    expected = single_process_gradients(n_obs, edge_recon_active=False)
+    results = run_workers(world_size, n_obs, str(tmp_path), port,
+                          extra_args=["--no_edge_recon"])
+
+    for result in results:
+        for name, expected_gradient in expected.items():
+            torch.testing.assert_close(
+                result["gradients"][name], expected_gradient,
+                rtol=1e-5, atol=1e-6,
+                msg=f"gradient of {name} diverged on rank {result['rank']}")
+    # The graph decoder is untouched while the edge loss is off, so its
+    # gradient is what a reducer waiting on it would have been waiting for
+    assert torch.count_nonzero(expected["source_theta"]) == 0
+
+
+def test_the_wrapper_returns_only_the_optimized_loss_with_its_graph():
+    """
+    Reads ´_JointForwardModule.forward´ rather than running it. Everything the
+    wrapper returns is walked by ´find_unused_parameters´, and the documented
+    contract is that every returned tensor derived from a parameter takes part
+    in the backward pass, so every entry other than ´optim_loss´ leaves
+    detached. Asserted on the source because torch 2.x turned out to tolerate
+    the breach at runtime, which makes a behavioural test silently vacuous.
+    """
+    trainer_source = io.open(
+        os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))),
+            "src", "nichecompass", "train", "trainer.py"),
+        encoding="utf-8").read()
+    tree = ast.parse(trainer_source)
+    wrapper = next(node for node in ast.walk(tree)
+                   if isinstance(node, ast.ClassDef)
+                   and node.name == "_JointForwardModule")
+    forward = next(node for node in wrapper.body
+                   if isinstance(node, ast.FunctionDef)
+                   and node.name == "forward")
+    body = ast.unparse(forward)
+    # The loss is computed here, not by the caller, because it uses parameters
+    assert ".loss(" in body
+    assert "detach()" in body
+    assert "'optim_loss'" in body or '"optim_loss"' in body
 
 
 def test_every_process_ends_up_with_the_same_pruning_quantity(tmp_path):

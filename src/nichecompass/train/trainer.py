@@ -52,8 +52,17 @@ class _JointForwardModule(nn.Module):
     given the same parameters, so the outputs are identical to calling the
     model twice.
 
-    Only used for distributed training. On a single device the model is called
-    directly, exactly as before.
+    The LOSS is computed here as well, and that is not incidental. The loss
+    uses parameters directly rather than only the outputs of the forward pass:
+    the negative binomial dispersions ´target_rna_theta´ and
+    ´source_rna_theta´, and the decoder weights that the L1 and group lasso
+    regularizers penalize. A parameter used outside the wrapped forward has its
+    gradient produced by an autograd node the reducer did not see, so its hook
+    fires a second time and the backward pass fails with "Expected to mark a
+    variable ready only once".
+
+    Only used for distributed training. On a single device the model and the
+    loss are called directly, exactly as before.
     """
     def __init__(self, model: nn.Module):
         super().__init__()
@@ -62,7 +71,8 @@ class _JointForwardModule(nn.Module):
     def forward(self,
                 node_data_batch,
                 edge_data_batch,
-                use_only_active_gps: bool) -> tuple:
+                use_only_active_gps: bool,
+                loss_kwargs: dict) -> dict:
         node_model_output = self.model(
             data_batch=node_data_batch,
             decoder="omics",
@@ -71,7 +81,28 @@ class _JointForwardModule(nn.Module):
             data_batch=edge_data_batch,
             decoder="graph",
             use_only_active_gps=use_only_active_gps)
-        return node_model_output, edge_model_output
+        loss_dict = self.model.loss(edge_model_output=edge_model_output,
+                                    node_model_output=node_model_output,
+                                    **loss_kwargs)
+
+        # Only ´optim_loss´ is backpropagated, so every other entry leaves
+        # detached. ´find_unused_parameters´ decides which parameters the
+        # reducer waits for by walking the autograd graphs of everything this
+        # forward returns, and the documented contract is that every output
+        # derived from a parameter must take part in the backward pass or the
+        # wrapper hangs waiting for gradients that never arrive.
+        # ´global_loss´ would breach that: it carries terms ´optim_loss´
+        # deliberately omits while they warm up -- the edge reconstruction
+        # loss for the first ´n_epochs_no_edge_recon´ epochs, the contrastive
+        # loss for the first ´n_epochs_no_cat_covariates_contrastive´. A
+        # surrogate of this arrangement did not in fact hang on torch 2.x, so
+        # this follows the contract rather than fixing an observed failure.
+        # The trainer only calls ´.item()´ on these entries, so detaching them
+        # changes nothing that is observed.
+        return {key: (value if key == "optim_loss"
+                      else value.detach() if torch.is_tensor(value)
+                      else value)
+                for key, value in loss_dict.items()}
 
 
 class Trainer(BaseTrainerMixin):
@@ -512,31 +543,7 @@ class Trainer(BaseTrainerMixin):
                                                               # memory leak
                 node_train_data_batch = node_train_data_batch.to(self.device)
                 edge_train_data_batch = edge_train_data_batch.to(self.device)
-                if self.ddp_model is not None:
-                    # Both passes go through one call, so that the gradient
-                    # reduction of the wrapper covers both of them
-                    (node_train_model_output,
-                     edge_train_model_output) = self.ddp_model(
-                        node_train_data_batch,
-                        edge_train_data_batch,
-                        self.use_only_active_gps)
-                else:
-                    # Forward pass node-level batch
-                    node_train_model_output = self.model(
-                        data_batch=node_train_data_batch,
-                        decoder="omics",
-                        use_only_active_gps=self.use_only_active_gps)
-
-                    # Forward pass edge-level batch
-                    edge_train_model_output = self.model(
-                        data_batch=edge_train_data_batch,
-                        decoder="graph",
-                        use_only_active_gps=self.use_only_active_gps)
-
-                # Calculate training loss
-                train_loss_dict = self.model.loss(
-                    edge_model_output=edge_train_model_output,
-                    node_model_output=node_train_model_output,
+                loss_kwargs = dict(
                     lambda_edge_recon=self.lambda_edge_recon_,
                     lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
                     lambda_chrom_access_recon=self.lambda_chrom_access_recon_,
@@ -550,7 +557,34 @@ class Trainer(BaseTrainerMixin):
                     lambda_l1_addon=self.lambda_l1_addon_,
                     edge_recon_active=self.edge_recon_active,
                     cat_covariates_contrastive_active=self.cat_covariates_contrastive_active)
-                
+
+                if self.ddp_model is not None:
+                    # Both passes and the loss go through one call, so that the
+                    # gradient reduction covers every use of every parameter
+                    train_loss_dict = self.ddp_model(
+                        node_train_data_batch,
+                        edge_train_data_batch,
+                        self.use_only_active_gps,
+                        loss_kwargs)
+                else:
+                    # Forward pass node-level batch
+                    node_train_model_output = self.model(
+                        data_batch=node_train_data_batch,
+                        decoder="omics",
+                        use_only_active_gps=self.use_only_active_gps)
+
+                    # Forward pass edge-level batch
+                    edge_train_model_output = self.model(
+                        data_batch=edge_train_data_batch,
+                        decoder="graph",
+                        use_only_active_gps=self.use_only_active_gps)
+
+                    # Calculate training loss
+                    train_loss_dict = self.model.loss(
+                        edge_model_output=edge_train_model_output,
+                        node_model_output=node_train_model_output,
+                        **loss_kwargs)
+
                 train_global_loss = train_loss_dict["global_loss"]
                 train_optim_loss = train_loss_dict["optim_loss"]
 

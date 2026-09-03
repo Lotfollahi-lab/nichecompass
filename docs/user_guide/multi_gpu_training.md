@@ -206,7 +206,7 @@ loaded. If one process stopped while the others continued, the others would hang
 concatenated across processes before AUROC, AUPRC and the MSE scores are computed. Otherwise every process
 would report a metric over a `world_size`-th of the validation set.
 
-## 5. Two structural details
+## 5. Three structural details
 
 **Two forward passes, one backward.** A training step runs the model twice, once for the node-level omics
 decoder and once for the edge-level graph decoder, and then backpropagates a single combined loss.
@@ -214,6 +214,24 @@ decoder and once for the edge-level graph decoder, and then backpropagates a sin
 forward per backward, so wrapping the model directly would leave the first pass's gradients unreduced. The
 two passes are therefore joined into a single forward by a small wrapper module. The two passes are
 independent given the same parameters, so what is computed is unchanged.
+
+**The loss is computed inside that wrapper, not by the trainer.** This is not a matter of tidiness. The
+NicheCompass loss uses parameters *directly* rather than only the outputs of the forward pass: the negative
+binomial dispersions `target_rna_theta` and `source_rna_theta`, and the decoder weights that the L1 and
+group lasso regularizers penalize. A parameter used outside the wrapped forward has its gradient produced by
+an autograd node the reducer never saw, so its hook fires a second time and the backward pass dies with
+
+```
+RuntimeError: Expected to mark a variable ready only once. ...
+Parameter at index 1 with name model.source_rna_theta has been marked as ready twice.
+```
+
+The wrapper therefore returns the loss dictionary rather than the two model outputs. Only `optim_loss` keeps
+its autograd graph; every other entry is detached on the way out, because `find_unused_parameters` walks the
+graph of everything the forward returns and `global_loss` deliberately carries terms that `optim_loss` omits
+while they warm up. The trainer only calls `.item()` on those entries, so nothing observable changes.
+
+On a single device the loss is still called directly by the trainer, exactly as before.
 
 **The wrapper is never stored on the model.** `self.model` stays the bare module and the
 `DistributedDataParallel` wrapper lives only inside the trainer. This keeps `save`, `load` and every
