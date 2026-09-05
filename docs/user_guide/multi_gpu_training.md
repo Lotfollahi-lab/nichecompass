@@ -133,16 +133,43 @@ dataset sizes where multi-GPU is worth having.
 
 ## 2. What is guaranteed
 
-**The batch sizes stay global.** `edge_batch_size` and `node_batch_size` mean the same thing on one device
-and on eight. With `world_size` processes each one takes a `world_size`-th of every batch, so the number of
-optimizer steps per epoch is unchanged and the speedup comes from dividing the work of each step rather
-than from making the step bigger.
+**The batch sizes stay global by default.** `batch_size_scaling` decides how `edge_batch_size` and
+`node_batch_size` are read when `multi_gpu=True`:
 
-This matters for more than convenience. Gene program pruning starts at epoch `n_epochs_all_gps` and is
-driven by an exponential moving average updated once per optimizer step. Had the per-process batch been
-kept constant instead, an epoch would have contained `world_size` times fewer steps, the moving average
-would have seen `world_size` times fewer updates by the time pruning starts, and a multi-GPU run would have
-pruned different gene programs than a single-GPU run of the same configuration.
+| | `"global"` (default) | `"per_process"` |
+|---|---|---|
+| the given batch is | the whole run's | each process's |
+| effective batch | unchanged | × `world_size` |
+| optimizer steps per epoch | unchanged | ÷ `world_size` |
+| comparable to a single-GPU run | yes | no |
+| where the speedup comes from | each step is cheaper | there are fewer steps |
+
+`"global"` is the default because every published result came from a single device, and only this
+convention keeps a distributed run comparable to those — same effective batch, same optimizer steps, same
+learning rate, no retuning.
+
+It also bounds the speedup, and it is worth being explicit about why. The step *count* does not fall, so
+every fixed cost of a step is paid just as often on eight devices as on one: the gradient all-reduce, the
+synchronous neighbour sampling, the two per-iteration `.item()` synchronizations. With 1,155,480 training
+edges and a global edge batch of 512 that is 2,256 steps per epoch whatever the device count, and at 128
+edges per rank a step is largely overhead. The speedup is therefore capped by the share of a step that is
+actual GPU work.
+
+`"per_process"` pays those fixed costs `world_size` times less often, which is where real throughput lives,
+and it is the right choice at atlas scale where a 512-edge batch is tiny relative to the data. Two
+warnings. The larger effective batch usually wants the learning rate scaled with it. And a run under this
+convention is **not** a control for a single-GPU run: the two differ by design, so it cannot be used to
+test whether the distributed implementation is correct.
+
+The post-training latent pass is single-process and always uses the batch size the caller gave, never the
+effective global one.
+
+One thing this convention does *not* decide, contrary to an earlier version of this document: gene program
+pruning. Pruning is driven by an exponential moving average with momentum 0.1, which is 99.5% converged
+after 50 updates. Under `"per_process"` on four devices an epoch still contains 564 steps, so by
+`n_epochs_all_gps` the average has had roughly 14,000 updates against a 50-update time constant — four
+times fewer than under `"global"`, and equally converged. Both conventions prune from a fully converged
+statistic.
 
 **Gradients match a single-device run.** Every NicheCompass loss term is a mean over the batch — the
 negative binomial reconstruction losses, the Kullback-Leibler term and the edge reconstruction
