@@ -268,14 +268,24 @@ def cleanup_distributed():
         ncclUnhandledCudaError: Call to CUDA function failed.
         Cuda failure 'CUDA-capable device(s) is/are busy or unavailable'
 
-    from inside NCCL's communicator teardown. What that error establishes is
-    that a CUDA call made while destroying the communicator was refused; the
-    likely reason is the resources NCCL opened on the other processes' devices,
-    which it may not touch back under an exclusive compute mode. That
-    explanation is not proven -- NCCL's own log names device 0 in processes
-    that own devices 1, 2 and 3, which may be a default in its logging rather
-    than the device it failed on -- so it is offered as the likely cause and
-    not as a diagnosis.
+    from inside NCCL's communicator teardown.
+
+    A run with ´NCCL_DEBUG=INFO´ settled what this is. NCCL prefixes every log
+    line with the CUDA device the emitting thread has current, and on a two
+    process run the failing line reads
+
+        farm-gpu0308:2544873:2546494 [0] init.cc:1962 NCCL WARN
+        Cuda failure 'CUDA-capable device(s) is/are busy or unavailable'
+
+    where 2544873 is the process of rank 1. Its main thread logs ´[1]´
+    throughout; only this teardown thread logs ´[0]´. So the prefix is not a
+    default: rank 1 really does set device 0 while releasing the communicator,
+    and device 0 belongs to rank 0, which holds it exclusively. The same run
+    shows the peer transport in use beforehand -- ´Channel NN/0 : 1[1] ->
+    0[0] via P2P/CUMEM´ on all 24 channels -- so the resources being released
+    are the peer mappings, as expected. Rank 0, with no peer above it to be
+    refused by, reports ´Destroy COMPLETE´; rank 1 falls back to ´Abort
+    COMPLETE´. Both finish, and neither touches anything the run produced.
 
     If the SYNCHRONIZATION fails, the communicator was already unhealthy before
     teardown began, and then the run's own collectives cannot be assumed to
