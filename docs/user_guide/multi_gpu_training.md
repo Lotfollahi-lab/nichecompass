@@ -300,6 +300,15 @@ ncclUnhandledCudaError: Call to CUDA function failed.
 
 That killed three of four ranks after a run had trained, reloaded its best state and computed every metric.
 
+A run with `NCCL_DEBUG=INFO` established that this is what it is, rather than leaving it as the plausible
+explanation it started as. NCCL prefixes every log line with the CUDA device the emitting thread has
+current. On a two-process run the failing line comes from rank 1's process on a thread whose current device
+is **0** — rank 0's — while that same process logs device 1 on every other line, so the prefix is not a
+default. The peer transport is in use beforehand (`Channel NN/0 : 1[1] -> 0[0] via P2P/CUMEM` on all 24
+channels), so what is being released is the peer mappings. Rank 0, with no peer above it to be refused by,
+reports `Destroy COMPLETE`; the others fall back to `Abort COMPLETE`. Both finish, and neither touches
+anything the run produced.
+
 The reason a warning is right here is stronger than "nothing follows the teardown", and worth stating
 correctly: on the main process `cleanup_distributed()` is the **last statement of `train()`**, and every
 output — the neighbour graph, the UMAP, `adata.write`, `model.save` — happens *afterwards*, in the caller.
@@ -396,10 +405,21 @@ process's statistics. This is stock behaviour for plain BatchNorm under data par
 remedy is `nn.SyncBatchNorm.convert_sync_batchnorm`; the default `n_fc_layers_encoder=1` constructs no
 BatchNorm at all, so it does not arise unless you ask for it.
 
-**Still not measured: the speedup.** The one-epoch 4-GPU run above spent 1 min 25 s in training. Nothing
-here compares that against one GPU, so this document makes no claim about how much faster four are. The
-comparison is one command — `N_GPUS=1 bash submit_lsf_sanger.sh --n_epochs 1 --n_epochs_all_gps 0`, whose
-job is labelled `humanppi_singlegpu` — and it should be run before committing to a long multi-GPU job.
+**Measured: the per-epoch scaling, and it is modest under the global convention.** One epoch of the
+reference configuration took 1 min 25 s on 4 GPUs and 1 min 39 s on 2. Both run the same 2,256 optimizer
+steps, so the per-step cost is 37.7 ms at 128 edges per rank and 43.9 ms at 256. Solving `f + v·b` across
+those two points gives a variable cost of 0.049 ms per edge per rank and a **fixed cost of 31.5 ms — 84% of
+a 4-GPU step**.
+
+That 84% is the loader sampling synchronously in the training process, the kernel launches, the gradient
+all-reduce and the two per-iteration `.item()` synchronizations. Under `"global"` scaling it is paid 2,256
+times per epoch whatever the device count, which is what caps the speedup: extrapolating to one device gives
+roughly 127 s per epoch, so **four GPUs are only about 1.5× faster than one**.
+
+The same fit predicts what `"per_process"` scaling would give, since it pays that fixed cost `world_size`
+times less often: about 32 s per epoch on 4 GPUs, **2.7× better than the global convention on the same
+hardware**, and about 16 s on 8. That is an extrapolation from two measurements rather than a measurement,
+but it is the reason the per-process convention exists.
 
 **Still not measured: whether a full-length run agrees with one GPU.** Results are deliberately not
 bit-identical, and it is worth being precise about how far from identical, because the answer is "about as
