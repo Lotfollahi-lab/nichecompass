@@ -624,6 +624,56 @@ def test_loading_onto_a_gpu_does_not_move_a_single_process_run():
 
 
 ###############################################################################
+## How the batch size is read across processes ##
+###############################################################################
+
+def _trainer_init():
+    tree = ast.parse(io.open(TRAINER_PATH, encoding="utf-8").read())
+    trainer = next(node for node in ast.walk(tree)
+                   if isinstance(node, ast.ClassDef) and node.name == "Trainer")
+    return next(node for node in trainer.body
+                if isinstance(node, ast.FunctionDef) and node.name == "__init__")
+
+
+def test_the_batch_size_convention_is_explicit_and_defaults_to_global():
+    """
+    ´"global"´ has to stay the default. Every published result came from a
+    single device, and only the global convention keeps a distributed run
+    comparable to those: the same effective batch, and the same number of
+    optimizer steps per epoch.
+    """
+    setup = _trainer_init()
+    names = [a.arg for a in setup.args.args]
+    assert "batch_size_scaling" in names
+    n_required = len(names) - len(setup.args.defaults)
+    default = setup.args.defaults[names.index("batch_size_scaling") - n_required]
+    assert ast.literal_eval(default) == "global"
+
+
+def test_per_process_scaling_multiplies_rather_than_divides():
+    body = ast.unparse(_trainer_init())
+    assert "batch_size_scaling == 'global'" in body
+    assert "batch_size_scaling == 'per_process'" in body
+    # global divides the given batch, per_process multiplies the effective one
+    assert "self.edge_batch_size_ // self.world_size_" in body
+    assert "self.edge_batch_size_ * self.world_size_" in body
+    # and an unrecognised value is refused rather than silently treated as one
+    assert "neither 'global' nor 'per_process'" in body
+
+
+def test_the_inference_batch_is_the_number_the_caller_gave():
+    """
+    The post-training latent pass is single process, so under
+    ´"per_process"´ scaling the EFFECTIVE global batch would be ´world_size´
+    times too large for it. It has to use what the caller asked for.
+    """
+    source = io.open(os.path.join(os.path.dirname(os.path.dirname(
+        TRAINER_PATH)), "models", "nichecompass.py"), encoding="utf-8").read()
+    assert "self.trainer.requested_node_batch_size_" in source
+    assert "self.trainer.global_node_batch_size_" not in source
+
+
+###############################################################################
 ## Loss terms that are not plain batch means ##
 ###############################################################################
 

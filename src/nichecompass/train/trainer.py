@@ -8,7 +8,7 @@ import math
 import time
 import warnings
 from collections import defaultdict
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 import mlflow
 import numpy as np
@@ -161,6 +161,23 @@ class Trainer(BaseTrainerMixin):
         Kwargs for the EarlyStopping class.
     use_cuda_if_available:
         If `True`, use cuda if available.
+    multi_gpu:
+        If ´True´, train across every process the launcher started, one
+        process per device. Off by default, and when off every distributed
+        branch is skipped.
+    batch_size_scaling:
+        How ´edge_batch_size´ and ´node_batch_size´ are read when
+        ´multi_gpu´ is on. ´"global"´, the default, treats them as the batch
+        sizes of the whole run and gives each process a ´world_size´-th of
+        every batch, so the number of optimizer steps per epoch and the
+        effective batch match a single device run and the two stay
+        comparable. ´"per_process"´ is the usual ´DistributedDataParallel´
+        convention: each process takes the given batch, so the effective
+        batch is ´world_size´ times larger and an epoch takes ´world_size´
+        times fewer optimizer steps. The second is faster, because the fixed
+        cost of a step is paid fewer times, but it changes the optimization
+        and usually wants the learning rate scaled with the effective batch.
+        Ignored when not distributed.
     seed:
         Random seed to get reproducible results.
     monitor:
@@ -187,6 +204,8 @@ class Trainer(BaseTrainerMixin):
                  early_stopping_kwargs: Optional[dict]=None,
                  use_cuda_if_available: bool=True,
                  multi_gpu: bool=False,
+                 batch_size_scaling: Literal["global",
+                                             "per_process"]="global",
                  seed: int=0,
                  monitor: bool=True,
                  verbose: bool=False,
@@ -301,29 +320,59 @@ class Trainer(BaseTrainerMixin):
             self.node_batch_size_ = int(self.edge_batch_size_ / math.floor(
                 self.n_edges_train / self.n_nodes_train))
         
-        # The batch sizes are the GLOBAL batch sizes, so that a distributed
-        # run performs the same number of optimizer steps over the same
-        # effective batches as a single device run. Each process therefore
-        # takes a ´world_size´-th of every batch, which is where the speedup
-        # comes from, rather than making the batch larger.
+        # What the caller asked for, kept because the post-training inference
+        # pass is single process and wants the caller's own number whichever
+        # convention is in force.
+        self.batch_size_scaling_ = batch_size_scaling
+        self.requested_edge_batch_size_ = self.edge_batch_size_
+        self.requested_node_batch_size_ = self.node_batch_size_
         self.global_edge_batch_size_ = self.edge_batch_size_
         self.global_node_batch_size_ = self.node_batch_size_
         if self.distributed_:
-            if self.edge_batch_size_ % self.world_size_ != 0:
-                warnings.warn(
-                    f"The edge batch size {self.edge_batch_size_} is not "
-                    f"divisible by the number of processes "
-                    f"{self.world_size_}, so the effective global edge batch "
-                    "size is rounded down.")
-            self.edge_batch_size_ = max(
-                1, self.edge_batch_size_ // self.world_size_)
-            self.node_batch_size_ = max(
-                1, self.node_batch_size_ // self.world_size_)
+            if batch_size_scaling == "global":
+                # The batch sizes given are the GLOBAL ones, so that a
+                # distributed run performs the same number of optimizer steps
+                # over the same effective batches as a single device run. Each
+                # process takes a ´world_size´-th of every batch, so adding
+                # processes makes each step cheaper rather than making the
+                # batch larger. This is what keeps a distributed run
+                # comparable to the single device runs the published results
+                # came from, and it is why this is the default.
+                if self.edge_batch_size_ % self.world_size_ != 0:
+                    warnings.warn(
+                        f"The edge batch size {self.edge_batch_size_} is not "
+                        f"divisible by the number of processes "
+                        f"{self.world_size_}, so the effective global edge "
+                        "batch size is rounded down.")
+                self.edge_batch_size_ = max(
+                    1, self.edge_batch_size_ // self.world_size_)
+                self.node_batch_size_ = max(
+                    1, self.node_batch_size_ // self.world_size_)
+            elif batch_size_scaling == "per_process":
+                # The usual ´DistributedDataParallel´ convention: the batch
+                # sizes given are PER PROCESS, so the effective batch grows
+                # with the device count and an epoch takes ´world_size´ times
+                # fewer optimizer steps. That is where real throughput comes
+                # from, because the fixed cost of a step is paid fewer times.
+                # It also changes the optimization: a run under this
+                # convention is NOT comparable to a single device run at the
+                # same nominal batch size, and the learning rate usually wants
+                # scaling with the effective batch.
+                self.global_edge_batch_size_ = (
+                    self.edge_batch_size_ * self.world_size_)
+                self.global_node_batch_size_ = (
+                    self.node_batch_size_ * self.world_size_)
+            else:
+                raise ValueError(
+                    f"´batch_size_scaling´ is {batch_size_scaling!r}, which is "
+                    "neither 'global' nor 'per_process'.")
         if is_main_process():
-            print(f"Edge batch size: {self.global_edge_batch_size_}"
-                  + (f" ({self.edge_batch_size_} per process)"
+            scaling = (f", {batch_size_scaling} scaling"
+                       if self.distributed_ else "")
+            print(f"Edge batch size: {self.global_edge_batch_size_} effective"
+                  + (f" ({self.edge_batch_size_} per process{scaling})"
                      if self.distributed_ else ""))
-            print(f"Node batch size: {self.global_node_batch_size_}"
+            print(f"Node batch size: {self.global_node_batch_size_} effective"
                   + (f" ({self.node_batch_size_} per process)"
                      if self.distributed_ else ""))
 

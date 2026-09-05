@@ -827,7 +827,11 @@ class NicheCompass(BaseModelMixin):
         
         # The per process batch size is not the batch size the user asked for,
         # so the global one is kept for everything that follows training
-        self.node_batch_size_ = self.trainer.global_node_batch_size_
+        # The caller's own number, not the effective global batch: the
+        # inference pass below is single process, so under
+        # ´batch_size_scaling="per_process"´ the effective batch would be
+        # ´world_size´ times too large for it.
+        self.node_batch_size_ = self.trainer.requested_node_batch_size_
         
         self.is_trained_ = True
         self.model.eval()
