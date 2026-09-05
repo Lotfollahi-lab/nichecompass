@@ -402,5 +402,35 @@ comparison is one command — `N_GPUS=1 bash submit_lsf_sanger.sh --n_epochs 1 -
 job is labelled `humanppi_singlegpu` — and it should be run before committing to a long multi-GPU job.
 
 **Still not measured: whether a full-length run agrees with one GPU.** Results are deliberately not
-bit-identical, for the reason in section 3. A one-epoch run cannot tell you whether 400 epochs converge to
-the same place. For reproducing published results, train on one GPU.
+bit-identical, and it is worth being precise about how far from identical, because the answer is "about as
+far as two different seeds".
+
+Four independent things differ between a run on one device and a run on several, and only the first is
+usually mentioned:
+
+1. **The sampled neighbourhoods.** `n_sampled_neighbors` is typically smaller than the degree of the
+   spatial graph — the reference configuration samples 4 of 8 — so each batch sees a random half of every
+   node's neighbourhood, redrawn every batch, in training and in validation. Each process draws its own.
+   This is the largest of the four, and larger than the negative-edge resampling it is usually reduced to.
+2. **The negative edges**, drawn per process at iteration time.
+3. **The seed partition.** Seeds are split strided and disjoint, and each process shuffles only within its
+   own shard, so "global step *k*" is not the set of edges a single-GPU run sees at step *k*, whatever the
+   random state.
+4. **`drop_last`.** It is on for distributed runs so that every process performs the same number of
+   iterations, and off on one device. With 1,155,480 training edges and a global batch of 512 that is 2,257
+   steps per epoch on one device against 2,256 on several — one extra optimizer step per epoch.
+
+Re-seeding per rank does *not* put rank 0 back on the single-device stream either: by that point the
+generator has been advanced by the train/validation split, so `seed + 0` resets it rather than continuing
+it. Nothing sets `torch.use_deterministic_algorithms` or `cudnn.deterministic`, and the GATv2 encoder's
+scatter aggregation on CUDA is atomics-ordered, so even identical inputs would not give identical outputs.
+
+**What this means for comparing runs.** A single 1-GPU versus *N*-GPU comparison has no scale on its own.
+Measure the noise floor first: two single-GPU runs differing only in `--seed`. If the multi-GPU gap sits
+inside that spread, there is nothing device-count-specific to explain. Early stopping and
+`reduce_lr_on_plateau` amplify any small trajectory difference — a 10-fold learning-rate cut firing at a
+different epoch, then a different stopping epoch, then `reload_best_model` loading a different epoch's
+weights — so a controlled comparison should disable both (`use_early_stopping=False`,
+`reload_best_model=False`) and compare at a fixed epoch.
+
+For reproducing published results, train on one GPU.

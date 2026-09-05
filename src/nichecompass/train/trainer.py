@@ -426,11 +426,28 @@ class Trainer(BaseTrainerMixin):
             # Diverge the random state per process, but only now that the
             # split and the loaders exist. Everything above had to be
             # identical across processes; from here on the processes must
-            # differ, because the negative edges are drawn from the global
-            # torch generator at iteration time. With a shared seed every
-            # process would draw the same negative edges, so the extra devices
-            # would recompute the same negatives instead of covering more of
-            # them.
+            # differ, because both the negative edges AND the sampled
+            # neighborhoods are drawn from the global torch generator at
+            # iteration time. With a shared seed every process would draw the
+            # same ones, so the extra devices would recompute the same work
+            # instead of covering more of it.
+            #
+            # Be clear about how much this changes, because it is more than
+            # the negative edges. ´n_sampled_neighbors´ is typically smaller
+            # than the degree of the spatial graph, so each batch sees a
+            # random SUBSET of every node's neighborhood, redrawn every batch,
+            # in training and in validation. That is the larger perturbation
+            # of the two.
+            #
+            # Note also what this does NOT do: it does not put rank 0 on the
+            # single device run's stream. By this point the generator has been
+            # advanced by the train/validation split, so re-seeding to
+            # ´seed_ + 0´ RESETS it rather than continuing it. A distributed
+            # run is a different draw on every rank, rank 0 included, and that
+            # is before the sharding and ´drop_last´ differences below. Two
+            # runs of the same configuration on different device counts differ
+            # about as much as two runs with different seeds; see the user
+            # guide for what that means for comparing them.
             torch.manual_seed(self.seed_ + self.rank_)
             np.random.seed(self.seed_ + self.rank_)
             if torch.cuda.is_available():
