@@ -5,8 +5,15 @@ NicheCompass model.
 Training is data parallel: every process holds a full copy of the model and of
 the spatial graph, and each process works on a disjoint subset of the training
 edges and nodes. Gradients are averaged across processes by
-´DistributedDataParallel´, so that one optimizer step sees an effective batch of
-´world_size´ times the per process batch size.
+´DistributedDataParallel´.
+
+The batch sizes a caller gives are GLOBAL: the trainer divides them by
+´world_size´, so one optimizer step sees the same effective batch as a single
+device run and an epoch takes the same number of steps. Adding processes makes
+each step cheaper rather than making the batch larger. Read that sentence the
+other way round -- an effective batch of ´world_size´ times a per process batch
+-- and you have the usual ´DistributedDataParallel´ convention, which this is
+deliberately NOT.
 
 Every function here is safe to call when training on a single device, in which
 case it either returns the single process answer or does nothing. Nothing in
