@@ -249,6 +249,27 @@ def init_distributed(backend: Optional[str]=None,
     return True
 
 
+# The signature of the teardown failure that an exclusive GPU compute mode
+# causes, established with ´NCCL_DEBUG=INFO´ and described in
+# ´cleanup_distributed´. Matched on BOTH fragments, and only ever consulted
+# after the synchronization succeeded, so a novel failure still gets the full
+# warning. If a future NCCL rewords this, the match fails and the failure is
+# reported loudly again, which is the safe direction to be wrong in.
+_EXPECTED_TEARDOWN_FAILURE = ("ncclunhandledcudaerror", "busy or unavailable")
+
+
+def _is_expected_teardown_failure(error: BaseException) -> bool:
+    """
+    Indicate whether a release failure is the known benign one.
+
+    Known, in the sense that its mechanism has been traced end to end: NCCL's
+    teardown sets the peer's device to release the peer mappings it opened,
+    and a device another process holds exclusively may not be set.
+    """
+    text = str(error).lower()
+    return all(fragment in text for fragment in _EXPECTED_TEARDOWN_FAILURE)
+
+
 def cleanup_distributed():
     """
     Release the process group, if one exists.
@@ -311,16 +332,26 @@ def cleanup_distributed():
     try:
         dist.destroy_process_group()
     except Exception as error:
-        if healthy:
+        if healthy and _is_expected_teardown_failure(error):
+            # Expected, understood, and harmless, so it is reported as one
+            # line of the run's narrative on stdout rather than as a warning
+            # on stderr. Putting it in the error stream, several times over,
+            # made a healthy run look like a failing one -- which is a real
+            # cost, because it is the stream people scan when something goes
+            # wrong.
+            print("Released the process group; the peer mappings could not be "
+                  "handed back, which is expected under an exclusive GPU "
+                  "compute mode and affects nothing this run produced. The "
+                  "driver reclaims them when the process exits. See the "
+                  "multi-GPU user guide.")
+        elif healthy:
             warnings.warn(
                 f"Releasing the process group failed: {error}. Every process "
                 f"completed a collective immediately before this, so the "
                 f"failure is confined to handing the communicator back and "
-                f"nothing this run produced is affected. It is expected on a "
-                f"cluster whose GPUs are allocated in an exclusive compute "
-                f"mode, where NCCL is likely being refused the resources it "
-                f"opened on the other processes' devices. The processes are "
-                f"about to exit and the driver reclaims what they held.")
+                f"nothing this run produced is affected. This is NOT the "
+                f"failure an exclusive GPU compute mode causes, though, so it "
+                f"has not been seen before and is worth looking at.")
         else:
             warnings.warn(
                 f"Releasing the process group also failed: {error}. Taken "

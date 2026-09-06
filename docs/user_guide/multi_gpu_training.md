@@ -288,8 +288,14 @@ same reason `eval_end` does — and additionally because those entries go straig
 passing through the all-reduce the iteration-level logs get. Computed per shard they would differ between
 processes, would not be comparable to a single-GPU run, and `early_stopping_metric` may name one of them.
 
-**Releasing the process group is allowed to fail.** `cleanup_distributed` synchronizes and then releases the
-group, and both steps are wrapped: a failure is warned about, not raised. On a cluster whose GPUs are
+**Releasing the process group is allowed to fail, and the known failure is not a warning.**
+`cleanup_distributed` synchronizes and then releases the group, and both steps are wrapped: a failure is
+reported, never raised. The failure below is expected on every multi-GPU run on such a cluster, its
+mechanism is understood, and it affects nothing — so it is reported as one line of the run's narrative on
+**stdout**, not as a warning on stderr. Repeating a six-line warning on `world_size - 1` processes made a
+healthy run look like a failing one, and stderr is the stream people scan when something has actually gone
+wrong. Any release failure that does *not* match that signature is still a warning, so a future NCCL
+rewording fails towards noise rather than silence. On a cluster whose GPUs are
 allocated in an exclusive compute mode, NCCL's teardown releases the peer resources it opened on the *other*
 processes' devices, and `cudaSetDevice` on a device another process holds exclusively is refused:
 

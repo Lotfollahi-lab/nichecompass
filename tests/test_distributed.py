@@ -455,6 +455,62 @@ def _cleanup_with(monkeypatch, barrier_fails: bool, destroy_fails: bool):
     return module
 
 
+NCCL_EXCLUSIVE_MODE_ERROR = (
+    "NCCL error in: NCCLUtils.cpp:133, unhandled cuda error, NCCL version "
+    "2.21.5 ncclUnhandledCudaError: Call to CUDA function failed. Last error: "
+    "Cuda failure 'CUDA-capable device(s) is/are busy or unavailable'")
+
+
+def test_the_known_teardown_failure_is_not_reported_as_a_warning(monkeypatch,
+                                                                 capsys):
+    """
+    This one is expected on every multi-GPU run on a cluster that allocates
+    GPUs exclusively, and its mechanism is traced end to end: NCCL sets the
+    peer's device to release the peer mappings, and a device another process
+    holds exclusively may not be set. Reporting it on stderr, once per
+    non-owning process, made a healthy run look like a failing one -- which
+    costs something real, because stderr is the stream people scan when
+    something has actually gone wrong.
+    """
+    from nichecompass.train import distributed as module
+
+    def explode(*args, **kwargs):
+        raise RuntimeError(NCCL_EXCLUSIVE_MODE_ERROR)
+    monkeypatch.setattr(module, "_group_released", False)
+    monkeypatch.setattr(module, "is_initialized", lambda: True)
+    monkeypatch.setattr(module, "barrier", lambda *a, **k: None)
+    monkeypatch.setattr(module.dist, "destroy_process_group", explode)
+
+    import warnings as _warnings
+    with _warnings.catch_warnings(record=True) as recorded:
+        _warnings.simplefilter("always")
+        module.cleanup_distributed()
+    assert recorded == [], [str(w.message) for w in recorded]
+    assert "peer mappings" in capsys.readouterr().out
+
+
+def test_an_unfamiliar_teardown_failure_still_warns(monkeypatch):
+    """
+    The suppression is keyed on a signature, so anything that does not match
+    it -- including the same failure after a future NCCL rewords the message
+    -- is still reported. Failing towards a warning is the safe direction.
+    """
+    module = _cleanup_with(monkeypatch, barrier_fails=False, destroy_fails=True)
+    with pytest.warns(UserWarning, match="worth looking at"):
+        module.cleanup_distributed()
+
+
+def test_the_signature_needs_both_fragments():
+    from nichecompass.train.distributed import _is_expected_teardown_failure
+
+    assert _is_expected_teardown_failure(RuntimeError(NCCL_EXCLUSIVE_MODE_ERROR))
+    # either fragment alone is not enough
+    assert not _is_expected_teardown_failure(
+        RuntimeError("ncclUnhandledCudaError: something else entirely"))
+    assert not _is_expected_teardown_failure(
+        RuntimeError("CUDA-capable device(s) is/are busy or unavailable"))
+
+
 def test_a_healthy_run_whose_release_fails_is_told_it_is_unaffected(
         monkeypatch):
     """
