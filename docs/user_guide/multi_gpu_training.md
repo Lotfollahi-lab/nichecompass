@@ -133,33 +133,40 @@ dataset sizes where multi-GPU is worth having.
 
 ## 2. What is guaranteed
 
-**The batch sizes stay global by default.** `batch_size_scaling` decides how `edge_batch_size` and
+**The batch sizes are per process by default.** `batch_size_scaling` decides how `edge_batch_size` and
 `node_batch_size` are read when `multi_gpu=True`:
 
-| | `"global"` (default) | `"per_process"` |
+| | `"per_process"` (default) | `"global"` |
 |---|---|---|
-| the given batch is | the whole run's | each process's |
-| effective batch | unchanged | × `world_size` |
-| optimizer steps per epoch | unchanged | ÷ `world_size` |
-| comparable to a single-GPU run | yes | no |
-| where the speedup comes from | each step is cheaper | there are fewer steps |
+| the given batch is | each process's | the whole run's |
+| effective batch | × `world_size` | unchanged |
+| optimizer steps per epoch | ÷ `world_size` | unchanged |
+| comparable to a single-GPU run | no | yes |
+| where the speedup comes from | there are fewer steps | each step is cheaper |
 
-`"global"` is the default because every published result came from a single device, and only this
-convention keeps a distributed run comparable to those — same effective batch, same optimizer steps, same
-learning rate, no retuning.
+`"per_process"` is the default because that is where the speedup is, and the measurement is unambiguous. A
+step on the reference configuration costs about 39 ms, of which about 24 ms — **62%** — does not scale with
+the batch at all: the gradient all-reduce, the synchronous neighbour sampling, the two per-iteration
+`.item()` synchronizations. Under `"global"` the step *count* never falls, so that fixed 62% is paid 2,256
+times per epoch whether you have one device or eight, which caps the whole thing. Measured 1 GPU against
+2 GPUs, `"global"` returns **1.23×**; extrapolated to four devices it is about 1.4×, against about **4×**
+for `"per_process"`.
 
-It also bounds the speedup, and it is worth being explicit about why. The step *count* does not fall, so
-every fixed cost of a step is paid just as often on eight devices as on one: the gradient all-reduce, the
-synchronous neighbour sampling, the two per-iteration `.item()` synchronizations. With 1,155,480 training
-edges and a global edge batch of 512 that is 2,256 steps per epoch whatever the device count, and at 128
-edges per rank a step is largely overhead. The speedup is therefore capped by the share of a step that is
-actual GPU work.
+Two consequences follow from the larger effective batch, and neither is handled for you:
 
-`"per_process"` pays those fixed costs `world_size` times less often, which is where real throughput lives,
-and it is the right choice at atlas scale where a 512-edge batch is tiny relative to the data. Two
-warnings. The larger effective batch usually wants the learning rate scaled with it. And a run under this
-convention is **not** a control for a single-GPU run: the two differ by design, so it cannot be used to
-test whether the distributed implementation is correct.
+- **The learning rate is not scaled.** A `world_size`-fold larger batch usually wants the learning rate
+  scaled with it, linearly or by its square root. `reduce_lr_on_plateau` absorbs some of this but is not a
+  substitute.
+- **A `"per_process"` run is not a control for a single-GPU run.** The two differ by construction, so this
+  convention cannot be used to test whether the distributed implementation is correct.
+
+`"global"` is what to use when the comparison matters more than the speed: reproducing a single-GPU result,
+or testing the distributed path. It gives the same effective batch, the same number of optimizer steps and
+the same learning rate as one device.
+
+Neither setting has any effect on a single-device run. Every batch-size computation that depends on the
+convention sits inside a `self.distributed_` guard, and a test asserts it, because every published result
+came from one device.
 
 The post-training latent pass is single-process and always uses the batch size the caller gave, never the
 effective global one.

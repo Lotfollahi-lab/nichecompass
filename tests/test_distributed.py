@@ -691,19 +691,51 @@ def _trainer_init():
                 if isinstance(node, ast.FunctionDef) and node.name == "__init__")
 
 
-def test_the_batch_size_convention_is_explicit_and_defaults_to_global():
+def test_the_batch_size_convention_defaults_to_per_process():
     """
-    ´"global"´ has to stay the default. Every published result came from a
-    single device, and only the global convention keeps a distributed run
-    comparable to those: the same effective batch, and the same number of
-    optimizer steps per epoch.
+    ´"per_process"´ is the default because that is where the speedup is.
+    Measured on the reference configuration a step costs about 39 ms of which
+    24 ms does not scale with the batch, so paying that fixed cost
+    ´world_size´ times less often beats making each step cheaper: roughly 4x
+    on four devices against roughly 1.4x.
+
+    The cost is that such a run is not comparable to a single device one, so
+    ´"global"´ remains available and is what a controlled comparison uses.
     """
     setup = _trainer_init()
     names = [a.arg for a in setup.args.args]
     assert "batch_size_scaling" in names
     n_required = len(names) - len(setup.args.defaults)
     default = setup.args.defaults[names.index("batch_size_scaling") - n_required]
-    assert ast.literal_eval(default) == "global"
+    assert ast.literal_eval(default) == "per_process"
+
+
+def test_the_convention_cannot_change_a_single_device_run():
+    """
+    The load-bearing invariant of the whole feature: every published result
+    came from one device, so flipping this default must be invisible there.
+    It is, because every batch-size computation that depends on the
+    convention sits inside a ´self.distributed_´ guard, and ´distributed_´ is
+    False whenever the run is not a multi-process one.
+    """
+    setup = _trainer_init()
+    guarded = set()
+    for node in ast.walk(setup):
+        if (isinstance(node, (ast.If, ast.IfExp))
+                and "self.distributed_" in ast.unparse(node.test)):
+            for inner in ast.walk(node):
+                if hasattr(inner, "lineno"):
+                    guarded.add(inner.lineno)
+    scaled = [node for node in ast.walk(setup)
+              if isinstance(node, ast.Assign)
+              and "world_size_" in ast.unparse(node.value)
+              and "batch_size" in ast.unparse(node.targets[0])]
+    assert scaled, "no batch size is scaled by world_size at all"
+    for node in scaled:
+        assert node.lineno in guarded, (
+            "a batch size is scaled by world_size outside a distributed "
+            f"guard, so a single device run would change: "
+            f"{ast.unparse(node)}")
 
 
 def test_per_process_scaling_multiplies_rather_than_divides():
