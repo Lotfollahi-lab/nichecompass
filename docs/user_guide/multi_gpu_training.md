@@ -79,17 +79,40 @@ Run `probe_lsf_gpu_allocation.sh` once before a long run. It submits the same re
 whether the queue starts the job once or once per slot, how `num=` was interpreted, the memory limit with
 its unit, and whether the ranks can bind to distinct GPUs and all-reduce over NCCL.
 
-**Slurm, one node** (`sbatch submit_slurm.sh`):
+**Slurm** (`DATA_DIR=/path/to/h5ads bash submit_slurm.sh --n_epochs 100`). The submitter generates the
+`#SBATCH` directives and runs the committed `_slurm_job_body.sh`, exactly as the LSF one does. `DATA_DIR`
+is required and is the folder holding `{dataset}_{batch}.h5ad`, so the data can live anywhere the compute
+nodes can see rather than inside the repository. `SLURM_PARTITION`, `N_GPUS`, `N_NODES`, `MEM_GB`, `WALL`
+and `SLURM_ACCOUNT` are all settable from the environment.
+
+*Asking for a particular GPU model needs care.* Clusters label GPU models in one of two ways and they are
+not interchangeable — a typed gres (`--gres=gpu:a100:4`) or a node feature (`--constraint=a100`). Find out
+which applies before submitting:
 
 ```bash
+sinfo -o '%20P %10G %40f'
+```
+
+`%G` shows the gres — `gpu:a100:4` rather than a bare `gpu:4` means types are defined — and `%f` shows the
+features. Set `GPU_GRES` or `GPU_CONSTRAINT` to match. This matters because **a type request the scheduler
+does not understand is not an error**: it is silently satisfied by whatever was free, and the first sign
+would be timings that do not match the hardware you thought you had. The job body therefore asserts the
+model it actually received against `REQUIRE_GPU_MODEL` and fails in seconds if it is wrong.
+
+If you edit the submitter, note that the directives are joined with empty entries *removed*. A blank line
+is not a comment, and Slurm stops reading `#SBATCH` at the first line that is not one, so an unset optional
+directive left as an empty string would silently discard every directive below it — including the GPU
+request.
+
+The generated directives look like this:
+
+```bash
+#SBATCH --partition=highgpu
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-node=4
-#SBATCH --cpus-per-task=16
+#SBATCH --gres=gpu:a100:4
+#SBATCH --cpus-per-task=24
 #SBATCH --mem=200G
-
-torchrun --standalone --nnodes=1 --nproc_per_node=4 \
-    train_nichecompass_reference_model.py --multi_gpu <other arguments>
 ```
 
 Request **one task per node**, not one per GPU. `torchrun` starts the per-GPU processes itself; asking
