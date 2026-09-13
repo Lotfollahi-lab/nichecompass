@@ -5,10 +5,11 @@ This module contains the Trainer to train an NicheCompass model.
 import copy
 import itertools
 import math
+import os
 import time
 import warnings
 from collections import defaultdict
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union
 
 import mlflow
 import numpy as np
@@ -18,6 +19,7 @@ from anndata import AnnData
 
 from nichecompass.data import initialize_dataloaders, prepare_data
 from .basetrainermixin import BaseTrainerMixin
+from .profiling import make_profiler, resolve_profile_mode
 from .distributed import (all_gather_numpy,
                           all_reduce_sum_scalar,
                           barrier,
@@ -219,6 +221,7 @@ class Trainer(BaseTrainerMixin):
                  multi_gpu: bool=False,
                  batch_size_scaling: Literal["global",
                                              "per_process"]="per_process",
+                 profile: Optional[Union[bool, str]]=None,
                  seed: int=0,
                  monitor: bool=True,
                  verbose: bool=False,
@@ -301,6 +304,26 @@ class Trainer(BaseTrainerMixin):
             torch.manual_seed(self.seed_)
             self.device = torch.device("cpu")
         self.model.to(self.device)
+
+        # Profiling is created here because it needs the device for its CUDA
+        # synchronizations. The object itself is named without a trailing
+        # underscore on purpose: ´_get_public_attributes´ sweeps every
+        # trailing underscore attribute into ´mlflow.log_param´, and logging a
+        # profiler's repr as a hyperparameter would be noise. The mode string
+        # is public, because knowing a run was profiled matters when comparing
+        # it against one that was not.
+        self.profile_ = resolve_profile_mode(profile)
+        self._profiler = make_profiler(
+            self.profile_,
+            device=self.device,
+            meta={"world_size": self.world_size_,
+                  "device": str(self.device),
+                  # A per rank CPU allocation that changes with the process
+                  # count silently changes every CPU bound stage, so two runs
+                  # cannot be compared without it.
+                  "omp_num_threads": os.environ.get("OMP_NUM_THREADS",
+                                                    "unset"),
+                  "torch": torch.__version__})
 
         # Prepare data and get node-level and edge-level training and validation
         # splits
@@ -672,16 +695,27 @@ class Trainer(BaseTrainerMixin):
             self.iter_logs = defaultdict(list)
             self.iter_logs["n_train_iter"] = 0
             self.iter_logs["n_val_iter"] = 0
-            
+            epoch_start_time = time.perf_counter()
+
             # Jointly loop through edge- and node-level batches, repeating node-
-            # level batches until edge-level batches are complete
+            # level batches until edge-level batches are complete.
+            # ´iterate´ times only the ´__next__´ of each loader, which is
+            # where the neighbor sampling happens: the loaders are built with
+            # no ´num_workers´, so sampling runs in this process and the
+            # device sits idle through it. There is no block to wrap, hence
+            # the generator.
             for edge_train_data_batch, node_train_data_batch in zip(
-                    self.edge_train_loader,
-                    _cycle_iterable(self.node_train_loader)): # itertools.cycle
-                                                              # resulted in
-                                                              # memory leak
-                node_train_data_batch = node_train_data_batch.to(self.device)
-                edge_train_data_batch = edge_train_data_batch.to(self.device)
+                    self._profiler.iterate(self.edge_train_loader,
+                                           "loader.sample"),
+                    self._profiler.iterate(
+                        _cycle_iterable(self.node_train_loader),
+                        "loader.sample")): # itertools.cycle resulted in a
+                                          # memory leak
+                with self._profiler.region("train.to_device"):
+                    node_train_data_batch = node_train_data_batch.to(
+                        self.device)
+                    edge_train_data_batch = edge_train_data_batch.to(
+                        self.device)
                 loss_kwargs = dict(
                     lambda_edge_recon=self.lambda_edge_recon_,
                     lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
@@ -697,54 +731,69 @@ class Trainer(BaseTrainerMixin):
                     edge_recon_active=self.edge_recon_active,
                     cat_covariates_contrastive_active=self.cat_covariates_contrastive_active)
 
-                if self.ddp_model is not None:
-                    # Both passes and the loss go through one call, so that the
-                    # gradient reduction covers every use of every parameter
-                    train_loss_dict = self.ddp_model(
-                        node_train_data_batch,
-                        edge_train_data_batch,
-                        self.use_only_active_gps,
-                        loss_kwargs)
-                else:
-                    # Forward pass node-level batch
-                    node_train_model_output = self.model(
-                        data_batch=node_train_data_batch,
-                        decoder="omics",
-                        use_only_active_gps=self.use_only_active_gps)
+                # Not comparable across a single device and a distributed
+                # run: the single device path is three calls and the
+                # distributed one fuses them into a single wrapped forward.
+                # Compare it against itself at different process counts.
+                with self._profiler.region("train.forward"):
+                    if self.ddp_model is not None:
+                        # Both passes and the loss go through one call, so that
+                        # the gradient reduction covers every use of every
+                        # parameter
+                        train_loss_dict = self.ddp_model(
+                            node_train_data_batch,
+                            edge_train_data_batch,
+                            self.use_only_active_gps,
+                            loss_kwargs)
+                    else:
+                        # Forward pass node-level batch
+                        node_train_model_output = self.model(
+                            data_batch=node_train_data_batch,
+                            decoder="omics",
+                            use_only_active_gps=self.use_only_active_gps)
 
-                    # Forward pass edge-level batch
-                    edge_train_model_output = self.model(
-                        data_batch=edge_train_data_batch,
-                        decoder="graph",
-                        use_only_active_gps=self.use_only_active_gps)
+                        # Forward pass edge-level batch
+                        edge_train_model_output = self.model(
+                            data_batch=edge_train_data_batch,
+                            decoder="graph",
+                            use_only_active_gps=self.use_only_active_gps)
 
-                    # Calculate training loss
-                    train_loss_dict = self.model.loss(
-                        edge_model_output=edge_train_model_output,
-                        node_model_output=node_train_model_output,
-                        **loss_kwargs)
+                        # Calculate training loss
+                        train_loss_dict = self.model.loss(
+                            edge_model_output=edge_train_model_output,
+                            node_model_output=node_train_model_output,
+                            **loss_kwargs)
 
                 train_global_loss = train_loss_dict["global_loss"]
                 train_optim_loss = train_loss_dict["optim_loss"]
 
-                if self.verbose_:
-                    for key, value in train_loss_dict.items():
-                        self.iter_logs[f"train_{key}"].append(value.item())
-                else:
-                    self.iter_logs["train_global_loss"].append(
-                        train_global_loss.item())   
-                    self.iter_logs["train_optim_loss"].append(
-                        train_optim_loss.item())
+                # Every ´.item()´ is a device to host synchronization, so
+                # with ´verbose´ this is one stall per loss key per step.
+                with self._profiler.region("train.loss_item"):
+                    if self.verbose_:
+                        for key, value in train_loss_dict.items():
+                            self.iter_logs[f"train_{key}"].append(value.item())
+                    else:
+                        self.iter_logs["train_global_loss"].append(
+                            train_global_loss.item())
+                        self.iter_logs["train_optim_loss"].append(
+                            train_optim_loss.item())
                 self.iter_logs["n_train_iter"] += 1
+                self._profiler.count("n_train_steps")
                 # Optimize for training loss
                 self.optimizer.zero_grad()
-                
-                train_optim_loss.backward()
-                # Clip gradients
-                if self.grad_clip_value_ > 0:
-                    torch.nn.utils.clip_grad_value_(self.model.parameters(),
-                                                    self.grad_clip_value_)
-                self.optimizer.step()
+
+                # Under DDP the gradient all reduce happens inside here, and
+                # overlaps with the backward compute, so this is one number
+                # covering both.
+                with self._profiler.region("train.backward"):
+                    train_optim_loss.backward()
+                with self._profiler.region("train.optimizer"):
+                    # Clip gradients
+                    if self.grad_clip_value_ > 0:
+                        torch.nn.utils.clip_grad_value_(
+                            self.model.parameters(), self.grad_clip_value_)
+                    self.optimizer.step()
 
             # Validate model
             if (self.edge_val_loader is not None and 
@@ -763,24 +812,34 @@ class Trainer(BaseTrainerMixin):
             # process ran the same number of iterations over a disjoint part of
             # the same data, so averaging the per process means across
             # processes gives the mean over the whole epoch.
-            for key in sorted(self.iter_logs):
-                if key.startswith("train"):
-                    epoch_value = (np.array(self.iter_logs[key]).sum() /
-                                   self.iter_logs["n_train_iter"])
-                elif key.startswith("val"):
-                    epoch_value = (np.array(self.iter_logs[key]).sum() /
-                                   self.iter_logs["n_val_iter"])
-                else:
-                    continue
-                if self.distributed_:
-                    epoch_value = (all_reduce_sum_scalar(float(epoch_value),
-                                                         self.device)
-                                   / self.world_size_)
-                self.epoch_logs[key].append(epoch_value)
+            with self._profiler.region("epoch.reduce"):
+                for key in sorted(self.iter_logs):
+                    if key.startswith("train"):
+                        epoch_value = (np.array(self.iter_logs[key]).sum() /
+                                       self.iter_logs["n_train_iter"])
+                    elif key.startswith("val"):
+                        epoch_value = (np.array(self.iter_logs[key]).sum() /
+                                       self.iter_logs["n_val_iter"])
+                    else:
+                        continue
+                    if self.distributed_:
+                        epoch_value = (all_reduce_sum_scalar(
+                            float(epoch_value), self.device)
+                                       / self.world_size_)
+                    self.epoch_logs[key].append(epoch_value)
 
             # Monitor epoch level logs
             if self.monitor_ and is_main_process():
                 print_progress(self.epoch, self.epoch_logs, self.n_epochs_)
+
+            # Closed before early stopping so the number matches the work of
+            # the epoch rather than the decision about it, and before the wait
+            # probe so that waiting is not counted as this rank's own work.
+            self._profiler.epoch_end(time.perf_counter() - epoch_start_time)
+            # How long this rank idles at the end of an epoch because another
+            # rank is slower. Under DDP that wait is real elapsed time that no
+            # work probe attributes to anything.
+            self._profiler.wait("wait.epoch_end")
 
             # Check early stopping. This runs on EVERY process, not just the
             # main one, because ´is_early_stopping´ does two other things
@@ -798,7 +857,8 @@ class Trainer(BaseTrainerMixin):
             # inferred: a process that kept training while the others stopped
             # would wait forever on the next gradient reduction.
             if self.use_early_stopping_:
-                stop_training = self.is_early_stopping()
+                with self._profiler.region("epoch.early_stop"):
+                    stop_training = self.is_early_stopping()
                 if self.distributed_:
                     stop_training = broadcast_object(stop_training)
                 if stop_training:
@@ -810,6 +870,16 @@ class Trainer(BaseTrainerMixin):
         if is_main_process():
             print(f"Model training finished after {int(minutes)} min "
                   f"{int(seconds)} sec.")
+
+        # Collective, so it has to run on every process and at a point every
+        # process reaches. This is that point: every process has either
+        # exhausted ´range(n_epochs)´ or broken on the same broadcast early
+        # stopping decision.
+        if self._profiler.enabled:
+            report = self._profiler.finalize(
+                training_time_s=self.training_time)
+            if report is not None:
+                print(report)
         # Every process recorded the best model state itself, at the epoch
         # every process agreed was the best, so there is nothing to broadcast.
         # It used to be broadcast from the main process, which crashed: the
@@ -867,37 +937,44 @@ class Trainer(BaseTrainerMixin):
         # Jointly loop through edge- and node-level batches, repeating node-
         # level batches until edge-level batches are complete
         for edge_val_data_batch, node_val_data_batch in zip(
-                self.edge_val_loader, _cycle_iterable(self.node_val_loader)):
-            # Forward pass node level batch
-            node_val_data_batch = node_val_data_batch.to(self.device)
-            node_val_model_output = self.model(
-                data_batch=node_val_data_batch,
-                decoder="omics",
-                use_only_active_gps=self.use_only_active_gps)
+                self._profiler.iterate(self.edge_val_loader, "loader.sample"),
+                self._profiler.iterate(
+                    _cycle_iterable(self.node_val_loader), "loader.sample")):
+            self._profiler.count("n_val_steps")
+            # The validation forward passes DO shard: both validation
+            # loaders are sharded, so this is the part of the epoch that
+            # should get faster as processes are added.
+            with self._profiler.region("val.forward"):
+                # Forward pass node level batch
+                node_val_data_batch = node_val_data_batch.to(self.device)
+                node_val_model_output = self.model(
+                    data_batch=node_val_data_batch,
+                    decoder="omics",
+                    use_only_active_gps=self.use_only_active_gps)
 
-            # Forward pass edge level batch
-            edge_val_data_batch = edge_val_data_batch.to(self.device)
-            edge_val_model_output = self.model(
-                data_batch=edge_val_data_batch,
-                decoder="graph",
-                use_only_active_gps=self.use_only_active_gps)
+                # Forward pass edge level batch
+                edge_val_data_batch = edge_val_data_batch.to(self.device)
+                edge_val_model_output = self.model(
+                    data_batch=edge_val_data_batch,
+                    decoder="graph",
+                    use_only_active_gps=self.use_only_active_gps)
 
-            # Calculate validation loss
-            val_loss_dict = self.model.loss(
-                    edge_model_output=edge_val_model_output,
-                    node_model_output=node_val_model_output,
-                    lambda_edge_recon=self.lambda_edge_recon_,
-                    lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
-                    lambda_chrom_access_recon=self.lambda_chrom_access_recon_,
-                    lambda_cat_covariates_contrastive=self.lambda_cat_covariates_contrastive_,
-                    contrastive_logits_pos_ratio=self.contrastive_logits_pos_ratio_,
-                    contrastive_logits_neg_ratio=self.contrastive_logits_neg_ratio_,
-                    lambda_group_lasso=self.lambda_group_lasso_,
-                    lambda_l1_masked=self.lambda_l1_masked_,
-                    l1_targets_mask=self.l1_targets_mask,
-                    l1_sources_mask=self.l1_sources_mask,
-                    lambda_l1_addon=self.lambda_l1_addon_,
-                    edge_recon_active=True)
+                # Calculate validation loss
+                val_loss_dict = self.model.loss(
+                        edge_model_output=edge_val_model_output,
+                        node_model_output=node_val_model_output,
+                        lambda_edge_recon=self.lambda_edge_recon_,
+                        lambda_gene_expr_recon=self.lambda_gene_expr_recon_,
+                        lambda_chrom_access_recon=self.lambda_chrom_access_recon_,
+                        lambda_cat_covariates_contrastive=self.lambda_cat_covariates_contrastive_,
+                        contrastive_logits_pos_ratio=self.contrastive_logits_pos_ratio_,
+                        contrastive_logits_neg_ratio=self.contrastive_logits_neg_ratio_,
+                        lambda_group_lasso=self.lambda_group_lasso_,
+                        lambda_l1_masked=self.lambda_l1_masked_,
+                        l1_targets_mask=self.l1_targets_mask,
+                        l1_sources_mask=self.l1_sources_mask,
+                        lambda_l1_addon=self.lambda_l1_addon_,
+                        edge_recon_active=True)
 
             val_global_loss = val_loss_dict["global_loss"]
             val_optim_loss = val_loss_dict["optim_loss"]
@@ -909,30 +986,35 @@ class Trainer(BaseTrainerMixin):
                 self.iter_logs["val_optim_loss"].append(val_optim_loss.item())  
             self.iter_logs["n_val_iter"] += 1
             
-            # Calculate evaluation metrics
-            edge_recon_probs_val = torch.sigmoid(
-                edge_val_model_output["edge_recon_logits"])
-            edge_recon_labels_val = edge_val_model_output["edge_recon_labels"]
-            edge_same_cat_covariates_cat_val = edge_val_model_output["edge_same_cat_covariates_cat"]
-            edge_incl_val = edge_val_model_output["edge_incl"]
-            edge_recon_probs_val_accumulated = np.append(
-                edge_recon_probs_val_accumulated,
-                edge_recon_probs_val.detach().cpu().numpy())
-            edge_recon_labels_val_accumulated = np.append(
-                edge_recon_labels_val_accumulated,
-                edge_recon_labels_val.detach().cpu().numpy())
-            if edge_same_cat_covariates_cat_val is not None:
-                for i, edge_same_cat_covariate_cat_val in enumerate(edge_same_cat_covariates_cat_val):
-                    edge_same_cat_covariates_cat_val_accumulated[i] = np.append(
-                        edge_same_cat_covariates_cat_val_accumulated[i],
-                        edge_same_cat_covariate_cat_val.detach().cpu().numpy())
-            if edge_incl_val is not None:
-                edge_incl_val_accumulated = np.append(
-                    edge_incl_val_accumulated,
-                    edge_incl_val.detach().cpu().numpy())
-            else:
-                edge_same_cat_covariates_cat_val_accumulated = None
-                edge_incl_val_accumulated = None
+            # Calculate evaluation metrics.
+            # Timed separately because ´np.append´ reallocates and copies
+            # the whole array on every batch, making this quadratic in the
+            # shard size: halving the shard quarters the cost. A scaling
+            # efficiency above 1 here is that, not a cache effect.
+            with self._profiler.region("val.accumulate"):
+                edge_recon_probs_val = torch.sigmoid(
+                    edge_val_model_output["edge_recon_logits"])
+                edge_recon_labels_val = edge_val_model_output["edge_recon_labels"]
+                edge_same_cat_covariates_cat_val = edge_val_model_output["edge_same_cat_covariates_cat"]
+                edge_incl_val = edge_val_model_output["edge_incl"]
+                edge_recon_probs_val_accumulated = np.append(
+                    edge_recon_probs_val_accumulated,
+                    edge_recon_probs_val.detach().cpu().numpy())
+                edge_recon_labels_val_accumulated = np.append(
+                    edge_recon_labels_val_accumulated,
+                    edge_recon_labels_val.detach().cpu().numpy())
+                if edge_same_cat_covariates_cat_val is not None:
+                    for i, edge_same_cat_covariate_cat_val in enumerate(edge_same_cat_covariates_cat_val):
+                        edge_same_cat_covariates_cat_val_accumulated[i] = np.append(
+                            edge_same_cat_covariates_cat_val_accumulated[i],
+                            edge_same_cat_covariate_cat_val.detach().cpu().numpy())
+                if edge_incl_val is not None:
+                    edge_incl_val_accumulated = np.append(
+                        edge_incl_val_accumulated,
+                        edge_incl_val.detach().cpu().numpy())
+                else:
+                    edge_same_cat_covariates_cat_val_accumulated = None
+                    edge_incl_val_accumulated = None
 
         # Every process only validated its own shard, so the predictions and
         # labels are concatenated across processes before the metrics are
@@ -944,24 +1026,34 @@ class Trainer(BaseTrainerMixin):
         # straight into ´epoch_logs´ without passing through the all-reduce
         # that the iteration level logs get, and ´early_stopping_metric´ may
         # name one of them.
-        if self.distributed_:
-            edge_recon_probs_val_accumulated = all_gather_numpy(
-                edge_recon_probs_val_accumulated, self.device)
-            edge_recon_labels_val_accumulated = all_gather_numpy(
-                edge_recon_labels_val_accumulated, self.device)
-            if edge_incl_val_accumulated is not None:
-                edge_incl_val_accumulated = all_gather_numpy(
-                    edge_incl_val_accumulated, self.device)
-            if edge_same_cat_covariates_cat_val_accumulated is not None:
-                edge_same_cat_covariates_cat_val_accumulated = [
-                    all_gather_numpy(accumulated, self.device) for accumulated
-                    in edge_same_cat_covariates_cat_val_accumulated]
+        with self._profiler.region("val.gather"):
+            if self.distributed_:
+                edge_recon_probs_val_accumulated = all_gather_numpy(
+                    edge_recon_probs_val_accumulated, self.device)
+                edge_recon_labels_val_accumulated = all_gather_numpy(
+                    edge_recon_labels_val_accumulated, self.device)
+                if edge_incl_val_accumulated is not None:
+                    edge_incl_val_accumulated = all_gather_numpy(
+                        edge_incl_val_accumulated, self.device)
+                if edge_same_cat_covariates_cat_val_accumulated is not None:
+                    edge_same_cat_covariates_cat_val_accumulated = [
+                        all_gather_numpy(accumulated, self.device) for
+                        accumulated
+                        in edge_same_cat_covariates_cat_val_accumulated]
+        self._profiler.count("n_val_entries",
+                             len(edge_recon_probs_val_accumulated))
 
-        val_eval_dict = eval_metrics(
-            edge_recon_probs=edge_recon_probs_val_accumulated,
-            edge_labels=edge_recon_labels_val_accumulated,
-            edge_same_cat_covariates_cat=edge_same_cat_covariates_cat_val_accumulated,
-            edge_incl=edge_incl_val_accumulated)
+        # The gather above put the FULL validation set back together on every
+        # process, so this runs at full size on every process however many
+        # there are. It is the one stage in the epoch whose cost is a function
+        # of the whole dataset rather than of this process's shard, which is
+        # what makes it the thing that stops an epoch getting faster.
+        with self._profiler.region("val.metrics"):
+            val_eval_dict = eval_metrics(
+                edge_recon_probs=edge_recon_probs_val_accumulated,
+                edge_labels=edge_recon_labels_val_accumulated,
+                edge_same_cat_covariates_cat=edge_same_cat_covariates_cat_val_accumulated,
+                edge_incl=edge_incl_val_accumulated)
         if self.verbose_:
             self.epoch_logs["val_auroc_score"].append(
                 val_eval_dict["auroc_score"])
