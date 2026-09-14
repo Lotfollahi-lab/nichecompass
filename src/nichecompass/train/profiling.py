@@ -516,11 +516,34 @@ def render_report(per_rank: np.ndarray,
             "   (uninstrumented, plus profiling overhead)")
 
     # The whole point of the exercise: say which stages could ever have got
-    # faster, and which could not.
+    # faster, and which could not. But only when enough of the time is
+    # actually accounted for. A confident ratio computed over a few percent of
+    # the run is worse than no ratio at all, because it reads as an answer:
+    # at mode='phase' the entire per step loop is uninstrumented by design,
+    # and the surviving per epoch probes are nearly all replicated, so the
+    # naive ratio says "1.01x, give up" about a run whose own stage budget
+    # says 1.86x.
     replicated = sum(worst[i] for i, p in enumerate(PROBES)
                      if p.kind in (KIND_REPLICATED, KIND_FIXED))
-    if total_worst > 0:
-        add(f"{LOG_PREFIX} " + "-" * 74)
+    coverage = (total_worst / training_time_s
+                if training_time_s and training_time_s > 0 else 1.0)
+    add(f"{LOG_PREFIX} " + "-" * 74)
+    if training_time_s:
+        add(f"{LOG_PREFIX} probe coverage: {100 * coverage:.1f}% of "
+            "training time")
+    disabled = sorted(p.name for p in PROBES if p.level > _LEVEL[mode])
+    if disabled:
+        add(f"{LOG_PREFIX} NOT instrumented at mode={mode!r}: "
+            f"{', '.join(disabled)}")
+        add(f"{LOG_PREFIX}   their cost sits in 'unattributed' above; rerun "
+            "with --profile step to break it out")
+    if coverage < 0.5:
+        # Refuse the verdict rather than extrapolate from a sliver.
+        add(f"{LOG_PREFIX} Too little of the run is attributed for a scaling "
+            "verdict.")
+        add(f"{LOG_PREFIX} Of what WAS measured, {replicated:.1f}s of "
+            f"{total_worst:.1f}s does not shrink with more processes.")
+    elif total_worst > 0:
         add(f"{LOG_PREFIX} does NOT shrink with more processes: "
             f"{replicated:.1f}s of {total_worst:.1f}s "
             f"({100 * replicated / total_worst:.0f}%)")
