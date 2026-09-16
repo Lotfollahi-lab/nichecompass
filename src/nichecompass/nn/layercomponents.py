@@ -73,7 +73,14 @@ class MaskedLinear(nn.Linear):
         """
         if dynamic_mask is not None:
             dynamic_mask = dynamic_mask.t().to(self.mask.device)
-            self.weight.data *= dynamic_mask
+            # The masking is applied to the PRODUCT below, not written back
+            # into the parameter. Writing it back (´self.weight.data *=
+            # dynamic_mask´) destroyed the weights of every gene program the
+            # dynamic mask had switched off, permanently and regardless of
+            # ´requires_grad´ - so a reference model loaded with frozen
+            # weights could still lose its gene program loadings during query
+            # training. It was also redundant: the latent columns of inactive
+            # programs are already zeroed before the decoder is called.
             masked_weights = self.weight * self.mask * dynamic_mask
         else:
             masked_weights = self.weight * self.mask

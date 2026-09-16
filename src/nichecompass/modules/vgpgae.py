@@ -177,7 +177,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  cat_covariates_no_edges: List[bool]=[],
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=4,
-                 encoder_use_bn: bool=False,
+                 encoder_use_bn: bool=True,
                  dropout_rate_encoder: float=0.,
                  dropout_rate_graph_decoder: float=0.,
                  include_edge_recon_loss: bool=True,
@@ -692,7 +692,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
         if decoder == "omics":
             with torch.no_grad():
-                if self.training:
+                # ´freeze_´ is excluded for the same reason as the pruning
+                # below: this statistic decides which gene programs are
+                # active, so letting it drift to query data silently changes
+                # the reported repertoire of a model whose weights the caller
+                # asked to keep fixed.
+                if self.training and not self.freeze_:
                     # Update running mean absolute gp scores using exponential
                     # moving average with momentum of 0.1. The sum of the
                     # absolute scores and the number of nodes are reduced
@@ -714,19 +719,27 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     self.running_mean_abs_mu = (
                         0.1 * mean_abs_mu + 0.9 * self.running_mean_abs_mu)
                     
-                if use_only_active_gps:
-                    # Set running mean abs mu of inactive gene programs to 0 for
-                    # active gp determination
-                    self.running_mean_abs_mu[~active_gp_mask] = 0  
+                    # Pruning is destructive and irreversible, so it is
+                    # confined to training and to a model that is actually
+                    # being fitted. On a frozen model - a reference loaded for
+                    # query mapping, or for analysis - the gene programs are
+                    # the reference's and must survive unchanged. Before this
+                    # guard the block ran on every forward including
+                    # validation, so 375 epochs of a frozen query run could
+                    # delete reference gene programs from the checkpoint.
+                    if use_only_active_gps and not self.freeze_:
+                        # Set running mean abs mu of inactive gene programs to
+                        # 0 for active gp determination
+                        self.running_mean_abs_mu[~active_gp_mask] = 0
 
-                    # Set dynamic mask to 0 for all inactive gene programs to
-                    # not affect omics decoders
-                    self.target_rna_dynamic_decoder_mask[~active_gp_mask, :] = 0
-                    self.source_rna_dynamic_decoder_mask[~active_gp_mask, :] = 0
+                        # Set dynamic mask to 0 for all inactive gene programs
+                        # to not affect omics decoders
+                        self.target_rna_dynamic_decoder_mask[~active_gp_mask, :] = 0
+                        self.source_rna_dynamic_decoder_mask[~active_gp_mask, :] = 0
 
-                    if "atac" in self.modalities_:
-                        self.target_atac_dynamic_decoder_mask[~active_gp_mask, :] = 0
-                        self.source_atac_dynamic_decoder_mask[~active_gp_mask, :] = 0
+                        if "atac" in self.modalities_:
+                            self.target_atac_dynamic_decoder_mask[~active_gp_mask, :] = 0
+                            self.source_atac_dynamic_decoder_mask[~active_gp_mask, :] = 0
                     
             # Determine which features should be reconstructed based on
             # static and dynamic masks (if a feature is not connected to any

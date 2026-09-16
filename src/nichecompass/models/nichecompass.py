@@ -257,7 +257,7 @@ class NicheCompass(GPAnalysisMixin, BaseModelMixin):
                  n_hidden_encoder: Optional[int]=None,
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gatv2conv",
                  encoder_n_attention_heads: Optional[int]=4,
-                 encoder_use_bn: bool=False,
+                 encoder_use_bn: bool=True,
                  dropout_rate_encoder: float=0.,
                  dropout_rate_graph_decoder: float=0.,
                  cat_covariates_cats: Optional[List[List]]=None,

@@ -673,8 +673,23 @@ class Trainer(BaseTrainerMixin):
         start_time = time.time()
         self.epoch_logs = defaultdict(list)
         self.model.train()
-        params = filter(lambda p: p.requires_grad, self.model.parameters())
-        self.optimizer = torch.optim.Adam(params,
+        trainable = [p for p in self.model.parameters() if p.requires_grad]
+        if not trainable:
+            # Adam would raise "optimizer got an empty parameter list" here,
+            # after the dataloaders were built and the run was logged, naming
+            # neither the model nor the reason. This happens when a model is
+            # loaded for fine tuning but every unfreeze argument matched
+            # nothing - for instance asking for the categorical covariate
+            # embedder on a model that has no categorical covariates.
+            raise ValueError(
+                "Every parameter of this model is frozen, so training would "
+                "update nothing. If you loaded a reference model for query "
+                "mapping, pass one of the unfreeze arguments to "
+                "´NicheCompass.load´ (for example "
+                "´unfreeze_cat_covariates_embedder_weights=True´ or "
+                "´unfreeze_encoder_weights=True´). If you only want to "
+                "analyse the model, do not call ´train´.")
+        self.optimizer = torch.optim.Adam(trainable,
                                           lr=lr,
                                           weight_decay=weight_decay)
 

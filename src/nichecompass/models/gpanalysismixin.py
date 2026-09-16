@@ -180,9 +180,21 @@ class GPAnalysisMixin:
             mass = float(np.abs(anchor).sum(dtype=np.float64))
             coherence = abs(signed_mass) / mass if mass else 0.0
             sign = -1 if signed_mass < 0 else 1
+            # ´freeze_´ is a whole model flag and stays True under partial
+            # unfreezing, so it alone does not establish that THIS program's
+            # loadings are unchanged. If the inherited sign contradicts the
+            # sign the current loadings imply, the loadings moved: keep the
+            # recomputed sign and stop claiming inheritance, rather than
+            # returning activities flipped against their own weights.
             inherited = bool(getattr(self, "freeze_", False) and gp_id in old_rows)
-            if inherited:
-                sign = int(old_rows[gp_id]["orientation_sign"])
+            inherited_sign = (int(old_rows[gp_id]["orientation_sign"])
+                              if inherited else None)
+            sign_disagrees = bool(inherited and mass > 0
+                                  and inherited_sign != sign)
+            if sign_disagrees:
+                inherited = False
+            elif inherited:
+                sign = inherited_sign
             status = ("zero_support" if mass == 0 else
                       "mixed" if coherence < 0.1 else
                       "weak_support" if mass < 1e-8 else "oriented")
@@ -192,6 +204,8 @@ class GPAnalysisMixin:
                          "signed_mass": signed_mass, "anchor_mass": mass,
                          "coherence": coherence, "orientation_status": status,
                          "inherited": inherited,
+                         "inherited_sign": inherited_sign,
+                         "inherited_sign_disagreed": sign_disagrees,
                          "source_target_disagree": bool(np.sign(source.sum(dtype=np.float64)) *
                                                          np.sign(target.sum(dtype=np.float64)) < 0),
                          "n_source_genes": int(memberships["rna"][n_genes:, k].sum()),

@@ -20,6 +20,95 @@ from nichecompass.train.distributed import (get_local_rank,
 from .utils import initialize_model, load_saved_files, validate_var_names
 
 
+
+# Parameter group names accepted by the unfreeze arguments of ´load´. A group
+# is defined by a predicate over the parameter's qualified name rather than by
+# a substring test, so that a name never lands in a group the caller did not
+# ask for.
+PARAMETER_GROUPS = ("encoder",
+                    "addon_gp",
+                    "prior_gp_decoder",
+                    "graph_decoder",
+                    "dispersion",
+                    "node_label_aggregator",
+                    "cat_covariates_embedder")
+
+
+def _parameter_group_of(param_name: str) -> str:
+    """
+    Classify one parameter of a ´VGPGAE´ into exactly one group.
+
+    Order matters: the add-on gene program tensors live inside the encoder
+    (´encoder.addon_conv_mu´) and inside the omics decoders
+    (´*.addon_l´), so they are claimed first and the broader groups only see
+    what is left.
+    """
+    if "addon_conv" in param_name or ".addon_l." in f".{param_name}.":
+        return "addon_gp"
+    if param_name.endswith("_theta"):
+        return "dispersion"
+    if "node_label_aggregator" in param_name:
+        return "node_label_aggregator"
+    # Both the per category embedding table and the linear layer that projects
+    # it into the decoder. The second was previously missed, which pinned a
+    # query's covariate offset to a projection fitted on the reference.
+    if "_embedder" in param_name or "cat_covariates_embed_l" in param_name:
+        return "cat_covariates_embedder"
+    if param_name.startswith("encoder."):
+        return "encoder"
+    if "graph_decoder" in param_name:
+        return "graph_decoder"
+    return "prior_gp_decoder"
+
+
+def _parameter_groups(module: torch.nn.Module) -> dict:
+    """
+    Map each group name to the qualified names of the parameters it holds.
+
+    Returns
+    -------
+    groups:
+        Dictionary with one entry per name in ´PARAMETER_GROUPS´, possibly
+        empty (a model without categorical covariates has no embedder).
+    """
+    groups = {name: [] for name in PARAMETER_GROUPS}
+    for param_name, _ in module.named_parameters():
+        groups[_parameter_group_of(param_name)].append(param_name)
+    return groups
+
+
+def _freeze_running_statistics(module: torch.nn.Module,
+                               model_is_frozen: bool) -> list:
+    """
+    Stop frozen normalisation layers from drifting on new data.
+
+    ´requires_grad´ governs gradients, not buffers, and ´Trainer.train()´ puts
+    the module back into train mode, so a batch norm whose weights are frozen
+    still rewrites ´running_mean´ and ´running_var´ on every forward. The
+    latent is later read in eval mode using those drifted values, which moves
+    every gene program score of a model the caller asked to keep fixed.
+
+    Returns
+    -------
+    frozen:
+        The normalisation layers whose statistics were pinned.
+    """
+    frozen = []
+    for submodule in module.modules():
+        if not isinstance(submodule, torch.nn.modules.batchnorm._BatchNorm):
+            continue
+        own_params = list(submodule.parameters(recurse=False))
+        # With ´affine=False´ there are no parameters to inspect, so fall back
+        # to whether the model as a whole is frozen.
+        is_frozen = (not any(param.requires_grad for param in own_params)
+                     if own_params else model_is_frozen)
+        if is_frozen:
+            submodule.track_running_stats = False
+            submodule.eval()
+            frozen.append(submodule)
+    return frozen
+
+
 class BaseModelMixin():
     """
     Base model mix in class for universal model functionalities. 
@@ -169,7 +258,10 @@ class BaseModelMixin():
              genes_idx_key: Optional[str]=None,
              unfreeze_all_weights: bool=False,
              unfreeze_addon_gp_weights: bool=False,
-             unfreeze_cat_covariates_embedder_weights: bool=False
+             unfreeze_cat_covariates_embedder_weights: bool=False,
+             unfreeze_encoder_weights: bool=False,
+             unfreeze_dispersion: bool=False,
+             unfreeze_node_label_aggregator: bool=False
              ) -> torch.nn.Module:
         """
         Instantiate a model from saved output. Can be used for transfer learning
@@ -199,17 +291,56 @@ class BaseModelMixin():
         gp_names_key:
             Key under which the gene program names are stored in ´adata.uns´.         
         unfreeze_all_weights:
-            If `True`, unfreeze all weights.
+            If `True`, unfreeze everything and treat the run as a full refit.
+            This is the only setting that clears ´freeze_´, so it is also the
+            only one after which gene program orientations are recomputed
+            rather than inherited from the reference, and the only one under
+            which gene program pruning runs.
         unfreeze_addon_gp_weights:
-            If `True`, unfreeze addon gp weights.
+            If `True`, unfreeze the add-on gene program weights, in both the
+            encoder (´encoder.addon_conv_*´) and the omics decoders
+            (´*.addon_l´). For backwards compatibility this also unfreezes
+            the dispersion and the node label aggregator, which used to be
+            caught by the same substring test; prefer the dedicated arguments
+            below.
         unfreeze_cat_covariates_embedder_weights:
-            If `True`, unfreeze categorical covariates embedder weights.
-        
+            If `True`, unfreeze the categorical covariate embedding tables and
+            the linear layers that project them into the decoders.
+        unfreeze_encoder_weights:
+            If `True`, unfreeze the encoder while leaving the gene program
+            loadings fixed. This is the setting for query mapping where the
+            query's neighbourhood structure differs from the reference's: the
+            encoder learns to place query cells on the reference gene program
+            axes, and because the loadings do not move, the axes keep their
+            meaning and their inherited orientation.
+        unfreeze_dispersion:
+            If `True`, refit the per feature negative binomial dispersion.
+        unfreeze_node_label_aggregator:
+            If `True`, unfreeze the node label aggregator. This has an effect
+            only for ´node_label_method="one-hop-attention"´; the other
+            aggregators have no parameters.
+
         Returns
         -------
         model:
-            Model with loaded state dictionaries and, if specified, frozen non 
-            add-on weights.
+            Model with loaded state dictionaries and the requested parameter
+            groups unfrozen. The names of the unfrozen parameters are printed
+            and recorded in ´model.unfrozen_parameter_names_´.
+
+        Notes
+        -----
+        What "frozen" does and does not mean. ´requires_grad=False´ stops
+        gradient updates. It does not stop anything else, so ´load´
+        additionally pins the running statistics of frozen normalisation
+        layers, and the module is told it is frozen so that gene program
+        pruning - which is destructive and irreversible - does not delete
+        reference programs on the basis of query data.
+
+        Partial unfreezing leaves ´freeze_´ True, and ´freeze_´ is what
+        ´prepare_gp_analysis´ reads to decide that a gene program was
+        inherited from the reference. A program whose loadings actually moved
+        is detected by comparing the inherited sign against the sign its
+        current loadings imply, and loses its inherited status.
         """
         load_adata = adata is None
         load_adata_atac = ((adata_atac is None) &
@@ -269,6 +400,19 @@ class BaseModelMixin():
 
             # The constructor appends the additional Add-on_<index>_GP names.
 
+        # ´encoder_use_bn´ used to be accepted and ignored, so the encoder
+        # always carried a batch norm when it had two fully connected layers,
+        # whatever the stored value said. Checkpoints written then hold
+        # ´encoder.fc_l2_bn´ weights alongside ´encoder_use_bn=False´; now
+        # that the argument is honoured, believing the stored value would
+        # build a model without the layer and fail on unexpected state dict
+        # keys. Trust the weights.
+        if any(key.startswith("encoder.fc_l2_bn")
+               for key in model_state_dict):
+            if not attr_dict["init_params_"].get("encoder_use_bn", True):
+                attr_dict["init_params_"]["encoder_use_bn"] = True
+                attr_dict["encoder_use_bn_"] = True
+
         model = initialize_model(cls, adata, attr_dict, adata_atac)
 
         # Historical checkpoints have raw analysis semantics until the user
@@ -303,32 +447,70 @@ class BaseModelMixin():
                              else None)
         model.model.eval()
 
-        # First freeze all parameters and then subsequently unfreeze based on
-        # load settings
-        for param_name, param in model.model.named_parameters():
+        # Freeze everything, then unfreeze the requested groups. The groups
+        # are matched by an explicit predicate per group rather than by a
+        # substring of the parameter name: substrings bundled unrelated
+        # tensors together (a flag named for add-on gene programs also
+        # unfroze the negative binomial dispersion and the node label
+        # aggregator) and missed intended ones (´cat_covariates_embed_l´ does
+        # not contain "embedder", so the query's covariate offset stayed
+        # pinned to a reference fitted projection).
+        for param in model.model.parameters():
             param.requires_grad = False
-            model.freeze_ = True
+        model.freeze_ = True
+
+        groups = _parameter_groups(model.model)
+        parameters_by_name = dict(model.model.named_parameters())
+        requested = {
+            "addon_gp": unfreeze_addon_gp_weights,
+            "dispersion": unfreeze_addon_gp_weights or unfreeze_dispersion,
+            "node_label_aggregator": (unfreeze_addon_gp_weights
+                                      or unfreeze_node_label_aggregator),
+            "cat_covariates_embedder": unfreeze_cat_covariates_embedder_weights,
+            "encoder": unfreeze_encoder_weights}
         if unfreeze_all_weights:
-            for param_name, param in model.model.named_parameters():
-                param.requires_grad = True
+            requested = {name: True for name in groups}
+
+        unfrozen = []
+        for group, wanted in requested.items():
+            if not wanted:
+                continue
+            for param_name in groups[group]:
+                parameters_by_name[param_name].requires_grad = True
+                unfrozen.append(param_name)
+        if unfreeze_all_weights:
+            # A full refit: the gene program loadings move, so nothing is
+            # inherited from the reference any more.
             model.freeze_ = False
-        if unfreeze_addon_gp_weights:
-             # allow updates of addon gp weights
-            for param_name, param in model.model.named_parameters():
-                if "addon" in param_name or \
-                "theta" in param_name or \
-                "aggregator" in param_name:
-                    param.requires_grad = True
-        if unfreeze_cat_covariates_embedder_weights:
-            # Allow updates of categorical covariates embedder weights
-            for param_name, param in model.model.named_parameters():
-                if ("cat_covariate" in param_name) & ("embedder" in param_name):
-                    param.requires_grad = True
-        
+
+        # The module needs to know as well. Gene program pruning is
+        # destructive and irreversible, and it must not delete programs whose
+        # loadings are frozen and therefore cannot adapt to the query, so the
+        # forward pass reads this flag before pruning.
+        model.model.freeze_ = model.freeze_
+
+        # ´requires_grad´ does not reach buffers, and ´Trainer.train()´ puts
+        # the module back into train mode, so a frozen module holding running
+        # statistics would still drift on query data. Keep those in eval mode
+        # for the whole run by disabling their tracking.
+        _freeze_running_statistics(model.model, model.freeze_)
+
         if model.freeze_ and not model.is_trained_:
             raise ValueError("The model has not been pre-trained and therefore "
                              "weights should not be frozen.")
-            
+
+        model.unfrozen_parameter_names_ = sorted(unfrozen)
+        if unfrozen:
+            print(f"Unfrozen parameters ({len(unfrozen)}): "
+                  f"{', '.join(sorted(unfrozen))}")
+        else:
+            # Not raised here: loading with everything frozen is the correct
+            # and common way to load a model for analysis only. Training such
+            # a model is what is wrong, and ´Trainer´ raises then.
+            print("All parameters are frozen. This is correct for analysis, "
+                  "but training this model would update nothing - pass one of "
+                  "the unfreeze arguments to fine tune it.")
+
         return model
 
     def _check_if_trained(self,

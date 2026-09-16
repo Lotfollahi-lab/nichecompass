@@ -26,6 +26,16 @@ See [multi_gpu_training](multi_gpu_training.md) for how to launch it on LSF and 
 guarantees numerically, how to profile a run to see which stages actually scale, and what has and has not
 been verified.
 
+## Mapping a query onto a reference
+
+A reference model is adapted to query data by freezing its weights and
+unfreezing only selected parameter groups. Which groups you unfreeze decides
+whether the query can move the latent at all, and freezing has consequences
+beyond gradients - buffers and gene program pruning are outside it. See
+[reference_mapping](reference_mapping.md) for the parameter group table, what
+"frozen" does and does not mean, and which configuration to use for a batch
+effect, a different tissue architecture, or new de novo programs.
+
 ## Prior gene program resources
 
 NicheCompass ships several prior gene program resources, retrieved through the functions documented in the
@@ -39,5 +49,6 @@ neighbour-to-self signalling prior. That workflow is documented in full, step by
 
 humanppi_gene_programs
 multi_gpu_training
+reference_mapping
 gene_program_analysis
 ```

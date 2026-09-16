@@ -90,10 +90,17 @@ class Encoder(nn.Module):
             # Add categorical covariates embedding to input
             n_input += n_cat_covariates_embed_input
         
+        # ´use_bn´ was accepted and documented but never stored or read, so
+        # the batch norm was created purely on the layer count and could not
+        # be switched off. Its running statistics are buffers, so they drift
+        # on new data even when every weight is frozen - which breaks latent
+        # comparability under query mapping.
+        self.use_bn = use_bn
         if n_fc_layers == 2:
             self.fc_l1 = nn.Linear(n_input, int(n_input / 2))
             self.fc_l2 = nn.Linear(int(n_input / 2), n_hidden)
-            self.fc_l2_bn = nn.BatchNorm1d(n_hidden)
+            if use_bn:
+                self.fc_l2_bn = nn.BatchNorm1d(n_hidden)
         elif n_fc_layers == 1:
             self.fc_l1 = nn.Linear(n_input, n_hidden)
         
@@ -179,7 +186,8 @@ class Encoder(nn.Module):
         hidden = self.dropout(self.activation(self.fc_l1(x)))
         if self.n_fc_layers == 2:
             hidden = self.dropout(self.activation(self.fc_l2(hidden)))
-            hidden = self.fc_l2_bn(hidden)
+            if self.use_bn:
+                hidden = self.fc_l2_bn(hidden)
         
         if ((self.cat_covariates_embed_mode == "hidden") &
             (cat_covariates_embed is not None)):
