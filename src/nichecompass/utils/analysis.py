@@ -3,9 +3,9 @@ This module contains utilities to analyze niches inferred by the NicheCompass
 model.
 """
 
-from typing import Optional, Tuple
+import warnings
+from typing import Literal, Optional, Tuple
 
-#import holoviews as hv
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -139,6 +139,19 @@ def create_cell_type_chord_plot_from_df(
     file_path:
         Path where to save the figure.
     """
+    try:
+        import holoviews as hv
+    except ImportError as error:
+        # The module level import was commented out, which left every ´hv´
+        # reference in this function unbound: the first statement raised
+        # ´NameError: name 'hv' is not defined´ rather than saying what to
+        # install. holoviews is an optional dependency, so it stays out of the
+        # module imports and out of ´pyproject.toml´.
+        raise ImportError(
+            "create_cell_type_chord_plot_from_df needs holoviews and bokeh, "
+            "which are optional dependencies of nichecompass. Install them "
+            "with ´pip install holoviews bokeh´.") from error
+
     hv.extension("bokeh")
     hv.output(size=200)
 
@@ -696,7 +709,7 @@ default_color_dict = {
     "38": "#20B2AA", # Light Sea Green
     "39": "#00FFFF", # Cyan
     "40": "#00BFFF", # Deep Sky Blue
-    "41": "#4169E1", # Royal Blue
+    "41": "#3D5A80", # Royal Blue
     "42": "#0000CD", # Medium Blue
     "43": "#00008B", # Dark Blue
     "44": "#8B008B", # Dark Magenta
@@ -732,7 +745,7 @@ default_color_dict = {
     "74": "#8EBA43", # Olive Green
     "75": "#FAC8C3", # Light Pink
     "76": "#E27D60", # Dark Salmon
-    "77": "#C38D9E", # Mauve-Pink
+    "77": "#9E6B7F", # Mauve-Pink
     "78": "#937D64", # Light Brown
     "79": "#B1C1CC", # Light Blue-Gray
     "80": "#88A0A8", # Gray-Blue-Green
@@ -753,6 +766,83 @@ default_color_dict = {
     "-1" : "#E1D9D1",
     "None" : "#E1D9D1"
 }
+
+_CATEGORY_PALETTES = {
+    "cell_type_28":
+            ["#023fa5",
+             "#7d87b9",
+             "#bec1d4",
+             "#d6bcc0",
+             "#bb7784",
+             "#8e063b",
+             "#4a6fe3",
+             "#8595e1",
+             "#b5bbe3",
+             "#e6afb9",
+             "#e07b91",
+             "#d33f6a",
+             "#11c638",
+             "#8dd593",
+             "#c6dec7",
+             "#ead3c6",
+             "#f0b98d",
+             "#ef9708",
+             "#0fcfc0",
+             "#9cded6",
+             "#d5eae7",
+             "#f3e1eb",
+             "#f6c4e1",
+             "#f79cd4",
+             '#7f7f7f',
+             "#c7c7c7",
+             "#1CE6FF",
+             "#336600"],
+    "cell_type_20":
+            ['#1f77b4',
+             '#ff7f0e',
+             '#279e68',
+             '#d62728',
+             '#aa40fc',
+             '#8c564b',
+             '#e377c2',
+             '#b5bd61',
+             '#17becf',
+             '#aec7e8',
+             '#ffbb78',
+             '#98df8a',
+             '#ff9896',
+             '#c5b0d5',
+             '#c49c94',
+             '#f7b6d2',
+             '#dbdb8d',
+             '#9edae5',
+             '#ad494a',
+             '#8c6d31'],
+    "cell_type_10":
+            ['#7f7f7f',
+             '#ff7f0e',
+             '#279e68',
+             '#e377c2',
+             '#17becf',
+             '#8c564b',
+             '#d62728',
+             '#1f77b4',
+             '#b5bd61',
+             '#aa40fc'],
+    "batch":
+            ['#0173b2', '#d55e00', '#ece133', '#ca9161', '#fbafe4',
+             '#949494', '#de8f05', '#029e73', '#cc78bc', '#56b4e9',
+             '#F0F8FF', '#FAEBD7', '#00FFFF', '#7FFFD4', '#F0FFFF',
+             '#F5F5DC', '#FFE4C4', '#000000', '#FFEBCD', '#0000FF',
+             '#8A2BE2', '#A52A2A', '#DEB887', '#5F9EA0', '#7FFF00',
+             '#D2691E', '#FF7F50', '#6495ED', '#FFF8DC', '#DC143C'],
+}
+
+# The 28 color palette was historically named "cell_type_30"; both
+# names resolve to it, and the exhaustion warning now reports the real
+# count rather than the one the name implies.
+_CATEGORY_PALETTES["cell_type_30"] = _CATEGORY_PALETTES["cell_type_28"]
+
 
 def create_new_color_dict(
         adata,
@@ -783,89 +873,37 @@ def create_new_color_dict(
     new_color_dict:
         The color dictionary with a hexcode for each category.
     """
+    # Order of appearance, deliberately left alone. Sorting would change
+    # which color every category gets, churning every existing figure,
+    # and it buys nothing: the returned mapping is consumed by NAME
+    # (scanpy takes it as ´palette=´ and looks categories up), so the
+    # ordering carries no correctness. It does NOT make colors stable
+    # across subsets of a dataset either - any positional assignment
+    # shifts when a category is absent. Pass ´overwrite_color_dict´ to
+    # pin specific categories.
     new_categories = adata.obs[cat_key].unique().tolist()
-    if color_palette == "cell_type_30":
-        # https://github.com/scverse/scanpy/blob/master/scanpy/plotting/palettes.py#L40
-        new_color_dict = {key: value for key, value in zip(
-            new_categories,
-            ["#023fa5",
-             "#7d87b9",
-             "#bec1d4",
-             "#d6bcc0",
-             "#bb7784",
-             "#8e063b",
-             "#4a6fe3",
-             "#8595e1",
-             "#b5bbe3",
-             "#e6afb9",
-             "#e07b91",
-             "#d33f6a",
-             "#11c638",
-             "#8dd593",
-             "#c6dec7",
-             "#ead3c6",
-             "#f0b98d",
-             "#ef9708",
-             "#0fcfc0",
-             "#9cded6",
-             "#d5eae7",
-             "#f3e1eb",
-             "#f6c4e1",
-             "#f79cd4",
-             '#7f7f7f',
-             "#c7c7c7",
-             "#1CE6FF",
-             "#336600"])}
-    elif color_palette == "cell_type_20":
-        # https://github.com/vega/vega/wiki/Scales#scale-range-literals (some adjusted)
-        new_color_dict = {key: value for key, value in zip(
-            new_categories,
-            ['#1f77b4',
-             '#ff7f0e',
-             '#279e68',
-             '#d62728',
-             '#aa40fc',
-             '#8c564b',
-             '#e377c2',
-             '#b5bd61',
-             '#17becf',
-             '#aec7e8',
-             '#ffbb78',
-             '#98df8a',
-             '#ff9896',
-             '#c5b0d5',
-             '#c49c94',
-             '#f7b6d2',
-             '#dbdb8d',
-             '#9edae5',
-             '#ad494a',
-             '#8c6d31'])}
-    elif color_palette == "cell_type_10":
-        # scanpy vega10
-        new_color_dict = {key: value for key, value in zip(
-            new_categories,
-            ['#7f7f7f',
-             '#ff7f0e',
-             '#279e68',
-             '#e377c2',
-             '#17becf',
-             '#8c564b',
-             '#d62728',
-             '#1f77b4',
-             '#b5bd61',
-             '#aa40fc'])}
-    elif color_palette == "batch":
-        # sns.color_palette("colorblind").as_hex()
-        new_color_dict = {key: value for key, value in zip(
-            new_categories,
-            ['#0173b2', '#d55e00', '#ece133', '#ca9161', '#fbafe4',
-             '#949494', '#de8f05', '#029e73', '#cc78bc', '#56b4e9',
-             '#F0F8FF', '#FAEBD7', '#00FFFF', '#7FFFD4', '#F0FFFF',
-             '#F5F5DC', '#FFE4C4', '#000000', '#FFEBCD', '#0000FF',
-             '#8A2BE2', '#A52A2A', '#DEB887', '#5F9EA0', '#7FFF00',
-             '#D2691E', '#FF7F50', '#6495ED', '#FFF8DC', '#DC143C'])}
-    elif color_palette == "default":
-        new_color_dict = {key: value for key, value in zip(new_categories, list(default_color_dict.values())[skip_default_colors:])}
+    if color_palette == "default":
+        palette = list(default_color_dict.values())[skip_default_colors:]
+    elif color_palette in _CATEGORY_PALETTES:
+        palette = _CATEGORY_PALETTES[color_palette]
+    else:
+        raise ValueError(
+            f"´color_palette´ is {color_palette!r}, which is not one of "
+            f"{sorted(('default', *_CATEGORY_PALETTES))}.")
+
+    # ´zip´ would truncate here, silently leaving later categories out of the
+    # returned dict. Downstream that surfaces either as a ´KeyError´ or as
+    # scanpy substituting its own colors, so two figures of the same data
+    # disagree about which category is which color.
+    if len(new_categories) > len(palette):
+        warnings.warn(
+            f"´{cat_key}´ has {len(new_categories)} categories but the "
+            f"{color_palette!r} palette has {len(palette)} colors, so colors "
+            "are reused and some categories are indistinguishable. Pass a "
+            "larger palette, or override the repeats via "
+            "´overwrite_color_dict´.")
+    new_color_dict = {category: palette[i % len(palette)]
+                      for i, category in enumerate(new_categories)}
     for key, val in overwrite_color_dict.items():
         new_color_dict[key] = val
     return new_color_dict
@@ -974,19 +1012,25 @@ def compute_communication_gp_network(
     filter_key: Optional[str]=None,
     filter_cat: Optional[str]=None,
     n_neighbors: int=90,
-    sample_key: Optional[str]=None):
+    sample_key: Optional[str]=None,
+    normalize: Literal["global", "per_gp", "none"]="global",
+    store_scores: bool=True):
     """
     Compute a network of category aggregated cell-pair communication strengths.
-    
-    First, compute cell-cell communication potential scores for each cell.
-    Then dot product them and take into account neighborhoods to compute
-    cell-pair communication strengths. Then, normalize cell-pair communication
-    strengths.
-    
+
+    For every gene program, each cell gets a source score and a target score:
+    the expression of the program's source (respectively target) genes,
+    normalized per gene by its maximum across cells, weighted by that gene's
+    decoder weight, averaged over genes, and scaled by the cell's gene program
+    activity. Negative averages are clipped to zero. The two scores are then
+    multiplied along the edges of a spatial neighbor graph and aggregated per
+    group.
+
     Parameters
     ----------
     gp_list:
-        List of GPs for which the cell-pair communication strengths are computed.
+        List of GPs for which the cell-pair communication strengths are
+        computed.
     model:
         A trained NicheCompass model.
     group_key:
@@ -994,7 +1038,7 @@ def compute_communication_gp_network(
         communication strengths will be aggregated.
     filter_key:
         Key in ´adata.obs´ that contains the category for which the results are
-        filtered.
+        filtered. The filter applies to the SENDING cell.
     filter_cat:
         Category for which the results are filtered.
     n_neighbors:
@@ -1003,17 +1047,44 @@ def compute_communication_gp_network(
         Observation column identifying independent spatial samples. Neighbors
         are computed within each sample. Pass this for integrated datasets;
         otherwise all observations are treated as one spatial sample.
+    normalize:
+        How ´strength´ is scaled. ´"global"´ (default) divides by the largest
+        aggregated value across ALL selected gene programs, which keeps widths
+        comparable when the programs are drawn on one axes. ´"per_gp"´ divides
+        by the largest value within each program, which shows within-program
+        rank only. ´"none"´ leaves the aggregated values untouched. In every
+        case zero means no communication: unlike a min-max rescaling, nothing
+        is subtracted, so the weakest pair is not forced to zero and dropped.
+    store_scores:
+        If ´True´ (default), write the per-cell scores to
+        ´adata.obs["<gp>_source_score"]´ and ´adata.obs["<gp>_target_score"]´
+        and the edge products to ´adata.obsp["<gp>_connectivities"]´. Set to
+        ´False´ to leave ´adata´ untouched, which matters when many gene
+        programs are requested, since each adds an n_obs x n_obs sparse
+        matrix.
 
     Returns
     ----------
     network_df:
-        A pandas dataframe with aggregated, normalized cell-pair communication strengths.
+        A pandas dataframe with one row per (source group, target group, gene
+        program) and columns ´source´, ´target´, ´strength´,
+        ´strength_unscaled´ and ´edge_type´. Pairs with no communication are
+        omitted.
     """
     # Validate before creating graphs or writing communication scores. These
     # scores require a prior with both measured source and target members.
     gp_list, gp_indices = model._gp_selection(gp_list)
     if not gp_list:
         raise ValueError("Select at least one communication GP.")
+    if normalize not in ("global", "per_gp", "none"):
+        raise ValueError(
+            f"´normalize´ is {normalize!r}, which is not one of 'global', "
+            "'per_gp' or 'none'.")
+    if filter_key is not None and filter_cat is None:
+        raise ValueError("´filter_cat´ is required when ´filter_key´ is set.")
+    if group_key not in model.adata.obs:
+        raise ValueError(f"´group_key´ {group_key!r} is not a column of "
+                         "´adata.obs´.")
     gp_summary_df = model.get_gp_summary(orientation="raw")
     selected_summary = gp_summary_df.set_index("gp_name").loc[gp_list]
     if (np.any(gp_indices >= model.n_prior_gp_)
@@ -1024,106 +1095,168 @@ def compute_communication_gp_network(
     # Products require scores and weights in the same coordinate convention.
     raw_scores = model.get_gp_activities(gp_list, orientation="raw", use_cached=True)
     spatial_graph = _communication_spatial_graph(model.adata, n_neighbors, sample_key)
-    
+
+    # Hoisted out of the gene program loop: the edge list of the spatial graph
+    # does not depend on the gene program.
+    edges = (spatial_graph > 0).tocoo()
+    edge_rows, edge_cols = edges.row, edges.col
+
+    # Group codes, once. Aggregating straight into a (n_groups x n_groups)
+    # matrix from the edge list avoids the (n_obs x n_groups) intermediate that
+    # ´aggregate_obsp_matrix_per_cell_type´ builds per gene program.
+    groups = model.adata.obs[group_key]
+    group_cats = sorted(groups.unique().tolist())
+    group_codes = groups.map(
+        {cat: i for i, cat in enumerate(group_cats)}).to_numpy()
+    n_groups = len(group_cats)
+    if filter_key is not None:
+        if filter_key not in model.adata.obs:
+            raise ValueError(f"´filter_key´ {filter_key!r} is not a column of "
+                             "´adata.obs´.")
+        filter_values = model.adata.obs[filter_key].astype(str).to_numpy()
+        if str(filter_cat) not in set(filter_values):
+            raise ValueError(
+                f"´filter_cat´ {filter_cat!r} does not appear in "
+                f"´adata.obs[{filter_key!r}]´.")
+        # The filter is a property of the sending cell, i.e. of the edge's row.
+        edge_keep = filter_values[edge_rows] == str(filter_cat)
+        edge_rows, edge_cols = edge_rows[edge_keep], edge_cols[edge_keep]
+    else:
+        edge_keep = None
+
+    # One pass over the count matrix for the union of every gene involved,
+    # instead of an AnnData view per gene. A single column slice of a CSR
+    # matrix costs O(nnz) on its own, so the per-gene version was O(n_genes x
+    # nnz) overall.
+    targets_mask = model.adata.varm[model.gp_targets_categories_mask_key_]
+    sources_mask = model.adata.varm[model.gp_sources_categories_mask_key_]
+    gene_idx_per_gp = {}
+    all_genes = set()
+    for gp_column, gp in enumerate(gp_list):
+        gp_idx = gp_indices[gp_column]
+        source_genes_idx = np.flatnonzero(sources_mask[:, gp_idx])
+        target_genes_idx = np.flatnonzero(targets_mask[:, gp_idx])
+        gene_idx_per_gp[gp] = (source_genes_idx, target_genes_idx)
+        all_genes.update(source_genes_idx.tolist())
+        all_genes.update(target_genes_idx.tolist())
+    gene_order = np.array(sorted(all_genes), dtype=np.int64)
+    gene_position = {gene: i for i, gene in enumerate(gene_order)}
+    counts_sub = model.adata.X[:, gene_order]
+    if sp.issparse(counts_sub):
+        counts_sub = counts_sub.tocsc()
+        gene_max = np.asarray(counts_sub.max(axis=0).todense()).ravel()
+    else:
+        counts_sub = np.asarray(counts_sub)
+        gene_max = counts_sub.max(axis=0)
+
+    def _aggregated_score(genes_idx, gene_names, weights, gp_scores):
+        """
+        Per-cell score for one arm of a gene program.
+
+        Each column of the matrix the original built was
+        ´counts_i / max_i * w_i * gp_scores´, and only its mean over genes was
+        ever read, so the mean is accumulated directly:
+        ´gp_scores * (counts @ (w / max)) / n_genes´. That is exact, and it
+        avoids allocating an (n_obs x n_genes) float64 scratch matrix per arm.
+        """
+        weight_of = dict(zip(gene_names, weights))
+        columns = np.array([gene_position[gene] for gene in genes_idx],
+                           dtype=np.int64)
+        maxima = gene_max[columns]
+        coefficients = np.array(
+            [weight_of[model.adata.var_names[gene]] for gene in genes_idx],
+            dtype=np.float64)
+        # A gene that is zero in every cell contributed nothing before, and
+        # dividing by its maximum would be a division by zero.
+        coefficients = np.where(maxima > 0,
+                                coefficients / np.where(maxima > 0, maxima, 1),
+                                0.)
+        weighted = counts_sub[:, columns] @ coefficients
+        weighted = np.asarray(weighted).ravel()
+        score = (gp_scores * weighted / len(genes_idx)).astype("float32")
+        # Clipped after the mean over genes, as before: a negative average is
+        # not a negative amount of communication.
+        np.clip(score, 0., None, out=score)
+        return score
+
     gp_network_dfs = []
     for gp_column, gp in enumerate(gp_list):
-        gp_idx = model.adata.uns[model.gp_names_key_].tolist().index(gp)
         gp_scores = raw_scores[:, gp_column]
-        gp_targets_cats = model.adata.varm[model.gp_targets_categories_mask_key_][:, gp_idx]
-        gp_sources_cats = model.adata.varm[model.gp_sources_categories_mask_key_][:, gp_idx]
-        targets_cats_label_encoder = model.adata.uns[model.targets_categories_label_encoder_key_]
-        sources_cats_label_encoder = model.adata.uns[model.sources_categories_label_encoder_key_]
+        summary_row = selected_summary.loc[gp]
+        source_genes_idx, target_genes_idx = gene_idx_per_gp[gp]
 
-        sources_cat_idx_dict = {}
-        for source_cat, source_cat_label in sources_cats_label_encoder.items():
-            sources_cat_idx_dict[source_cat] = np.where(gp_sources_cats == source_cat_label)[0]
+        agg_gp_source_score = _aggregated_score(
+            source_genes_idx,
+            summary_row["gp_source_genes"],
+            summary_row["gp_source_genes_weights"],
+            gp_scores)
+        agg_gp_target_score = _aggregated_score(
+            target_genes_idx,
+            summary_row["gp_target_genes"],
+            summary_row["gp_target_genes_weights"],
+            gp_scores)
 
-        targets_cat_idx_dict = {}
-        for target_cat, target_cat_label in targets_cats_label_encoder.items():
-            targets_cat_idx_dict[target_cat] = np.where(gp_targets_cats == target_cat_label)[0]
+        products = agg_gp_source_score[edge_rows] * agg_gp_target_score[edge_cols]
 
-        # Get indices of all source and target genes
-        source_genes_idx = np.array([], dtype=np.int64)
-        for key in sources_cat_idx_dict.keys():
-            source_genes_idx = np.append(source_genes_idx,
-                                         sources_cat_idx_dict[key])
-        target_genes_idx = np.array([], dtype=np.int64)
-        for key in targets_cat_idx_dict.keys():
-            target_genes_idx = np.append(target_genes_idx,
-                                         targets_cat_idx_dict[key])
+        if store_scores:
+            model.adata.obs[f"{gp}_source_score"] = agg_gp_source_score
+            model.adata.obs[f"{gp}_target_score"] = agg_gp_target_score
+            if edge_keep is None:
+                connectivity_rows, connectivity_cols = edge_rows, edge_cols
+                connectivity_values = products
+            else:
+                connectivity_rows = edges.row
+                connectivity_cols = edges.col
+                connectivity_values = (
+                    agg_gp_source_score[connectivity_rows]
+                    * agg_gp_target_score[connectivity_cols])
+            connectivities = sp.csr_matrix(
+                (connectivity_values, (connectivity_rows, connectivity_cols)),
+                shape=spatial_graph.shape)
+            # Building from a COO triplet keeps explicit zeros, so a gene
+            # program with no communication would still store one entry per
+            # spatial edge. The old code shed them by accident, inside
+            # ´aggregate_obsp_matrix_per_cell_type´, which this no longer
+            # calls.
+            connectivities.eliminate_zeros()
+            model.adata.obsp[f"{gp}_connectivities"] = connectivities
 
-        # Compute cell-cell communication potential scores
-        gp_source_scores = np.zeros((len(model.adata.obs), len(source_genes_idx)))
-        gp_target_scores = np.zeros((len(model.adata.obs), len(target_genes_idx)))
+        # Rows are the sending group, columns the receiving group.
+        matrix = np.zeros((n_groups, n_groups), dtype=np.float64)
+        np.add.at(matrix,
+                  (group_codes[edge_rows], group_codes[edge_cols]),
+                  products)
 
-        for i, source_gene_idx in enumerate(source_genes_idx):
-            source_gene = model.adata.var_names[source_gene_idx]
-            counts = model.adata[:, source_gene_idx].X
-            counts = counts.toarray().ravel() if sp.issparse(counts) else np.asarray(counts).ravel()
-            normalized = counts / counts.max() if counts.max() > 0 else np.zeros_like(counts)
-            gp_source_scores[:, i] = (
-                normalized *
-                gp_summary_df[gp_summary_df["gp_name"] == gp]["gp_source_genes_weights"].values[0][gp_summary_df[gp_summary_df["gp_name"] == gp]["gp_source_genes"].values[0].index(source_gene)] *
-                gp_scores)
-
-        for j, target_gene_idx in enumerate(target_genes_idx):
-            target_gene = model.adata.var_names[target_gene_idx]
-            counts = model.adata[:, target_gene_idx].X
-            counts = counts.toarray().ravel() if sp.issparse(counts) else np.asarray(counts).ravel()
-            normalized = counts / counts.max() if counts.max() > 0 else np.zeros_like(counts)
-            gp_target_scores[:, j] = (
-                normalized *
-                gp_summary_df[gp_summary_df["gp_name"] == gp]["gp_target_genes_weights"].values[0][gp_summary_df[gp_summary_df["gp_name"] == gp]["gp_target_genes"].values[0].index(target_gene)] *
-                gp_scores)
-
-        agg_gp_source_score = gp_source_scores.mean(1).astype("float32")
-        agg_gp_target_score = gp_target_scores.mean(1).astype("float32")
-        agg_gp_source_score[agg_gp_source_score < 0] = 0.
-        agg_gp_target_score[agg_gp_target_score < 0] = 0.
-
-        model.adata.obs[f"{gp}_source_score"] = agg_gp_source_score
-        model.adata.obs[f"{gp}_target_score"] = agg_gp_target_score
-        
-        del(gp_target_scores)
-        del(gp_source_scores)
-
-        # Evaluate products only on spatial edges; a full outer product is
-        # quadratic in the number of cells even for a sparse neighbor graph.
-        edges = (spatial_graph > 0).tocoo()
-        products = agg_gp_source_score[edges.row] * agg_gp_target_score[edges.col]
-        model.adata.obsp[f"{gp}_connectivities"] = sp.csr_matrix(
-            (products, (edges.row, edges.col)), shape=spatial_graph.shape)
-
-        # Aggregate gp connectivities for each group
-        gp_network_df_pivoted = aggregate_obsp_matrix_per_cell_type(
-            adata=model.adata,
-            obsp_key=f"{gp}_connectivities",
-            cell_type_key=group_key,
-            group_key=filter_key,
-            agg_rows=True)
-
-        if filter_key is not None:
-            gp_network_df_pivoted = gp_network_df_pivoted.loc[filter_cat, :]
-
-        gp_network_df = gp_network_df_pivoted.melt(var_name="source", value_name="gp_score", ignore_index=False).reset_index()
-        gp_network_df.columns = ["source", "target", "strength"]
-
-        gp_network_df = gp_network_df.sort_values("strength", ascending=False)
-
-        # Normalize strength
-        min_value = gp_network_df["strength"].min()
-        max_value = gp_network_df["strength"].max()
-        gp_network_df["strength_unscaled"] = gp_network_df["strength"]
-        gp_network_df["strength"] = ((gp_network_df["strength"] - min_value) / (max_value - min_value)
-                                    if max_value > min_value else 0.0)
-        gp_network_df["strength"] = np.round(gp_network_df["strength"], 2)
-        gp_network_df = gp_network_df[gp_network_df["strength"] > 0]
-
+        gp_network_df = pd.DataFrame(
+            {"source": np.repeat(group_cats, n_groups),
+             "target": np.tile(group_cats, n_groups),
+             "strength_unscaled": matrix.ravel()})
         gp_network_df["edge_type"] = gp
         gp_network_dfs.append(gp_network_df)
 
     network_df = pd.concat(gp_network_dfs, ignore_index=True)
-    return network_df
+    # A pair with no communication is dropped; a pair with the weakest nonzero
+    # communication is not. A min-max rescaling subtracts the minimum, which
+    # maps the weakest pair to exactly zero and, with the subsequent positivity
+    # filter, discarded it on every call however strong it really was.
+    network_df = network_df[network_df["strength_unscaled"] > 0].copy()
+    if normalize == "none":
+        network_df["strength"] = network_df["strength_unscaled"]
+    else:
+        if normalize == "global":
+            denominators = network_df["strength_unscaled"].max()
+        else:
+            denominators = network_df.groupby("edge_type")[
+                "strength_unscaled"].transform("max")
+        network_df["strength"] = np.where(
+            denominators > 0,
+            network_df["strength_unscaled"] / denominators,
+            0.)
+    network_df = network_df.sort_values(
+        "strength_unscaled", ascending=False).reset_index(drop=True)
+    return network_df[["source", "target", "strength", "strength_unscaled",
+                       "edge_type"]]
+
 
 
 def visualize_communication_gp_network(
@@ -1131,7 +1264,7 @@ def visualize_communication_gp_network(
     network_df,
     cat_colors,
     edge_type_colors: Optional[dict]=None,
-    edge_width_scale: int=20.0,
+    edge_width_scale: float=20.0,
     node_size: int=500,
     fontsize: int=14,
     figsize: Tuple[int, int]=(18, 16),
@@ -1142,121 +1275,192 @@ def visualize_communication_gp_network(
     text_space: float=1.3,
     connection_style="arc3, rad = 0.1",
     cat_key: str="niche",
-    edge_attr: str="strength"):
+    edge_attr: str="strength",
+    reserve_all_categories: bool=False,
+    ax=None):
     """
-    Visualize a communication gp network.
+    Visualize a communication gene program network as a circular digraph.
+
+    Parameters
+    ----------
+    adata:
+        AnnData object the network was computed from. Only used to order the
+        nodes, and to reserve a slot for every category when
+        ´reserve_all_categories´ is ´True´.
+    network_df:
+        Output of ´compute_communication_gp_network´, with columns ´source´,
+        ´target´, ´edge_type´ and the column named by ´edge_attr´.
+    cat_colors:
+        Mapping from category to color. Must cover every node in the network.
+    edge_type_colors:
+        Mapping from gene program name to color, or a list of colors to assign
+        in sorted gene program order. Defaults to a 20 color palette, cycled
+        with a warning if there are more gene programs than colors.
+    edge_width_scale:
+        Multiplier applied to ´edge_attr´ to get the drawn line width.
+    reserve_all_categories:
+        If ´True´, every category of ´adata.obs[cat_key]´ gets a slot on the
+        circle even when it has no edges, so that figures of different gene
+        programs are directly superimposable. If ´False´ (default) only the
+        categories present in the network are drawn, spaced evenly.
+    ax:
+        Axes to draw on. A new figure is created if this is ´None´.
+
+    Returns
+    ----------
+    ax:
+        The axes drawn on.
     """
-    # Assuming you have unique edge types in your 'edge_type' column
-    edge_types = np.unique(network_df['edge_type'])
-    
+    required = {"source", "target", "edge_type", edge_attr}
+    missing_cols = required.difference(network_df.columns)
+    if missing_cols:
+        raise ValueError(
+            f"´network_df´ is missing the columns {sorted(missing_cols)}.")
+    if len(network_df) == 0:
+        raise ValueError(
+            "´network_df´ is empty, so there is nothing to draw. This happens "
+            "when every aggregated communication strength was zero; check the "
+            "gene programs and the group key passed to "
+            "´compute_communication_gp_network´.")
+
+    edge_types = np.unique(network_df["edge_type"])
+
+    # One color per gene program, resolved once so that the drawing and the
+    # legend can never disagree: both read this dict.
     if edge_type_colors is None:
-        # Colorblindness adjusted vega_10
+        # Colorblindness adjusted vega_20
         # See https://github.com/theislab/scanpy/issues/387
-        vega_10 = list(map(colors.to_hex, cm.tab10.colors))
-        vega_10_scanpy = vega_10.copy()
-        vega_10_scanpy[2] = "#279e68"  # green
-        vega_10_scanpy[4] = "#aa40fc"  # purple
-        vega_10_scanpy[8] = "#b5bd61"  # kakhi
-        edge_type_colors = vega_10_scanpy
+        palette = list(map(colors.to_hex, cm.tab20.colors))
+        palette[4] = "#279e68"  # green
+        palette[8] = "#aa40fc"  # purple
+        palette[16] = "#b5bd61"  # khaki
+        edge_type_colors = palette
+    if isinstance(edge_type_colors, dict):
+        uncolored = [gp for gp in edge_types if gp not in edge_type_colors]
+        if uncolored:
+            raise ValueError(
+                "´edge_type_colors´ does not cover the gene programs "
+                f"{uncolored}.")
+        edge_type_color_dict = dict(edge_type_colors)
+    else:
+        # ´zip´ would silently truncate here, leaving later gene programs
+        # without a color and raising an opaque ´KeyError´ at draw time, so
+        # cycle explicitly and say so.
+        if len(edge_types) > len(edge_type_colors):
+            warnings.warn(
+                f"There are {len(edge_types)} gene programs but only "
+                f"{len(edge_type_colors)} colors, so colors are reused and "
+                "some gene programs are indistinguishable. Pass "
+                "´edge_type_colors´ as a dict to control this.")
+        edge_type_color_dict = {
+            gp: edge_type_colors[i % len(edge_type_colors)]
+            for i, gp in enumerate(edge_types)}
 
-    # Create a dictionary that maps edge types to colors
-    edge_type_color_dict = {edge_type: color for edge_type, color in zip(edge_types, edge_type_colors)}
-
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=figsize)
-    ax.axis("off")
     G = nx.from_pandas_edgelist(
         network_df,
         source="source",
         target="target",
         edge_attr=["edge_type", edge_attr],
-        create_using=nx.DiGraph(),
-    )
-    pos = nx.circular_layout(G)
+        create_using=nx.DiGraph())
 
-    nx.set_node_attributes(G, cat_colors, "color")
-    node_color = nx.get_node_attributes(G, "color")
-
-    description = nx.draw_networkx_labels(G, pos, font_size=fontsize)
-    n = adata.obs[cat_key].nunique()
+    # The layout is derived from the GRAPH, not from ´adata´. Sizing the circle
+    # by the number of categories while placing the graph's nodes on it leaves
+    # the nodes on a fraction of the circle when a category was filtered out,
+    # which reads as if the missing categories had been merged away rather
+    # than dropped.
+    if reserve_all_categories:
+        if cat_key not in adata.obs:
+            raise ValueError(f"´cat_key´ {cat_key!r} is not a column of "
+                             "´adata.obs´.")
+        G.add_nodes_from(adata.obs[cat_key].unique().tolist())
     node_list = sorted(G.nodes())
-    angle = []
-    angle_dict = {}
-    for i, node in zip(range(n), node_list):
-        theta = 2.0 * np.pi * i / n
-        angle.append((np.cos(theta), np.sin(theta)))
-        angle_dict[node] = theta
-    pos = {}
-    for node_i, node in enumerate(node_list):
-        pos[node] = angle[node_i]
+    n_nodes = len(node_list)
 
-    r = fig.canvas.get_renderer()
-    trans = plt.gca().transData.inverted()
-    for node, t in description.items():
-        bb = t.get_window_extent(renderer=r)
-        bbdata = bb.transformed(trans)
-        radius = text_space + bbdata.width / 2.0
-        position = (radius * np.cos(angle_dict[node]), radius * np.sin(angle_dict[node]))
-        t.set_position(position)
-        t.set_rotation(angle_dict[node] * 360.0 / (2.0 * np.pi))
-        t.set_clip_on(False)
+    uncolored_nodes = [node for node in node_list if node not in cat_colors]
+    if uncolored_nodes:
+        raise ValueError(
+            f"´cat_colors´ does not cover the categories {uncolored_nodes}. "
+            "Without this the colors and the nodes go out of step and "
+            "matplotlib raises about the length of its ´c´ argument instead.")
 
-    edgelist = [(u, v) for u, v, e in G.edges(data=True) if u != v]
-    edge_colors = [edge_type_color_dict[edge_data['edge_type']] for u, v, edge_data in G.edges(data=True) if u != v]
-    width = [e[edge_attr] * edge_width_scale for u, v, e in G.edges(data=True) if u != v]
+    if ax is None:
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=figsize)
+    else:
+        fig = ax.get_figure()
+    ax.axis("off")
 
-    h2 = nx.draw_networkx(
-        G,
-        pos,
-        with_labels=False,
-        node_size=node_size,
-        edgelist=edgelist,
-        width=width,
-        edge_vmin=0.0,
-        edge_vmax=1.0,
-        edge_color=edge_colors,  # Use the edge type colors here
-        arrows=True,
-        arrowstyle="-|>",
-        arrowsize=20,
-        vmin=0.0,
-        vmax=1.0,
-        cmap=plt.cm.binary,  # Use a colormap for node colors if needed
-        node_color=list(node_color.values()),
-        ax=ax,
-        connectionstyle=connection_style,
-    )
+    angle_dict = {node: 2.0 * np.pi * i / n_nodes
+                  for i, node in enumerate(node_list)}
+    pos = {node: (np.cos(theta), np.sin(theta))
+           for node, theta in angle_dict.items()}
+    node_color = [cat_colors[node] for node in node_list]
 
-    #https://stackoverflow.com/questions/19877666/add-legends-to-linecollection-plot - uses plotted data to define the color but here we already have colors defined, so just need a Line2D object.
-    def make_proxy(clr, mappable, **kwargs):
-        return Line2D([0, 1], [0, 1], color=clr, **kwargs)
+    # Partition the edges once. Self loops are drawn separately because they
+    # need ´arrows=False´ to render as a loop rather than a zero length arrow.
+    self_loops, other_edges = [], []
+    for u, v, edge_data in G.edges(data=True):
+        (self_loops if u == v else other_edges).append((u, v, edge_data))
 
-    # generate proxies with the above function
-    proxies = [make_proxy(clr, h2, lw=5) for clr in set(edge_colors)]
-    labels = [edge.split("_")[0] + " GP" for edge in edge_types[::-1]]
+    def _draw(edges, arrows):
+        if not edges:
+            return
+        nx.draw_networkx_edges(
+            G,
+            pos,
+            edgelist=[(u, v) for u, v, _ in edges],
+            width=[d[edge_attr] * edge_width_scale for _, _, d in edges],
+            edge_color=[edge_type_color_dict[d["edge_type"]]
+                        for _, _, d in edges],
+            node_size=node_size,
+            arrows=arrows,
+            ax=ax,
+            # networkx warns that arrow styling is ignored when ´arrows´ is
+            # False, which is the self loop pass, so only the arrow pass gets
+            # it. Self loops render as loops either way.
+            **({"arrowstyle": "-|>",
+                "arrowsize": 20,
+                "connectionstyle": connection_style} if arrows else {}))
+
+    nx.draw_networkx_nodes(G,
+                           pos,
+                           nodelist=node_list,
+                           node_size=node_size,
+                           node_color=node_color,
+                           ax=ax)
+    _draw(other_edges, arrows=True)
+    _draw(self_loops, arrows=False)
+
+    # Labels are placed outside the circle and rotated to point outwards, so
+    # they need the rendered text extent, which only exists after a draw.
+    description = nx.draw_networkx_labels(G, pos, font_size=fontsize, ax=ax)
+    fig.canvas.draw()
+    trans = ax.transData.inverted()
+    renderer = fig.canvas.get_renderer()
+    for node, text in description.items():
+        bbox = text.get_window_extent(renderer=renderer).transformed(trans)
+        radius = text_space + bbox.width / 2.0
+        theta = angle_dict[node]
+        text.set_position((radius * np.cos(theta), radius * np.sin(theta)))
+        text.set_rotation(np.degrees(theta))
+        text.set_clip_on(False)
 
     if plot_legend:
-        lgd = plt.legend(proxies, labels, loc="lower left")
+        # Colors and labels come from the same ordered source. Building the
+        # handles from ´set(edge_colors)´ instead pairs them by set iteration
+        # order, which is salted per process, so the legend differed between
+        # runs of the same script and silently dropped a gene program whose
+        # only surviving edge was a self loop.
+        drawn = [gp for gp in edge_types
+                 if gp in {d["edge_type"] for _, _, d in G.edges(data=True)}]
+        handles = [Line2D([0, 1], [0, 1],
+                          color=edge_type_color_dict[gp], lw=5)
+                   for gp in drawn]
+        labels = [gp if gp.endswith("GP") else f"{gp} GP" for gp in drawn]
+        ax.legend(handles, labels, loc="lower left")
 
-    edgelist = [(u, v) for u, v, e in G.edges(data=True) if ((u == v))] + [(u, v) for u, v, e in G.edges(data=True) if ((u != v))]
-    edge_colors = [edge_type_color_dict[edge_data['edge_type']] for u, v, edge_data in G.edges(data=True) if u == v]
-    width = [e[edge_attr] * edge_width_scale for u, v, e in G.edges(data=True) if u == v] + [0 for u, v, e in G.edges(data=True) if ((u != v))]
-    nx.draw_networkx_edges(
-        G,
-        pos,
-        node_size=node_size,
-        edgelist=edgelist, 
-        width=width,
-        edge_vmin=0.0,
-        edge_vmax=1.0,
-        edge_color=edge_colors,
-        arrows=False,
-        arrowstyle="-|>",
-        arrowsize=20,
-        ax=ax,
-        connectionstyle=connection_style)
-    plt.tight_layout()
+    fig.tight_layout()
     if save:
-        plt.savefig(save_path)
+        fig.savefig(save_path, bbox_inches="tight")
     if show:
         plt.show()
-    plt.close(fig)
-    plt.ion()
+    return ax

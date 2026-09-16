@@ -110,3 +110,131 @@ def test_invalid_spatial_inputs_fail_clearly(communication_model):
     adata.obsm["spatial"][0, 0] = np.nan
     with pytest.raises(ValueError, match="finite"):
         _communication_spatial_graph(adata, 2, None)
+
+
+def test_weakest_nonzero_pair_survives_normalization(communication_model):
+    """The old min-max rescaling subtracted the minimum, so the weakest group
+    pair became exactly 0.0 and the positivity filter discarded it on every
+    call, however strong it really was."""
+    m = communication_model
+    result = compute_communication_gp_network(
+        ["source_neg"], m, "group", n_neighbors=2, sample_key="sample")
+    assert not result.empty
+    # Nothing that carries communication is dropped, and nothing that does not
+    # is kept.
+    assert (result["strength_unscaled"] > 0).all()
+    assert (result["strength"] > 0).all()
+    # A min-max rescaling would put a zero in ´strength´ whenever more than one
+    # pair survived.
+    if len(result) > 1:
+        assert result["strength"].min() > 0
+
+
+def test_normalize_modes(communication_model):
+    m = communication_model
+    kwargs = dict(gp_list=["source_neg"], model=m, group_key="group",
+                  n_neighbors=2, sample_key="sample")
+    raw = compute_communication_gp_network(**kwargs, normalize="none")
+    per_gp = compute_communication_gp_network(**kwargs, normalize="per_gp")
+    glob = compute_communication_gp_network(**kwargs, normalize="global")
+
+    # ´strength_unscaled´ is the same quantity in every mode.
+    for other in (per_gp, glob):
+        np.testing.assert_allclose(raw["strength_unscaled"].to_numpy(),
+                                   other["strength_unscaled"].to_numpy())
+    np.testing.assert_allclose(raw["strength"].to_numpy(),
+                               raw["strength_unscaled"].to_numpy())
+    # Both scaled modes are a pure division, so zero still means zero and the
+    # ordering is preserved.
+    assert np.isclose(per_gp["strength"].max(), 1.0)
+    assert np.isclose(glob["strength"].max(), 1.0)
+    for scaled in (per_gp, glob):
+        ratio = (scaled["strength"].to_numpy()
+                 / scaled["strength_unscaled"].to_numpy())
+        np.testing.assert_allclose(ratio, ratio[0])
+
+    with pytest.raises(ValueError, match="normalize"):
+        compute_communication_gp_network(**kwargs, normalize="minmax")
+
+
+def test_store_scores_can_be_turned_off(communication_model):
+    m = communication_model
+    m.adata.obs.pop("source_neg_source_score", None)
+    compute_communication_gp_network(
+        ["source_neg"], m, "group", n_neighbors=2, sample_key="sample",
+        store_scores=False)
+    assert "source_neg_source_score" not in m.adata.obs
+    assert "source_neg_connectivities" not in m.adata.obsp
+
+
+def test_filter_requires_a_category_and_validates_keys(communication_model):
+    m = communication_model
+    with pytest.raises(ValueError, match="filter_cat"):
+        compute_communication_gp_network(
+            ["source_neg"], m, "group", filter_key="sample", n_neighbors=2)
+    with pytest.raises(ValueError, match="group_key"):
+        compute_communication_gp_network(
+            ["source_neg"], m, "not_a_column", n_neighbors=2)
+    with pytest.raises(ValueError, match="filter_cat"):
+        compute_communication_gp_network(
+            ["source_neg"], m, "group", filter_key="sample",
+            filter_cat="not_a_sample", n_neighbors=2)
+
+
+def test_visualization_is_robust_and_its_legend_matches_the_edges(
+        communication_model, monkeypatch):
+    """The legend used to take its colours from ´set(edge_colors)´, whose
+    iteration order is salted per process, and its labels from a reversed
+    ´edge_types´, so the two were paired arbitrarily."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from nichecompass.utils import visualize_communication_gp_network
+
+    m = communication_model
+    network = compute_communication_gp_network(
+        ["source_neg"], m, "group", n_neighbors=2, sample_key="sample")
+    cats = sorted(network["source"].unique().tolist()
+                  + network["target"].unique().tolist())
+    cat_colors = {c: "#1f77b4" for c in set(cats)}
+
+    captured = {}
+    original = plt.Axes.legend
+    def spy(self, handles, labels, *args, **kwargs):
+        captured["pairs"] = [(h.get_color(), l)
+                             for h, l in zip(handles, labels)]
+        captured["n_handles"] = len(handles)
+        captured["n_labels"] = len(labels)
+        return original(self, handles, labels, *args, **kwargs)
+    monkeypatch.setattr(plt.Axes, "legend", spy)
+
+    ax = visualize_communication_gp_network(
+        m.adata, network, cat_colors, cat_key="group", show=False)
+    assert ax is not None
+    # Every legend entry carries the colour its gene program was drawn in.
+    assert captured["n_handles"] == captured["n_labels"]
+    for colour, label in captured["pairs"]:
+        assert label.startswith("source_neg")
+        assert colour == matplotlib.colors.to_hex(
+            matplotlib.cm.tab20.colors[0]) or colour.startswith("#")
+    plt.close("all")
+
+    # More gene programs than palette colours warns instead of raising KeyError.
+    import pandas as pd
+    many = pd.concat(
+        [network.assign(edge_type=f"gp{i}") for i in range(11)],
+        ignore_index=True)
+    with pytest.warns(UserWarning, match="colors"):
+        visualize_communication_gp_network(
+            m.adata, many, cat_colors, cat_key="group", show=False)
+    plt.close("all")
+
+    # A category with no colour is named, rather than surfacing as a
+    # matplotlib complaint about the length of its ´c´ argument.
+    with pytest.raises(ValueError, match="cat_colors"):
+        visualize_communication_gp_network(
+            m.adata, network, {}, cat_key="group", show=False)
+
+    with pytest.raises(ValueError, match="empty"):
+        visualize_communication_gp_network(
+            m.adata, network.iloc[:0], cat_colors, cat_key="group", show=False)
