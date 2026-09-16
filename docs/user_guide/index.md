@@ -15,11 +15,16 @@ In summary, we recommend the following:
 
 ## Training on several GPUs
 
-Training can be split across several GPUs, with one process per GPU. The batch sizes keep their meaning as
-global batch sizes, so the number of optimizer steps per epoch is unchanged and only the work per step is
-divided between the devices. Single-device training is unaffected and is what the option defaults to.
-See [multi_gpu_training](multi_gpu_training.md) for how to launch it, what it guarantees numerically, and
-what has and has not been verified.
+Training can be split across several GPUs, with one process per GPU. By default the batch sizes are read
+as **per-process** sizes, so the effective batch grows with the device count and an epoch takes
+`world_size` times fewer optimizer steps -- that is where the throughput comes from, and it means a
+multi-GPU run is not a control for a single-GPU one at the same nominal batch size. Pass
+`batch_size_scaling="global"` for a run that is directly comparable to a single-device one. Single-device
+training is unaffected and is what `multi_gpu` defaults to.
+
+See [multi_gpu_training](multi_gpu_training.md) for how to launch it on LSF and on Slurm, what it
+guarantees numerically, how to profile a run to see which stages actually scale, and what has and has not
+been verified.
 
 ## Prior gene program resources
 

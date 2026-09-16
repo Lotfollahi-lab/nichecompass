@@ -141,12 +141,14 @@ allocation from the scheduler: raise the node count and set `MASTER_ADDR` to the
 `$LSB_MCPU_HOSTS`, which the submitter does. It is only worth it once a single node's GPUs are saturated,
 because the gradient reduction then crosses the network on every step.
 
-### Three things that will bite you
+### Four things that will bite you
 
 - **`--nproc_per_node=1` with `--multi_gpu` raises.** One process is the single-device path, so ask for
   `--multi_gpu` only when you are actually requesting several GPUs.
 - **Host memory scales with the number of processes**, not GPU memory. See section 6.
 - **Populate the gene program caches first.** See section 7.
+- **Do not assume it was faster — measure.** Most of a run may sit in stages no number of GPUs can touch.
+  `profile="phase"` prints which stages scale and which cannot. See section 8.
 
 **Notebooks.** A notebook is a single process, so it cannot drive several GPUs this way. Run the
 single-device path in notebooks, or move training into a script and launch it with `torchrun`. This is a
@@ -418,7 +420,92 @@ The gene program resources download and cache on first use. Under `torchrun` all
 at once and would race to write the same cache files. Run the pipeline once on a single process to populate
 the caches under `data/gene_programs/`, then launch the multi-GPU run.
 
-## 8. What has been verified, and what has not
+## 8. Measuring whether it helped
+
+Adding processes does not automatically reduce runtime, and reasoning about which stages *should* scale is
+not a substitute for measuring which ones did. `profile` turns on a per-stage breakdown that is printed at
+the end of training. It is off by default and free when off.
+
+```python
+model.train(..., multi_gpu=True, profile="phase")
+```
+
+or, in the reproducibility scripts, `--profile phase`. Four modes:
+
+| mode | what it instruments | cost |
+| --- | --- | --- |
+| `"off"` (default) | nothing | free; calls reach a no-op singleton |
+| `"phase"` | the per-epoch stages | negligible |
+| `"step"` | adds the per-step loop | two CUDA synchronizations per step, so epoch time inflates |
+| `"imbalance"` | adds an end-of-epoch barrier | one barrier per epoch |
+
+Three things make the numbers trustworthy rather than merely present.
+
+**GPU work is timed with the stream drained.** CUDA kernels are asynchronous, so a timer around GPU work
+measures kernel *launch* and the real cost lands on whatever forces the next synchronization. Probes that
+bracket GPU work synchronize at both boundaries. This is also why `"step"` is not free and why its epoch
+times are comparable only against another `"step"` run.
+
+**Waiting is separated from working.** Under `DistributedDataParallel` the time a process spends blocked in
+a collective belongs to whichever process arrived first, so a probe that lumps the two together reports a
+load imbalance as work. In `"imbalance"` mode the wait probe synchronizes and *then* barriers, which
+attributes the wait to imbalance instead. The `spread` column — slowest rank minus fastest — is the
+imbalance for every other stage.
+
+**Each stage declares how it should behave.** The `kind` column is the expectation, not a measurement:
+`sharded` should divide by the process count, `replicated` costs the same on every process however many
+there are and is therefore pure duplicated overhead in a distributed run, `comm` grows with the process
+count, `fixed/step` is per step but batch-size independent. The report totals what cannot shrink and turns
+that into the best speed-up the run could ever have achieved.
+
+A real 2×A100 run, 66 epochs:
+
+```
+[nc-prof] RUNTIME PROFILE (mode=phase, world_size=2, epochs=66)
+[nc-prof] stage                kind          max/rank      %  per epoch   spread
+[nc-prof] val.metrics          replicated      90.83  98.7%     1.38    0.02s
+[nc-prof] epoch.reduce         comm             0.70   0.8%     0.01    0.02s
+[nc-prof] val.gather           comm             0.39   0.4%     0.01    0.05s
+[nc-prof] epoch.early_stop     replicated       0.13   0.1%     0.00    0.00s
+[nc-prof] measured total                       92.05
+[nc-prof] training_time                         2523
+[nc-prof] unattributed                          2431
+[nc-prof] probe coverage: 3.6% of training time
+[nc-prof] NOT instrumented at mode='phase': loader.sample, train.backward, ...
+[nc-prof] Too little of the run is attributed for a scaling verdict.
+```
+
+**Read `probe coverage` before anything else.** `"phase"` instruments the per-epoch stages only, so the
+whole per-step loop lands in `unattributed` — here 96% of the training time. The report refuses a scaling
+verdict below 50% coverage, because a confident ratio computed over 3.6% of a run reads as an answer while
+being about almost none of it. Rerun with `"step"` to break the remainder out.
+
+The script-level budget covers what the trainer cannot see: the work every process duplicates before
+training, and the work the main process does alone while the others idle.
+
+```
+[nc-prof] WHOLE RUN STAGE BUDGET
+[nc-prof] stage                      runs on          seconds      %
+[nc-prof] prior gene programs        all ranks          49.12   1.8%
+[nc-prof] load data + spatial graph  all ranks          32.25   1.2%
+[nc-prof] training                   all ranks           2545  92.3%
+[nc-prof] knn graph                  rank 0 only        57.60   2.1%
+[nc-prof] umap                       rank 0 only        70.60   2.6%
+[nc-prof] training is 92% of wall clock; the rest cannot be sped up by adding GPUs
+[nc-prof]   => whole run ceiling at 2 GPUs, even with perfect training scaling: 1.86x
+[nc-prof]   => whole run ceiling at 4 GPUs, even with perfect training scaling: 3.25x
+```
+
+That ceiling is the number to check first when a multi-GPU run disappoints: if the serial tail dominates,
+no amount of parallelism in the training loop will show up in wall clock.
+
+**Compare two runs per epoch, never per job.** The batch sizes are per process by default, so a multi-GPU
+epoch contains `world_size` times fewer optimizer steps over a `world_size` times larger effective batch.
+Early stopping can also halt the two runs at different epochs. Every line is prefixed `[nc-prof]`, so
+`grep '^\[nc-prof\]'` extracts the whole report from a scheduler log, and a `[nc-prof-json]` twin carries
+the same numbers for programmatic comparison.
+
+## 9. What has been verified, and what has not
 
 **Verified on four H100s.** A one-epoch run of the Xenium human breast cancer reference model
 (`n_epochs 1`, 254,127 training nodes, 1,155,480 training edges, 313 genes, 131 prior + 100 add-on gene

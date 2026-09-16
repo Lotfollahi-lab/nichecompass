@@ -4,4 +4,5 @@
 :maxdepth: 1
 
 notebooks/mouse_cns_single_sample
+notebooks/mouse_cns_single_sample_humanppi
 ```
