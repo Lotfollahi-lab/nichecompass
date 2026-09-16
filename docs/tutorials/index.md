@@ -15,10 +15,12 @@ Two single-sample notebooks use the same STARmap PLUS mouse CNS section. The
 first builds the default prior mask from OmniPath, NicheNet and MEBOCOST; the
 second builds it from the predicted human interactome alone, which makes the
 classification that turns an undirected protein-pair list into a directed
-neighbourhood prior visible, and shows how to launch the same training across
-several GPUs on LSF and on Slurm. That second notebook stops after training and
+neighbourhood prior visible. That second notebook stops after training and
 defers the GP analysis to the first, since a single-resource mask on a
-1022-gene panel retains too few prior programs to interpret.
+1022-gene panel retains too few prior programs to interpret. For training
+across several GPUs see the
+[multi-GPU guide](../user_guide/multi_gpu_training.md) - it needs one process
+per GPU, which a notebook kernel cannot provide.
 
 ```{toctree}
 :maxdepth: 2
