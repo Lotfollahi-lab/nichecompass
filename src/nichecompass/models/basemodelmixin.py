@@ -26,12 +26,14 @@ from .utils import initialize_model, load_saved_files, validate_var_names
 # a substring test, so that a name never lands in a group the caller did not
 # ask for.
 PARAMETER_GROUPS = ("encoder",
-                    "addon_gp",
+                    "addon_gp_encoder",
+                    "addon_gp_decoder",
                     "prior_gp_decoder",
                     "graph_decoder",
                     "dispersion",
                     "node_label_aggregator",
-                    "cat_covariates_embedder")
+                    "cat_covariates_embedder",
+                    "cat_covariates_projection")
 
 
 def _parameter_group_of(param_name: str) -> str:
@@ -43,17 +45,27 @@ def _parameter_group_of(param_name: str) -> str:
     (´*.addon_l´), so they are claimed first and the broader groups only see
     what is left.
     """
-    if "addon_conv" in param_name or ".addon_l." in f".{param_name}.":
-        return "addon_gp"
+    # The add-on heads in the encoder are separated from the add-on loadings
+    # in the decoders: unfreezing the encoder must carry its own add-on heads
+    # with it, or they would keep frozen weights while consuming a hidden
+    # representation that has moved.
+    if "addon_conv" in param_name:
+        return "addon_gp_encoder"
+    if ".addon_l." in f".{param_name}.":
+        return "addon_gp_decoder"
     if param_name.endswith("_theta"):
         return "dispersion"
     if "node_label_aggregator" in param_name:
         return "node_label_aggregator"
-    # Both the per category embedding table and the linear layer that projects
-    # it into the decoder. The second was previously missed, which pinned a
-    # query's covariate offset to a projection fitted on the reference.
-    if "_embedder" in param_name or "cat_covariates_embed_l" in param_name:
+    # The per category embedding table and the projection into the decoder are
+    # separate groups. The table is indexed per category, so a query row is
+    # the query's own; the projection is shared with the reference, so
+    # training it moves the reference's offset too. They must be opt-in
+    # separately, and the historical flag covers only the table.
+    if "_embedder" in param_name:
         return "cat_covariates_embedder"
+    if "cat_covariates_embed_l" in param_name:
+        return "cat_covariates_projection"
     if param_name.startswith("encoder."):
         return "encoder"
     if "graph_decoder" in param_name:
@@ -88,10 +100,18 @@ def _freeze_running_statistics(module: torch.nn.Module,
     latent is later read in eval mode using those drifted values, which moves
     every gene program score of a model the caller asked to keep fixed.
 
+    ´track_running_stats=False´ alone is NOT enough, and on its own is worse:
+    in training mode it makes the layer normalise with the current minibatch
+    instead of the stored statistics, so the model would train under query
+    statistics and be read out under reference ones. It is set here only to
+    stop the buffers being written; keeping the layer evaluating is done by
+    ´VGPGAE.train´, which re-asserts eval mode on the layers returned here.
+
     Returns
     -------
     frozen:
-        The normalisation layers whose statistics were pinned.
+        The normalisation layers whose statistics were pinned. The caller
+        stores them on the module as ´_pinned_eval_modules´.
     """
     frozen = []
     for submodule in module.modules():
@@ -261,7 +281,8 @@ class BaseModelMixin():
              unfreeze_cat_covariates_embedder_weights: bool=False,
              unfreeze_encoder_weights: bool=False,
              unfreeze_dispersion: bool=False,
-             unfreeze_node_label_aggregator: bool=False
+             unfreeze_node_label_aggregator: bool=False,
+             unfreeze_cat_covariates_projection: bool=False
              ) -> torch.nn.Module:
         """
         Instantiate a model from saved output. Can be used for transfer learning
@@ -462,11 +483,15 @@ class BaseModelMixin():
         groups = _parameter_groups(model.model)
         parameters_by_name = dict(model.model.named_parameters())
         requested = {
-            "addon_gp": unfreeze_addon_gp_weights,
+            "addon_gp_decoder": unfreeze_addon_gp_weights,
+            # Unfreezing the encoder carries its add-on heads with it.
+            "addon_gp_encoder": (unfreeze_addon_gp_weights
+                                 or unfreeze_encoder_weights),
             "dispersion": unfreeze_addon_gp_weights or unfreeze_dispersion,
             "node_label_aggregator": (unfreeze_addon_gp_weights
                                       or unfreeze_node_label_aggregator),
             "cat_covariates_embedder": unfreeze_cat_covariates_embedder_weights,
+            "cat_covariates_projection": unfreeze_cat_covariates_projection,
             "encoder": unfreeze_encoder_weights}
         if unfreeze_all_weights:
             requested = {name: True for name in groups}
@@ -489,11 +514,29 @@ class BaseModelMixin():
         # forward pass reads this flag before pruning.
         model.model.freeze_ = model.freeze_
 
+        # Which programs hold their activity statistic. Per program, not per
+        # module: a program whose loadings are trainable still needs the
+        # statistic, and an add-on program added here starts at zero, so
+        # holding it would leave it either vacuously active or permanently
+        # inactive depending on ´active_gp_type´.
+        addon_trainable = any(
+            parameters_by_name[name].requires_grad
+            for name in groups["addon_gp_decoder"] + groups["addon_gp_encoder"])
+        hold = torch.zeros_like(model.model.frozen_gp_statistic_mask)
+        if model.freeze_:
+            hold[:model.model.n_prior_gp_] = not any(
+                parameters_by_name[name].requires_grad
+                for name in groups["prior_gp_decoder"])
+            hold[model.model.n_prior_gp_:] = not addon_trainable
+        model.model.frozen_gp_statistic_mask = hold
+
         # ´requires_grad´ does not reach buffers, and ´Trainer.train()´ puts
         # the module back into train mode, so a frozen module holding running
-        # statistics would still drift on query data. Keep those in eval mode
-        # for the whole run by disabling their tracking.
-        _freeze_running_statistics(model.model, model.freeze_)
+        # statistics would still drift on query data. The layers are recorded
+        # on the module so that ´VGPGAE.train´ can keep them evaluating on
+        # every epoch.
+        model.model._pinned_eval_modules = _freeze_running_statistics(
+            model.model, model.freeze_)
 
         if model.freeze_ and not model.is_trained_:
             raise ValueError("The model has not been pre-trained and therefore "

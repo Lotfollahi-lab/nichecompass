@@ -50,7 +50,9 @@ class Encoder(nn.Module):
         Activation function used after the fully connected layers and
         intermediate message passing layers.
     use_bn:
-        If ´True´, use a batch normalization layer at the end to normalize ´mu´.
+        If ´True´, apply batch normalization to the shared fully connected
+        hidden representation. Only has an effect when ´n_fc_layers == 2´,
+        which is the only case that builds the layer.
     """
     def __init__(self,
                  n_input: int,

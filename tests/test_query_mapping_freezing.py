@@ -26,6 +26,20 @@ def reference(model, tmp_path):
     return model, tmp_path
 
 
+def test_every_parameter_of_a_real_model_is_classified(reference):
+    """The literal cases below cannot catch a parameter the predicates do not
+    recognise, because the classifier ends in an unconditional fallback to
+    ´prior_gp_decoder´. Enumerate an actual model instead."""
+    model, _ = reference
+    groups = _parameter_groups(model.model)
+    classified = {n for names in groups.values() for n in names}
+    assert classified == set(dict(model.model.named_parameters()))
+    # Nothing unexpected may land in the fallback group.
+    for name in groups["prior_gp_decoder"]:
+        assert "masked_l" in name or "nb_means" in name or "decoder" in name, (
+            f"{name} fell into the prior_gp_decoder catch-all")
+
+
 def test_parameter_groups_are_exact_and_exhaustive():
     """Every parameter lands in exactly one group, and the add-on tensors
     inside the encoder and the decoders are claimed by the add-on group rather
@@ -33,13 +47,13 @@ def test_parameter_groups_are_exact_and_exhaustive():
     cases = {
         "encoder.conv_l1.lin.weight": "encoder",
         "encoder.fc_l2_bn.weight": "encoder",
-        "encoder.addon_conv_mu.lin.weight": "addon_gp",
+        "encoder.addon_conv_mu.lin.weight": "addon_gp_encoder",
         "target_rna_decoder.nb_means_normalized_decoder.masked_l.weight":
             "prior_gp_decoder",
         "target_rna_decoder.nb_means_normalized_decoder.addon_l.weight":
             "addon_gp",
         "source_rna_decoder.nb_means_normalized_decoder."
-        "cat_covariates_embed_l.weight": "cat_covariates_embedder",
+        "cat_covariates_embed_l.weight": "cat_covariates_projection",
         "cat_covariate0_embedder.weight": "cat_covariates_embedder",
         "target_rna_theta": "dispersion",
         "rna_node_label_aggregator.attn": "node_label_aggregator",
@@ -139,3 +153,55 @@ def test_frozen_batch_norm_statistics_do_not_drift(reference):
     loaded.train(n_epochs=2, use_cuda_if_available=False)
     for bn, was in zip(bns, before):
         torch.testing.assert_close(bn.running_mean, was)
+
+def test_unfreezing_the_encoder_carries_its_addon_heads(reference):
+    """´encoder.addon_conv_*´ reads the hidden representation the encoder
+    produces. Leaving it frozen while the encoder moves would drift the add-on
+    activities with nothing able to compensate at either end."""
+    model, path = reference
+    loaded = NicheCompass.load(str(path), adata_file_name="adata.h5ad",
+                               unfreeze_encoder_weights=True)
+    by_name = dict(loaded.model.named_parameters())
+    groups = _parameter_groups(loaded.model)
+    for name in groups["encoder"] + groups["addon_gp_encoder"]:
+        assert by_name[name].requires_grad, name
+    # The loadings still do not move, which is the point of the flag.
+    for name in groups["prior_gp_decoder"] + groups["addon_gp_decoder"]:
+        assert not by_name[name].requires_grad, name
+
+
+def test_the_historical_covariate_flag_keeps_its_old_scope(reference):
+    """It used to match only ´cat_covariate{i}_embedder´. The projection into
+    the decoder is shared with the reference, so it needs its own opt-in."""
+    model, path = reference
+    loaded = NicheCompass.load(
+        str(path), adata_file_name="adata.h5ad",
+        unfreeze_cat_covariates_embedder_weights=True)
+    groups = _parameter_groups(loaded.model)
+    by_name = dict(loaded.model.named_parameters())
+    for name in groups["cat_covariates_projection"]:
+        assert not by_name[name].requires_grad, name
+    for name in groups["cat_covariates_embedder"]:
+        assert by_name[name].requires_grad, name
+
+
+def test_addon_programs_added_for_the_query_still_get_a_statistic(reference):
+    """Holding the activity statistic for the whole module starved add-on
+    programs added at load time: their entries start at zero, and a zero
+    statistic makes them either vacuously active or permanently inactive."""
+    model, path = reference
+    loaded = NicheCompass.load(
+        str(path), adata_file_name="adata.h5ad",
+        n_addon_gps=2, gp_names_key=model.gp_names_key_,
+        unfreeze_addon_gp_weights=True)
+    n_prior = loaded.model.n_prior_gp_
+    hold = loaded.model.frozen_gp_statistic_mask
+    assert hold[:n_prior].all(), "prior statistics must be held"
+    assert not hold[n_prior:].any(), "add-on statistics must keep updating"
+
+    before_prior = loaded.model.running_mean_abs_mu[:n_prior].detach().clone()
+    loaded.train(n_epochs=2, n_epochs_all_gps=0, use_cuda_if_available=False)
+    torch.testing.assert_close(
+        loaded.model.running_mean_abs_mu[:n_prior], before_prior)
+    assert (loaded.model.running_mean_abs_mu[n_prior:] != 0).any(), (
+        "add-on programs never accumulated an activity statistic")

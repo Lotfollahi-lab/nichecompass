@@ -185,8 +185,9 @@ class NicheCompass(GPAnalysisMixin, BaseModelMixin):
         Only relevant if ´conv_layer_encoder == gatv2conv´. Number of attention
         heads used in the GNN layers of the encoder.
     encoder_use_bn:
-        If ´True´, uses a batch normalization layer at the end of the encoder to
-        normalize ´mu´.
+        If ´True´, applies batch normalization to the shared fully connected hidden
+        representation. Only has an effect when there are two fully
+        connected encoder layers.
     dropout_rate_encoder:
         Probability that nodes will be dropped in the encoder during training.
     dropout_rate_graph_decoder:

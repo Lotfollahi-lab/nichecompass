@@ -27,9 +27,10 @@ parameter name rather than a substring test.
 
 | argument | what it unfreezes |
 | --- | --- |
-| `unfreeze_encoder_weights` | the encoder: graph convolutions and fully connected layers |
+| `unfreeze_encoder_weights` | the encoder: graph convolutions, fully connected layers, and its add-on heads (`encoder.addon_conv_*`), which have to move with the hidden representation they read |
 | `unfreeze_addon_gp_weights` | add-on gene programs, in the encoder (`addon_conv_*`) and the decoders (`addon_l`) — plus, for backwards compatibility, dispersion and the aggregator |
-| `unfreeze_cat_covariates_embedder_weights` | the covariate embedding tables **and** the layers projecting them into the decoders |
+| `unfreeze_cat_covariates_embedder_weights` | the per-category covariate embedding tables only |
+| `unfreeze_cat_covariates_projection` | the layers projecting those embeddings into the decoders. Separate because that projection is shared with the reference, so training it moves the reference's offset too |
 | `unfreeze_dispersion` | the per-feature negative binomial dispersion (`*_theta`) |
 | `unfreeze_node_label_aggregator` | the node label aggregator — only has parameters under `node_label_method="one-hop-attention"` |
 | `unfreeze_all_weights` | everything, and a full refit: see below |
@@ -48,14 +49,22 @@ so `load()` additionally:
 
 - pins the running statistics of frozen normalisation layers, because buffers
   are outside the freeze and `Trainer.train()` puts the module back into train
-  mode;
-- tells the module it is frozen, so that gene program **pruning** does not run.
+  mode. `track_running_stats=False` alone would not do this — in training mode
+  it makes the layer normalise with the current minibatch instead of the
+  stored statistics — so `VGPGAE.train` re-asserts eval mode on those layers
+  every epoch;
+- marks which gene programs must hold their activity statistic, so that
+  **pruning** cannot delete a program whose loadings are frozen. The mark is
+  per program, not per model: an add-on program added for the query has
+  trainable loadings and a statistic starting at zero, so it still needs the
+  running average.
 
 Pruning matters more than it looks. The active-GP decision is driven by
 `running_mean_abs_mu`, an exponential moving average that would otherwise
 drift to query statistics within tens of steps; the decision then zeroes that
-same statistic and the dynamic decoder masks, irreversibly, and those masks are
-saved with the checkpoint. On a frozen model that would delete reference gene
+same statistic and the dynamic decoder masks, irreversibly. The statistic is a
+persistent buffer and the masks are saved alongside the checkpoint in
+`gp_analysis_dynamic_masks_`, so both survive a save and load. On a frozen model that would delete reference gene
 programs on the basis of query data — from the query checkpoint and from any
 joint reference+query model built from it. Pruning is therefore confined to
 training a model that is actually being fitted.

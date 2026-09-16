@@ -96,8 +96,9 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         Only relevant if ´conv_layer_encoder == gatv2conv´. Number of attention
         heads used.
     encoder_use_bn:
-        If ´True´, uses a batch normalization layer at the end of the encoder to
-        normalize ´mu´.
+        If ´True´, applies batch normalization to the shared fully connected hidden
+        representation. Only has an effect when there are two fully
+        connected encoder layers.
     dropout_rate_encoder:
         Probability that nodes will be dropped in the encoder during training.
     dropout_rate_graph_decoder:
@@ -278,6 +279,16 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.log_variational_ = log_variational
         self.cat_covariates_embeds_injection_ = cat_covariates_embeds_injection
         self.freeze_ = False
+        # Gene programs whose activity statistic must be held fixed, because
+        # their loadings are frozen and the statistic decides which programs
+        # are active. Set by ´load´. Holding it for the whole module instead
+        # would starve add-on programs added at query time: their entries
+        # start at zero, and a zero statistic makes them either vacuously
+        # active or permanently inactive depending on ´active_gp_type´.
+        self.register_buffer("frozen_gp_statistic_mask",
+                             torch.zeros(n_prior_gp + n_addon_gp,
+                                         dtype=torch.bool),
+                             persistent=False)
         self.modalities_ = ["rna"]
         if target_atac_decoder_mask is not None:
             self.modalities_.append("atac")
@@ -592,6 +603,22 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                            dtype=torch.bool),
                 persistent=False)
 
+    def train(self, mode: bool=True):
+        """
+        Put the module in training mode, keeping pinned layers evaluating.
+
+        ´track_running_stats=False´ does NOT keep a batch norm using its
+        stored statistics: in training mode it makes the layer normalise with
+        the CURRENT MINIBATCH instead, so a frozen encoder would train under
+        query statistics and be read out under reference ones. Re-asserting
+        eval mode here is what actually pins them, and it has to happen on
+        every ´train()´ call because ´Trainer´ makes one per epoch.
+        """
+        super().train(mode)
+        for submodule in getattr(self, "_pinned_eval_modules", []):
+            submodule.eval()
+        return self
+
     def forward(self,
                 data_batch: Data,
                 decoder: Literal["graph", "omics"],
@@ -692,12 +719,14 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
 
         if decoder == "omics":
             with torch.no_grad():
-                # ´freeze_´ is excluded for the same reason as the pruning
-                # below: this statistic decides which gene programs are
-                # active, so letting it drift to query data silently changes
-                # the reported repertoire of a model whose weights the caller
-                # asked to keep fixed.
-                if self.training and not self.freeze_:
+                # The statistic decides which gene programs are active, so
+                # letting it drift to query data would silently change the
+                # reported repertoire of a model whose weights the caller
+                # asked to keep fixed. It is held per program rather than per
+                # module: programs whose loadings ARE trainable - add-on
+                # programs added for the query - still need it, and their
+                # entries start at zero.
+                if self.training:
                     # Update running mean absolute gp scores using exponential
                     # moving average with momentum of 0.1. The sum of the
                     # absolute scores and the number of nodes are reduced
@@ -716,8 +745,12 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                         torch.distributed.all_reduce(
                             n_nodes, op=torch.distributed.ReduceOp.SUM)
                     mean_abs_mu = abs_mu_sum / n_nodes
-                    self.running_mean_abs_mu = (
-                        0.1 * mean_abs_mu + 0.9 * self.running_mean_abs_mu)
+                    updated = (0.1 * mean_abs_mu
+                               + 0.9 * self.running_mean_abs_mu)
+                    self.running_mean_abs_mu = torch.where(
+                        self.frozen_gp_statistic_mask,
+                        self.running_mean_abs_mu,
+                        updated)
                     
                     # Pruning is destructive and irreversible, so it is
                     # confined to training and to a model that is actually
@@ -727,19 +760,28 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                     # guard the block ran on every forward including
                     # validation, so 375 epochs of a frozen query run could
                     # delete reference gene programs from the checkpoint.
-                    if use_only_active_gps and not self.freeze_:
+                    if use_only_active_gps:
+                        # Pruning is destructive and irreversible, so a
+                        # program whose loadings are frozen is never pruned:
+                        # it cannot adapt to the query, so deleting it on the
+                        # strength of query data would remove a reference
+                        # program from the checkpoint and from any joint model
+                        # built on it.
+                        prune = (~active_gp_mask
+                                 & ~self.frozen_gp_statistic_mask)
+
                         # Set running mean abs mu of inactive gene programs to
                         # 0 for active gp determination
-                        self.running_mean_abs_mu[~active_gp_mask] = 0
+                        self.running_mean_abs_mu[prune] = 0
 
                         # Set dynamic mask to 0 for all inactive gene programs
                         # to not affect omics decoders
-                        self.target_rna_dynamic_decoder_mask[~active_gp_mask, :] = 0
-                        self.source_rna_dynamic_decoder_mask[~active_gp_mask, :] = 0
+                        self.target_rna_dynamic_decoder_mask[prune, :] = 0
+                        self.source_rna_dynamic_decoder_mask[prune, :] = 0
 
                         if "atac" in self.modalities_:
-                            self.target_atac_dynamic_decoder_mask[~active_gp_mask, :] = 0
-                            self.source_atac_dynamic_decoder_mask[~active_gp_mask, :] = 0
+                            self.target_atac_dynamic_decoder_mask[prune, :] = 0
+                            self.source_atac_dynamic_decoder_mask[prune, :] = 0
                     
             # Determine which features should be reconstructed based on
             # static and dynamic masks (if a feature is not connected to any
