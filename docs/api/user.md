@@ -38,6 +38,10 @@
     :toctree: generated
 
     models.NicheCompass
+    models.NicheCompass.prepare_gp_analysis
+    models.NicheCompass.get_gp_activities
+    models.NicheCompass.get_gp_quality_table
+    models.NicheCompass.get_gp_feature_table
 ```
 
 ## Gene Program Utilities

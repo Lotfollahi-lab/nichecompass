@@ -34,4 +34,5 @@ neighbour-to-self signalling prior. That workflow is documented in full, step by
 
 humanppi_gene_programs
 multi_gpu_training
+gene_program_analysis
 ```

@@ -123,12 +123,19 @@ class BaseModelMixin():
         attr_save_path = os.path.join(dir_path, "attr.pkl")
         var_names_save_path = os.path.join(dir_path, "var_names.csv")
 
+        # Dynamic masks are nonpersistent torch buffers. Preserve their fitted
+        # support in new checkpoints without changing legacy state_dict keys.
+        self.gp_analysis_dynamic_masks_ = {
+            name: buffer.detach().cpu().numpy().copy()
+            for name, buffer in self.model.named_buffers()
+            if "dynamic_decoder_mask" in name}
+
         if save_adata:
             # Convert storage format of adjacency matrix to be writable by
             # adata.write()
-            if self.adata.obsp["spatial_connectivities"] is not None:
-                self.adata.obsp["spatial_connectivities"] = sp.csr_matrix(
-                    self.adata.obsp["spatial_connectivities"])
+            if self.adj_key_ in self.adata.obsp:
+                self.adata.obsp[self.adj_key_] = sp.csr_matrix(
+                    self.adata.obsp[self.adj_key_])
             self.adata.write(
                 os.path.join(dir_path, adata_file_name), **anndata_write_kwargs)
             
@@ -222,6 +229,10 @@ class BaseModelMixin():
                       adata_atac)
 
         validate_var_names(adata, var_names)
+        # Historical checkpoints already store RNA feature order separately.
+        # Preserve it for strict high-level analysis even if legacy raw loading
+        # proceeds with its existing warning-only feature validation.
+        attr_dict.setdefault("gp_analysis_feature_names_", {})["rna"] = list(map(str, np.atleast_1d(var_names)))
 
         # Include all genes in gene expression reconstruction if addon nodes
         # are present
@@ -249,25 +260,22 @@ class BaseModelMixin():
         attr_dict["init_params_"]["cat_covariates_cats"] = cat_covariates_cats
 
         if n_addon_gps != 0:
-            attr_dict["n_addon_gps_"] += n_addon_gps
-            attr_dict["init_params_"]["n_addon_gps"] += n_addon_gps
+            attr_dict["n_addon_gp_"] += n_addon_gps
+            attr_dict["init_params_"]["n_addon_gp"] += n_addon_gps
 
             if gp_names_key is None:
                 raise ValueError("Please specify 'gp_names_key' so that addon "
                                  "gps can be added to the gene program list.")
 
-            gps = list(adata.uns[gp_names_key])
-
-            if any("addon_GP_" in gp for gp in gps):
-                addon_gp_idx = int(gps[-1][-1]) + 1
-                adata.uns[gp_names_key] = np.array(
-                    gps + ["addon_GP_" + str(addon_gp_idx + i) for i in 
-                    range(n_addon_gps)])
-            else:
-                adata.uns[gp_names_key] = np.array(
-                    gps + ["addon_GP_" + str(i) for i in range(n_addon_gps)])
+            # The constructor appends the additional Add-on_<index>_GP names.
 
         model = initialize_model(cls, adata, attr_dict, adata_atac)
+
+        # Historical checkpoints have raw analysis semantics until the user
+        # explicitly calls prepare_gp_analysis(). New checkpoints persist the
+        # chosen convention even when AnnData is not saved alongside them.
+        model.gp_analysis_default_orientation_ = attr_dict.get(
+            "gp_analysis_default_orientation_", "raw")
 
         # set saved attrs for loaded model
         for attr, val in attr_dict.items():
@@ -277,6 +285,12 @@ class BaseModelMixin():
             model.model.load_and_expand_state_dict(model_state_dict)
         else:
             model.model.load_state_dict(model_state_dict)
+
+        for name, saved_mask in getattr(model, "gp_analysis_dynamic_masks_", {}).items():
+            buffer = getattr(model.model, name)
+            if saved_mask.shape[1:] != tuple(buffer.shape[1:]) or saved_mask.shape[0] > buffer.shape[0]:
+                raise ValueError(f"Saved dynamic mask {name} does not match the model.")
+            buffer[:len(saved_mask)].copy_(torch.as_tensor(saved_mask, device=buffer.device))
 
         if use_cuda:
             # Bind to the device this process owns, so that the processes of a

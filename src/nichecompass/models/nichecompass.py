@@ -21,6 +21,7 @@ from nichecompass.train import Trainer
 from nichecompass.train.distributed import (cleanup_distributed,
                                             is_main_process)
 from .basemodelmixin import BaseModelMixin
+from .gpanalysismixin import GPAnalysisMixin
 
 
 def _mask_to_numpy(mask: torch.Tensor) -> np.ndarray:
@@ -41,7 +42,7 @@ def _mask_to_numpy(mask: torch.Tensor) -> np.ndarray:
     return mask.detach().cpu().numpy()
 
 
-class NicheCompass(BaseModelMixin):
+class NicheCompass(GPAnalysisMixin, BaseModelMixin):
     """
     NicheCompass model class.
 
@@ -266,8 +267,12 @@ class NicheCompass(BaseModelMixin):
                  use_cuda_if_available: bool=True,
                  seed: int=0,
                  **kwargs):
+        self.gp_analysis_default_orientation_ = "canonical"
         self.adata = adata
         self.adata_atac = adata_atac
+        self.gp_analysis_feature_names_ = {"rna": list(map(str, adata.var_names))}
+        if adata_atac is not None:
+            self.gp_analysis_feature_names_["atac"] = list(map(str, adata_atac.var_names))
         self.counts_key_ = counts_key
         self.adj_key_ = adj_key
         self.gp_names_key_ = gp_names_key
@@ -858,6 +863,8 @@ class NicheCompass(BaseModelMixin):
            dtype=latent_dtype)
 
         self.adata.uns[self.active_gp_names_key_] = self.get_active_gps()
+        if hasattr(self.model.target_rna_decoder.nb_means_normalized_decoder, "masked_l"):
+            self.prepare_gp_analysis(overwrite=True)
 
         if ((len(self.cat_covariates_cats_) > 0) &
             retrieve_cat_covariates_embeds):
@@ -881,343 +888,187 @@ class NicheCompass(BaseModelMixin):
         cleanup_distributed()
 
     def run_differential_gp_tests(
-            self,
-            cat_key: str,
-            selected_cats: Optional[Union[str, list]]=None,
-            comparison_cats: Union[str, list]="rest",
-            selected_gps: Optional[Union[str, list]]=None,
-            n_sample: int=10000,
+            self, cat_key: str, selected_cats=None, comparison_cats="rest",
+            selected_gps=None, n_sample: int=10000,
             log_bayes_factor_thresh: float=2.3,
             key_added: str="nichecompass_differential_gp_test_results",
-            seed: int=0,
-            adata: Optional[AnnData]=None) -> list:
-        """
-        Run differential gene program tests by comparing gene program / latent
-        scores between a category and specified comparison categories for all
-        categories in ´selected_cats´ (by default all categories in
-        ´adata.obs[cat_key]´). Enriched category gene programs are determined
-        through the log Bayes Factor between the hypothesis h0 that the
-        (normalized) gene program / latent scores of observations of the
-        category under consideration (z0) are higher than the (normalized) gene
-        program / latent scores of observations of the comparison categories
-        (z1) versus the alternative hypothesis h1 that the (normalized) gene
-        program / latent scores of observations of the comparison categories
-        (z1) are higher or equal to the (normalized) gene program / latent
-        scores of observations of the category under consideration (z0). The
-        results of the differential tests including the log Bayes Factors for
-        enriched category gene programs are stored in a pandas DataFrame under
-        ´adata.uns[key_added]´. The DataFrame also stores p_h0, the probability
-        that z0 > z1 and p_h1, the probability that z1 >= z0. The rows are
-        ordered by the log Bayes Factor. In addition, the (normalized) gene
-        program / latent scores of enriched gene programs across any of the
-        categories are stored in ´adata.obs´.
+            seed: int=0, adata: Optional[AnnData]=None,
+            orientation=None, direction: str="both", return_all: bool=False,
+            adata_atac: Optional[AnnData]=None):
+        """Compare GP activities between cell distributions.
 
-        Parts of the implementation are adapted from Lotfollahi, M. et al.
-        Biologically informed deep learning to query gene programs in
-        single-cell atlases. Nat. Cell Biol. 25, 337–350 (2023);
-        https://github.com/theislab/scarches/blob/master/scarches/models/expimap/expimap_model.py#L429
-        (24.11.2022).
+        For randomly sampled cell pairs, analytically integrate the Gaussian
+        posterior probability that the focal activity exceeds the comparison
+        activity. Its log odds is retained as ``log_bayes_factor`` for API
+        compatibility. This is not a test of population means or a donor-level
+        effect, and the cutoff is not FDR control.
 
         Parameters
         ----------
         cat_key:
-            Key under which the categories and comparison categories are stored
-            in ´adata.obs´.
+            Observation column defining the compared populations. Missing
+            labels are excluded, including from the rest population.
         selected_cats:
-            List of category labels for which differential tests will be run. If
-            ´None´, uses all category labels from ´adata.obs[cat_key]´.
+            Focal category labels; by default all nonmissing categories.
         comparison_cats:
-            Categories used as comparison group. If ´rest´, all categories other
-            than the category under consideration are used as comparison group.
+            A category/list of categories or the sentinel ``"rest"``. To use
+            a literal category called rest as comparator pass ``["rest"]``.
         selected_gps:
-            List of gene program names for which differential tests will be run.
-            If ´None´, uses all active gene programs.
+            GP names, active programs by default.
         n_sample:
-            Number of observations to be drawn from the category and comparison
-            categories for the log Bayes Factor computation.
+            Number of independent cell pairs sampled with replacement.
         log_bayes_factor_thresh:
-            Log bayes factor threshold. Category gene programs with a higher
-            absolute score than this threshold are considered enriched.
+            Absolute log-odds cutoff for the filtered result.
         key_added:
-            Key under which the test results pandas DataFrame is stored in
-            ´adata.uns´.
+            Filtered table key in ``adata.uns``. All tested contrasts are
+            stored at ``key_added + "_all"`` and provenance at ``+ "_params"``.
         seed:
-            Random seed for reproducible sampling.
+            Local random-generator seed; does not modify NumPy's global RNG.
         adata:
-            AnnData object to be used. If ´None´, uses the adata object stored
-            in the model instance.
+            Data to encode; defaults to the model data.
+        adata_atac:
+            Aligned ATAC observations for an external multimodal analysis.
+        orientation:
+            ``canonical``, ``raw``, or the model's convention if None.
+        direction:
+            Filter to ``higher``, ``lower``, or ``both`` directions.
+        return_all:
+            If True return the complete DataFrame; otherwise return the list
+            of GP names passing the threshold/direction filter (legacy API).
 
-        Returns
-        ----------
-        enriched_gps:
-            Names of enriched gene programs across all categories (duplicate
-            gene programs that appear for multiple catgories are only considered
-            once).
+        Notes
+        -----
+        GP columns in obs are refreshed from the same posterior used for the
+        test. The orientation ID is stored with results so plotting can reject
+        stale results instead of combining different conventions.
         """
-        self._check_if_trained(warn=True)
-
-        np.random.seed(seed)
-
-        if adata is None:
-            adata = self.adata
-
-        active_gps = list(adata.uns[self.active_gp_names_key_])
-
-        # Get selected gps
-        if selected_gps is None:
-            selected_gps = active_gps
-        else:
-            if isinstance(selected_gps, str):
-                selected_gps = [selected_gps]
-            for gp in selected_gps:
-                if gp not in active_gps:
-                    print(f"GP '{gp}' is not an active gene program. Continuing"
-                          " anyways.")
-
-        # Get indeces and weights for selected gps
-        selected_gps_idx, selected_gps_weights, chrom_access_gp_weights = self.get_gp_data(
-            selected_gps=selected_gps)
-
-        # Get gp / latent scores for selected gps
-        mu, std = self.get_latent_representation(
-            adata=adata,
-            counts_key=self.counts_key_,
-            adj_key=self.adj_key_,
-            cat_covariates_keys=self.cat_covariates_keys_,
-            only_active_gps=False,
-            return_mu_std=True,
-            node_batch_size=self.node_batch_size_)
-        mu_selected_gps = mu[:, selected_gps_idx]
-        std_selected_gps = std[:, selected_gps_idx]
-
-        # Retrieve category values for each observation, as well as all existing
-        # unique categories
-        cat_values = adata.obs[cat_key].replace(np.nan, "NaN")
-        cats = cat_values.unique()
-        if selected_cats is None:
-            selected_cats = cats
-        elif isinstance(selected_cats, str):
-            selected_cats = [selected_cats]
-
-        # Check specified comparison categories
-        if comparison_cats != "rest" and isinstance(comparison_cats, str):
-            comparison_cats = [comparison_cats]
-        if (comparison_cats != "rest" and not
-        set(comparison_cats).issubset(cats)):
-            raise ValueError("Comparison categories should be 'rest' (for "
-                             "comparison with all other categories) or contain "
-                             "existing categories.")
-
-        # Run differential gp tests for all selected categories that are not
-        # part of the comparison categories
-        results = []
-        for cat in selected_cats:
-            if cat in comparison_cats:
+        self._check_if_trained(warn=False)
+        if not isinstance(n_sample, (int, np.integer)) or n_sample <= 0:
+            raise ValueError("n_sample must be a positive integer.")
+        if not np.isfinite(log_bayes_factor_thresh) or log_bayes_factor_thresh < 0:
+            raise ValueError("log_bayes_factor_thresh must be finite and nonnegative.")
+        if direction not in ("both", "higher", "lower"):
+            raise ValueError("direction must be 'both', 'higher', or 'lower'.")
+        adata = self.adata if adata is None else adata
+        names, _ = self._gp_selection(selected_gps, active=True)
+        if not names:
+            raise ValueError("No gene programs selected for testing.")
+        labels = adata.obs[cat_key].astype(object)
+        valid = labels.notna().to_numpy()
+        cats = list(pd.unique(labels[valid]))
+        def as_list(value):
+            return [value] if pd.api.types.is_scalar(value) else list(value)
+        focal = cats if selected_cats is None else as_list(selected_cats)
+        rest = isinstance(comparison_cats, str) and comparison_cats == "rest"
+        comparison = [] if rest else as_list(comparison_cats)
+        if not set(focal).issubset(cats) or not set(comparison).issubset(cats):
+            raise ValueError("Selected and comparison categories must exist in the data.")
+        contrasts = []
+        for cat in focal:
+            if not rest and cat in comparison:
                 continue
-            # Filter gp scores and normalization factors for the category under
-            # consideration and comparison categories
-            cat_mask = cat_values == cat
-            if comparison_cats == "rest":
-                comparison_cat_mask = ~cat_mask
-            else:
-                comparison_cat_mask = cat_values.isin(comparison_cats)          
-
-            mu_selected_gps_cat = mu_selected_gps[cat_mask]
-            std_selected_gps_cat = std_selected_gps[cat_mask]
-            mu_selected_gps_comparison_cat = mu_selected_gps[comparison_cat_mask]
-            std_selected_gps_comparison_cat = std_selected_gps[comparison_cat_mask]
-
-            # Generate random samples of category and comparison categories
-            # observations with equal size
-            cat_idx = np.random.choice(cat_mask.sum(),
-                                       n_sample)
-            comparison_cat_idx = np.random.choice(comparison_cat_mask.sum(),
-                                                  n_sample)
-            mu_selected_gps_cat_sample = mu_selected_gps_cat[cat_idx]
-            std_selected_gps_cat_sample = std_selected_gps_cat[cat_idx]
-            mu_selected_gps_comparison_cat_sample = (
-                mu_selected_gps_comparison_cat[comparison_cat_idx])
-            std_selected_gps_comparison_cat_sample = (
-                std_selected_gps_comparison_cat[comparison_cat_idx])
-
-            # Calculate gene program log Bayes Factors for the category
-            to_reduce = (
-                - (mu_selected_gps_cat_sample -
-                mu_selected_gps_comparison_cat_sample) /
-                np.sqrt(2 * (std_selected_gps_cat_sample ** 2 +
-                std_selected_gps_comparison_cat_sample ** 2)))
-            to_reduce = 0.5 * erfc(to_reduce)
-            p_h0 = np.mean(to_reduce, axis=0)
-            p_h1 = 1.0 - p_h0
-            epsilon = 1e-12
-            log_bayes_factor = np.log(p_h0 + epsilon) - np.log(p_h1 + epsilon)
-            zeros_mask = (
-                (np.abs(mu_selected_gps_cat_sample).sum(0) == 0) | 
-                (np.abs(mu_selected_gps_comparison_cat_sample).sum(0) == 0))
-            p_h0[zeros_mask] = 0
-            p_h1[zeros_mask] = 0
-            log_bayes_factor[zeros_mask] = 0
-
-            # Store differential gp test results
-            zipped = zip(
-                selected_gps,
-                p_h0,
-                p_h1,
-                log_bayes_factor)
-            cat_results = [{"category": cat,
-                           "gene_program": gp,
-                           "p_h0": p_h0,
-                           "p_h1": p_h1,
-                           "log_bayes_factor": log_bayes_factor}
-                          for gp, p_h0, p_h1, log_bayes_factor in zipped]
-            for result in cat_results:
-                results.append(result)
-
-        # Create test results dataframe and keep only enriched category gene
-        # program pairs (log bayes factor above thresh)
-        results = pd.DataFrame(results)
-        results["abs_log_bayes_factor"] = np.abs(results["log_bayes_factor"])
-        results = results[
-            results["abs_log_bayes_factor"] > log_bayes_factor_thresh]
-        results.sort_values(by="abs_log_bayes_factor",
-                            ascending=False,
-                            inplace=True)
-        results.reset_index(drop=True, inplace=True)
-        results.drop("abs_log_bayes_factor", axis=1, inplace=True)
+            mask = (labels == cat).to_numpy() & valid
+            other = (~mask & valid) if rest else labels.isin(comparison).to_numpy() & valid
+            if not mask.any() or not other.any():
+                raise ValueError(f"Both populations must be nonempty for category {cat!r}.")
+            contrasts.append((cat, mask, other))
+        if not contrasts:
+            raise ValueError("No non-overlapping category contrasts selected.")
+        orientation = self._gp_orientation(orientation)
+        mu, std = self.get_gp_activities(names, adata=adata, adata_atac=adata_atac,
+                                          return_std=True, orientation=orientation)
+        if not (np.isfinite(mu).all() and np.isfinite(std).all()) or (std < 0).any():
+            raise ValueError("Posterior means/std must be finite and standard deviations nonnegative.")
+        if orientation == "canonical":
+            quality = self._gp_analysis_table().set_index("gp_name").loc[names]
+            signs = quality.orientation_sign.to_numpy()
+            statuses = quality.orientation_status.to_numpy()
+            gp_ids = quality.gp_id.to_numpy()
+            orientation_id = self.gp_analysis_["orientation_id"]
+        else:
+            signs = np.ones(len(names), dtype=int)
+            statuses = np.repeat("raw", len(names))
+            gp_ids = np.array(names)
+            orientation_id = "raw"
+        rng = np.random.default_rng(seed)
+        rows = []
+        for cat, mask, other in contrasts:
+            a = rng.choice(np.flatnonzero(mask), n_sample)
+            b = rng.choice(np.flatnonzero(other), n_sample)
+            # Bound temporary posterior arrays even for large GP dictionaries.
+            probability_sum = np.zeros(len(names), dtype=np.float64)
+            for start in range(0, n_sample, 1024):
+                aa, bb = a[start:start+1024], b[start:start+1024]
+                diff = mu[aa] - mu[bb]
+                denominator = np.sqrt(2 * (std[aa]**2 + std[bb]**2))
+                standardized = np.divide(-diff, denominator, out=np.zeros_like(diff), where=denominator > 0)
+                probability = 0.5 * erfc(standardized)
+                probability = np.where(denominator > 0, probability,
+                                       np.where(diff > 0, 1.0, np.where(diff < 0, 0.0, 0.5)))
+                probability_sum += probability.sum(axis=0)
+            p_higher = np.clip(probability_sum / n_sample, 0, 1)
+            p_lower = 1 - p_higher
+            statistic = np.log(p_higher + 1e-12) - np.log(p_lower + 1e-12)
+            effect = mu[mask].mean(0) - mu[other].mean(0)
+            comparison_label = "rest" if rest else str(comparison)
+            for k, name in enumerate(names):
+                rows.append({"category": cat, "comparison": comparison_label, "gene_program": name,
+                             "gp_id": gp_ids[k], "p_h0": p_higher[k], "p_h1": p_lower[k],
+                             "p_higher": p_higher[k], "p_lower": p_lower[k],
+                             "log_bayes_factor": statistic[k], "mean_difference": effect[k],
+                             "direction": "higher" if statistic[k] > 0 else "lower" if statistic[k] < 0 else "equal",
+                             "n_focal": int(mask.sum()), "n_comparison": int(other.sum()),
+                             "orientation_sign": int(signs[k]), "orientation_status": statuses[k],
+                             "orientation": orientation, "orientation_id": orientation_id})
+        all_results = pd.DataFrame(rows)
+        order = np.argsort(-np.abs(all_results.log_bayes_factor.to_numpy()), kind="stable")
+        all_results = all_results.iloc[order].reset_index(drop=True)
+        keep = all_results.log_bayes_factor.abs() > log_bayes_factor_thresh
+        if direction != "both":
+            keep &= all_results.direction == direction
+        results = all_results[keep].reset_index(drop=True)
         adata.uns[key_added] = results
+        adata.uns[key_added + "_all"] = all_results
+        adata.uns[key_added + "_params"] = {
+            "schema_version": 1, "method": "cell_pair_posterior_superiority",
+            "orientation": orientation, "orientation_id": orientation_id,
+            "n_sample": n_sample, "seed": seed, "direction": direction,
+            "log_bayes_factor_thresh": log_bayes_factor_thresh}
+        adata.uns[key_added + "_params"].update({
+            "cat_key": cat_key,
+            "input_fingerprint": self._gp_input_fingerprint(adata, cat_key, adata_atac)})
+        # Assignment replaces stale or manually flipped columns, never toggles.
+        self._write_gp_scores(adata, names, mu, orientation)
+        return all_results.copy() if return_all else results.gene_program.unique().tolist()
 
-        # Retrieve enriched gene programs
-        enriched_gps = results["gene_program"].unique().tolist()
-        enriched_gps_idx = [selected_gps.index(gp) for gp in enriched_gps]
-        
-        # Add gene program scores of enriched gene programs to adata
-        enriched_gps_gp_scores = pd.DataFrame(
-            mu_selected_gps[:, enriched_gps_idx],
-            columns=enriched_gps,
-            index=adata.obs.index)
-        new_cols = [col for col in enriched_gps_gp_scores.columns if col not in
-                    adata.obs.columns]
-        if new_cols:
-            adata.obs = pd.concat([adata.obs,
-                                   enriched_gps_gp_scores[new_cols]], axis=1)
+    def compute_gp_gene_importances(self, selected_gp: str, orientation=None) -> pd.DataFrame:
+        """Return full-precision RNA loadings and absolute loading importance.
 
-        return enriched_gps
-
-    def compute_gp_gene_importances(
-            self,
-            selected_gp: str) -> pd.DataFrame:
+        ``orientation=None`` uses the model analysis convention; ``raw`` opts
+        out. Importances are normalized across source and target together.
+        Signed loadings describe logits, not necessarily expression effects.
         """
-        Compute gene importances for the genes of a given gene program. Gene
-        importances are determined by the normalized weights of the rna
-        decoders.
+        return self._gp_importances(selected_gp, "rna", "gene", orientation)
 
-        Parameters
-        ----------
-        selected_gp:
-            Name of the gene program for which the gene importances should be
-            retrieved.
-     
-        Returns
-        ----------
-        gp_gene_importances_df:
-            Pandas DataFrame containing genes, gene weights, gene
-            importances and an indicator whether the gene belongs to the
-            communication source or target, stored in ´gene_entity´.
-        """
-        self._check_if_trained(warn=True)
+    def compute_gp_peak_importances(self, selected_gp: str, orientation=None) -> pd.DataFrame:
+        """Return ATAC loadings using the same RNA-derived orientation."""
+        if "atac" not in self.modalities_:
+            raise ValueError("Peak importances require a model with ATAC data.")
+        return self._gp_importances(selected_gp, "atac", "peak", orientation)
 
-        # Check if selected gene program is active
-        active_gps = self.adata.uns[self.active_gp_names_key_]
-        if selected_gp not in active_gps:
-            print(f"GP '{selected_gp}' is not an active gene program. "
-                  "Continuing anyways.")
-
-        _, gp_gene_weights, _ = self.get_gp_data(selected_gps=selected_gp)
-
-        # Normalize gp gene weights to get gp gene importances
-        gp_gene_importances = np.where(
-            np.abs(gp_gene_weights).sum(0) != 0,
-            np.abs(gp_gene_weights) / np.abs(gp_gene_weights).sum(0),
-            0)
-
-        # Create result dataframe
-        gp_gene_importances_df = pd.DataFrame()
-        gp_gene_importances_df["gene"] = [
-            gene for gene in self.adata.var_names.tolist()] * 2
-        gp_gene_importances_df["gene_entity"] = (
-            ["target"] * len(self.adata.var_names) +
-            ["source"] * len(self.adata.var_names))
-        gp_gene_importances_df["gene_weight"] = gp_gene_weights
-        gp_gene_importances_df["gene_importance"] = gp_gene_importances
-        gp_gene_importances_df = (gp_gene_importances_df
-            [gp_gene_importances_df["gene_importance"] != 0])
-        gp_gene_importances_df.sort_values(by="gene_importance",
-                                           ascending=False,
-                                           inplace=True)
-        gp_gene_importances_df.reset_index(drop=True, inplace=True)
-        return gp_gene_importances_df
-    
-    def compute_gp_peak_importances(
-            self,
-            selected_gp: str) -> pd.DataFrame:
-        """
-        Compute peak importances for the peaks of a given gene program. Peak
-        importances are determined by the normalized weights of the atac
-        decoders.
-
-        Parameters
-        ----------
-        selected_gp:
-            Name of the gene program for which the peak importances should be
-            retrieved.
-     
-        Returns
-        ----------
-        gp_peak_importances_df:
-            Pandas DataFrame containing peaks, peak weights, peak
-            importances and an indicator whether the peak belongs to the
-            communication source or target, stored in ´peak_entity´.
-        """
-        self._check_if_trained(warn=True)
-
-        if not "atac" in self.modalities_:
-            raise ValueError("The model training needs to include ATAC data, "
-                             "otherwise peak importances cannot be retrieved.")
-
-        # Check if selected gene program is active
-        active_gps = self.adata.uns[self.active_gp_names_key_]
-        if selected_gp not in active_gps:
-            print(f"GP '{selected_gp}' is not an active gene program. "
-                  "Continuing anyways.")
-
-        _, gp_gene_weights, gp_peak_weights = self.get_gp_data(
-            selected_gps=selected_gp)
-
-        # Normalize gp peak weights to get gp peak importances
-        gp_peak_importances = np.where(
-            np.abs(gp_peak_weights).sum(0) != 0,
-            np.abs(gp_peak_weights) / np.abs(gp_peak_weights).sum(0),
-            0)
-
-        # Create result dataframe
-        gp_peak_importances_df = pd.DataFrame()
-        gp_peak_importances_df["peak"] = [
-            peak for peak in self.adata_atac.var_names.tolist()] * 2
-        gp_peak_importances_df["peak_entity"] = (
-            ["target"] * len(self.adata_atac.var_names) +
-            ["source"] * len(self.adata_atac.var_names))
-        gp_peak_importances_df["peak_weight"] = gp_peak_weights
-        gp_peak_importances_df["peak_importance"] = gp_peak_importances
-        gp_peak_importances_df = (gp_peak_importances_df
-            [gp_peak_importances_df["peak_importance"] != 0])
-        gp_peak_importances_df.sort_values(by="peak_importance",
-                                           ascending=False,
-                                           inplace=True)
-        gp_peak_importances_df.reset_index(drop=True, inplace=True)
-        return gp_peak_importances_df
+    def _gp_importances(self, selected_gp, modality, unit, orientation):
+        table = self.get_gp_feature_table(selected_gp, orientation=orientation)
+        table = table[(table.modality == modality) & (table.importance != 0)].copy()
+        table = table.rename(columns={"feature": unit, "entity": f"{unit}_entity",
+                                      "loading": f"{unit}_weight",
+                                      "raw_loading": f"{unit}_weight_raw",
+                                      "importance": f"{unit}_importance"})
+        return table.sort_values([f"{unit}_importance", unit, f"{unit}_entity"],
+                                 ascending=[False, True, True], kind="stable").reset_index(drop=True)
 
     def get_gp_data(self,
                     selected_gps: Optional[Union[str, list]]=None,
+                    orientation: str="raw",
                     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Get the index of selected gene programs as well as their omics decoder
@@ -1243,12 +1094,7 @@ class NicheCompass(BaseModelMixin):
         self._check_if_trained(warn=True)
 
         # Get selected gps and their index
-        all_gps = list(self.adata.uns[self.gp_names_key_])
-        if selected_gps is None:
-            selected_gps = all_gps
-        elif isinstance(selected_gps, str):
-            selected_gps = [selected_gps]
-        selected_gps_idx = np.array([all_gps.index(gp) for gp in selected_gps])
+        selected_gps, selected_gps_idx = self._gp_selection(selected_gps)
 
         # Get weights of selected gps
         all_gps_rna_decoder_weights = self.model.get_gp_weights()[0]
@@ -1263,6 +1109,16 @@ class NicheCompass(BaseModelMixin):
                 .cpu().detach().numpy())
         else:
             selected_gps_atac_decoder_weights = None
+
+        signs = self._gp_signs(selected_gps, orientation)
+        if self._gp_orientation(orientation) == "canonical":
+            effective_weights, _ = self._gp_arrays()
+            selected_gps_rna_decoder_weights = effective_weights["rna"][:, selected_gps_idx].copy()
+            if "atac" in self.modalities_:
+                selected_gps_atac_decoder_weights = effective_weights["atac"][:, selected_gps_idx].copy()
+        selected_gps_rna_decoder_weights *= signs
+        if selected_gps_atac_decoder_weights is not None:
+            selected_gps_atac_decoder_weights *= signs
 
         return (selected_gps_idx,
                 selected_gps_rna_decoder_weights,
@@ -1325,6 +1181,7 @@ class NicheCompass(BaseModelMixin):
             return_mu_std: bool=False,
             node_batch_size: int=64,
             dtype: type=np.float64,
+            selected_gps=None,
             ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         """
         Get the latent representation / gene program scores from a trained model.
@@ -1350,6 +1207,10 @@ class NicheCompass(BaseModelMixin):
             Batch size used during data loading.
         dtype:
             Precision to store the latent representations.
+        selected_gps:
+            Optional GP names in output-column order. Selection occurs before
+            copying each batch to the host, avoiding a full atlas-by-GP array.
+            When only_active_gps is True, selected names must all be active.
 
         Returns
         ----------
@@ -1399,6 +1260,18 @@ class NicheCompass(BaseModelMixin):
         else:
             n_gps = (self.n_prior_gp_ + self.n_addon_gp_ )
 
+        columns = slice(None)
+        if selected_gps is not None:
+            selected_names, all_indices = self._gp_selection(selected_gps)
+            if only_active_gps:
+                active_names = list(self.get_active_gps())
+                if not set(selected_names).issubset(active_names):
+                    raise ValueError("Selected GPs must be active when only_active_gps=True.")
+                columns = [active_names.index(name) for name in selected_names]
+            else:
+                columns = all_indices.tolist()
+            n_gps = len(selected_names)
+
         # Initialize latent vectors
         if return_mu_std:
             mu = np.empty(shape=(adata.shape[0], n_gps), dtype=dtype)
@@ -1418,16 +1291,16 @@ class NicheCompass(BaseModelMixin):
                     only_active_gps=only_active_gps,
                     return_mu_std=True)
                 mu[n_obs_before_batch:n_obs_after_batch, :] = (
-                    mu_batch.detach().cpu().numpy())
+                    mu_batch[:, columns].detach().cpu().numpy())
                 std[n_obs_before_batch:n_obs_after_batch, :] = (
-                    std_batch.detach().cpu().numpy())
+                    std_batch[:, columns].detach().cpu().numpy())
             else:
                 z_batch = self.model.get_latent_representation(
                     node_batch=node_batch,
                     only_active_gps=only_active_gps,
                     return_mu_std=False)
                 z[n_obs_before_batch:n_obs_after_batch, :] = (
-                    z_batch.detach().cpu().numpy())
+                    z_batch[:, columns].detach().cpu().numpy())
         if return_mu_std:
             return mu, std
         else:
@@ -1739,300 +1612,21 @@ class NicheCompass(BaseModelMixin):
         return agg_weights
     
 
-    def get_gp_summary(self) -> pd.DataFrame:
+    def get_gp_summary(self, orientation=None) -> pd.DataFrame:
+        """Return full-precision GP summaries in the model analysis convention.
+
+        ``orientation="raw"`` returns un-oriented weights. Round only for
+        presentation; orientation and nonzero counts use full precision.
         """
-        Get summary information of gene programs and return it as a DataFrame.
-        
-        Returns
-        ----------
-        gp_summary_df:
-            DataFrame with gene program summary information.
+        return self._gp_summary(orientation=orientation)
+
+    def add_active_gp_scores_to_obs(self, orientation=None, use_cached=False) -> None:
+        """Replace GP columns with consistently oriented activities.
+
+        Fresh inference is the safe default for migrating manually edited
+        notebooks. Set ``use_cached=True`` only for a known raw latent cache.
+        Repeated calls never multiply previously oriented values.
         """
-        device = next(self.model.parameters()).device
-        
-        # Get source and target omics decoder weights
-        _, gp_gene_weights, gp_peak_weights = self.get_gp_data()
-
-        # Normalize gp weights to get gene importances
-        gp_gene_importances = np.where(
-            np.abs(gp_gene_weights).sum(0) != 0,
-            np.abs(gp_gene_weights) / np.abs(gp_gene_weights).sum(0),
-            0)      
-
-        # Split gene weights and importances into source and target part
-        gp_gene_weights = np.transpose(gp_gene_weights)
-        gp_gene_importances = np.transpose(gp_gene_importances)
-        gp_gene_weights_source = gp_gene_weights[
-            :, (gp_gene_weights.shape[1] // 2):]
-        gp_gene_weights_target = gp_gene_weights[
-            :, :(gp_gene_weights.shape[1] // 2)]
-        gp_gene_importances_source = gp_gene_importances[
-            :, (gp_gene_weights.shape[1] // 2):]
-        gp_gene_importances_target = gp_gene_importances[
-            :, :(gp_gene_weights.shape[1] // 2)]
-        
-        # Get source and target gene masks
-        gp_gene_mask_source = np.transpose(
-            _mask_to_numpy(self.model.source_rna_decoder_mask).T != 0)
-        gp_gene_mask_target = np.transpose(
-            _mask_to_numpy(self.model.target_rna_decoder_mask).T != 0)
-        
-        # Add entries to gp mask for addon gps
-        if self.n_addon_gp_ > 0:
-            gp_gene_addon_mask_source = np.transpose(
-            _mask_to_numpy(self.model.source_rna_decoder_addon_mask).T != 0)
-            gp_gene_addon_mask_target = np.transpose(
-            _mask_to_numpy(self.model.target_rna_decoder_addon_mask).T != 0)
-            gp_gene_mask_source = np.concatenate(
-                (gp_gene_mask_source, gp_gene_addon_mask_source), axis=0)
-            gp_gene_mask_target = np.concatenate(
-                (gp_gene_mask_target, gp_gene_addon_mask_target), axis=0)
-
-        # Get active gp mask
-        gp_active_status = (self.model.get_active_gp_mask().cpu().detach()
-                            .numpy().tolist())
-
-        active_gps = list(self.get_active_gps())
-        all_gps = list(self.adata.uns[self.gp_names_key_])
-
-        # Collect info for each gp in lists of lists
-        gp_names = []
-        active_gp_idx = [] # Index among active gene programs
-        all_gp_idx = [] # Index among all gene programs
-        n_source_genes = []
-        n_non_zero_source_genes = []
-        n_target_genes = []
-        n_non_zero_target_genes = []
-        gp_source_genes = []
-        gp_target_genes = []
-        gp_source_genes_weights = []
-        gp_target_genes_weights = []
-        gp_source_genes_importances = []
-        gp_target_genes_importances = []
-        for (name,
-             gene_mask_source,
-             gene_mask_target,
-             gene_weights_source,
-             gene_weights_target,
-             gene_importances_source,
-             gene_importances_target) in zip(
-                all_gps,
-                gp_gene_mask_source,
-                gp_gene_mask_target,
-                gp_gene_weights_source,
-                gp_gene_weights_target,
-                gp_gene_importances_source,
-                gp_gene_importances_target):
-            gp_names.append(name)
-            active_gp_idx.append(active_gps.index(name)
-                                 if name in active_gps else np.nan)
-            all_gp_idx.append(all_gps.index(name))
-
-            # Sort source genes according to absolute weights
-            gene_weights_source_sorted = []
-            gene_importances_source_sorted = []
-            genes_source_sorted = []
-            for _, weights, importances, genes in sorted(zip(
-                np.abs(np.around(gene_weights_source[gene_mask_source],
-                                 decimals=4)), # just for sorting
-                np.around(gene_weights_source[gene_mask_source],
-                          decimals=4),
-                np.around(gene_importances_source[gene_mask_source],
-                          decimals=4),        
-                self.adata.var_names[gene_mask_source].tolist()), reverse=True):
-                    genes_source_sorted.append(genes)
-                    gene_weights_source_sorted.append(weights)
-                    gene_importances_source_sorted.append(importances)
-            
-            # Sort target genes according to absolute weights
-            geme_weights_target_sorted = []
-            gene_importances_target_sorted = []
-            genes_target_sorted = []
-            for _, weights, importances, genes in sorted(zip(
-                np.abs(np.around(gene_weights_target[gene_mask_target],
-                                 decimals=4)), # just for sorting
-                np.around(gene_weights_target[gene_mask_target],
-                          decimals=4),                 
-                np.around(gene_importances_target[gene_mask_target],
-                          decimals=4),
-                self.adata.var_names[gene_mask_target].tolist()), reverse=True):
-                    genes_target_sorted.append(genes)
-                    geme_weights_target_sorted.append(weights)
-                    gene_importances_target_sorted.append(importances)                 
-                
-            n_source_genes.append(len(genes_source_sorted))
-            n_non_zero_source_genes.append(len(np.array(
-                gene_weights_source_sorted).nonzero()[0]))
-            n_target_genes.append(len(genes_target_sorted))
-            n_non_zero_target_genes.append(len(np.array(
-                geme_weights_target_sorted).nonzero()[0]))
-            gp_source_genes.append(genes_source_sorted)
-            gp_target_genes.append(genes_target_sorted)
-            gp_source_genes_weights.append(gene_weights_source_sorted)
-            gp_target_genes_weights.append(geme_weights_target_sorted)
-            gp_source_genes_importances.append(gene_importances_source_sorted)
-            gp_target_genes_importances.append(gene_importances_target_sorted)
-   
-        gp_summary_df = pd.DataFrame(
-            {"gp_name": gp_names,
-             "all_gp_idx": all_gp_idx,
-             "gp_active": gp_active_status,
-             "active_gp_idx": active_gp_idx,
-             "n_source_genes": n_source_genes,
-             "n_non_zero_source_genes": n_non_zero_source_genes,
-             "n_target_genes": n_target_genes,
-             "n_non_zero_target_genes": n_non_zero_target_genes,
-             "gp_source_genes": gp_source_genes,
-             "gp_target_genes": gp_target_genes,
-             "gp_source_genes_weights": gp_source_genes_weights,
-             "gp_target_genes_weights": gp_target_genes_weights,
-             "gp_source_genes_importances": gp_source_genes_importances,
-             "gp_target_genes_importances": gp_target_genes_importances})
-        
-        gp_summary_df["active_gp_idx"] = (
-            gp_summary_df["active_gp_idx"].astype("Int64"))
-        
-        if "atac" in self.modalities_:
-            # Add peak info for each gp
-            
-            # Normalize gp weights to get gene importances
-            gp_peak_importances = np.where(
-                np.abs(gp_peak_weights).sum(0) != 0,
-                np.abs(gp_peak_weights) / np.abs(gp_peak_weights).sum(0),
-                0)
-        
-            # Split peak weights and importances into source and target part
-            gp_peak_weights = np.transpose(gp_peak_weights)
-            gp_peak_importances = np.transpose(gp_peak_importances)
-            gp_peak_weights_source = gp_peak_weights[
-                :, (gp_peak_weights.shape[1] // 2):]
-            gp_peak_weights_target = gp_peak_weights[
-                :, :(gp_peak_weights.shape[1] // 2)]
-            gp_peak_importances_source = gp_peak_importances[
-                :, (gp_peak_weights.shape[1] // 2):]
-            gp_peak_importances_target = gp_peak_importances[
-                :, :(gp_peak_weights.shape[1] // 2)]
-
-            # Get source and target peak masks
-            gp_peak_mask_source = np.transpose(
-                _mask_to_numpy(self.model.source_atac_decoder_mask).T != 0)
-            gp_peak_mask_target = np.transpose(
-                _mask_to_numpy(self.model.target_atac_decoder_mask).T != 0)
-
-            # Add entries to gp mask for addon gps
-            if self.n_addon_gp_ > 0:
-                gp_peak_addon_mask_source = np.transpose(
-                _mask_to_numpy(self.model.source_atac_decoder_addon_mask).T != 0)
-                gp_peak_addon_mask_target = np.transpose(
-                _mask_to_numpy(self.model.target_atac_decoder_addon_mask).T != 0)
-                gp_peak_mask_source = np.concatenate(
-                    (gp_peak_mask_source, gp_peak_addon_mask_source), axis=0)
-                gp_peak_mask_target = np.concatenate(
-                    (gp_peak_mask_target, gp_peak_addon_mask_target), axis=0)
-
-            # Collect info for each gp in lists of lists
-            n_source_peaks = []
-            n_non_zero_source_peaks = []
-            n_target_peaks = []
-            n_non_zero_target_peaks = []
-            gp_source_peaks = []
-            gp_target_peaks = []
-            gp_source_peaks_weights = []
-            gp_target_peaks_weights = []
-            gp_source_peaks_importances = []
-            gp_target_peaks_importances = []
-            for (gp_source_peaks_idx,
-                 gp_target_peaks_idx,
-                 gp_source_peaks_weights_arr,
-                 gp_target_peaks_weights_arr,
-                 gp_source_peaks_importances_arr,
-                 gp_target_peaks_importances_arr) in zip(
-                    gp_peak_mask_source,
-                    gp_peak_mask_target,
-                    gp_peak_weights_source,
-                    gp_peak_weights_target,
-                    gp_peak_importances_source,
-                    gp_peak_importances_target):
-                # Sort source peaks according to absolute weights
-                peak_weights_source_sorted = []
-                peak_importances_source_sorted = []
-                peaks_source_sorted = []
-                for _, weights, importances, peaks in sorted(zip(
-                    np.abs(np.around(gp_source_peaks_weights_arr[gp_source_peaks_idx],
-                                    decimals=4)), # just for sorting
-                    np.around(gp_source_peaks_weights_arr[gp_source_peaks_idx],
-                            decimals=4),
-                    np.around(gp_source_peaks_importances_arr[gp_source_peaks_idx],
-                            decimals=4),        
-                    self.adata_atac.var_names[gp_source_peaks_idx].tolist()),reverse=True):
-                        peaks_source_sorted.append(peaks)
-                        peak_weights_source_sorted.append(weights)
-                        peak_importances_source_sorted.append(importances)
-                
-                # Sort target peaks according to absolute weights
-                peak_weights_target_sorted = []
-                peak_importances_target_sorted = []
-                peaks_target_sorted = []
-                for _, weights, importances, peaks in sorted(zip(
-                    np.abs(np.around(gp_target_peaks_weights_arr[gp_target_peaks_idx],
-                                    decimals=4)),
-                    np.around(gp_target_peaks_weights_arr[gp_target_peaks_idx],
-                            decimals=4),                 
-                    np.around(gp_target_peaks_importances_arr[gp_target_peaks_idx],
-                            decimals=4),
-                    self.adata_atac.var_names[gp_target_peaks_idx].tolist()), reverse=True):
-                        peaks_target_sorted.append(peaks)
-                        peak_weights_target_sorted.append(weights)
-                        peak_importances_target_sorted.append(importances)                 
-                    
-                n_source_peaks.append(len(peaks_source_sorted))
-                n_non_zero_source_peaks.append(len(np.array(
-                    peak_weights_source_sorted).nonzero()[0]))
-                n_target_peaks.append(len(peaks_target_sorted))
-                n_non_zero_target_peaks.append(len(np.array(
-                    peak_weights_target_sorted).nonzero()[0]))
-                gp_source_peaks.append(peaks_source_sorted)
-                gp_target_peaks.append(peaks_target_sorted)
-                gp_source_peaks_weights.append(peak_weights_source_sorted)
-                gp_target_peaks_weights.append(peak_weights_target_sorted)
-                gp_source_peaks_importances.append(peak_importances_source_sorted)
-                gp_target_peaks_importances.append(peak_importances_target_sorted)
-
-            gp_summary_df["n_source_peaks"] = n_source_peaks
-            gp_summary_df["n_non_zero_source_peaks"] = n_non_zero_source_peaks
-            gp_summary_df["n_target_peaks"] = n_target_peaks
-            gp_summary_df["n_non_zero_target_peaks"] = n_non_zero_target_peaks
-            gp_summary_df["gp_source_peaks"] = gp_source_peaks
-            gp_summary_df["gp_target_peaks"] = gp_target_peaks
-            gp_summary_df["gp_source_peaks_weights"] = gp_source_peaks_weights
-            gp_summary_df["gp_target_peaks_weights"] = gp_target_peaks_weights
-            gp_summary_df["gp_source_peaks_importances"] = gp_source_peaks_importances
-            gp_summary_df["gp_target_peaks_importances"] = gp_target_peaks_importances
-            gp_summary_df["gp_source_peaks_importances"] = (
-                gp_summary_df["gp_source_peaks_importances"].replace(np.nan, 0.))
-            gp_summary_df["gp_target_peaks_importances"] = (
-                gp_summary_df["gp_target_peaks_importances"].replace(np.nan, 0.))
-
-        return gp_summary_df
-    
-
-    def add_active_gp_scores_to_obs(self) -> None:
-        """
-        Add the expression of all active gene programs to ´adata.obs´.      
-        """
-        # Get active gene program names
-        active_gp_names = self.get_active_gps()
-        
-        # Create active gene program df
-        active_gp_df = pd.DataFrame(self.adata.obsm[self.latent_key_],
-                                    columns=active_gp_names)
-        active_gp_df = active_gp_df.set_index(self.adata.obs.index)
-
-        # Drop columns if they are already in ´adata.obs´
-        for col in active_gp_df.columns:
-            if col in self.adata.obs:
-                self.adata.obs.drop(col, axis=1, inplace=True)
-
-        # Concatenate active gene program df horizontally to ´adata.obs´
-        self.adata.obs = pd.concat([self.adata.obs, active_gp_df], axis=1)
-        
+        names = list(self.get_active_gps())
+        scores = self.get_gp_activities(names, orientation=orientation, use_cached=use_cached)
+        self._write_gp_scores(self.adata, names, scores, orientation)

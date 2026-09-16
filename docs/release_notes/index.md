@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file. The format
 is based on [keep a changelog], and this project adheres to
 [Semantic Versioning]. Full commit history is available in the [commit logs].
 
+### Unreleased
+
+- Add automatic, persisted `paper_2025` GP orientation for new models and an
+  explicit migration path for historical checkpoints. Raw inference is unchanged.
+- Share canonical activities and full-precision signed loadings across GP
+  summaries, feature importance, differential tests and plots. Add tidy feature
+  and orientation-quality tables.
+- Add higher/lower differential filters, complete result tables and provenance;
+  handle zero-variance posteriors, missing labels and invalid comparisons.
+- Preserve fitted dynamic decoder masks in checkpoints and fix add-on expansion
+  during reference loading. Validate communication GP eligibility and zero scores.
+- Reject stale differential plots after model, counts, graph or grouping changes;
+  validate fitted feature order and support dense ATAC plotting and empty GP selections.
+- Add `sample_key` to communication analysis to keep spatial neighbors within
+  independent samples, validate graph caches and compute products only on edges.
+- Migrate tutorials away from manual sign correction. See the
+  [GP analysis guide](../user_guide/gene_program_analysis.md) for compatibility
+  details and the limits of the differential statistic.
+
 ### 0.3.3 (15.05.2026)
 
 -   Fix small bug by changing ad.read() to ad.read_h5ad().

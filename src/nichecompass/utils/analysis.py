@@ -63,7 +63,7 @@ def aggregate_obsp_matrix_per_cell_type(
     # Retrieve non zero indices and non zero values, and create row-wise
     # observation cell type index
     nz_obsp_idx = adata.obsp[obsp_key].nonzero()
-    neighbor_cell_type_index = adata.obs[cell_type_key][nz_obsp_idx[1]].map(
+    neighbor_cell_type_index = adata.obs[cell_type_key].iloc[nz_obsp_idx[1]].map(
         cell_type_label_encoder).values
     adata.obsp[obsp_key].eliminate_zeros() # In some sparse reps 0s can appear
     nz_obsp = adata.obsp[obsp_key].data
@@ -224,7 +224,8 @@ def generate_enriched_gp_info_plots(plot_label: str,
                                     save_figs: bool=False,
                                     figure_folder_path: str="",
                                     file_format: str="png",
-                                    spot_size: float=30.):
+                                    spot_size: float=30.,
+                                    orientation=None):
     """
     Generate info plots of enriched gene programs. These show the enriched
     category, the gp activities, as well as the counts (or log normalized
@@ -275,6 +276,20 @@ def generate_enriched_gp_info_plots(plot_label: str,
         Spot size used for the spatial plots.
     """
     model._check_if_trained(warn=True)
+    orientation = model._gp_orientation(orientation)
+    params = model.adata.uns.get(differential_gp_test_results_key + "_params", {})
+    expected_id = "raw"
+    if orientation == "canonical":
+        model._gp_analysis_table()
+        expected_id = model.gp_analysis_["orientation_id"]
+    if params.get("orientation_id", "raw") != expected_id:
+        raise ValueError("Differential results use a different or stale GP orientation. "
+                         "Rerun run_differential_gp_tests before plotting.")
+    if "input_fingerprint" in params:
+        if (params.get("cat_key") != cat_key or
+                params["input_fingerprint"] != model._gp_input_fingerprint(model.adata, cat_key)):
+            raise ValueError("Differential results are stale after model, data, or group changes. "
+                             "Rerun run_differential_gp_tests before plotting.")
 
     adata = model.adata.copy()
     if n_top_peaks_per_gp > 0:
@@ -291,7 +306,7 @@ def generate_enriched_gp_info_plots(plot_label: str,
         adata.uns["omics_ft_pos_cmap"] = "RdBu"
         adata.uns["omics_ft_neg_cmap"] = "RdBu_r"
     else:
-        if n_top_peaks_per_gp > 0:
+        if n_top_peaks_per_gp > 0 and sp.issparse(adata_atac.X):
             adata_atac.X = adata_atac.X.toarray()
         adata.uns["omics_ft_pos_cmap"] = "Blues"
         adata.uns["omics_ft_neg_cmap"] = "Reds"
@@ -300,14 +315,20 @@ def generate_enriched_gp_info_plots(plot_label: str,
         n_top_enriched_gp_start_idx:n_top_enriched_gp_end_idx])
     gps = list(adata.uns[differential_gp_test_results_key]["gene_program"][
         n_top_enriched_gp_start_idx:n_top_enriched_gp_end_idx])
+    if not gps:
+        return
     log_bayes_factors = list(adata.uns[differential_gp_test_results_key]["log_bayes_factor"][
         n_top_enriched_gp_start_idx:n_top_enriched_gp_end_idx])
     
+    if gps:
+        unique_gps = list(dict.fromkeys(gps))
+        adata.obs[unique_gps] = model.get_gp_activities(unique_gps, orientation=orientation)
+
     for gp in gps:
         # Get source and target genes, gene importances and gene signs and store
         # in temporary adata
         gp_gene_importances_df = model.compute_gp_gene_importances(
-            selected_gp=gp)
+            selected_gp=gp, orientation=orientation)
         
         gp_source_genes_gene_importances_df = gp_gene_importances_df[
             gp_gene_importances_df["gene_entity"] == "source"]
@@ -338,7 +359,7 @@ def generate_enriched_gp_info_plots(plot_label: str,
             # Get source and target peaks, peak importances and peak signs and
             # store in temporary adata
             gp_peak_importances_df = model.compute_gp_peak_importances(
-                selected_gp=gp)
+                selected_gp=gp, orientation=orientation)
             gp_source_peaks_peak_importances_df = gp_peak_importances_df[
                 gp_peak_importances_df["peak_entity"] == "source"]
             gp_target_peaks_peak_importances_df = gp_peak_importances_df[
@@ -480,6 +501,10 @@ def plot_enriched_gp_info_plots_(adata: AnnData,
     
     # Plot enriched gp category and gene program latent scores
     for i, gp in enumerate(gps):
+        parts = gp.split("_")
+        spatial_gp_label = gp.replace("_", "\n", 1)
+        latent_gp_label = (f"{parts[0]}\n{' '.join(parts[1:-1])}\n{parts[-1]}"
+                           if len(parts) > 2 else spatial_gp_label)
         if feature_space == "latent":
             sc.pl.umap(
                 adata,
@@ -496,9 +521,7 @@ def plot_enriched_gp_info_plots_(adata: AnnData,
                 color=gps[i],
                 color_map="RdBu",
                 ax=axs[i, 1],
-                title=f"{gp[:gp.index('_')]}\n"
-                      f"{gp[gp.index('_') + 1: gp.rindex('_')].replace('_', ' ')}"
-                      f"\n{gp[gps[i].rindex('_') + 1:]} score (LBF: {round(log_bayes_factors[i])})",
+                title=f"{latent_gp_label} score (LBF: {round(log_bayes_factors[i])})",
                 colorbar_loc="bottom",
                 show=False)
         else:
@@ -518,7 +541,7 @@ def plot_enriched_gp_info_plots_(adata: AnnData,
                 color=gps[i],
                 color_map="RdBu",
                 spot_size=spot_size,
-                title=f"{gps[i].split('_', 1)[0]}\n{gps[i].split('_', 1)[1]} "
+                title=f"{spatial_gp_label} "
                       f"(LBF: {round(log_bayes_factors[i], 2)})",
                 legend_loc=None,
                 ax=axs[i, 1],
@@ -868,13 +891,90 @@ def plot_non_zero_gene_count_means_dist(
     plt.show()
 
 
+def _communication_spatial_graph(adata, n_neighbors, sample_key):
+    """Build a spatial graph within samples and validate its cached inputs."""
+    import hashlib
+
+    if (isinstance(n_neighbors, (bool, np.bool_))
+            or not isinstance(n_neighbors, (int, np.integer)) or n_neighbors < 2):
+        raise ValueError("n_neighbors must be an integer of at least 2.")
+    if sample_key is not None:
+        if sample_key not in adata.obs:
+            raise ValueError(f"Unknown sample_key: {sample_key!r}.")
+        labels = adata.obs[sample_key]
+        if labels.isna().any():
+            raise ValueError("Communication sample labels must not be missing.")
+        sample_codes, _ = pd.factorize(labels, sort=False)
+    else:
+        labels = pd.Series(np.zeros(adata.n_obs, dtype=int), index=adata.obs_names)
+        sample_codes = np.zeros(adata.n_obs, dtype=int)
+
+    cached = adata.uns.get("spatial_cci", {})
+    params = cached.get("params", {})
+    graph_key = "spatial_cci_connectivities"
+    valid_cached_shape = (graph_key in adata.obsp
+                          and adata.obsp[graph_key].shape == (adata.n_obs, adata.n_obs))
+    if "spatial" not in adata.obsm:
+        # Historical callers may supply a graph directly without coordinates.
+        # Only allow that convention when no sample partition was requested.
+        if (sample_key is None and valid_cached_shape
+                and params.get("n_neighbors") == n_neighbors
+                and "input_fingerprint" not in cached):
+            return adata.obsp[graph_key]
+        raise ValueError("Communication requires spatial coordinates in adata.obsm['spatial'].")
+    coordinates = np.asarray(adata.obsm["spatial"])
+    if (coordinates.ndim != 2 or coordinates.shape[1] == 0
+            or not np.issubdtype(coordinates.dtype, np.number)
+            or not np.isfinite(coordinates).all()):
+        raise ValueError("Communication spatial coordinates must be a finite numeric matrix.")
+    digest = hashlib.sha256()
+    digest.update(repr((coordinates.shape, str(coordinates.dtype), n_neighbors, sample_key)).encode())
+    digest.update(np.ascontiguousarray(coordinates).tobytes())
+    digest.update(pd.util.hash_pandas_object(labels, index=True).values.tobytes())
+    fingerprint = digest.hexdigest()
+    if valid_cached_shape and cached.get("input_fingerprint") == fingerprint:
+        return adata.obsp[graph_key]
+
+    blocks = {"connectivities": [], "distances": []}
+    for code in pd.unique(sample_codes):
+        indices = np.flatnonzero(sample_codes == code)
+        if len(indices) < 2:
+            continue
+        if len(indices) == 2:
+            rows, cols = np.array([0, 1]), np.array([1, 0])
+            distance = np.linalg.norm(coordinates[indices[0]] - coordinates[indices[1]])
+            local = {"connectivities": sp.coo_matrix((np.ones(2), (rows, cols)), shape=(2, 2)),
+                     "distances": sp.coo_matrix((np.full(2, distance), (rows, cols)), shape=(2, 2))}
+        else:
+            subset = AnnData(np.zeros((len(indices), 0), dtype=np.float32))
+            subset.obsm["spatial"] = coordinates[indices]
+            sc.pp.neighbors(subset, n_neighbors=min(n_neighbors, len(indices)),
+                            use_rep="spatial", key_added="spatial_cci")
+            local = {kind: subset.obsp[f"spatial_cci_{kind}"].tocoo() for kind in blocks}
+        for kind, block in local.items():
+            blocks[kind].append((indices[block.row], indices[block.col], block.data))
+    for kind, pieces in blocks.items():
+        if pieces:
+            row, col, data = (np.concatenate([piece[i] for piece in pieces]) for i in range(3))
+            graph = sp.csr_matrix((data, (row, col)), shape=(adata.n_obs, adata.n_obs))
+        else:
+            graph = sp.csr_matrix((adata.n_obs, adata.n_obs), dtype=np.float32)
+        adata.obsp[f"spatial_cci_{kind}"] = graph
+    adata.uns["spatial_cci"] = {
+        "connectivities_key": graph_key, "distances_key": "spatial_cci_distances",
+        "params": {"n_neighbors": n_neighbors, "use_rep": "spatial", "method": "umap"},
+        "sample_key": sample_key or "", "input_fingerprint": fingerprint}
+    return adata.obsp[graph_key]
+
+
 def compute_communication_gp_network(
     gp_list: list,
     model: NicheCompass,
     group_key: str="niche",
     filter_key: Optional[str]=None,
     filter_cat: Optional[str]=None,
-    n_neighbors: int=90):
+    n_neighbors: int=90,
+    sample_key: Optional[str]=None):
     """
     Compute a network of category aggregated cell-pair communication strengths.
     
@@ -899,29 +999,36 @@ def compute_communication_gp_network(
         Category for which the results are filtered.
     n_neighbors:
         Number of neighbors for the gp-specific neighborhood graph.
+    sample_key:
+        Observation column identifying independent spatial samples. Neighbors
+        are computed within each sample. Pass this for integrated datasets;
+        otherwise all observations are treated as one spatial sample.
 
     Returns
     ----------
     network_df:
         A pandas dataframe with aggregated, normalized cell-pair communication strengths.
     """
-    # Compute neighborhood graph
-    compute_knn = True
-    if 'spatial_cci' in model.adata.uns.keys():
-        if model.adata.uns['spatial_cci']['params']['n_neighbors'] == n_neighbors:
-            compute_knn = False
-    if compute_knn:
-        sc.pp.neighbors(model.adata,
-                        n_neighbors=n_neighbors,
-                        use_rep="spatial",
-                        key_added="spatial_cci")
+    # Validate before creating graphs or writing communication scores. These
+    # scores require a prior with both measured source and target members.
+    gp_list, gp_indices = model._gp_selection(gp_list)
+    if not gp_list:
+        raise ValueError("Select at least one communication GP.")
+    gp_summary_df = model.get_gp_summary(orientation="raw")
+    selected_summary = gp_summary_df.set_index("gp_name").loc[gp_list]
+    if (np.any(gp_indices >= model.n_prior_gp_)
+            or not selected_summary.gp_active.all()
+            or (selected_summary.n_source_genes == 0).any()
+            or (selected_summary.n_target_genes == 0).any()):
+        raise ValueError("Communication requires active prior GPs with source and target genes.")
+    # Products require scores and weights in the same coordinate convention.
+    raw_scores = model.get_gp_activities(gp_list, orientation="raw", use_cached=True)
+    spatial_graph = _communication_spatial_graph(model.adata, n_neighbors, sample_key)
     
     gp_network_dfs = []
-    gp_summary_df = model.get_gp_summary()
-    for gp in gp_list:
+    for gp_column, gp in enumerate(gp_list):
         gp_idx = model.adata.uns[model.gp_names_key_].tolist().index(gp)
-        active_gp_idx = model.adata.uns[model.active_gp_names_key_].tolist().index(gp)
-        gp_scores = model.adata.obsm[model.latent_key_][:, active_gp_idx]
+        gp_scores = raw_scores[:, gp_column]
         gp_targets_cats = model.adata.varm[model.gp_targets_categories_mask_key_][:, gp_idx]
         gp_sources_cats = model.adata.varm[model.gp_sources_categories_mask_key_][:, gp_idx]
         targets_cats_label_encoder = model.adata.uns[model.targets_categories_label_encoder_key_]
@@ -951,15 +1058,21 @@ def compute_communication_gp_network(
 
         for i, source_gene_idx in enumerate(source_genes_idx):
             source_gene = model.adata.var_names[source_gene_idx]
+            counts = model.adata[:, source_gene_idx].X
+            counts = counts.toarray().ravel() if sp.issparse(counts) else np.asarray(counts).ravel()
+            normalized = counts / counts.max() if counts.max() > 0 else np.zeros_like(counts)
             gp_source_scores[:, i] = (
-                model.adata[:, model.adata.var_names.tolist().index(source_gene)].X.toarray().flatten() / model.adata[:, model.adata.var_names.tolist().index(source_gene)].X.toarray().flatten().max() *
+                normalized *
                 gp_summary_df[gp_summary_df["gp_name"] == gp]["gp_source_genes_weights"].values[0][gp_summary_df[gp_summary_df["gp_name"] == gp]["gp_source_genes"].values[0].index(source_gene)] *
                 gp_scores)
 
         for j, target_gene_idx in enumerate(target_genes_idx):
             target_gene = model.adata.var_names[target_gene_idx]
+            counts = model.adata[:, target_gene_idx].X
+            counts = counts.toarray().ravel() if sp.issparse(counts) else np.asarray(counts).ravel()
+            normalized = counts / counts.max() if counts.max() > 0 else np.zeros_like(counts)
             gp_target_scores[:, j] = (
-                model.adata[:, model.adata.var_names.tolist().index(target_gene)].X.toarray().flatten() / model.adata[:, model.adata.var_names.tolist().index(target_gene)].X.toarray().flatten().max() *
+                normalized *
                 gp_summary_df[gp_summary_df["gp_name"] == gp]["gp_target_genes_weights"].values[0][gp_summary_df[gp_summary_df["gp_name"] == gp]["gp_target_genes"].values[0].index(target_gene)] *
                 gp_scores)
 
@@ -974,11 +1087,12 @@ def compute_communication_gp_network(
         del(gp_target_scores)
         del(gp_source_scores)
 
-        agg_gp_source_score = sp.csr_matrix(agg_gp_source_score)
-        agg_gp_target_score = sp.csr_matrix(agg_gp_target_score)
-
-        model.adata.obsp[f"{gp}_connectivities"] = (model.adata.obsp["spatial_cci_connectivities"] > 0).multiply(
-            agg_gp_source_score.T.dot(agg_gp_target_score))
+        # Evaluate products only on spatial edges; a full outer product is
+        # quadratic in the number of cells even for a sparse neighbor graph.
+        edges = (spatial_graph > 0).tocoo()
+        products = agg_gp_source_score[edges.row] * agg_gp_target_score[edges.col]
+        model.adata.obsp[f"{gp}_connectivities"] = sp.csr_matrix(
+            (products, (edges.row, edges.col)), shape=spatial_graph.shape)
 
         # Aggregate gp connectivities for each group
         gp_network_df_pivoted = aggregate_obsp_matrix_per_cell_type(
@@ -1000,7 +1114,8 @@ def compute_communication_gp_network(
         min_value = gp_network_df["strength"].min()
         max_value = gp_network_df["strength"].max()
         gp_network_df["strength_unscaled"] = gp_network_df["strength"]
-        gp_network_df["strength"] = (gp_network_df["strength"] - min_value) / (max_value - min_value)
+        gp_network_df["strength"] = ((gp_network_df["strength"] - min_value) / (max_value - min_value)
+                                    if max_value > min_value else 0.0)
         gp_network_df["strength"] = np.round(gp_network_df["strength"], 2)
         gp_network_df = gp_network_df[gp_network_df["strength"] > 0]
 
