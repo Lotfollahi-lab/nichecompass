@@ -87,18 +87,47 @@ model = NicheCompass.load(
     unfreeze_cat_covariates_embedder_weights=True)
 ```
 
-Be aware of what this can and cannot do. The covariate embedding reaches the
-encoder only when `cat_covariates_embeds_injection` contains `"encoder"`. With
-the default decoder-only injection the query latent is the unmodified
-reference encoder applied to the query, so **no trainable parameter can change
-the query gene program scores at all** — training fits a reconstruction offset
-downstream of the latent. `load()` warns when that is the situation.
+This works only if the covariate embedding reaches the encoder, which means
+`cat_covariates_embeds_injection` must contain `"encoder"`. That is now the
+default, but it is a property of the **reference**: it adds the embedding
+width to the encoder's input dimension, so it changes `fc_l1`'s shape and
+cannot be switched on for an existing checkpoint. `load()` warns when nothing
+you unfroze can reach the latent, which is what a decoder-only reference plus
+this setting amounts to — the query latent is then the unmodified reference
+encoder applied to the query, and training fits a reconstruction offset
+downstream of it. For such a reference, `unfreeze_encoder_weights` is the
+available lever.
 
-That choice cannot be made at query time: encoder injection adds the
-embedding width to the encoder's input dimension, so it changes `fc_l1`'s
-shape and has to be set when the **reference** is trained
-(`cat_covariates_embeds_injection=["encoder", "gene_expr_decoder"]`). For an
-existing reference, `unfreeze_encoder_weights` is the available lever.
+### What encoder injection can express
+
+More than a per-sample offset, and this is worth being precise about. The
+embedding is concatenated to the encoder input, passed through `fc_l1` and its
+**ReLU**, and only then aggregated over the spatial graph. Because of that
+nonlinearity, each neighbour's covariate contribution is
+`relu(W_x x_j + W_c c + b) − relu(W_x x_j + b)`, which depends on that
+neighbour's own expression. Aggregation therefore produces an effect that
+depends on **which** cell types surround a cell, not only on how many:
+
+```
+same degree, neighbourhood all type A:  -0.348  +0.263  +0.154  ...
+same degree, neighbourhood all type B:  -0.084  +0.376  -0.706  ...
+```
+
+So a frozen encoder with a trainable covariate embedding can adapt in a
+composition-sensitive way. The limit is dimensional rather than qualitative:
+the only trainable tensor on that route is the embedding, so the reachable
+perturbations form a family with as many parameters as the embedding is wide,
+pushed through a frozen network. It can tilt the latent in response to
+composition; it cannot re-map composition arbitrarily. For that, unfreeze the
+encoder.
+
+The contrast is instructive. `Encoder` also supports a `"hidden"` mode, which
+concatenates the embedding **after** the ReLU and feeds it straight into the
+convolution. That path is linear in the embedding, so the aggregate reduces to
+a degree-dependent offset and carries no composition information at all — the
+effect is identical across neighbourhoods to within floating point. Only the
+`"input"` mode buys the behaviour above, and it is the mode the model always
+uses (`VGPGAE` never passes the argument, so `Encoder`'s own default applies).
 
 **Adapting to a different tissue architecture:**
 

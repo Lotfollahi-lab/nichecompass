@@ -197,7 +197,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  cat_covariates_embeds_injection: Optional[List[
                      Literal["encoder",
                              "gene_expr_decoder",
-                             "chrom_access_decoder"]]]=["gene_expr_decoder",
+                             "chrom_access_decoder"]]]=["encoder",
+                                                        "gene_expr_decoder",
                                                         "chrom_access_decoder"],
                  use_fc_decoder: bool=False,
                  fc_decoder_n_layers: int=2,

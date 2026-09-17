@@ -96,6 +96,17 @@ class NicheCompass(GPAnalysisMixin, BaseModelMixin):
         ´adata.uns´.
     cat_covariates_embeds_injection:
         List of VGPGAE modules in which the categorical covariates embeddings
+        are injected. Including ´"encoder"´ is what lets a covariate embedding
+        absorb technical shift OUT of the latent rather than leaving it there,
+        which is the basis of query to reference mapping: the embedding is
+        concatenated to the encoder input, passed through the first fully
+        connected layer and its ReLU, and only then aggregated over the
+        spatial graph - so each neighbour's covariate contribution is
+        modulated by that neighbour's own expression and the aggregate depends
+        on the neighbourhood's composition, not only on its degree. This has
+        to be chosen when the reference is trained, because it changes the
+        encoder's input dimension and therefore cannot be switched on for an
+        existing checkpoint.
         are injected.
     genes_idx_key:
         Key in ´adata.uns´ where the index of a concatenated vector of target
@@ -228,7 +239,8 @@ class NicheCompass(GPAnalysisMixin, BaseModelMixin):
                  cat_covariates_embeds_injection: Optional[List[
                      Literal["encoder",
                              "gene_expr_decoder",
-                             "chrom_access_decoder"]]]=["gene_expr_decoder",
+                             "chrom_access_decoder"]]]=["encoder",
+                                                        "gene_expr_decoder",
                                                         "chrom_access_decoder"],
                  cat_covariates_keys: Optional[List[str]]=None,
                  cat_covariates_no_edges: Optional[List[bool]]=None,
