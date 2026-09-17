@@ -235,33 +235,55 @@ def test_graph_adapter_is_the_identity_before_training():
     torch.manual_seed(0)
     adapter = GraphAdapter(n_input=8, n_bottleneck=3)
     x = torch.randn(6, 8)
-    edge_index = torch.tensor([[0, 1, 2, 3, 4, 5, 0, 2],
-                               [1, 0, 3, 2, 5, 4, 2, 0]])
-    torch.testing.assert_close(adapter(x, edge_index), x)
-    # and it stops being the identity once ´up´ is non-zero
+    torch.testing.assert_close(adapter(x), x)
     with torch.no_grad():
         adapter.up.weight.normal_()
-    assert not torch.allclose(adapter(x, edge_index), x)
+    assert not torch.allclose(adapter(x), x)
 
 
-def test_graph_adapter_responds_to_neighbourhood_composition():
-    """The point of doing message passing inside the adapter: two nodes with
-    the same degree but different neighbours must be adapted differently."""
+def test_graph_adapter_does_no_message_passing_of_its_own():
+    """It must not add a hop. A single layer encoder aggregates over one hop
+    and the loaders sample one hop; an adapter with its own convolution would
+    make the encoder two hops deep and read neighbours the sampler truncated."""
+    from nichecompass.nn import GraphAdapter
+    import inspect
+    torch.manual_seed(0)
+    adapter = GraphAdapter(n_input=6, n_bottleneck=4)
+    with torch.no_grad():
+        adapter.up.weight.normal_()
+    # No graph argument, and no convolution submodule.
+    assert list(inspect.signature(adapter.forward).parameters) == ["x"]
+    assert not any("conv" in name for name, _ in adapter.named_modules())
+    # Each row is transformed independently of every other row.
+    x = torch.randn(5, 6)
+    rowwise = torch.cat([adapter(x[i:i + 1]) for i in range(x.size(0))])
+    torch.testing.assert_close(adapter(x), rowwise)
+
+
+def test_composition_sensitivity_comes_from_the_following_convolution():
+    """The adapter is per cell, but the convolution that already follows it
+    aggregates neighbours' corrections, and those differ by cell type - so the
+    adapted latent depends on WHICH cells are neighbours, with no extra hop."""
     from nichecompass.nn import GraphAdapter
     torch.manual_seed(0)
     adapter = GraphAdapter(n_input=6, n_bottleneck=4)
     with torch.no_grad():
-        adapter.up.weight.normal_()          # leave the identity
+        adapter.up.weight.normal_(0, 0.5)
+
+    def mean_aggregate(h, neighbours):
+        return torch.stack([h] + list(neighbours)).mean(0)
+
     type_a, type_b, focal = (torch.randn(6) for _ in range(3))
-    # node 0 surrounded by type A, node 4 by type B, both degree 2
-    x = torch.stack([focal, type_a, type_a, focal, type_b, type_b])
-    edge_index = torch.tensor([[0, 0, 1, 2, 3, 3, 4, 5],
-                               [1, 2, 0, 0, 4, 5, 3, 3]])
-    out = adapter(x, edge_index)
-    delta_a = (out[0] - x[0])
-    delta_b = (out[3] - x[3])
+    # identical degree, different neighbourhood composition
+    plain_a = mean_aggregate(focal, [type_a, type_a])
+    plain_b = mean_aggregate(focal, [type_b, type_b])
+    adapted_a = mean_aggregate(adapter(focal[None])[0],
+                               [adapter(type_a[None])[0]] * 2)
+    adapted_b = mean_aggregate(adapter(focal[None])[0],
+                               [adapter(type_b[None])[0]] * 2)
+    delta_a, delta_b = adapted_a - plain_a, adapted_b - plain_b
     assert not torch.allclose(delta_a, delta_b, atol=1e-6), (
-        "the adapter ignored neighbourhood composition")
+        "the adapter's effect did not depend on neighbourhood composition")
 
 
 def test_adapters_can_be_attached_to_a_trained_reference(reference):
@@ -273,6 +295,11 @@ def test_adapters_can_be_attached_to_a_trained_reference(reference):
     groups = _parameter_groups(loaded.model)
     by_name = dict(loaded.model.named_parameters())
     assert groups["graph_adapter"], "no adapter parameters were created"
+    # One adapter per graph convolution stage.
+    n_adapters = len({n.split("graph_adapters.")[1].split(".")[0]
+                      for n in groups["graph_adapter"]})
+    assert n_adapters == loaded.model.encoder.n_layers, (
+        f"{n_adapters} adapters for {loaded.model.encoder.n_layers} layers")
     for name in groups["graph_adapter"]:
         assert by_name[name].requires_grad, name
     # Everything else stays frozen, including the loadings.

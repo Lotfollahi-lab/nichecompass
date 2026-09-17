@@ -139,17 +139,36 @@ model = NicheCompass.load(
     unfreeze_graph_adapters=True)
 ```
 
-A graph adapter is a residual bottleneck with its own message passing,
-`h + up(conv(act(down(h)), edge_index))`, inserted into the encoder before the
-frozen convolutions that produce `mu`. It is never applied to `mu` itself:
+A graph adapter is a residual bottleneck, `h + up(act(down(h)))`, placed in
+front of each frozen graph convolution — one for the default single-layer
+encoder, two for `n_layers_encoder=2`.
+
+It does **no message passing of its own**, and that is deliberate. The
+convolution that already follows it does the mixing:
+
+```
+mu_i = conv({h_j + δ(h_j) : j ∈ N(i) ∪ {i}})
+```
+
+Because `δ` is a function of each cell's own representation, the aggregated
+correction depends on *which* cells are neighbours, not only on how many. So
+the adapter is composition-sensitive while remaining a per-cell transform.
+
+Giving it its own convolution — the first version of this module — adds a
+hop, and that is wrong twice over. A single-layer encoder aggregating over one
+hop becomes two, so the query's GP activities would summarise a larger spatial
+region than the reference's, which is precisely the comparability the freeze
+protects. And the loaders sample `loaders_n_hops` hops, one by default, so the
+second aggregation would read neighbours whose own neighbourhoods the sampler
+truncated — silently wrong values for every seed node. It is never applied to `mu` itself:
 `mu` *is* the gene program activities, so transforming it would move the axes
 the loadings define.
 
 Three properties, and no other option here has all three:
 
-- **It sees the real neighbourhood.** Because the message passing is inside
-  the adapter, it can respond to which cell types surround a cell, not only to
-  how many.
+- **It sees the real neighbourhood**, through the convolution that follows
+  it, so it can respond to which cell types surround a cell — without changing
+  how many hops the encoder aggregates over.
 - **It starts as the identity.** `up` is zero-initialised, so attaching an
   adapter changes nothing until it is trained, and a query run departs from the
   reference gradually. An unfrozen encoder has no such anchor.

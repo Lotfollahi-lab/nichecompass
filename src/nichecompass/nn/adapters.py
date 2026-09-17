@@ -3,40 +3,43 @@ This module contains adapters that add a small amount of trainable capacity to
 an otherwise frozen encoder, for adapting a reference model to query data.
 """
 
-from typing import Literal
-
 import torch
 import torch.nn as nn
-from torch_geometric.nn import GATv2Conv, GCNConv
 
 
 class GraphAdapter(nn.Module):
     """
-    Residual bottleneck with its own message passing, for query adaptation.
+    Residual bottleneck that adapts the input of an existing graph convolution.
 
-    Computes ´h + up(conv(act(down(h)), edge_index))´, with ´up´
-    initialized to zero so that the module is exactly the identity before it
-    is trained.
+    Computes ´h + up(act(down(h)))´, with ´up´ initialized to zero so that the
+    module is exactly the identity before it is trained.
 
-    Three properties make this the shape of adaptation a spatial query wants,
-    none of which the alternatives have together:
+    It performs NO message passing of its own. That is the point: the
+    correction it adds is per cell, and the graph convolution that already
+    follows it is what mixes those corrections across each cell's
+    neighbourhood. Concretely, the convolution then computes
 
-    - It performs its own message passing, so unlike anything applied to the
-      encoder's input it sees the cell's ACTUAL neighbourhood and can respond
-      to which cell types surround it, not only to how many.
-    - It starts as the identity and sits alongside a frozen path, so a query
-      run departs from the reference gradually rather than from a random
-      initialization. A fully unfrozen encoder has no such anchor.
-    - It adds parameters instead of changing the shape of existing ones, so it
-      can be attached to a reference that has ALREADY been trained. Injecting
-      covariate embeddings into the encoder cannot: that changes the encoder's
-      input dimension.
+        mu_i = conv({h_j + delta(h_j) : j in N(i) and i})
 
-    It is deliberately placed before the frozen graph convolutions that
-    produce ´mu´, and never on ´mu´ itself. ´mu´ IS the gene program
-    activities, so transforming it would move the axes the gene program
-    loadings define, which is the one thing freezing the decoder exists to
-    prevent.
+    and because ´delta´ is a function of each cell's own representation, the
+    aggregated correction depends on WHICH cells are neighbours, not only on
+    how many. The adapter is therefore neighbourhood composition sensitive
+    even though it is a per cell transform: the existing convolution supplies
+    the graph, the adapter supplies the trainable part.
+
+    Giving the adapter its own convolution instead would be a mistake, and was
+    the first version of this module. It adds a hop, so a single layer encoder
+    aggregating over one hop becomes two and the query's gene program
+    activities would summarize a larger spatial region than the reference's -
+    exactly the comparability the freeze exists to protect. It also breaks the
+    minibatch: the loaders sample ´loaders_n_hops´ hops, one by default, so a
+    second aggregation reads neighbours whose own neighbourhoods the sampler
+    truncated, and silently computes the wrong value for every seed node.
+
+    Adapters are placed in front of the graph convolutions and never on ´mu´.
+    ´mu´ IS the gene program activities; adapting the map that produces it is
+    legitimate, and is what unfreezing the encoder does, but transforming
+    ´mu´ after the fact would move the axes the frozen loadings define.
 
     Parameters
     ----------
@@ -45,35 +48,18 @@ class GraphAdapter(nn.Module):
     n_bottleneck:
         Width of the bottleneck. Small relative to ´n_input´ is the point: it
         bounds how far the query can depart from the reference.
-    conv_layer:
-        Graph convolution used inside the bottleneck.
-    n_attention_heads:
-        Number of attention heads, used only for ´"gatv2conv"´.
     activation:
         Activation applied after the down projection.
     """
     def __init__(self,
                  n_input: int,
                  n_bottleneck: int,
-                 conv_layer: Literal["gcnconv", "gatv2conv"]="gcnconv",
-                 n_attention_heads: int=4,
                  activation=torch.relu):
         super().__init__()
         if n_bottleneck <= 0:
             raise ValueError("´n_bottleneck´ must be a positive integer.")
         self.activation = activation
         self.down = nn.Linear(n_input, n_bottleneck)
-        if conv_layer == "gcnconv":
-            self.conv = GCNConv(n_bottleneck, n_bottleneck)
-        elif conv_layer == "gatv2conv":
-            self.conv = GATv2Conv(n_bottleneck,
-                                  n_bottleneck,
-                                  heads=n_attention_heads,
-                                  concat=False)
-        else:
-            raise ValueError(
-                f"´conv_layer´ is {conv_layer!r}, which is neither 'gcnconv' "
-                "nor 'gatv2conv'.")
         self.up = nn.Linear(n_bottleneck, n_input)
         # Exact identity at initialization. Without this the adapter would
         # inject noise into a frozen encoder on the first forward, which is
@@ -82,30 +68,22 @@ class GraphAdapter(nn.Module):
         nn.init.zeros_(self.up.bias)
 
         print(f"GRAPH ADAPTER -> n_input: {n_input}, "
-              f"n_bottleneck: {n_bottleneck}, conv_layer: {conv_layer}")
+              f"n_bottleneck: {n_bottleneck}")
 
-    def forward(self,
-                x: torch.Tensor,
-                edge_index: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Adapt a node representation using its neighbourhood.
+        Add a bounded per cell correction to a node representation.
 
         Parameters
         ----------
         x:
             Node representation (dim: n_obs x n_input).
-        edge_index:
-            Graph connectivity (dim: 2 x n_edges).
 
         Returns
         ----------
         x:
             Adapted node representation, equal to the input until trained.
+            The graph convolution that follows turns these per cell
+            corrections into a neighbourhood dependent one.
         """
-        # One nonlinearity, as in the standard adapter bottleneck. A second
-        # one after the convolution zeroes out too much at small bottleneck
-        # widths: with two ReLUs a node whose projection is entirely negative
-        # receives no adaptation at all.
-        hidden = self.activation(self.down(x))
-        hidden = self.conv(hidden, edge_index)
-        return x + self.up(hidden)
+        return x + self.up(self.activation(self.down(x)))

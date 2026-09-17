@@ -40,6 +40,11 @@ class Encoder(nn.Module):
         Message passing layer used.
     n_layers:
         Number of message passing layers.
+    n_graph_adapter_hidden:
+        Bottleneck width of the graph adapters. ´0´ disables them. One adapter
+        is placed in front of each graph convolution stage, so a single layer
+        encoder gets one and a two layer encoder gets two. They are the
+        identity at initialization.
     cat_covariates_embed_mode:
         Indicates where to inject the categorical covariates embedding if
         injected.
@@ -114,17 +119,23 @@ class Encoder(nn.Module):
             # Add categorical covariates embedding to hidden after fc_l
             n_hidden += n_cat_covariates_embed_input
 
-        # Placed on the representation the frozen convolutions consume, never
-        # on ´mu´: ´mu´ is the gene program activities, so adapting it would
-        # move the axes the loadings define.
+        # One adapter in front of each frozen graph stage. Each is a per cell
+        # bottleneck with NO message passing of its own, so the number of hops
+        # the encoder aggregates over is unchanged - the query keeps summarizing
+        # the same spatial neighbourhood as the reference, and the loaders'
+        # ´loaders_n_hops´ sampling stays sufficient. The convolution that
+        # follows each adapter is what turns its per cell corrections into a
+        # neighbourhood dependent one.
+        # Never on ´mu´ itself: ´mu´ IS the gene program activities, so
+        # transforming it would move the axes the loadings define.
         self.n_graph_adapter_hidden = n_graph_adapter_hidden
-        if n_graph_adapter_hidden > 0:
-            self.graph_adapter = GraphAdapter(
-                n_input=n_hidden,
-                n_bottleneck=n_graph_adapter_hidden,
-                conv_layer=conv_layer,
-                n_attention_heads=n_attention_heads,
-                activation=activation)
+        self.n_graph_adapters = n_layers if n_graph_adapter_hidden > 0 else 0
+        if self.n_graph_adapters > 0:
+            self.graph_adapters = nn.ModuleList([
+                GraphAdapter(n_input=n_hidden,
+                             n_bottleneck=n_graph_adapter_hidden,
+                             activation=activation)
+                for _ in range(self.n_graph_adapters)])
 
         if conv_layer == "gcnconv":
             if n_layers == 2:
@@ -213,15 +224,17 @@ class Encoder(nn.Module):
                                 cat_covariates_embed),
                                axis=1)
         
-        if self.n_graph_adapter_hidden > 0:
-            # Identity until trained, so a frozen reference is unchanged by
-            # the adapter's presence.
-            hidden = self.graph_adapter(hidden, edge_index)
+        # Each adapter is the identity until trained, so a frozen reference is
+        # unchanged by their presence.
+        if self.n_graph_adapters > 0:
+            hidden = self.graph_adapters[0](hidden)
 
         if self.n_layers == 2:
             # Part of forward pass shared across all nodes
             hidden = self.dropout(self.activation(
                 self.conv_l1(hidden, edge_index)))
+            if self.n_graph_adapters > 1:
+                hidden = self.graph_adapters[1](hidden)
 
         # Part of forward pass only for maskable latent nodes
         mu = self.conv_mu(hidden, edge_index)
