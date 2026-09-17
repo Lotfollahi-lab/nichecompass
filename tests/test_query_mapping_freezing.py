@@ -208,16 +208,41 @@ def test_addon_programs_added_for_the_query_still_get_a_statistic(reference):
 
 
 def test_warns_when_nothing_unfrozen_can_reach_the_latent(reference):
-    """The tutorial's configuration on a decoder-only reference: hours of
-    fine tuning that changes no gene program score."""
+    """Hours of fine tuning that changes no gene program score.
+
+    Keyed on a group that is EMPTY rather than on the injection list: asking
+    for adapters on a model that has none unfreezes nothing, and pairing it
+    with the dispersion means ´unfrozen´ is non-empty so neither the
+    all-frozen notice nor ´Trainer´'s refusal fires. That is precisely the
+    case the warning exists for, and the previous version of this test
+    skipped unconditionally once "encoder" entered the default injection.
+    """
     model, path = reference
-    injection = model.init_params_.get("cat_covariates_embeds_injection") or []
-    if "encoder" in injection:
-        pytest.skip("this reference already injects covariates into the encoder")
     with pytest.warns(UserWarning, match="unfreeze_encoder_weights"):
         NicheCompass.load(
             str(path), adata_file_name="adata.h5ad",
-            unfreeze_cat_covariates_embedder_weights=True)
+            unfreeze_graph_adapters=True,
+            unfreeze_dispersion=True)
+
+
+def test_asking_for_absent_adapters_says_so(reference):
+    model, path = reference
+    with pytest.warns(UserWarning, match="n_graph_adapter_hidden"):
+        NicheCompass.load(str(path), adata_file_name="adata.h5ad",
+                          unfreeze_graph_adapters=True)
+
+
+def test_a_conflicting_adapter_width_is_refused(reference):
+    """Narrowing existing adapters died inside a ´torch.cat´ with a message
+    naming neither the adapter nor the width."""
+    model, path = reference
+    wide = NicheCompass.load(str(path), adata_file_name="adata.h5ad",
+                             n_graph_adapter_hidden=8)
+    wide.is_trained_ = True
+    wide.save(str(path / "wide"), overwrite=True, save_adata=True)
+    with pytest.raises(ValueError, match="width"):
+        NicheCompass.load(str(path / "wide"), adata_file_name="adata.h5ad",
+                          n_graph_adapter_hidden=4)
 
 
 def test_no_warning_when_the_encoder_is_unfrozen(reference, recwarn):
@@ -225,7 +250,7 @@ def test_no_warning_when_the_encoder_is_unfrozen(reference, recwarn):
     NicheCompass.load(str(path), adata_file_name="adata.h5ad",
                       unfreeze_encoder_weights=True)
     assert not [w for w in recwarn
-                if "cannot change the latent" in str(w.message)]
+                if "can change the latent space" in str(w.message)]
 
 
 def test_graph_adapter_is_the_identity_before_training():
@@ -315,4 +340,4 @@ def test_attaching_adapters_does_not_trigger_the_latent_warning(reference, recwa
                       n_graph_adapter_hidden=4,
                       unfreeze_graph_adapters=True)
     assert not [w for w in recwarn
-                if "cannot change the latent" in str(w.message)]
+                if "can change the latent space" in str(w.message)]

@@ -358,15 +358,21 @@ class BaseModelMixin():
             ´unfreeze_encoder_weights´.
         n_graph_adapter_hidden:
             Attach graph adapters of this bottleneck width to the encoder,
-            even if the reference was trained without them. An adapter
-            performs its own message passing, so it can respond to the
-            query's neighbourhood COMPOSITION, and it is the identity at
-            initialization, so the model is unchanged until trained. Unlike
-            injecting covariate embeddings into the encoder, this can be done
-            to an already trained reference, because it adds parameters rather
-            than changing the shape of existing ones. Pair with
-            ´unfreeze_graph_adapters=True´; on its own it only changes the
-            architecture. ´None´ keeps whatever the checkpoint has.
+            even if the reference was trained without them. An adapter is a
+            per cell residual bottleneck with NO message passing of its own,
+            so it adds no hop and ´loaders_n_hops´ is unaffected: the frozen
+            convolution that already follows it is what turns its per cell
+            corrections into a neighbourhood dependent one, which is how it
+            responds to the query's neighbourhood COMPOSITION without
+            changing the spatial scale the reference summarized. It is the
+            identity at initialization, so the model is unchanged until
+            trained. Unlike injecting covariate embeddings into the encoder,
+            this can be done to an already trained reference, because it adds
+            parameters rather than changing the shape of existing ones. Pair
+            with ´unfreeze_graph_adapters=True´; on its own it only changes
+            the architecture. Must match the width the checkpoint was trained
+            with, if it has adapters. ´None´ keeps whatever the checkpoint
+            has.
 
         Returns
         -------
@@ -460,6 +466,18 @@ class BaseModelMixin():
                 raise ValueError(
                     "´n_graph_adapter_hidden´ must be a positive integer, or "
                     "´None´ to keep whatever the checkpoint was trained with.")
+            saved_width = attr_dict["init_params_"].get(
+                "n_graph_adapter_hidden", 0) or 0
+            if saved_width and saved_width != n_graph_adapter_hidden:
+                # ´load_and_expand_state_dict´ can only GROW a tensor, so a
+                # narrower request fails inside a ´torch.cat´ with a message
+                # naming neither the adapter nor the width.
+                raise ValueError(
+                    f"´n_graph_adapter_hidden´ is {n_graph_adapter_hidden}, "
+                    f"but this checkpoint was trained with adapters of width "
+                    f"{saved_width}. Pass {saved_width}, or ´None´ to keep "
+                    "the checkpoint's own width. Changing the width of "
+                    "existing adapters is not supported.")
             attr_dict["init_params_"]["n_graph_adapter_hidden"] = (
                 n_graph_adapter_hidden)
             attr_dict["n_graph_adapter_hidden_"] = n_graph_adapter_hidden
@@ -605,12 +623,27 @@ class BaseModelMixin():
             # goes on to interpret.
             injection = model.init_params_.get(
                 "cat_covariates_embeds_injection") or []
-            covariate_reaches_latent = ("encoder" in injection
-                                        and requested.get(
-                                            "cat_covariates_embedder", False))
+            # Gated on groups that are actually NON-EMPTY, not merely
+            # requested. Asking to unfreeze adapters on a model that has none,
+            # or add-on heads on a model with no add-on programs, unfreezes
+            # nothing - and testing the request alone would silence this
+            # warning in exactly that case. Likewise "encoder" is in the
+            # default injection for every model now, including models with no
+            # categorical covariates at all, whose encoder was built with no
+            # embedding input and has no embedder parameters.
+            covariate_reaches_latent = bool(
+                "encoder" in injection
+                and requested.get("cat_covariates_embedder", False)
+                and groups["cat_covariates_embedder"])
             encoder_is_trainable = any(
-                requested.get(group, False)
+                requested.get(group, False) and groups[group]
                 for group in ("encoder", "addon_gp_encoder", "graph_adapter"))
+            if (unfreeze_graph_adapters and not groups["graph_adapter"]):
+                warnings.warn(
+                    "´unfreeze_graph_adapters=True´ was passed but this model "
+                    "has no graph adapters, so nothing was unfrozen by it. "
+                    "Pass ´n_graph_adapter_hidden=<width>´ to attach them; it "
+                    "works on an already trained reference.")
             if not (encoder_is_trainable or covariate_reaches_latent):
                 warnings.warn(
                     "Nothing that was unfrozen can change the latent space, "
