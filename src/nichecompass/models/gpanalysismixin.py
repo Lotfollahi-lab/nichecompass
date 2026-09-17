@@ -181,15 +181,28 @@ class GPAnalysisMixin:
             coherence = abs(signed_mass) / mass if mass else 0.0
             sign = -1 if signed_mass < 0 else 1
             # ´freeze_´ is a whole model flag and stays True under partial
-            # unfreezing, so it alone does not establish that THIS program's
-            # loadings are unchanged. If the inherited sign contradicts the
-            # sign the current loadings imply, the loadings moved: keep the
-            # recomputed sign and stop claiming inheritance, rather than
+            # unfreezing, so for the ADD-ON block it does not establish that
+            # this program's loadings are unchanged: they move under
+            # ´unfreeze_addon_gp_weights´, which leaves ´freeze_´ True. When
+            # an inherited sign contradicts the sign those loadings now imply,
+            # the loadings moved, so the recomputed sign wins rather than
             # returning activities flipped against their own weights.
+            #
+            # Scoped to the add-on block deliberately. A PRIOR program's
+            # loadings can only move under ´unfreeze_all_weights´, which
+            # clears ´freeze_´, so a disagreement there is unreachable through
+            # the API and inheriting is the documented contract - a frozen
+            # reference keeps its signs, which is what makes reference and
+            # query scores comparable.
             inherited = bool(getattr(self, "freeze_", False) and gp_id in old_rows)
+            # 0 rather than None: this table is written to ´adata.uns´ and on
+            # to HDF5, and a column mixing None with ints is an object column
+            # that h5py refuses, which broke every ´save´ of a model carrying
+            # a gene program analysis table. The sign is only ever +/-1, so 0
+            # is an unambiguous "not inherited".
             inherited_sign = (int(old_rows[gp_id]["orientation_sign"])
-                              if inherited else None)
-            sign_disagrees = bool(inherited and mass > 0
+                              if inherited else 0)
+            sign_disagrees = bool(inherited and k >= n_prior and mass > 0
                                   and inherited_sign != sign)
             if sign_disagrees:
                 inherited = False

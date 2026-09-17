@@ -630,6 +630,16 @@ class BaseModelMixin():
                              "weights should not be frozen.")
 
         model.unfrozen_parameter_names_ = sorted(unfrozen)
+        # Outside the ´if unfrozen´ branch below on purpose: asking for
+        # adapters on a model that has none unfreezes NOTHING, so ´unfrozen´
+        # is empty and a warning nested in that branch could never fire in
+        # the one case it was written for.
+        if unfreeze_graph_adapters and not groups["graph_adapter"]:
+            warnings.warn(
+                "´unfreeze_graph_adapters=True´ was passed but this model has "
+                "no graph adapters, so nothing was unfrozen by it. Pass "
+                "´n_graph_adapter_hidden=<width>´ to attach them; it works on "
+                "an already trained reference.")
         if unfrozen:
             print(f"Unfrozen parameters ({len(unfrozen)}): "
                   f"{', '.join(sorted(unfrozen))}")
@@ -659,12 +669,6 @@ class BaseModelMixin():
             encoder_is_trainable = any(
                 requested.get(group, False) and groups[group]
                 for group in ("encoder", "addon_gp_encoder", "graph_adapter"))
-            if (unfreeze_graph_adapters and not groups["graph_adapter"]):
-                warnings.warn(
-                    "´unfreeze_graph_adapters=True´ was passed but this model "
-                    "has no graph adapters, so nothing was unfrozen by it. "
-                    "Pass ´n_graph_adapter_hidden=<width>´ to attach them; it "
-                    "works on an already trained reference.")
             if not (encoder_is_trainable or covariate_reaches_latent):
                 warnings.warn(
                     "Nothing that was unfrozen can change the latent space, "

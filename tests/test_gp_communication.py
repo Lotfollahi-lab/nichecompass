@@ -159,7 +159,8 @@ def test_normalize_modes(communication_model):
 
 def test_store_scores_can_be_turned_off(communication_model):
     m = communication_model
-    m.adata.obs.pop("source_neg_source_score", None)
+    m.adata.obs.drop(columns=["source_neg_source_score"],
+                     errors="ignore", inplace=True)
     compute_communication_gp_network(
         ["source_neg"], m, "group", n_neighbors=2, sample_key="sample",
         store_scores=False)
@@ -219,10 +220,11 @@ def test_visualization_is_robust_and_its_legend_matches_the_edges(
             matplotlib.cm.tab20.colors[0]) or colour.startswith("#")
     plt.close("all")
 
-    # More gene programs than palette colours warns instead of raising KeyError.
+    # More gene programs than palette colours warns instead of raising
+    # KeyError. The fallback palette holds 20, so this needs more than 20.
     import pandas as pd
     many = pd.concat(
-        [network.assign(edge_type=f"gp{i}") for i in range(11)],
+        [network.assign(edge_type=f"gp{i:02d}") for i in range(23)],
         ignore_index=True)
     with pytest.warns(UserWarning, match="colors"):
         visualize_communication_gp_network(
