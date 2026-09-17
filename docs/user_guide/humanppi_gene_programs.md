@@ -539,9 +539,10 @@ left, so the intercellular set grows rather than shrinks: 2,273 programs at prec
   | `NECTIN2`-`PVRIG` | `cis_complex` | Genuine loss: a real *trans* immune checkpoint |
 
   So three of the twelve are cases where curated resources register a same-cell co-receptor complex as a
-  ligand-receptor pair, and five are cases where the reference is wrong. **Five are genuine losses**, four of
-  them already present before the reach test. Measured recall therefore understates real performance; the
-  headline number is reported unadjusted regardless.
+  ligand-receptor pair, and five are cases where the reference is wrong. **Four are genuine losses**: three
+  membrane-anchored ligands inside multi-subunit Complex Portal entries, and one real *trans*
+  checkpoint. Measured recall therefore understates real performance; the headline number is reported
+  unadjusted regardless.
 - **Canonical cis pairs.** All 15 same-cell pairs listed under limitation 2 below are now classified
   non-intercellular. Before the reach test and the curated co-receptor families, 15 of 15 were `juxtacrine`.
 - **True trans pairs preserved.** `PDCD1`-`CD274`, `SIRPA`-`CD47`, `EPHB1`-`EFNB3`, `CCL19`-`CCR7`,
