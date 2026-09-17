@@ -205,3 +205,24 @@ def test_addon_programs_added_for_the_query_still_get_a_statistic(reference):
         loaded.model.running_mean_abs_mu[:n_prior], before_prior)
     assert (loaded.model.running_mean_abs_mu[n_prior:] != 0).any(), (
         "add-on programs never accumulated an activity statistic")
+
+
+def test_warns_when_nothing_unfrozen_can_reach_the_latent(reference):
+    """The tutorial's configuration on a decoder-only reference: hours of
+    fine tuning that changes no gene program score."""
+    model, path = reference
+    injection = model.init_params_.get("cat_covariates_embeds_injection") or []
+    if "encoder" in injection:
+        pytest.skip("this reference already injects covariates into the encoder")
+    with pytest.warns(UserWarning, match="unfreeze_encoder_weights"):
+        NicheCompass.load(
+            str(path), adata_file_name="adata.h5ad",
+            unfreeze_cat_covariates_embedder_weights=True)
+
+
+def test_no_warning_when_the_encoder_is_unfrozen(reference, recwarn):
+    model, path = reference
+    NicheCompass.load(str(path), adata_file_name="adata.h5ad",
+                      unfreeze_encoder_weights=True)
+    assert not [w for w in recwarn
+                if "cannot change the latent" in str(w.message)]

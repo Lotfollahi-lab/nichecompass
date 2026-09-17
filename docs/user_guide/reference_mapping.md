@@ -92,10 +92,13 @@ encoder only when `cat_covariates_embeds_injection` contains `"encoder"`. With
 the default decoder-only injection the query latent is the unmodified
 reference encoder applied to the query, so **no trainable parameter can change
 the query gene program scores at all** — training fits a reconstruction offset
-downstream of the latent. If you want the covariate embedding to absorb
-technical shift out of the latent, as scArches and expiMap do, pass
-`cat_covariates_embeds_injection=["encoder", "gene_expr_decoder"]` when you
-train the reference.
+downstream of the latent. `load()` warns when that is the situation.
+
+That choice cannot be made at query time: encoder injection adds the
+embedding width to the encoder's input dimension, so it changes `fc_l1`'s
+shape and has to be set when the **reference** is trained
+(`cat_covariates_embeds_injection=["encoder", "gene_expr_decoder"]`). For an
+existing reference, `unfreeze_encoder_weights` is the available lever.
 
 **Adapting to a different tissue architecture:**
 

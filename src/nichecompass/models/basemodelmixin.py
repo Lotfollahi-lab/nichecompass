@@ -546,6 +546,40 @@ class BaseModelMixin():
         if unfrozen:
             print(f"Unfrozen parameters ({len(unfrozen)}): "
                   f"{', '.join(sorted(unfrozen))}")
+            # Whether anything unfrozen can actually move the latent. A
+            # covariate embedding only reaches it when the encoder was built
+            # to take one, which is fixed when the REFERENCE is trained: it
+            # changes the encoder's input dimension, so it cannot be switched
+            # on for an existing checkpoint. Without that, fine tuning fits a
+            # reconstruction offset downstream of the latent and the gene
+            # program scores are exactly the reference's - a mapping run that
+            # trains for hours and changes none of the quantities the user
+            # goes on to interpret.
+            injection = model.init_params_.get(
+                "cat_covariates_embeds_injection") or []
+            covariate_reaches_latent = ("encoder" in injection
+                                        and requested.get(
+                                            "cat_covariates_embedder", False))
+            encoder_is_trainable = any(
+                requested.get(group, False)
+                for group in ("encoder", "addon_gp_encoder"))
+            if not (encoder_is_trainable or covariate_reaches_latent):
+                warnings.warn(
+                    "Nothing that was unfrozen can change the latent space, "
+                    "so fine tuning will not change any gene program score: "
+                    "the query latent stays exactly the reference encoder "
+                    "applied to the query data. The categorical covariate "
+                    "embedding reaches the decoder but not the encoder, "
+                    "because 'encoder' is not in this model's "
+                    "´cat_covariates_embeds_injection´ "
+                    f"({list(injection)}), and that cannot be changed after "
+                    "training because it defines the encoder's input "
+                    "dimension. To adapt the query latent, pass "
+                    "´unfreeze_encoder_weights=True´, which leaves the gene "
+                    "program loadings - and therefore the meaning of the "
+                    "scores and their inherited orientation - untouched. To "
+                    "use the covariate route instead, retrain the reference "
+                    "with 'encoder' in ´cat_covariates_embeds_injection´.")
         else:
             # Not raised here: loading with everything frozen is the correct
             # and common way to load a model for analysis only. Training such
