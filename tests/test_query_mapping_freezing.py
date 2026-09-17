@@ -136,23 +136,166 @@ def test_a_frozen_model_does_not_prune_its_reference_gene_programs(reference):
         torch.testing.assert_close(after, before)
 
 
-def test_frozen_batch_norm_statistics_do_not_drift(reference):
-    """Buffers are outside the freeze, and Trainer puts the module back into
-    train mode, so a frozen batch norm used to rewrite its running statistics
-    on query minibatches while the latent was read in eval mode."""
-    model, path = reference
+@pytest.fixture
+def reference_with_batch_norm(tmp_path):
+    """A saved reference whose encoder has two fully connected layers, and
+    therefore a batch norm.
+
+    The shared ´model´ fixture leaves ´n_fc_layers_encoder´ at its default of
+    1, which builds no ´fc_l2_bn´ at all - so a batch norm test written
+    against it skips unconditionally and the pinning it checks has no
+    executed coverage.
+    """
+    import anndata as ad
+    import numpy as np
+    import scipy.sparse as sp
+    from nichecompass.models import NicheCompass
+    from nichecompass.utils import add_gps_from_gp_dict_to_adata
+
+    adata = ad.AnnData(np.arange(48, dtype=np.float32).reshape(8, 6) % 7 + 1)
+    adata.var_names = ["L", "R", "T", "A", "B", "C"]
+    adata.X = sp.csr_matrix(adata.X)
+    adata.layers["counts"] = adata.X.copy()
+    adata.obsp["spatial_connectivities"] = sp.csr_matrix(
+        np.ones((8, 8)) - np.eye(8))
+    adata.obs["group"] = ["a"] * 4 + ["b"] * 4
+    gps = {"source_neg": {"sources": ["L"], "targets": ["R"],
+                          "sources_categories": ["ligand"],
+                          "targets_categories": ["receptor"]}}
+    add_gps_from_gp_dict_to_adata(gps, adata)
+    m = NicheCompass(adata, n_addon_gp=1, n_hidden_encoder=8,
+                     n_fc_layers_encoder=2, use_cuda_if_available=False)
+    m.is_trained_ = True
+    m.node_batch_size_ = 8
+    m.save(str(tmp_path), overwrite=True, save_adata=True)
+    return m, tmp_path
+
+
+def test_the_batch_norm_fixture_really_has_one(reference_with_batch_norm):
+    """Guards the guard: if this ever stops finding a batch norm, the pinning
+    test below is silently skipping again."""
+    model, _ = reference_with_batch_norm
+    bns = [m for m in model.model.modules()
+           if isinstance(m, torch.nn.modules.batchnorm._BatchNorm)]
+    assert bns, "the two-fc-layer encoder built no batch norm"
+
+
+def test_frozen_batch_norm_statistics_really_do_not_drift(
+        reference_with_batch_norm):
+    """´track_running_stats=False´ alone does NOT keep a batch norm using its
+    stored statistics - in training mode it switches the layer to the current
+    minibatch. ´VGPGAE.train´ re-asserting eval mode is what actually pins
+    them, and ´Trainer´ calls ´train()´ once per epoch."""
+    model, path = reference_with_batch_norm
     loaded = NicheCompass.load(str(path), adata_file_name="adata.h5ad",
-                               unfreeze_cat_covariates_embedder_weights=True)
+                               unfreeze_dispersion=True)
     bns = [m for m in loaded.model.modules()
            if isinstance(m, torch.nn.modules.batchnorm._BatchNorm)]
-    if not bns:
-        pytest.skip("default encoder has one fc layer, so no batch norm")
+    assert bns
     for bn in bns:
         assert bn.track_running_stats is False
+        assert not bn.training, "pinned layer is not in eval mode after load"
+
     before = [bn.running_mean.detach().clone() for bn in bns]
+    # what Trainer does at the top of every epoch
+    loaded.model.train()
+    for bn in bns:
+        assert not bn.training, (
+            "train() did not re-assert eval mode on the pinned layer")
     loaded.train(n_epochs=2, use_cuda_if_available=False)
     for bn, was in zip(bns, before):
         torch.testing.assert_close(bn.running_mean, was)
+
+
+def test_graph_adapter_is_the_identity_before_training():
+    """The anchoring property: attaching an adapter must not change a single
+    output until it is trained."""
+    from nichecompass.nn import GraphAdapter
+    torch.manual_seed(0)
+    adapter = GraphAdapter(n_input=8, n_bottleneck=3)
+    x = torch.randn(6, 8)
+    torch.testing.assert_close(adapter(x), x)
+    with torch.no_grad():
+        adapter.up.weight.normal_()
+    assert not torch.allclose(adapter(x), x)
+
+
+def test_graph_adapter_does_no_message_passing_of_its_own():
+    """It must not add a hop. A single layer encoder aggregates over one hop
+    and the loaders sample one hop; an adapter with its own convolution would
+    make the encoder two hops deep and read neighbours the sampler truncated."""
+    from nichecompass.nn import GraphAdapter
+    import inspect
+    torch.manual_seed(0)
+    adapter = GraphAdapter(n_input=6, n_bottleneck=4)
+    with torch.no_grad():
+        adapter.up.weight.normal_()
+    # No graph argument, and no convolution submodule.
+    assert list(inspect.signature(adapter.forward).parameters) == ["x"]
+    assert not any("conv" in name for name, _ in adapter.named_modules())
+    # Each row is transformed independently of every other row.
+    x = torch.randn(5, 6)
+    rowwise = torch.cat([adapter(x[i:i + 1]) for i in range(x.size(0))])
+    torch.testing.assert_close(adapter(x), rowwise)
+
+
+def test_composition_sensitivity_comes_from_the_following_convolution():
+    """The adapter is per cell, but the convolution that already follows it
+    aggregates neighbours' corrections, and those differ by cell type - so the
+    adapted latent depends on WHICH cells are neighbours, with no extra hop."""
+    from nichecompass.nn import GraphAdapter
+    torch.manual_seed(0)
+    adapter = GraphAdapter(n_input=6, n_bottleneck=4)
+    with torch.no_grad():
+        adapter.up.weight.normal_(0, 0.5)
+
+    def mean_aggregate(h, neighbours):
+        return torch.stack([h] + list(neighbours)).mean(0)
+
+    type_a, type_b, focal = (torch.randn(6) for _ in range(3))
+    # identical degree, different neighbourhood composition
+    plain_a = mean_aggregate(focal, [type_a, type_a])
+    plain_b = mean_aggregate(focal, [type_b, type_b])
+    adapted_a = mean_aggregate(adapter(focal[None])[0],
+                               [adapter(type_a[None])[0]] * 2)
+    adapted_b = mean_aggregate(adapter(focal[None])[0],
+                               [adapter(type_b[None])[0]] * 2)
+    delta_a, delta_b = adapted_a - plain_a, adapted_b - plain_b
+    assert not torch.allclose(delta_a, delta_b, atol=1e-6), (
+        "the adapter's effect did not depend on neighbourhood composition")
+
+
+def test_adapters_can_be_attached_to_a_trained_reference(reference):
+    """Retrofit: the property encoder covariate injection does not have."""
+    model, path = reference
+    loaded = NicheCompass.load(str(path), adata_file_name="adata.h5ad",
+                               n_graph_adapter_hidden=4,
+                               unfreeze_graph_adapters=True)
+    groups = _parameter_groups(loaded.model)
+    by_name = dict(loaded.model.named_parameters())
+    assert groups["graph_adapter"], "no adapter parameters were created"
+    # One adapter per graph convolution stage.
+    n_adapters = len({n.split("graph_adapters.")[1].split(".")[0]
+                      for n in groups["graph_adapter"]})
+    assert n_adapters == loaded.model.encoder.n_layers, (
+        f"{n_adapters} adapters for {loaded.model.encoder.n_layers} layers")
+    for name in groups["graph_adapter"]:
+        assert by_name[name].requires_grad, name
+    # Everything else stays frozen, including the loadings.
+    for name in groups["prior_gp_decoder"] + groups["encoder"]:
+        assert not by_name[name].requires_grad, name
+    # Attaching them does not by itself change the latent.
+    assert loaded.freeze_ is True
+
+
+def test_attaching_adapters_does_not_trigger_the_latent_warning(reference, recwarn):
+    model, path = reference
+    NicheCompass.load(str(path), adata_file_name="adata.h5ad",
+                      n_graph_adapter_hidden=4,
+                      unfreeze_graph_adapters=True)
+    assert not [w for w in recwarn
+                if "can change the latent space" in str(w.message)]
+
 
 def test_unfreezing_the_encoder_carries_its_addon_heads(reference):
     """´encoder.addon_conv_*´ reads the hidden representation the encoder
@@ -249,95 +392,5 @@ def test_no_warning_when_the_encoder_is_unfrozen(reference, recwarn):
     model, path = reference
     NicheCompass.load(str(path), adata_file_name="adata.h5ad",
                       unfreeze_encoder_weights=True)
-    assert not [w for w in recwarn
-                if "can change the latent space" in str(w.message)]
-
-
-def test_graph_adapter_is_the_identity_before_training():
-    """The anchoring property: attaching an adapter must not change a single
-    output until it is trained."""
-    from nichecompass.nn import GraphAdapter
-    torch.manual_seed(0)
-    adapter = GraphAdapter(n_input=8, n_bottleneck=3)
-    x = torch.randn(6, 8)
-    torch.testing.assert_close(adapter(x), x)
-    with torch.no_grad():
-        adapter.up.weight.normal_()
-    assert not torch.allclose(adapter(x), x)
-
-
-def test_graph_adapter_does_no_message_passing_of_its_own():
-    """It must not add a hop. A single layer encoder aggregates over one hop
-    and the loaders sample one hop; an adapter with its own convolution would
-    make the encoder two hops deep and read neighbours the sampler truncated."""
-    from nichecompass.nn import GraphAdapter
-    import inspect
-    torch.manual_seed(0)
-    adapter = GraphAdapter(n_input=6, n_bottleneck=4)
-    with torch.no_grad():
-        adapter.up.weight.normal_()
-    # No graph argument, and no convolution submodule.
-    assert list(inspect.signature(adapter.forward).parameters) == ["x"]
-    assert not any("conv" in name for name, _ in adapter.named_modules())
-    # Each row is transformed independently of every other row.
-    x = torch.randn(5, 6)
-    rowwise = torch.cat([adapter(x[i:i + 1]) for i in range(x.size(0))])
-    torch.testing.assert_close(adapter(x), rowwise)
-
-
-def test_composition_sensitivity_comes_from_the_following_convolution():
-    """The adapter is per cell, but the convolution that already follows it
-    aggregates neighbours' corrections, and those differ by cell type - so the
-    adapted latent depends on WHICH cells are neighbours, with no extra hop."""
-    from nichecompass.nn import GraphAdapter
-    torch.manual_seed(0)
-    adapter = GraphAdapter(n_input=6, n_bottleneck=4)
-    with torch.no_grad():
-        adapter.up.weight.normal_(0, 0.5)
-
-    def mean_aggregate(h, neighbours):
-        return torch.stack([h] + list(neighbours)).mean(0)
-
-    type_a, type_b, focal = (torch.randn(6) for _ in range(3))
-    # identical degree, different neighbourhood composition
-    plain_a = mean_aggregate(focal, [type_a, type_a])
-    plain_b = mean_aggregate(focal, [type_b, type_b])
-    adapted_a = mean_aggregate(adapter(focal[None])[0],
-                               [adapter(type_a[None])[0]] * 2)
-    adapted_b = mean_aggregate(adapter(focal[None])[0],
-                               [adapter(type_b[None])[0]] * 2)
-    delta_a, delta_b = adapted_a - plain_a, adapted_b - plain_b
-    assert not torch.allclose(delta_a, delta_b, atol=1e-6), (
-        "the adapter's effect did not depend on neighbourhood composition")
-
-
-def test_adapters_can_be_attached_to_a_trained_reference(reference):
-    """Retrofit: the property encoder covariate injection does not have."""
-    model, path = reference
-    loaded = NicheCompass.load(str(path), adata_file_name="adata.h5ad",
-                               n_graph_adapter_hidden=4,
-                               unfreeze_graph_adapters=True)
-    groups = _parameter_groups(loaded.model)
-    by_name = dict(loaded.model.named_parameters())
-    assert groups["graph_adapter"], "no adapter parameters were created"
-    # One adapter per graph convolution stage.
-    n_adapters = len({n.split("graph_adapters.")[1].split(".")[0]
-                      for n in groups["graph_adapter"]})
-    assert n_adapters == loaded.model.encoder.n_layers, (
-        f"{n_adapters} adapters for {loaded.model.encoder.n_layers} layers")
-    for name in groups["graph_adapter"]:
-        assert by_name[name].requires_grad, name
-    # Everything else stays frozen, including the loadings.
-    for name in groups["prior_gp_decoder"] + groups["encoder"]:
-        assert not by_name[name].requires_grad, name
-    # Attaching them does not by itself change the latent.
-    assert loaded.freeze_ is True
-
-
-def test_attaching_adapters_does_not_trigger_the_latent_warning(reference, recwarn):
-    model, path = reference
-    NicheCompass.load(str(path), adata_file_name="adata.h5ad",
-                      n_graph_adapter_hidden=4,
-                      unfreeze_graph_adapters=True)
     assert not [w for w in recwarn
                 if "can change the latent space" in str(w.message)]
