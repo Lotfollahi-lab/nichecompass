@@ -8,6 +8,8 @@ import torch
 import torch.nn as nn
 from torch_geometric.nn import GATv2Conv, GCNConv
 
+from .adapters import GraphAdapter
+
 
 class Encoder(nn.Module):
     """
@@ -64,6 +66,7 @@ class Encoder(nn.Module):
                  conv_layer: Literal["gcnconv", "gatv2conv"]="gatv2conv",
                  n_layers: int=1,
                  cat_covariates_embed_mode: Literal["input", "hidden"]="input",
+                 n_graph_adapter_hidden: int=0,
                  n_attention_heads: int=4,
                  dropout_rate: float=0.,
                  activation: nn.Module=nn.ReLU,
@@ -110,6 +113,18 @@ class Encoder(nn.Module):
             (n_cat_covariates_embed_input != 0)):
             # Add categorical covariates embedding to hidden after fc_l
             n_hidden += n_cat_covariates_embed_input
+
+        # Placed on the representation the frozen convolutions consume, never
+        # on ´mu´: ´mu´ is the gene program activities, so adapting it would
+        # move the axes the loadings define.
+        self.n_graph_adapter_hidden = n_graph_adapter_hidden
+        if n_graph_adapter_hidden > 0:
+            self.graph_adapter = GraphAdapter(
+                n_input=n_hidden,
+                n_bottleneck=n_graph_adapter_hidden,
+                conv_layer=conv_layer,
+                n_attention_heads=n_attention_heads,
+                activation=activation)
 
         if conv_layer == "gcnconv":
             if n_layers == 2:
@@ -198,6 +213,11 @@ class Encoder(nn.Module):
                                 cat_covariates_embed),
                                axis=1)
         
+        if self.n_graph_adapter_hidden > 0:
+            # Identity until trained, so a frozen reference is unchanged by
+            # the adapter's presence.
+            hidden = self.graph_adapter(hidden, edge_index)
+
         if self.n_layers == 2:
             # Part of forward pass shared across all nodes
             hidden = self.dropout(self.activation(

@@ -226,3 +226,66 @@ def test_no_warning_when_the_encoder_is_unfrozen(reference, recwarn):
                       unfreeze_encoder_weights=True)
     assert not [w for w in recwarn
                 if "cannot change the latent" in str(w.message)]
+
+
+def test_graph_adapter_is_the_identity_before_training():
+    """The anchoring property: attaching an adapter must not change a single
+    output until it is trained."""
+    from nichecompass.nn import GraphAdapter
+    torch.manual_seed(0)
+    adapter = GraphAdapter(n_input=8, n_bottleneck=3)
+    x = torch.randn(6, 8)
+    edge_index = torch.tensor([[0, 1, 2, 3, 4, 5, 0, 2],
+                               [1, 0, 3, 2, 5, 4, 2, 0]])
+    torch.testing.assert_close(adapter(x, edge_index), x)
+    # and it stops being the identity once ´up´ is non-zero
+    with torch.no_grad():
+        adapter.up.weight.normal_()
+    assert not torch.allclose(adapter(x, edge_index), x)
+
+
+def test_graph_adapter_responds_to_neighbourhood_composition():
+    """The point of doing message passing inside the adapter: two nodes with
+    the same degree but different neighbours must be adapted differently."""
+    from nichecompass.nn import GraphAdapter
+    torch.manual_seed(0)
+    adapter = GraphAdapter(n_input=6, n_bottleneck=4)
+    with torch.no_grad():
+        adapter.up.weight.normal_()          # leave the identity
+    type_a, type_b, focal = (torch.randn(6) for _ in range(3))
+    # node 0 surrounded by type A, node 4 by type B, both degree 2
+    x = torch.stack([focal, type_a, type_a, focal, type_b, type_b])
+    edge_index = torch.tensor([[0, 0, 1, 2, 3, 3, 4, 5],
+                               [1, 2, 0, 0, 4, 5, 3, 3]])
+    out = adapter(x, edge_index)
+    delta_a = (out[0] - x[0])
+    delta_b = (out[3] - x[3])
+    assert not torch.allclose(delta_a, delta_b, atol=1e-6), (
+        "the adapter ignored neighbourhood composition")
+
+
+def test_adapters_can_be_attached_to_a_trained_reference(reference):
+    """Retrofit: the property encoder covariate injection does not have."""
+    model, path = reference
+    loaded = NicheCompass.load(str(path), adata_file_name="adata.h5ad",
+                               n_graph_adapter_hidden=4,
+                               unfreeze_graph_adapters=True)
+    groups = _parameter_groups(loaded.model)
+    by_name = dict(loaded.model.named_parameters())
+    assert groups["graph_adapter"], "no adapter parameters were created"
+    for name in groups["graph_adapter"]:
+        assert by_name[name].requires_grad, name
+    # Everything else stays frozen, including the loadings.
+    for name in groups["prior_gp_decoder"] + groups["encoder"]:
+        assert not by_name[name].requires_grad, name
+    # Attaching them does not by itself change the latent.
+    assert loaded.freeze_ is True
+
+
+def test_attaching_adapters_does_not_trigger_the_latent_warning(reference, recwarn):
+    model, path = reference
+    NicheCompass.load(str(path), adata_file_name="adata.h5ad",
+                      n_graph_adapter_hidden=4,
+                      unfreeze_graph_adapters=True)
+    assert not [w for w in recwarn
+                if "cannot change the latent" in str(w.message)]

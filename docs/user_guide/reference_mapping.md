@@ -33,6 +33,7 @@ parameter name rather than a substring test.
 | `unfreeze_cat_covariates_projection` | the layers projecting those embeddings into the decoders. Separate because that projection is shared with the reference, so training it moves the reference's offset too |
 | `unfreeze_dispersion` | the per-feature negative binomial dispersion (`*_theta`) |
 | `unfreeze_node_label_aggregator` | the node label aggregator — only has parameters under `node_label_method="one-hop-attention"` |
+| `unfreeze_graph_adapters` | the encoder's graph adapters, if the model has any. Implied by `unfreeze_encoder_weights` |
 | `unfreeze_all_weights` | everything, and a full refit: see below |
 
 The prior gene program loadings have no unfreeze argument of their own. They
@@ -128,6 +129,36 @@ a degree-dependent offset and carries no composition information at all — the
 effect is identical across neighbourhoods to within floating point. Only the
 `"input"` mode buys the behaviour above, and it is the mode the model always
 uses (`VGPGAE` never passes the argument, so `Encoder`'s own default applies).
+
+**Bounded adaptation of an existing reference — graph adapters:**
+
+```python
+model = NicheCompass.load(
+    dir_path=..., adata=adata_query,
+    n_graph_adapter_hidden=32,
+    unfreeze_graph_adapters=True)
+```
+
+A graph adapter is a residual bottleneck with its own message passing,
+`h + up(conv(act(down(h)), edge_index))`, inserted into the encoder before the
+frozen convolutions that produce `mu`. It is never applied to `mu` itself:
+`mu` *is* the gene program activities, so transforming it would move the axes
+the loadings define.
+
+Three properties, and no other option here has all three:
+
+- **It sees the real neighbourhood.** Because the message passing is inside
+  the adapter, it can respond to which cell types surround a cell, not only to
+  how many.
+- **It starts as the identity.** `up` is zero-initialised, so attaching an
+  adapter changes nothing until it is trained, and a query run departs from the
+  reference gradually. An unfrozen encoder has no such anchor.
+- **It can be retrofitted.** It adds parameters rather than changing the shape
+  of existing ones, so it attaches to a reference that is already trained —
+  which encoder covariate injection cannot do.
+
+Use a bottleneck much narrower than the hidden width; that width is what
+bounds how far the query can depart from the reference.
 
 **Adapting to a different tissue architecture:**
 

@@ -1,3 +1,4 @@
+from .adapters import GraphAdapter
 from .aggregators import (OneHopAttentionNodeLabelAggregator,
                           OneHopGCNNormNodeLabelAggregator,
                           OneHopSumNodeLabelAggregator)
@@ -8,7 +9,8 @@ from .encoders import Encoder
 from .layercomponents import MaskedLinear
 from .layers import AddOnMaskedLayer
 
-__all__ = ["OneHopAttentionNodeLabelAggregator",
+__all__ = ["GraphAdapter",
+           "OneHopAttentionNodeLabelAggregator",
            "OneHopGCNNormNodeLabelAggregator",
            "OneHopSumNodeLabelAggregator",
            "CosineSimGraphDecoder",

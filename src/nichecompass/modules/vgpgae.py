@@ -179,6 +179,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gcnconv",
                  encoder_n_attention_heads: int=4,
                  encoder_use_bn: bool=True,
+                 n_graph_adapter_hidden: int=0,
                  dropout_rate_encoder: float=0.,
                  dropout_rate_graph_decoder: float=0.,
                  include_edge_recon_loss: bool=True,
@@ -265,6 +266,7 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         self.conv_layer_encoder_ = conv_layer_encoder
         self.encoder_n_attention_heads_ = encoder_n_attention_heads
         self.encoder_use_bn_ = encoder_use_bn
+        self.n_graph_adapter_hidden_ = n_graph_adapter_hidden
         self.dropout_rate_encoder_ = dropout_rate_encoder
         self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
         self.include_edge_recon_loss_ = include_edge_recon_loss
@@ -344,7 +346,8 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             n_attention_heads=encoder_n_attention_heads,
             dropout_rate=dropout_rate_encoder,
             activation=torch.relu,
-            use_bn=encoder_use_bn)
+            use_bn=encoder_use_bn,
+            n_graph_adapter_hidden=n_graph_adapter_hidden)
         
         # Initialize graph decoder module
         self.graph_decoder = CosineSimGraphDecoder(

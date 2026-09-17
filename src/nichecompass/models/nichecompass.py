@@ -271,6 +271,7 @@ class NicheCompass(GPAnalysisMixin, BaseModelMixin):
                  conv_layer_encoder: Literal["gcnconv", "gatv2conv"]="gatv2conv",
                  encoder_n_attention_heads: Optional[int]=4,
                  encoder_use_bn: bool=True,
+                 n_graph_adapter_hidden: int=0,
                  dropout_rate_encoder: float=0.,
                  dropout_rate_graph_decoder: float=0.,
                  cat_covariates_cats: Optional[List[List]]=None,
@@ -484,6 +485,7 @@ class NicheCompass(GPAnalysisMixin, BaseModelMixin):
         else:
             self.encoder_n_attention_heads_ = 0
         self.encoder_use_bn_ = encoder_use_bn
+        self.n_graph_adapter_hidden_ = n_graph_adapter_hidden
         self.dropout_rate_encoder_ = dropout_rate_encoder
         self.dropout_rate_graph_decoder_ = dropout_rate_graph_decoder
         self.n_prior_gp_ = len(self.gp_targets_mask_)
@@ -606,6 +608,7 @@ class NicheCompass(GPAnalysisMixin, BaseModelMixin):
             conv_layer_encoder=self.conv_layer_encoder_,
             encoder_n_attention_heads=self.encoder_n_attention_heads_,
             encoder_use_bn=self.encoder_use_bn_,
+            n_graph_adapter_hidden=self.n_graph_adapter_hidden_,
             dropout_rate_encoder=self.dropout_rate_encoder_,
             dropout_rate_graph_decoder=self.dropout_rate_graph_decoder_,
             include_edge_recon_loss=self.include_edge_recon_loss_,

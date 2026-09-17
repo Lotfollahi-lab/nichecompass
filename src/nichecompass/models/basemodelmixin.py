@@ -33,7 +33,8 @@ PARAMETER_GROUPS = ("encoder",
                     "dispersion",
                     "node_label_aggregator",
                     "cat_covariates_embedder",
-                    "cat_covariates_projection")
+                    "cat_covariates_projection",
+                    "graph_adapter")
 
 
 def _parameter_group_of(param_name: str) -> str:
@@ -49,6 +50,11 @@ def _parameter_group_of(param_name: str) -> str:
     # in the decoders: unfreezing the encoder must carry its own add-on heads
     # with it, or they would keep frozen weights while consuming a hidden
     # representation that has moved.
+    # Claimed before the encoder group: the adapter lives inside the encoder
+    # but is unfrozen independently of it, since its whole purpose is to be
+    # the only trainable thing in an otherwise frozen encoder.
+    if "graph_adapter" in param_name:
+        return "graph_adapter"
     if "addon_conv" in param_name:
         return "addon_gp_encoder"
     if ".addon_l." in f".{param_name}.":
@@ -282,7 +288,9 @@ class BaseModelMixin():
              unfreeze_encoder_weights: bool=False,
              unfreeze_dispersion: bool=False,
              unfreeze_node_label_aggregator: bool=False,
-             unfreeze_cat_covariates_projection: bool=False
+             unfreeze_cat_covariates_projection: bool=False,
+             unfreeze_graph_adapters: bool=False,
+             n_graph_adapter_hidden: Optional[int]=None
              ) -> torch.nn.Module:
         """
         Instantiate a model from saved output. Can be used for transfer learning
@@ -340,6 +348,25 @@ class BaseModelMixin():
             If `True`, unfreeze the node label aggregator. This has an effect
             only for ´node_label_method="one-hop-attention"´; the other
             aggregators have no parameters.
+        unfreeze_cat_covariates_projection:
+            If `True`, unfreeze the layers projecting the covariate embeddings
+            into the decoders. Separate from the embedding tables because that
+            projection is shared with the reference, so training it moves the
+            reference's offset too.
+        unfreeze_graph_adapters:
+            If `True`, unfreeze the encoder's graph adapters. Implied by
+            ´unfreeze_encoder_weights´.
+        n_graph_adapter_hidden:
+            Attach graph adapters of this bottleneck width to the encoder,
+            even if the reference was trained without them. An adapter
+            performs its own message passing, so it can respond to the
+            query's neighbourhood COMPOSITION, and it is the identity at
+            initialization, so the model is unchanged until trained. Unlike
+            injecting covariate embeddings into the encoder, this can be done
+            to an already trained reference, because it adds parameters rather
+            than changing the shape of existing ones. Pair with
+            ´unfreeze_graph_adapters=True´; on its own it only changes the
+            architecture. ´None´ keeps whatever the checkpoint has.
 
         Returns
         -------
@@ -421,6 +448,22 @@ class BaseModelMixin():
 
             # The constructor appends the additional Add-on_<index>_GP names.
 
+        # Attaching graph adapters to a reference that was trained without
+        # them. This works where encoder covariate injection cannot, because
+        # an adapter ADDS parameters rather than changing the shape of any
+        # existing one: ´load_and_expand_state_dict´ fills keys that the
+        # checkpoint does not have from the freshly built model, and the
+        # adapter is the identity at initialization, so the model is
+        # unchanged until it is trained.
+        if n_graph_adapter_hidden is not None:
+            if n_graph_adapter_hidden <= 0:
+                raise ValueError(
+                    "´n_graph_adapter_hidden´ must be a positive integer, or "
+                    "´None´ to keep whatever the checkpoint was trained with.")
+            attr_dict["init_params_"]["n_graph_adapter_hidden"] = (
+                n_graph_adapter_hidden)
+            attr_dict["n_graph_adapter_hidden_"] = n_graph_adapter_hidden
+
         # ´encoder_use_bn´ used to be accepted and ignored, so the encoder
         # always carried a batch norm when it had two fully connected layers,
         # whatever the stored value said. Checkpoints written then hold
@@ -446,7 +489,8 @@ class BaseModelMixin():
         for attr, val in attr_dict.items():
             setattr(model, attr, val)
 
-        if n_addon_gps != 0 or len(new_cat_covariates_cats) > 0:
+        if (n_addon_gps != 0 or len(new_cat_covariates_cats) > 0
+                or n_graph_adapter_hidden is not None):
             model.model.load_and_expand_state_dict(model_state_dict)
         else:
             model.model.load_state_dict(model_state_dict)
@@ -492,6 +536,10 @@ class BaseModelMixin():
                                       or unfreeze_node_label_aggregator),
             "cat_covariates_embedder": unfreeze_cat_covariates_embedder_weights,
             "cat_covariates_projection": unfreeze_cat_covariates_projection,
+            # Unfreezing the encoder subsumes its adapter: leaving the adapter
+            # frozen while the layers around it move would waste it.
+            "graph_adapter": (unfreeze_graph_adapters
+                              or unfreeze_encoder_weights),
             "encoder": unfreeze_encoder_weights}
         if unfreeze_all_weights:
             requested = {name: True for name in groups}
@@ -562,7 +610,7 @@ class BaseModelMixin():
                                             "cat_covariates_embedder", False))
             encoder_is_trainable = any(
                 requested.get(group, False)
-                for group in ("encoder", "addon_gp_encoder"))
+                for group in ("encoder", "addon_gp_encoder", "graph_adapter"))
             if not (encoder_is_trainable or covariate_reaches_latent):
                 warnings.warn(
                     "Nothing that was unfrozen can change the latent space, "
@@ -577,7 +625,11 @@ class BaseModelMixin():
                     "dimension. To adapt the query latent, pass "
                     "´unfreeze_encoder_weights=True´, which leaves the gene "
                     "program loadings - and therefore the meaning of the "
-                    "scores and their inherited orientation - untouched. To "
+                    "scores and their inherited orientation - untouched, or "
+                    "attach graph adapters with "
+                    "´n_graph_adapter_hidden=<width>, "
+                    "unfreeze_graph_adapters=True´ for a bounded adaptation "
+                    "that starts from the reference. To "
                     "use the covariate route instead, retrain the reference "
                     "with 'encoder' in ´cat_covariates_embeds_injection´.")
         else:
