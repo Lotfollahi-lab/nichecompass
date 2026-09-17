@@ -51,7 +51,7 @@ def test_parameter_groups_are_exact_and_exhaustive():
         "target_rna_decoder.nb_means_normalized_decoder.masked_l.weight":
             "prior_gp_decoder",
         "target_rna_decoder.nb_means_normalized_decoder.addon_l.weight":
-            "addon_gp",
+            "addon_gp_decoder",
         "source_rna_decoder.nb_means_normalized_decoder."
         "cat_covariates_embed_l.weight": "cat_covariates_projection",
         "cat_covariate0_embedder.weight": "cat_covariates_embedder",
@@ -112,8 +112,12 @@ def test_a_frozen_model_does_not_prune_its_reference_gene_programs(reference):
     drifted to query data, the active mask was derived from it, and the
     dynamic decoder masks were zeroed irreversibly and then saved."""
     model, path = reference
+    # The fixture has no categorical covariates, so unfreezing the embedder
+    # would unfreeze nothing and ´train´ would refuse. The dispersion exists
+    # on every model and cannot touch the latent, which is what this test
+    # needs: something trainable, so the epochs actually run.
     loaded = NicheCompass.load(str(path), adata_file_name="adata.h5ad",
-                               unfreeze_cat_covariates_embedder_weights=True)
+                               unfreeze_dispersion=True)
     before_stat = loaded.model.running_mean_abs_mu.detach().clone()
     before_masks = {n: b.detach().clone()
                     for n, b in loaded.model.named_buffers()
@@ -336,6 +340,7 @@ def test_addon_programs_added_for_the_query_still_get_a_statistic(reference):
     loaded = NicheCompass.load(
         str(path), adata_file_name="adata.h5ad",
         n_addon_gps=2, gp_names_key=model.gp_names_key_,
+        genes_idx_key=model.genes_idx_key_,
         unfreeze_addon_gp_weights=True)
     n_prior = loaded.model.n_prior_gp_
     hold = loaded.model.frozen_gp_statistic_mask

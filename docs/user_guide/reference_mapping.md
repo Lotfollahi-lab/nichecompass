@@ -56,9 +56,10 @@ so `load()` additionally:
   every epoch;
 - marks which gene programs must hold their activity statistic, so that
   **pruning** cannot delete a program whose loadings are frozen. The mark is
-  per program, not per model: an add-on program added for the query has
-  trainable loadings and a statistic starting at zero, so it still needs the
-  running average.
+  per program and keyed on the *loadings*, not on the encoder: a program whose
+  `addon_l` is trainable still needs the running average, and so does one
+  added by this `load` call, whose statistic starts at zero. Unfreezing the
+  encoder does **not** release the hold — an encoder head is not a loading.
 
 Pruning matters more than it looks. The active-GP decision is driven by
 `running_mean_abs_mu`, an exponential moving average that would otherwise
@@ -201,9 +202,14 @@ use early stopping.
 ```python
 model = NicheCompass.load(
     dir_path=..., adata=adata_query,
-    n_addon_gps=10, gp_names_key="nichecompass_gp_names",
+    n_addon_gps=10,
+    gp_names_key="nichecompass_gp_names",
+    genes_idx_key="nichecompass_genes_idx",
     unfreeze_addon_gp_weights=True)
 ```
+
+`genes_idx_key` is required here, not optional: add-on programs are unmasked,
+so every gene has to be in the index, and `load` refuses without it.
 
 One caveat worth stating plainly: under a frozen decoder the add-on rows are
 the only trainable sink for platform shift, batch effects and reference misfit,

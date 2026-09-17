@@ -1059,9 +1059,10 @@ def compute_communication_gp_network(
         If ´True´ (default), write the per-cell scores to
         ´adata.obs["<gp>_source_score"]´ and ´adata.obs["<gp>_target_score"]´
         and the edge products to ´adata.obsp["<gp>_connectivities"]´. Set to
-        ´False´ to leave ´adata´ untouched, which matters when many gene
-        programs are requested, since each adds an n_obs x n_obs sparse
-        matrix.
+        ´False´ to skip all three, which matters when many gene programs are
+        requested, since each adds an n_obs x n_obs sparse matrix. Note that
+        ´adata´ is not otherwise left untouched: the spatial graph this
+        function builds is cached in ´adata.obsp´ and ´adata.uns´ regardless.
 
     Returns
     ----------

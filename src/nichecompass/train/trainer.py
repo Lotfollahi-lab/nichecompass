@@ -373,7 +373,8 @@ class Trainer(BaseTrainerMixin):
                 # processes makes each step cheaper rather than making the
                 # batch larger. This is what keeps a distributed run
                 # comparable to the single device runs the published results
-                # came from, and it is why this is the default.
+                # came from. It is NOT the default; ´per_process´ is,
+                # because that is where the throughput comes from.
                 if self.edge_batch_size_ % self.world_size_ != 0:
                     warnings.warn(
                         f"The edge batch size {self.edge_batch_size_} is not "

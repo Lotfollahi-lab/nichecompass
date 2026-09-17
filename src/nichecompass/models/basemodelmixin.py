@@ -319,12 +319,18 @@ class BaseModelMixin():
             architecture.
         gp_names_key:
             Key under which the gene program names are stored in ´adata.uns´.         
+        genes_idx_key:
+            Key under which the gene indices are stored in ´adata.uns´.
+            REQUIRED when ´n_addon_gps´ > 0, since the add-on programs are
+            unmasked and every gene has to be in the index.
         unfreeze_all_weights:
             If `True`, unfreeze everything and treat the run as a full refit.
             This is the only setting that clears ´freeze_´, so it is also the
             only one after which gene program orientations are recomputed
-            rather than inherited from the reference, and the only one under
-            which gene program pruning runs.
+            rather than inherited from the reference. Gene program pruning is
+            gated per program on whether that program's LOADINGS are
+            trainable, so it also runs for the add-on programs under
+            ´unfreeze_addon_gp_weights´, and for programs added by this call.
         unfreeze_addon_gp_weights:
             If `True`, unfreeze the add-on gene program weights, in both the
             encoder (´encoder.addon_conv_*´) and the omics decoders
@@ -333,8 +339,10 @@ class BaseModelMixin():
             caught by the same substring test; prefer the dedicated arguments
             below.
         unfreeze_cat_covariates_embedder_weights:
-            If `True`, unfreeze the categorical covariate embedding tables and
-            the linear layers that project them into the decoders.
+            If `True`, unfreeze the per category covariate embedding tables.
+            The layers projecting them into the decoders are a separate
+            group, ´unfreeze_cat_covariates_projection´, because that
+            projection is shared with the reference.
         unfreeze_encoder_weights:
             If `True`, unfreeze the encoder while leaving the gene program
             loadings fixed. This is the setting for query mapping where the
@@ -581,19 +589,32 @@ class BaseModelMixin():
         model.model.freeze_ = model.freeze_
 
         # Which programs hold their activity statistic. Per program, not per
-        # module: a program whose loadings are trainable still needs the
-        # statistic, and an add-on program added here starts at zero, so
-        # holding it would leave it either vacuously active or permanently
-        # inactive depending on ´active_gp_type´.
-        addon_trainable = any(
+        # module: a program whose LOADINGS are trainable still needs the
+        # statistic, and a program added here starts at zero, so holding it
+        # would leave it either vacuously active or permanently inactive
+        # depending on ´active_gp_type´.
+        #
+        # Keyed on the loadings, deliberately, and NOT on the encoder heads.
+        # ´unfreeze_encoder_weights´ unfreezes ´encoder.addon_conv_*´, and
+        # keying on that released the hold for every add-on program while
+        # their ´addon_l´ loadings stayed frozen - so the 100 add-on programs
+        # a default model carries became prunable under the recipe the guide
+        # recommends, which is the prior-program regression again. An encoder
+        # head is not a loading.
+        prior_loadings_trainable = any(
             parameters_by_name[name].requires_grad
-            for name in groups["addon_gp_decoder"] + groups["addon_gp_encoder"])
+            for name in groups["prior_gp_decoder"])
+        addon_loadings_trainable = any(
+            parameters_by_name[name].requires_grad
+            for name in groups["addon_gp_decoder"])
         hold = torch.zeros_like(model.model.frozen_gp_statistic_mask)
         if model.freeze_:
-            hold[:model.model.n_prior_gp_] = not any(
-                parameters_by_name[name].requires_grad
-                for name in groups["prior_gp_decoder"])
-            hold[model.model.n_prior_gp_:] = not addon_trainable
+            hold[:model.model.n_prior_gp_] = not prior_loadings_trainable
+            hold[model.model.n_prior_gp_:] = not addon_loadings_trainable
+            if n_addon_gps:
+                # Rows created by THIS call start at zero whatever the rest of
+                # the model does, so they are never held.
+                hold[-n_addon_gps:] = False
         model.model.frozen_gp_statistic_mask = hold
 
         # ´requires_grad´ does not reach buffers, and ´Trainer.train()´ puts
@@ -649,13 +670,15 @@ class BaseModelMixin():
                     "Nothing that was unfrozen can change the latent space, "
                     "so fine tuning will not change any gene program score: "
                     "the query latent stays exactly the reference encoder "
-                    "applied to the query data. The categorical covariate "
-                    "embedding reaches the decoder but not the encoder, "
-                    "because 'encoder' is not in this model's "
-                    "´cat_covariates_embeds_injection´ "
-                    f"({list(injection)}), and that cannot be changed after "
-                    "training because it defines the encoder's input "
-                    "dimension. To adapt the query latent, pass "
+                    "applied to the query data. This model's "
+                    f"´cat_covariates_embeds_injection´ is {list(injection)} "
+                    f"and it has {len(groups['cat_covariates_embedder'])} "
+                    "covariate embedding tensors, so the covariate route "
+                    "cannot move the latent: either 'encoder' is absent from "
+                    "that list, which cannot be changed after training since "
+                    "it defines the encoder's input dimension, or the model "
+                    "has no categorical covariates at all. To adapt the "
+                    "query latent, pass "
                     "´unfreeze_encoder_weights=True´, which leaves the gene "
                     "program loadings - and therefore the meaning of the "
                     "scores and their inherited orientation - untouched, or "

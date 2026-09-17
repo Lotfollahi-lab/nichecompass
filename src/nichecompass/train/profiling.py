@@ -523,8 +523,14 @@ def render_report(per_rank: np.ndarray,
     # and the surviving per epoch probes are nearly all replicated, so the
     # naive ratio says "1.01x, give up" about a run whose own stage budget
     # says 1.86x.
+    # Only ´replicated´ genuinely cannot shrink. ´fixed/step´ is paid once
+    # per optimizer step and is independent of the batch size, so under the
+    # default ´per_process´ convention - where an epoch has ´world_size´ times
+    # fewer steps - it shrinks with the process count like anything else.
+    # Counting it here would have understated the ceiling on every default
+    # run.
     replicated = sum(worst[i] for i, p in enumerate(PROBES)
-                     if p.kind in (KIND_REPLICATED, KIND_FIXED))
+                     if p.kind == KIND_REPLICATED)
     coverage = (total_worst / training_time_s
                 if training_time_s and training_time_s > 0 else 1.0)
     add(f"{LOG_PREFIX} " + "-" * 74)
@@ -544,7 +550,9 @@ def render_report(per_rank: np.ndarray,
         add(f"{LOG_PREFIX} Of what WAS measured, {replicated:.1f}s of "
             f"{total_worst:.1f}s does not shrink with more processes.")
     elif total_worst > 0:
-        add(f"{LOG_PREFIX} does NOT shrink with more processes: "
+        add(f"{LOG_PREFIX} does NOT shrink with more processes "
+            "(replicated stages only; 'fixed/step' shrinks under "
+            "per_process): "
             f"{replicated:.1f}s of {total_worst:.1f}s "
             f"({100 * replicated / total_worst:.0f}%)")
         if replicated > 0:
