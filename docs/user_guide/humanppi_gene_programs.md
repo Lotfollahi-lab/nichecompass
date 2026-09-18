@@ -543,7 +543,7 @@ left, so the intercellular set grows rather than shrinks: 2,273 programs at prec
   membrane-anchored ligands inside multi-subunit Complex Portal entries, and one real *trans*
   checkpoint. Measured recall therefore understates real performance; the headline number is reported
   unadjusted regardless.
-- **Canonical cis pairs.** All 15 same-cell pairs listed under limitation 2 below are now classified
+- **Canonical cis pairs.** All 17 same-cell pairs listed under limitation 2 below are now classified
   non-intercellular. Before the reach test and the curated co-receptor families, 15 of 15 were `juxtacrine`.
 - **True trans pairs preserved.** `PDCD1`-`CD274`, `SIRPA`-`CD47`, `EPHB1`-`EFNB3`, `CCL19`-`CCR7`,
   `IL15`-`IL15RA` and `TNFSF4`-`TNFRSF4` all remain intercellular.
@@ -567,10 +567,10 @@ left, so the intercellular set grows rather than shrinks: 2,273 programs at prec
    it, but only inside a 67 GB archive. Everything here is a protein-level proxy.
 2. **The *trans* test is a physical proxy, not a functional one.** A positive test for *trans* now exists
    (section 6.2), but reach is necessary rather than sufficient: a protein with a long ectodomain may still
-   only ever partner within its own membrane. The 15 canonical same-cell pairs probed are all now classified
+   only ever partner within its own membrane. The 17 canonical same-cell pairs probed are all now classified
    non-intercellular, but they divide instructively. Seven were caught by the reach test alone
    (`KCNJ6`-`KCNJ9`, `HCN1`-`HCN4`, `CNGA1`-`CNGB1`, `ORAI2`-`ORAI3`, `CD247`-`FCER1G`, `FCER1G`-`TREM2`,
-   `SLC51A`-`SLC51B`). Eight had ectodomains far too long for any topological test to reject —
+   `SLC51A`-`SLC51B`). Ten had ectodomains far too long for any topological test to reject —
    `ERBB2`-`ERBB3` (630 residues), `INSR`-`IGF1R` (731), `NRP1`-`KDR` (835), `TLR1`-`TLR2` (568),
    `GABBR1`-`GABBR2` (572), `PTCH1`-`SMO` (320), `ASIC4`-`ASIC3` (349), `CALCR`-`RAMP1`, `BMPR1A`-`BMPR2`,
    `ABCG5`-`ABCG8` — and required curated families (section 6.3). **Curation does not generalise**, so
