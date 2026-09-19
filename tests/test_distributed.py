@@ -1065,3 +1065,46 @@ def test_every_decoder_mask_is_a_buffer_so_module_to_moves_it():
         "these masks are bound as plain attributes, so Module.to will not "
         "move them and the forward pass will break on a GPU: "
         + "; ".join(offenders))
+
+
+from nichecompass.train.profiling import (COUNTERS,
+                                          KIND_FIXED,
+                                          KIND_SHARDED,
+                                          PROBES,
+                                          render_report)
+
+@pytest.mark.parametrize("scaling,fixed_counts", [("per_process", False),
+                                                  ("global", True)])
+def test_scaling_ceiling_honours_the_batch_convention(scaling, fixed_counts):
+    """´fixed/step´ shrinks only when the step count shrinks.
+
+    Under ´per_process´ an epoch has ´world_size´ times fewer optimizer steps,
+    so a per-step cost shrinks with them. Under ´global´ the step count is
+    unchanged, so it does not, and counting it as parallelizable overstated
+    the ceiling on exactly the runs made to compare against one device.
+    """
+    n = len(PROBES)
+    per_rank = np.zeros((2, n), dtype=float)   # per rank, per probe
+    calls = np.zeros(n, dtype=float)           # per probe, already reduced
+    fixed = [i for i, p in enumerate(PROBES) if p.kind == KIND_FIXED]
+    sharded = [i for i, p in enumerate(PROBES) if p.kind == KIND_SHARDED]
+    assert fixed and sharded
+    per_rank[:, fixed[0]] = 50.0
+    per_rank[:, sharded[0]] = 50.0
+    calls[fixed[0]] = calls[sharded[0]] = 1.0
+
+    report = render_report(per_rank, calls,
+                           {c: 0.0 for c in COUNTERS}, [1.0],
+                           {"batch_size_scaling": scaling}, "step",
+                           training_time_s=100.0)
+    line = [ln for ln in report.splitlines() if "does NOT shrink" in ln]
+    assert len(line) == 1, report
+    # 50s of the 100s measured is the fixed/step probe. Match the whole
+    # figure: "50.0s of 100.0s" contains "0.0s of 100.0s" as a substring.
+    expected = "50.0s of 100.0s" if fixed_counts else "0.0s of 100.0s (0%)"
+    assert expected in line[0], line[0]
+    if fixed_counts:
+        assert "(50%)" in line[0], line[0]
+        assert "1.33x" in report, report
+    else:
+        assert "speed-up" not in report, report

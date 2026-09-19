@@ -529,8 +529,16 @@ def render_report(per_rank: np.ndarray,
     # fewer steps - it shrinks with the process count like anything else.
     # Counting it here would have understated the ceiling on every default
     # run.
+    # ´fixed/step´ shrinks only when the STEP COUNT shrinks, which happens
+    # under ´per_process´ and not under ´global´, where the step count is
+    # unchanged. Assuming per_process here overstated the ceiling on every
+    # global run, which is exactly the run someone makes to compare against
+    # one device.
+    fixed_shrinks = meta.get("batch_size_scaling", "per_process") != "global"
+    unshrinkable = ({KIND_REPLICATED} if fixed_shrinks
+                    else {KIND_REPLICATED, KIND_FIXED})
     replicated = sum(worst[i] for i, p in enumerate(PROBES)
-                     if p.kind == KIND_REPLICATED)
+                     if p.kind in unshrinkable)
     coverage = (total_worst / training_time_s
                 if training_time_s and training_time_s > 0 else 1.0)
     add(f"{LOG_PREFIX} " + "-" * 74)
@@ -550,9 +558,12 @@ def render_report(per_rank: np.ndarray,
         add(f"{LOG_PREFIX} Of what WAS measured, {replicated:.1f}s of "
             f"{total_worst:.1f}s does not shrink with more processes.")
     elif total_worst > 0:
+        which = ("replicated stages only; 'fixed/step' shrinks under "
+                 "per_process" if fixed_shrinks
+                 else "replicated and fixed/step; the step count does not "
+                      "shrink under global")
         add(f"{LOG_PREFIX} does NOT shrink with more processes "
-            "(replicated stages only; 'fixed/step' shrinks under "
-            "per_process): "
+            f"({which}): "
             f"{replicated:.1f}s of {total_worst:.1f}s "
             f"({100 * replicated / total_worst:.0f}%)")
         if replicated > 0:

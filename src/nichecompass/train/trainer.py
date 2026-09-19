@@ -318,6 +318,9 @@ class Trainer(BaseTrainerMixin):
             device=self.device,
             meta={"world_size": self.world_size_,
                   "device": str(self.device),
+                  # The scaling ceiling depends on it: 'fixed/step' shrinks
+                  # only when the step count does.
+                  "batch_size_scaling": batch_size_scaling,
                   # A per rank CPU allocation that changes with the process
                   # count silently changes every CPU bound stage, so two runs
                   # cannot be compared without it.

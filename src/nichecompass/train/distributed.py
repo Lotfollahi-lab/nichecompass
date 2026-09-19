@@ -7,13 +7,16 @@ the spatial graph, and each process works on a disjoint subset of the training
 edges and nodes. Gradients are averaged across processes by
 ´DistributedDataParallel´.
 
-The batch sizes a caller gives are GLOBAL: the trainer divides them by
-´world_size´, so one optimizer step sees the same effective batch as a single
-device run and an epoch takes the same number of steps. Adding processes makes
-each step cheaper rather than making the batch larger. Read that sentence the
-other way round -- an effective batch of ´world_size´ times a per process batch
--- and you have the usual ´DistributedDataParallel´ convention, which this is
-deliberately NOT.
+The batch sizes a caller gives are PER PROCESS by default
+(´batch_size_scaling="per_process"´), which is the usual
+´DistributedDataParallel´ convention: the effective batch is ´world_size´ times
+the number passed, and an epoch takes ´world_size´ times fewer optimizer steps.
+That is where the throughput comes from, and it means a multi-GPU run is not a
+control for a single-device one at the same nominal batch size.
+´batch_size_scaling="global"´ selects the other convention: the trainer divides
+the batch by ´world_size´, so one step sees the same effective batch as a
+single-device run and the step count is unchanged, which makes the two runs
+directly comparable and is the setting to use when that matters.
 
 Every function here is safe to call when training on a single device, in which
 case it either returns the single process answer or does nothing. Nothing in
