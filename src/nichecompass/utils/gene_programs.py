@@ -400,10 +400,15 @@ HUMANPPI_SUBCELLULAR_LOCATION_QUALIFIERS = {
 # ´extracellular exosome´ to large numbers of cytosolic proteins. Gene Ontology
 # is therefore only used to establish an INTRACELLULAR location, and its
 # extracellular terms only serve to veto that conclusion.
+# ´side of plasma membrane´ is deliberately NOT listed: it is a substring of
+# ´cytoplasmic side of plasma membrane´ (GO:0009898), which means the opposite,
+# and the veto returns on the first match, so one such term discarded every
+# other intracellular term on the protein. ´external side of plasma membrane´
+# already covers the extracellular variants, including the ´extrinsic
+# component of ...´ and ´intrinsic component of ...´ forms, as a substring.
 HUMANPPI_GO_EXTRACELLULAR_FRAGMENTS = (
     "extracellular space", "extracellular region", "extracellular matrix",
-    "cell surface", "external side of plasma membrane", "basement membrane",
-    "side of plasma membrane")
+    "cell surface", "external side of plasma membrane", "basement membrane")
 
 # Fragments that establish nothing in either direction. ´plasma membrane´ on its
 # own is included because it is attached to many proteins that only dock onto

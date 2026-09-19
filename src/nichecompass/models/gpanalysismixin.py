@@ -56,7 +56,15 @@ class GPAnalysisMixin:
 
         parts = [(name, _digest(_array(value)))
                  for name, value in self.model.named_parameters()]
-        parts.extend((name, _digest(_array(value))) for name, value in self.model.named_buffers())
+        # ´frozen_gp_statistic_mask´ is a freeze control, not an inference
+        # input: it is non-persistent, and ´load´ derives it from the
+        # requested unfreeze configuration rather than from the checkpoint.
+        # Hashing it made every reloaded model disagree with the
+        # fingerprint stored beside its own results, so saved results were
+        # always reported stale after a reload.
+        parts.extend((name, _digest(_array(value)))
+                     for name, value in self.model.named_buffers()
+                     if name != "frozen_gp_statistic_mask")
         keys = list(dict.fromkeys([cat_key] + list(self.cat_covariates_keys_ or [])))
         labels = pd.util.hash_pandas_object(adata.obs[keys], index=True, categorize=False).to_numpy()
         parts.extend([("obs", _digest(keys, list(map(str, adata.obs_names)), labels)),

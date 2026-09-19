@@ -522,3 +522,19 @@ def test_disagreement_diagnostic_uses_full_precision_sums(model):
     row = model.prepare_gp_analysis().set_index("gp_name").loc["balanced"]
     assert row.signed_mass > 0
     assert row.source_target_disagree
+
+
+def test_freeze_mask_does_not_change_the_input_fingerprint(model):
+    """´frozen_gp_statistic_mask´ is a freeze control, not an inference input.
+
+    It is non-persistent and ´load´ derives it from the requested unfreeze
+    configuration, so a reloaded model always had it set while the model that
+    wrote the results had it clear. Hashing it therefore reported every saved
+    result stale after a reload.
+    """
+    model.prepare_gp_analysis()
+    before = model._gp_input_fingerprint(model.adata, "group")
+    mask = model.model.frozen_gp_statistic_mask
+    assert not bool(mask.any()), "fixture should start with nothing held"
+    model.model.frozen_gp_statistic_mask = torch.ones_like(mask)
+    assert model._gp_input_fingerprint(model.adata, "group") == before

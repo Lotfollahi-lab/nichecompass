@@ -761,3 +761,40 @@ def test_curated_coreceptor_families_share_a_family(gene_1, gene_2):
 def test_ligand_receptor_pairs_do_not_share_a_family(gene_1, gene_2):
     assert not (_humanppi_cis_complex_gene_families(gene_1) &
                 _humanppi_cis_complex_gene_families(gene_2))
+
+
+def test_go_cytoplasmic_side_is_not_extracellular_evidence():
+    """GO:0009898 ´cytoplasmic side of plasma membrane´ means the inner leaflet.
+
+    It was being matched by an over-general ´side of plasma membrane´ fragment
+    in the extracellular veto, which returns on the first match, so a single
+    such term discarded every other intracellular term on the protein.
+    """
+    assert _classify_humanppi_go_cellular_components(["cytosol"]) == "intracellular"
+    assert _classify_humanppi_go_cellular_components(
+        ["cytoplasmic side of plasma membrane", "cytosol"]) == "intracellular"
+    assert _classify_humanppi_go_cellular_components(
+        ["intrinsic component of cytoplasmic side of plasma membrane",
+         "cytosol"]) == "intracellular"
+    # the genuinely extracellular variants must still veto
+    for term in ("external side of plasma membrane",
+                 "extrinsic component of external side of plasma membrane"):
+        assert _classify_humanppi_go_cellular_components(
+            [term, "cytosol"]) == "unknown", term
+
+
+def test_cytoplasmic_side_protein_resolves_to_intracellular():
+    """The GO fallback is the only route for a protein with no cellular
+    component keyword and no subcellular location, and under the default
+    ´unresolved_locality="exclude"´ an unresolved protein drops its
+    interaction entirely rather than yielding an intracellular program."""
+    topology = dict(is_membrane_anchored=False,
+                    has_topological_domain=False,
+                    has_extracellular_domain=False,
+                    has_signal_peptide=False,
+                    cellular_component_keywords=[],
+                    subcellular_location=[],
+                    go_cellular_components=[
+                        "cytoplasmic side of plasma membrane", "cytosol"])
+    assert _classify_humanppi_protein_location(
+        "none", topology=topology) == "intracellular"
