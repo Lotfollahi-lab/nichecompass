@@ -556,7 +556,7 @@ left, so the intercellular set grows rather than shrinks: 2,273 programs at prec
   cover: **243 of 246 (98.8%)**, with all three disagreements on pairs that are genuinely bidirectional
   (`TNFRSF14` with `BTLA` and with `TIGIT`, `SELPLG` with `SPN`).
   `tests/benchmark_humanppi_classification.py` gates on both the accuracy and the coverage.
-- **Unit tests.** `tests/test_humanppi_gene_programs.py` contains 246 offline tests pinning the protein and
+- **Unit tests.** `tests/test_humanppi_gene_programs.py` contains 248 offline tests pinning the protein and
   interaction classification, the precedence rules, the fallback ordering, the reach test, the segment and
   paralogue patterns, the curated families and every orientation rule including its abstentions.
 
