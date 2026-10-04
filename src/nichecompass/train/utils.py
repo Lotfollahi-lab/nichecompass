@@ -109,6 +109,44 @@ class EarlyStopping:
             self.best_performance_state = current_metric
         return improved
 
+    def reset(self):
+        """
+        Forget every epoch judged so far, as if training had just started.
+
+        Used when gene program pruning starts. Pruning removes gene programs
+        and makes the loss jump, so values from before it are not comparable
+        with values after it.
+        """
+        self.epochs = 0
+        self.epochs_not_improved = 0
+        self.epochs_not_improved_lr = 0
+        self.current_performance = np.inf
+        self.best_performance = np.inf
+        self.best_performance_state = np.inf
+
+
+def _restore_buffers(module, buffers: dict):
+    """
+    Copy saved buffer values back into ´module´, by name and in place.
+
+    In place, so that everything holding a reference to a buffer, such as a
+    ´DistributedDataParallel´ wrapper, which caches them, sees the restored
+    values.
+
+    Parameters
+    ----------
+    module:
+        The module whose buffers are restored.
+    buffers:
+        Buffer values by the names ´module.named_buffers()´ gives them.
+    """
+    current = dict(module.named_buffers())
+    for name, value in buffers.items():
+        if name not in current or current[name].shape != value.shape:
+            raise ValueError(f"Cannot restore the buffer ´{name}´: the model "
+                             "no longer has it, or not in this shape.")
+        current[name].copy_(value)
+
 
 def print_progress(epoch: int, logs: dict, n_epochs: int):
     """

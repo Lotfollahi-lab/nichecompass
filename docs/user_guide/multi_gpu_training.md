@@ -257,9 +257,12 @@ derive different active gene program masks, and — because pruning is irreversi
 are now non-persistent buffers, which fixes the device move and keeps the saved state dict unchanged, so
 checkpoints written before this remain loadable.
 
-**Early stopping and the best model.** The epoch-level losses are averaged across processes, the stopping
-decision is taken on the main process and broadcast, and the best model state is broadcast before it is
-loaded. If one process stopped while the others continued, the others would hang on the next reduction.
+**Early stopping and the best model.** The epoch-level losses are averaged across processes, every process
+runs the early stopping check on those same numbers, and the stopping decision is broadcast from the main
+process. If one process stopped while the others continued, the others would hang on the next reduction. Each
+process records its own best model state (with `prune_aware_early_stopping`, decoder masks included), and the
+restart of early stopping when gene program pruning begins depends only on the epoch number, so every process
+takes it at the same epoch.
 
 **The validation metrics.** Each process only evaluates its own shard, so the predictions and labels are
 concatenated across processes before AUROC, AUPRC and the MSE scores are computed. Otherwise every process

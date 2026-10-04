@@ -35,6 +35,7 @@ from .distributed import (all_gather_numpy,
                           unwrap_model)
 from .metrics import eval_metrics, plot_eval_metrics
 from .utils import (_cycle_iterable,
+                    _restore_buffers,
                     plot_loss_curves,
                     print_progress,
                     EarlyStopping)
@@ -161,6 +162,20 @@ class Trainer(BaseTrainerMixin):
         stopping criterion is reloaded at the end of training.
     early_stopping_kwargs:
         Kwargs for the EarlyStopping class.
+    prune_aware_early_stopping:
+        If ´True´, early stopping and the best model state respect gene
+        program pruning, which starts after ´n_epochs_all_gps´ epochs and makes
+        the loss jump. The epochs before pruning run as a fixed warm-up: they
+        cannot stop training, reduce the learning rate or become the best
+        state. Early stopping starts with the first pruned epoch, so only
+        pruned models compete for the best state, and the best state includes
+        the dynamic decoder masks, so reloading it restores the model as it
+        was in that epoch. If ´False´, the previous behaviour: the best value
+        is tracked from the first epoch, so an unpruned state usually stays
+        the best one and is reloaded with the decoder masks of the last epoch,
+        and training stops ´patience´ epochs after pruning starts. Has no
+        effect without ´use_early_stopping´, or when pruning never starts
+        (´n_epochs_all_gps´ >= ´n_epochs´).
     use_cuda_if_available:
         If `True`, use cuda if available.
     multi_gpu:
@@ -217,6 +232,7 @@ class Trainer(BaseTrainerMixin):
                  use_early_stopping: bool=True,
                  reload_best_model: bool=True,
                  early_stopping_kwargs: Optional[dict]=None,
+                 prune_aware_early_stopping: bool=True,
                  use_cuda_if_available: bool=True,
                  multi_gpu: bool=False,
                  batch_size_scaling: Literal["global",
@@ -257,6 +273,7 @@ class Trainer(BaseTrainerMixin):
                 self.early_stopping_kwargs_["early_stopping_metric"] = (
                     "train_global_loss")
         self.early_stopping = EarlyStopping(**self.early_stopping_kwargs_)
+        self.prune_aware_early_stopping_ = prune_aware_early_stopping
         self.seed_ = seed
         self.monitor_ = monitor
         self.verbose_ = verbose
@@ -267,6 +284,7 @@ class Trainer(BaseTrainerMixin):
         self.optimizer = None
         self.best_epoch = None
         self.best_model_state_dict = None
+        self.best_model_dynamic_masks = None
 
         # Join the process group before anything else, so that the rank is
         # known when the device is chosen and when output is printed
@@ -706,6 +724,27 @@ class Trainer(BaseTrainerMixin):
                 self.use_only_active_gps = False
             else:
                 self.use_only_active_gps = True
+            # Pruning makes the loss jump in its first epoch, because the
+            # gene programs it removes stop contributing to the
+            # reconstruction. Early stopping that remembered a value from
+            # before would judge every pruned epoch against an unpruned model:
+            # it would keep an unpruned state as the best one, reload it at
+            # the end, and stop ´patience´ epochs after pruning began. So it
+            # starts afresh with the first pruned epoch. ´is_early_stopping´
+            # already ignores the epochs before it; the reset also covers a
+            # trainer whose ´train´ is called a second time.
+            if (self.prune_aware_early_stopping_
+                    and self.epoch == self.n_epochs_all_gps_):
+                self.early_stopping.reset()
+                self.best_model_state_dict = None
+                self.best_model_dynamic_masks = None
+                self.best_epoch = None
+                if (self.use_early_stopping_ and self.epoch > 0
+                        and is_main_process()):
+                    print(f"\nGene program pruning starts in epoch "
+                          f"{self.epoch + 1}; early stopping starts from "
+                          "here, so only pruned models compete for the best "
+                          "model state.")
             if self.epoch < self.n_epochs_no_cat_covariates_contrastive_:
                 self.cat_covariates_contrastive_active = False
             else:
@@ -913,6 +952,18 @@ class Trainer(BaseTrainerMixin):
                 print("Using best model state, which was in epoch "
                       f"{self.best_epoch + 1}.")
             self.model.load_state_dict(self.best_model_state_dict)
+            # The dynamic decoder masks are non persistent buffers, so the
+            # state dict above does not hold them. Without this the weights of
+            # the best epoch would be combined with the masks of the last one:
+            # programs pruned after the best epoch would stay cut from the
+            # decoders, although the weights were fitted with them.
+            if self.best_model_dynamic_masks is not None:
+                _restore_buffers(self.model, self.best_model_dynamic_masks)
+                # The lists of reconstructed genes and peaks are derived from
+                # the masks in every omics forward pass; derive them now, so
+                # that they match the restored masks even if no forward pass
+                # follows before the model is saved.
+                self.model.update_reconstructed_features()
 
         self.model.eval()
 
@@ -1213,6 +1264,10 @@ class Trainer(BaseTrainerMixin):
         all-reduced, so every process reaches the same decision from the same
         numbers.
 
+        With ´prune_aware_early_stopping´ it ignores the epochs before gene
+        program pruning starts, and the best model state it records includes
+        the dynamic decoder masks.
+
         Returns
         ----------
         stop_training:
@@ -1220,8 +1275,25 @@ class Trainer(BaseTrainerMixin):
         """
         early_stopping_metric = self.early_stopping.early_stopping_metric
         current_metric = self.epoch_logs[early_stopping_metric][-1]
+
+        # The epochs before pruning are a fixed warm-up. Their losses come
+        # from a model that still holds every gene program and are not
+        # comparable with the losses after pruning starts, so letting them
+        # count would usually keep an unpruned state as the best one, stop
+        # training soon after pruning began, and could cut the learning rate
+        # before pruning started. The early stopping state is reset when
+        # pruning starts. The metric is read above all the same, so that a
+        # metric missing from the logs fails in the first epoch.
+        if (self.prune_aware_early_stopping_
+                and self.epoch < self.n_epochs_all_gps_ < self.n_epochs_):
+            return False
         if self.early_stopping.update_state(current_metric):
             self.best_model_state_dict = copy.deepcopy(self.model.state_dict())
+            if self.prune_aware_early_stopping_:
+                self.best_model_dynamic_masks = {
+                    name: buffer.detach().clone()
+                    for name, buffer in self.model.named_buffers()
+                    if "dynamic_decoder_mask" in name}
             self.best_epoch = self.epoch
 
         continue_training, reduce_lr = self.early_stopping.step(current_metric)

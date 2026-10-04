@@ -19,6 +19,15 @@ is based on [keep a changelog], and this project adheres to
   validate fitted feature order and support dense ATAC plotting and empty GP selections.
 - Add `sample_key` to communication analysis to keep spatial neighbors within
   independent samples, validate graph caches and compute products only on edges.
+- Make early stopping aware of gene program pruning (`prune_aware_early_stopping=True`,
+  passed through `NicheCompass.train` to the trainer). Pruning makes the loss jump, so
+  the best value seen before it was rarely beaten again: an unpruned state stayed the
+  best one, was reloaded at the end with the decoder masks of the last epoch, and
+  training stopped `patience` epochs after pruning began. The epochs before pruning
+  are now a fixed warm-up that cannot stop training or lower the learning rate, early
+  stopping starts with the first pruned epoch, and the best state brings back the
+  decoder masks of its own epoch. `prune_aware_early_stopping=False` restores the
+  previous behaviour exactly.
 - Migrate tutorials away from manual sign correction. See the
   [GP analysis guide](../user_guide/gene_program_analysis.md) for compatibility
   details and the limits of the differential statistic.
