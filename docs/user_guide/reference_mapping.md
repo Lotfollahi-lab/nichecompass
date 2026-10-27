@@ -1,5 +1,7 @@
 # Query-to-reference mapping
 
+This page describes NicheCompass 1.0.0 and later.
+
 Mapping a query dataset onto a trained reference goes through
 `NicheCompass.load()`, which rebuilds the saved architecture against the query
 AnnData, restores the reference weights, and freezes them. You then call

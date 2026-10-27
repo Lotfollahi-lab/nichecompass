@@ -1,5 +1,7 @@
 # Human PPI gene programs
 
+This page describes NicheCompass 1.0.0 and later, the first release with this resource.
+
 This page documents, step by step, how `extract_gp_dict_from_humanppi_interactions` turns the predicted
 human interactome into prior gene programs for NicheCompass. It is written for a computational biologist or
 bioinformatician who wants to understand exactly what the resulting gene program mask contains, what
@@ -37,10 +39,10 @@ The classification below exists to solve both problems: it decides which interac
 
 ## 2. Retrieval, caching and provenance
 
-Three external resources are used. Each is downloaded on first use, cached, and accompanied by a
+Four external resources are used. Each is downloaded on first use, cached, and accompanied by a
 `<file>.provenance.json` recording the source URL, the retrieval time in UTC and whatever version the server
 reports. Reusing a cache prints its provenance; a cache without provenance is reported as such. This matters
-because all three are updated independently of NicheCompass, so a gene program mask is only reproducible if
+because all four are updated independently of NicheCompass, so a gene program mask is only reproducible if
 the versions that produced it are known.
 
 | Resource | Source | Cached as | Version recorded |
@@ -48,6 +50,7 @@ the versions that produced it are known.
 | Interaction predictions | `conglab.swmed.edu/humanPPI` (archived on [Dryad](https://doi.org/10.5061/dryad.15dv41p84)) | `humanppi_network_<precision>.csv` | `Last-Modified`, size |
 | Protein annotation | UniProt REST | `humanppi_protein_topology.tsv` | UniProt release and release date |
 | Protein complexes | EBI Complex Portal, human | `complex_portal_human.tsv` | `Last-Modified`, size |
+| Ligand and receptor roles, used only to orient interactions | OmniPath intercell annotation | `omnipath_intercell_annotation.tsv` | retrieval time only |
 
 The download server for the predictions presents an incomplete TLS certificate chain, so the first attempt is
 retried with certificate verification disabled and a warning. This is expected, not a failure.
@@ -157,14 +160,16 @@ complex. Two details:
   ligand-receptor pairs as complexes, and those are predominantly binary (tumour necrosis factor with its
   receptors, lymphotoxin beta with its receptor, colony stimulating factor 1 with its receptor). Genuine
   binary *cis* assemblies are covered by the curated families instead.
-- **24 curated gene family patterns** complement the Portal, because it covers only about a fifth of the
+- **30 curated gene family patterns** complement the Portal, because it covers only about a fifth of the
   proteins in this network and is missing several prominent surface complexes outright, among them every MHC
   class II alpha-beta pair, the CD79 heterodimer of the B cell receptor and the high-affinity IgE receptor.
   The families cover MHC class I with beta-2 microglobulin, MHC class II, the T cell receptor chains, CD8,
   CD79, FcεRI, CD94/NKG2, integrins, collagens, laminins, sarcoglycans, the BBSome, the AP-2 adaptor,
   complement C1q, fibrinogen, GABA-A, ionotropic glutamate, glycine, nicotinic acetylcholine and serotonin-3
-  receptors, the epithelial sodium channel, heteromeric amino acid transporters, CatSper and the shared
-  gamma-chain cytokine receptors.
+  receptors, the epithelial sodium channel, heteromeric amino acid transporters, CatSper, the shared
+  gamma-chain cytokine receptors, the tetraspanins, basigin with its transporters, the syndecans and
+  glypicans, MDGA with the neuroligins, the CD45 complex and the platelet glycoprotein Ib-IX-V complex. Twelve
+  co-receptor families (section 6.3) bring the total to 42.
 
 ## 5. Step one of the classification: the location class of each protein
 
@@ -238,8 +243,8 @@ Topology is consulted in **both** directions:
 an extracellular face and topology neither confirms nor contradicts it. **With `use_topology=True` and a
 complete annotation cache this parameter is inert and the `ambiguous` class is never produced**, because
 topology resolves every case the keywords leave open: measured on the precision-90 predictions, no gene is
-assigned the `ambiguous` category and both settings give 2,010 intercellular programs. It becomes the
-deciding parameter only with `use_topology=False`, where it gives 2,527 against 1,776 intercellular
+assigned the `ambiguous` category and both settings give 1,584 intercellular programs. It becomes the
+deciding parameter only with `use_topology=False`, where it gives 2,273 against 1,603 intercellular
 programs.
 
 ### 5.4 The fallback chain for proteins with no cellular-component keyword
@@ -574,10 +579,10 @@ left, so the intercellular set grows rather than shrinks: 2,273 programs at prec
    `ERBB2`-`ERBB3` (630 residues), `INSR`-`IGF1R` (731), `NRP1`-`KDR` (835), `TLR1`-`TLR2` (568),
    `GABBR1`-`GABBR2` (572), `PTCH1`-`SMO` (320), `ASIC4`-`ASIC3` (349), `CALCR`-`RAMP1`, `BMPR1A`-`BMPR2`,
    `ABCG5`-`ABCG8` — and required curated families (section 6.3). **Curation does not generalise**, so
-   co-receptor complexes outside those 36 families are still expected to be called `juxtacrine`. Two survive
+   co-receptor complexes outside those 42 families are still expected to be called `juxtacrine`. Two survive
    even on the 313-gene breast panel: `CD4`-`CD3D` and `CD8A`-`CD3D` are a T cell co-receptor engaging the
    T cell receptor complex on the same cell, and both are still classified `juxtacrine`. The residual error
-   rate among the 863 juxtacrine programs is unmeasured.
+   rate among the 769 juxtacrine programs is unmeasured.
 3. **Precision is not measured globally.** Every specific false positive found has been fixed, but there is
    no clean negative gold standard, so the fraction of the 1,584 intercellular calls that are wrong is
    unknown. Recall is measured; precision is argued.
@@ -624,7 +629,7 @@ Grouped by what they control. Defaults are those of
 | `detect_cis_complexes` | `True` | Reclassify subunits of a common complex as `cis_complex` or `extracellular_assembly` (section 6.1) |
 | `orient_juxtacrine_gps` | `True` | Orient interactions from evidence about which partner sends the signal, so the ligand lands in the source component (section 6.4). `False` keeps the released column order |
 | `omnipath_annotation_file_path` | `../data/gene_programs/omnipath_intercell_annotation.tsv` | Cache for the OmniPath intercell annotation used by orientation rules 4 and 5. A failure to retrieve it costs orientation coverage, not the mask |
-| `min_extracellular_domain_length` | `30` | Shortest extracellular domain, in residues, that still counts as able to reach a partner on a neighbouring cell (section 6.2). `0` disables the reach test. Requires `use_topology=True` |
+| `min_extracellular_domain_length` | `30` | Shortest extracellular domain, in residues, that still counts as able to reach a partner on a neighbouring cell (section 6.2). `0` keeps every protein with an annotated extracellular domain; one without and with three or more membrane crossings still counts as unable to reach. Requires `use_topology=True` |
 | `symmetric_juxtacrine_gps` | `False` | Emit each contact-dependent interaction in both orientations, since it operates in both directions between two neighbouring cells (section 6.4). Doubles the number of `juxtacrine` programs |
 | `complex_portal_file_path` | `../data/gene_programs/complex_portal_human.tsv` | Cache location for the Complex Portal table |
 | `complex_portal_url` | `ftp.ebi.ac.uk/...` | Where the Complex Portal table is downloaded from |

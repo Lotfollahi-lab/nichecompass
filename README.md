@@ -11,7 +11,8 @@
 NicheCompass (**N**iche **I**dentification based on **C**ellular grap**H** **E**mbeddings of **COM**munication **P**rograms **A**ligned across **S**patial **S**amples) is a package for end-to-end analysis of spatial multi-omics data, including spatial atlas building, niche identification & characterization, cell-cell communication inference and spatial reference mapping. It is built on top of [PyG](https://pytorch-geometric.readthedocs.io/en/latest/) and [AnnData](https://anndata.readthedocs.io/en/latest/).
 
 ## Resources
-- An installation guide, tutorials and API documentation is available in the [documentation](https://nichecompass.readthedocs.io/).
+- NicheCompass 1.0.0 is installed from source: see the [installation guide](docs/installation.md). PyPI and the [online documentation](https://nichecompass.readthedocs.io/) still describe release 0.3.3.
+- The [tutorials](docs/tutorials/notebooks), [user guides](docs/user_guide) and [release notes](docs/release_notes/index.md) for 1.0.0 are in this repository.
 - Please use [issues](https://github.com/Lotfollahi-lab/nichecompass/issues) to submit bug reports.
 - If you would like to contribute, check out the [contributing guide](https://nichecompass.readthedocs.io/en/latest/contributing.html).
 - If you find NicheCompass useful for your research, please consider citing the NicheCompass manuscript.

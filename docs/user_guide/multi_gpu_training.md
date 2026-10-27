@@ -1,5 +1,7 @@
 # Multi-GPU training
 
+This page describes NicheCompass 1.0.0 and later, the first release with multi-GPU training.
+
 NicheCompass can split training across several GPUs. This page explains what the option does, what it
 guarantees numerically, how to launch it, and what it does not cover.
 

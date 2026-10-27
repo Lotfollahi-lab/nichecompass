@@ -1,8 +1,10 @@
 # Installation
 
 NicheCompass is available for Python 3.10. We recommend to train NicheCompass
-models on a device with GPU support. Apple silicon or multi-GPU training is not
-yet supported.
+models on a device with GPU support. Apple silicon is not supported. Training on
+several GPUs (`multi_gpu=True`, one process per GPU started with `torchrun` or an
+MPI launcher) is available from 1.0.0 on; see the
+[multi-GPU guide](user_guide/multi_gpu_training.md).
 
 We do not recommend installation on your system Python. Please set up a virtual
 environment, e.g. via conda through the [Mambaforge] distribution or [python-venv],
@@ -58,17 +60,38 @@ external libraries for PyTorch 2.0.0 and CUDA 11.7, which you can use as:
 conda env create -f environment.yaml
 ```
 
-## Installation via PyPi
+## Installation from source
 
-Subsequently, install NicheCompass via pip:
+NicheCompass 1.0.0 is not published on PyPI: `pip install nichecompass` installs
+release 0.3.3, which lacks the functions the tutorials use (see the
+[release notes](release_notes/index.md)). After installing the external
+libraries above, install 1.0.0 from a copy of its repository, where the release
+is tagged `1.0.0`:
 ```
-uv pip install nichecompass
+git clone <repository URL> nichecompass
+cd nichecompass
+git checkout 1.0.0
+uv pip install ".[all]"
 ```
+where `<repository URL>` is the address of the repository you received
+NicheCompass from. Without cloning, `uv pip install "nichecompass[all] @
+git+<repository URL>@1.0.0"` does the same in one step.
 
-Or install optional dependencies required for benchmarking, multimodal analysis, running tutorials etc. with:
+The `[all]` extra adds the optional dependencies for benchmarking, multimodal
+analysis and the tutorials. `[tutorials]` alone installs what the single sample,
+human PPI, sample integration and reference mapping tutorials need besides the
+package (JupyterLab, `gdown` for the data downloads and `squidpy`). The multimodal
+tutorial also needs `[multimodal]` (`scglue`) and bedtools (see above), so install
+it with `uv pip install ".[tutorials,multimodal]"` or `".[all]"`.
+To change the code yourself, install the clone in editable mode with
+`uv pip install -e ".[all]"`.
+
+Check the installed version:
 ```
-uv pip install nichecompass[all]
+python -c "import nichecompass; print(nichecompass.__version__)"
 ```
+It prints `1.0.0`. An editable install reports the version it was installed with,
+so reinstall it after switching to another release.
 
 To enable GPU support for JAX (recommended for benchmarking), after the installation run:
 ```

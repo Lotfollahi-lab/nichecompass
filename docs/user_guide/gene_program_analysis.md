@@ -1,6 +1,8 @@
 # Gene program interpretation and differential analysis
 
-NicheCompass now provides a shared orientation for GP activities and decoder
+This page describes NicheCompass 1.0.0 and later.
+
+NicheCompass provides a shared orientation for GP activities and decoder
 loadings. The analysis APIs apply it automatically for newly trained models.
 Do not multiply GP columns or differential statistics by manually chosen signs.
 

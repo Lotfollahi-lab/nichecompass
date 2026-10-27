@@ -4,7 +4,7 @@ requires = ["hatchling"]
 
 [project]
 name = "nichecompass"
-version = "0.3.3"
+version = "1.0.0"
 description = "End-to-end analysis of spatial multi-omics data"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -77,6 +77,8 @@ optional-dependencies.multimodal = [
 ]
 optional-dependencies.tutorials = [
     "jupyterlab",
+    "gdown",
+    "squidpy",
 ]
 optional-dependencies.all = ["nichecompass[dev,docs,tests,benchmarking,multimodal,tutorials]"]
 

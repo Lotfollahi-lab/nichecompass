@@ -2587,9 +2587,9 @@ def extract_gp_dict_from_humanppi_interactions(
         This only concerns proteins whose evidence is unresolved, so it has
         almost no effect while ´use_topology´ is ´True´ and topology is
         retrievable for most proteins: measured on the predictions at 90%
-        precision, both settings then yield 2,010 intercellular gene programs.
+        precision, both settings then yield 1,584 intercellular gene programs.
         With ´use_topology´ set to ´False´ it is the deciding parameter, giving
-        2,527 against 1,776 intercellular gene programs respectively. The
+        2,273 against 1,603 intercellular gene programs respectively. The
         default is ´extracellular´ because excluding these proteins was
         measured to discard a large amount of genuine biology: recall against
         curated ligand-receptor pairs drops from 97.4% to 79.7% when topology
