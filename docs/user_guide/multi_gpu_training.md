@@ -421,7 +421,10 @@ process holds its own copy of `adata` and only the main one is kept.
 
 The gene program resources download and cache on first use. Under `torchrun` all processes reach that code
 at once and would race to write the same cache files. Run the pipeline once on a single process to populate
-the caches under `data/gene_programs/`, then launch the multi-GPU run.
+the caches under `data/gene_programs/`, then launch the multi-GPU run. Alternatively, run
+`prepare_gp_caches.py` from `analysis/data_analysis/` of the reproducibility repository on any machine with
+internet access (`--gp_data_folder_path <folder> --humanppi_precision <the run's precision>`; it needs no
+data, GPU or model) and copy the four human PPI caches together with their `.provenance.json` files.
 
 ## 8. Measuring whether it helped
 

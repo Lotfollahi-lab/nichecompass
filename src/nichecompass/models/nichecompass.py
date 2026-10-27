@@ -760,11 +760,13 @@ class NicheCompass(GPAnalysisMixin, BaseModelMixin):
             If `True`, split training across all processes of a distributed
             job, so that every process holds a copy of the model and works on a
             disjoint part of the training edges and nodes. Gradients are
-            averaged across processes, so ´edge_batch_size´ and
-            ´node_batch_size´ keep their meaning as the global batch sizes and
-            the number of optimizer steps per epoch is unchanged; the speedup
-            comes from each process computing a ´world_size´-th of every batch.
-            Requires the script to be launched as a distributed job, for
+            averaged across processes. How ´edge_batch_size´ and
+            ´node_batch_size´ are read is set by the trainer argument
+            ´batch_size_scaling´ (passed through ´trainer_kwargs´): by default,
+            ´"per_process"´, each process takes the full batch, so an epoch has
+            ´world_size´ times fewer optimizer steps; ´"global"´ splits every
+            batch across the processes and keeps the step count of a single
+            device run. Requires the script to be launched as a distributed job, for
             example with ´torchrun --nproc_per_node=4 your_script.py´, and
             raises otherwise. Leaving this at `False` reproduces the previous
             behavior exactly.
@@ -775,7 +777,12 @@ class NicheCompass(GPAnalysisMixin, BaseModelMixin):
             Data type for storing the latent representations. Set to np.float16 for
             really big datasets (>1m observations).
         trainer_kwargs:
-            Kwargs for the model Trainer.
+            Kwargs for the model Trainer, for example ´use_early_stopping´,
+            ´reload_best_model´, ´early_stopping_kwargs´,
+            ´prune_aware_early_stopping´ (default ´True´: early stopping ignores
+            the epochs before gene program pruning starts and the reloaded best
+            state keeps its own decoder masks), ´batch_size_scaling´ and
+            ´profile´.
         """
         self.trainer = Trainer(
             adata=self.adata,
