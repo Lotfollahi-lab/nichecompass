@@ -79,11 +79,39 @@ expressed. Negative-loading members point in the opposite direction, and the
 softmax decoder couples all reconstructed features. Loadings are not expression
 effect sizes, causal effects, or variance explained.
 
-The quality table reports `anchor`, `signed_mass`, `anchor_mass`,
-`coherence = abs(signed_mass) / anchor_mass`, source/target disagreement,
-global active status and orientation status. Zero support, coherence below 0.1,
-or absolute anchor mass below 1e-8 are flagged. These are descriptive diagnostics,
-not validated confidence thresholds; no program is discarded automatically.
+### Orientation quality
+
+`get_gp_quality_table()` reports, for every program, which loadings set its sign
+under the rules above (`anchor`: `source`, `target_fallback` or `all_rna`), the
+resulting `orientation_sign`, the sum of those loadings (`signed_mass`) and the
+sum of their absolute values (`anchor_mass`). `coherence = abs(signed_mass) /
+anchor_mass` is 1 when all anchor loadings share one sign, near 0 when they
+cancel, and 0 when `anchor_mass` is 0. `gp_active` gives the current pruning
+status. `source_target_disagree` marks programs whose source and target RNA
+loadings sum to opposite signs; it does not enter the status.
+
+`orientation_status` is computed from `anchor_mass` and `coherence`, with the
+rules checked in this order:
+
+| Status | Rule | Meaning |
+| --- | --- | --- |
+| `zero_support` | `anchor_mass == 0` | nothing to orient by; the sign is +1 by convention |
+| `mixed` | `coherence < 0.1` | positive and negative anchor loadings nearly cancel; the sign rests on a small imbalance |
+| `weak_support` | `anchor_mass < 1e-8` | the anchor loadings are numerically negligible; the sign is effectively arbitrary |
+| `oriented` | otherwise | the anchor loadings passed both cut-offs |
+
+A status is a label computed with fixed cut-offs, not a probability or a
+confidence level. The cut-offs were not tuned or validated on data, so a program
+just below a cut-off is not meaningfully less reliable than one just above it,
+and `oriented` means only that both cut-offs were passed, not that the program
+is biologically relevant. No program is removed: the status does not change
+`gp_active`, and differential tests include active programs of every status and
+report their `orientation_status` (`raw` when run with `orientation="raw"`), so
+results can be filtered on that column. Before making a directional claim about
+a program that is not `oriented`, read its positive and negative arms in
+`get_gp_feature_table()`; describe a `mixed` program as a contrast between them,
+and a `zero_support` or `weak_support` program by its members rather than as up
+or down.
 
 ## Differential results
 
