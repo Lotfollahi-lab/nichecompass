@@ -53,6 +53,11 @@ or earlier.
     models use it automatically; a model saved by 0.3.3 or earlier opts in with
     `prepare_gp_analysis()`. Raw inference (`get_latent_representation()`) is
     unchanged. Do not flip score columns by hand any more.
+-   Communication strengths from `compute_communication_gp_network()` are divided by
+    the largest aggregated value (`normalize="global"`, the default) instead of
+    min-max rescaled, so each program's weakest pair of groups is kept instead of
+    being set to zero and dropped. `strength_unscaled` keeps the aggregated values;
+    no option repeats the old rescaling.
 
 #### New features
 
