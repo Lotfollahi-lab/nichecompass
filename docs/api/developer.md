@@ -80,6 +80,7 @@
     nn.Encoder
     nn.MaskedLinear
     nn.AddOnMaskedLayer
+    nn.GraphAdapter
 ```
 
 ## Train
@@ -94,4 +95,12 @@
     train.Trainer
     train.eval_metrics
     train.plot_eval_metrics
+    train.init_distributed
+    train.cleanup_distributed
+    train.get_rank
+    train.get_world_size
+    train.is_main_process
+    train.make_profiler
+    train.resolve_profile_mode
+    train.StageBudget
 ```

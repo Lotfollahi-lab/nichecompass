@@ -61,6 +61,7 @@
     utils.extract_gp_dict_from_omnipath_lr_interactions
     utils.extract_gp_dict_from_humanppi_interactions
     utils.filter_and_combine_gp_dict_gps
+    utils.filter_and_combine_gp_dict_gps_v2
     utils.get_gene_annotations
     utils.generate_multimodal_mapping_dict
     utils.get_unique_genes_from_gp_dict

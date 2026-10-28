@@ -432,7 +432,9 @@ data, GPU or model) and copy the four human PPI caches together with their `.pro
 
 Adding processes does not automatically reduce runtime, and reasoning about which stages *should* scale is
 not a substitute for measuring which ones did. `profile` turns on a per-stage breakdown that is printed at
-the end of training. It is off by default and free when off.
+the end of training. It is off by default and free when off. When `profile` is not given, or is `False`, the
+mode is read from the `NICHECOMPASS_PROFILE` environment variable if it is set, so a variable left in the
+shell turns profiling on; `profile=True` selects `"step"`.
 
 ```python
 model.train(..., multi_gpu=True, profile="phase")

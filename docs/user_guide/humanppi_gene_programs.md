@@ -605,8 +605,10 @@ left, so the intercellular set grows rather than shrinks: 2,273 programs at prec
 ## 12. Complete parameter reference
 
 Grouped by what they control. Defaults are those of
-`extract_gp_dict_from_humanppi_interactions`; the training script exposes each one as
-`--humanppi_<name>` and the notebook as `humanppi_<name>`.
+`extract_gp_dict_from_humanppi_interactions`. The training script exposes the filtering and classification
+parameters as `--humanppi_<name>` and takes `species` from `--species`; it sets the cache locations and the
+download behaviour itself. The human PPI tutorial sets the classification parameters as `humanppi_<name>`
+variables.
 
 ### What is retrieved
 
@@ -616,7 +618,7 @@ Grouped by what they control. Defaults are those of
 | `precision` | `"90"` | Which released table: `"90"` (17,849 rows) or `"80"` (29,257 rows, a superset) |
 | `load_from_disk` | `False` | Read the predictions from `ppi_network_file_path` instead of downloading |
 | `save_to_disk` | `False` | Cache the downloaded predictions, with a provenance file |
-| `ppi_network_file_path` | `../data/gene_programs/humanppi_network.csv` | Cache location for the predictions |
+| `ppi_network_file_path` | `None`, which resolves to `../data/gene_programs/humanppi_network_<precision>.csv` | Cache location for the predictions |
 | `humanppi_predictions_url` | `conglab.swmed.edu/...` | Where the prediction archive is downloaded from |
 
 ### Which interactions are kept
@@ -635,13 +637,13 @@ Grouped by what they control. Defaults are those of
 | `program_type` | `"intercellular"` | `"intercellular"` keeps paracrine and juxtacrine; `"intracellular"` keeps the rest; `"both"` keeps everything |
 | `use_topology` | `True` | Retrieve UniProt membrane topology and annotation (section 4.1). Needs network access on first use |
 | `topology_file_path` | `../data/gene_programs/humanppi_protein_topology.tsv` | Cache location for the UniProt annotation |
-| `ambiguous_locality` | `"extracellular"` | How to treat proteins whose extracellular face is neither established nor contradicted (section 5.3). Inert unless `use_topology=False` |
+| `ambiguous_locality` | `"extracellular"` | How to treat proteins whose extracellular face is neither established nor contradicted (section 5.3). Almost no effect while `use_topology=True`, when it concerns only proteins without retrievable topology; decisive when `use_topology=False` |
 | `unresolved_locality` | `"exclude"` | How to treat interactions whose partner locations stay unresolved: `"exclude"` drops them, `"intracellular"` keeps them as target-only programs |
 | `detect_cis_complexes` | `True` | Reclassify subunits of a common complex as `cis_complex` or `extracellular_assembly` (section 6.1) |
 | `orient_juxtacrine_gps` | `True` | Orient interactions from evidence about which partner sends the signal, so the ligand lands in the source component (section 6.4). `False` keeps the released column order |
 | `omnipath_annotation_file_path` | `../data/gene_programs/omnipath_intercell_annotation.tsv` | Cache for the OmniPath intercell annotation used by orientation rules 4 and 5. A failure to retrieve it costs orientation coverage, not the mask |
 | `min_extracellular_domain_length` | `30` | Shortest extracellular domain, in residues, that still counts as able to reach a partner on a neighbouring cell (section 6.2). `0` keeps every protein with an annotated extracellular domain; one without and with three or more membrane crossings still counts as unable to reach. Requires `use_topology=True` |
-| `symmetric_juxtacrine_gps` | `False` | Emit each contact-dependent interaction in both orientations, since it operates in both directions between two neighbouring cells (section 6.4). Doubles the number of `juxtacrine` programs |
+| `symmetric_juxtacrine_gps` | `False` | Emit each contact-dependent interaction in both orientations, since it operates in both directions between two neighbouring cells (section 6.5). Doubles the number of `juxtacrine` programs |
 | `complex_portal_file_path` | `../data/gene_programs/complex_portal_human.tsv` | Cache location for the Complex Portal table |
 | `complex_portal_url` | `ftp.ebi.ac.uk/...` | Where the Complex Portal table is downloaded from |
 | `gene_orthologs_mapping_file_path` | `../data/gene_annotations/human_mouse_gene_orthologs.csv` | Ensembl BioMart mapping, used only when `species="mouse"` |
