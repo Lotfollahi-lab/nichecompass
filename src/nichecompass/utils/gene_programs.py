@@ -941,9 +941,10 @@ def _is_humanppi_same_family_assembly(gene_1: str, gene_2: str) -> bool:
 # settled by its being secreted, but when both partners are membrane anchored
 # localization says nothing about direction, and without this evidence the
 # orientation is the order of the two columns in the released predictions,
-# which is a coin flip: measured over the 138 interactions with an
-# unambiguous canonical sender, the ligand landed in the source component 68
-# times and in the target component 70 times.
+# which is a coin flip: on the 224 curated directions of contact-dependent
+# interactions in the orientation benchmark, the released order puts the
+# ligand in the source component 104 times and in the target component 120
+# times.
 
 # Gene Ontology molecular functions that mark a protein as the ligand of an
 # interaction. Matched as case-insensitive substrings, which subsumes the
@@ -1251,8 +1252,8 @@ def _orient_humanppi_intercellular_gp(
 
     Rules 2 to 7 are reached whenever rule 1 could not decide. That is every
     contact-dependent interaction, but also the paracrine interactions in which
-    *both* partners are soluble, which rule 1 cannot separate and which are 327
-    of the 856 paracrine interactions at 90% precision: a secreted ligand
+    *both* partners are soluble, which rule 1 cannot separate and which are 284
+    of the 811 paracrine interactions at 90% precision (UniProt 2026_03): a secreted ligand
     against a soluble decoy receptor is oriented by the same evidence as a
     contact-dependent pair. Rules 6 and 7 need the UniProt annotation, so they
     do not fire when ´use_topology´ is disabled or when a cached annotation
@@ -2650,10 +2651,10 @@ def extract_gp_dict_from_humanppi_interactions(
         partners, all of which come from the UniProt annotation that
         ´use_topology´ retrieves. See ´_orient_humanppi_intercellular_gp´ for
         the full precedence chain. If ´False´, the order of the two columns in
-        the released predictions is kept, which is arbitrary: measured over the
-        138 contact-dependent interactions with an unambiguous canonical
-        sender, the ligand landed in the source component 68 times and in the
-        target component 70 times. The rule that decided each gene program is
+        the released predictions is kept, which is arbitrary: on the 224 curated
+        directions of contact-dependent interactions in the orientation
+        benchmark, the released order puts the ligand in the source component
+        104 times and in the target component 120 times. The rule that decided each gene program is
         recorded under ´orientation_rule´ and the counts are printed per rule.
     omnipath_annotation_file_path:
         Path of the file where the OmniPath intercell annotation used to orient

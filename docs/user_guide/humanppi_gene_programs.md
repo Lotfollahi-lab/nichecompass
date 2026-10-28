@@ -381,14 +381,23 @@ receptor, which is the failure mode a family pattern could introduce.
 
 ### 6.4 Orientation: which partner goes into the source component
 
+The rule counts, coverage and accuracy figures in this section are the documented baseline of section 8.
+The other counts in this section and in section 6.5 were re-measured on 28 October 2026 at precision 90,
+with the predictions of 1 August 2025, UniProt release 2026_03, the Complex Portal table of 17 October 2026
+and that day's OmniPath intercell annotation. With those releases the extractor returns 1,580 intercellular
+programs rather than 1,584 (527, 196, 1, 24, 132, 17, 18 and 665 per rule in the table below, 915 oriented
+from evidence, and 214 of 214 decided curated directions correct): the annotations change between releases
+(section 2), and small drifts of this size are expected.
+
 NicheCompass reconstructs the source component from the **neighbours** and the target component from the
 **cell itself**, so the partner expressed by the sending cell belongs in the source component and the
 partner expressed by the receiving cell in the target component. Getting this backwards asks the model to
 predict the ligand in the receiving cell and its receptor in the neighbourhood.
 
 Without evidence the orientation is the order of the two columns in the released table, which is a coin
-flip: measured over the 138 contact-dependent interactions with an unambiguous canonical sender, the ligand
-landed in the source component 68 times and in the target component 70 times. `orient_juxtacrine_gps`
+flip: on the 224 curated directions of contact-dependent interactions in the orientation benchmark, the
+released order puts the ligand in the source component 104 times (46.4%) and in the target component 120
+times. `orient_juxtacrine_gps`
 (default `True`) therefore applies an ordered chain of rules, and the first one that fires decides.
 
 | # | Rule | Evidence | Interactions | Accuracy |
@@ -409,7 +418,7 @@ printed. `tests/data/humanppi_orientation_gold.tsv` holds the 224 curated direct
 `tests/benchmark_humanppi_classification.py` gates on both the accuracy and the coverage.
 
 Rules 2 to 7 are reached whenever rule 1 could not decide. That is every contact-dependent interaction, but
-also the **327 of 856 paracrine interactions in which both partners are soluble**, which rule 1 cannot
+also the **284 of 811 paracrine interactions in which both partners are soluble**, which rule 1 cannot
 separate: a secreted ligand against a soluble decoy receptor is oriented by the same evidence.
 
 Three design decisions are worth stating, because each was arrived at by measurement rather than assumption:
@@ -439,7 +448,7 @@ already predicted to interact is the sender.
 
 `symmetric_juxtacrine_gps=True` sidesteps orientation altogether for contact-dependent interactions, by
 emitting each one **twice**, once in each orientation, so neither has to be the right one. It also closes a
-coverage gap: with one orientation, 557 of the 812 genes taking part in a contact-dependent interaction
+coverage gap: with one orientation, 537 of the 748 genes taking part in a contact-dependent interaction
 appear in only one component across the whole prior set, so no named program ever reconstructs them from the
 other one. With both orientations, none do.
 
@@ -449,10 +458,12 @@ set. Contact-dependent signalling is frequently *bidirectional* — ephrin-B cyt
 ligand-expressing cell, so do Notch ligand intracellular domains, membrane TNF, B7 and MHC — but
 bidirectional is not the same as *symmetric*: the two arms use different effectors and produce different
 outputs, so the two orientations are not interchangeable descriptions of one event. Genuinely symmetric
-interactions, where the two partners are the same molecule, number **0 of 863**: the interactome screened
-heterodimeric pairs only, so homophilic adhesion is absent from this resource by construction. Only 177 of
-863 (20.5%) have both partners in a family where bidirectional signalling is the norm, and 113 of those 177
-are ephrin/Eph.
+interactions, where the two partners are the same molecule, number **0 of 769**: the interactome screened
+heterodimeric pairs only, so homophilic adhesion is absent from this resource by construction. Only 125 of
+769 (16.3%) pair a ligand with a receptor of a family in which bidirectional signalling is the norm: ephrins
+with Eph receptors (99), B7 ligands with CD28-family receptors (10), membrane TNF-superfamily ligands with
+their receptors (10), Notch ligands with Notch receptors (3), and MHC molecules with their T and NK cell
+receptors (3).
 
 The cost is in reading rather than in statistics. Differential program testing applies a fixed log Bayes
 factor threshold with no multiple-testing correction, so doubling the program count carries no statistical
@@ -464,7 +475,7 @@ Turn it on when the *side* of a contact-dependent interface is itself the questi
 whether a checkpoint interaction is enriched from the tumour cell's side, the T cell's side, or both. Note
 that `filter_and_combine_gp_dict_gps_v2` merges programs sharing a source gene, and every intercellular
 program has exactly one source gene, so combining collapses the mirrored set to one program per source gene
-and discards the interaction class; only 75 of the 863 mirrored pairs survive as pairs.
+and discards the interaction class; only 73 of the 769 mirrored pairs survive as pairs.
 
 ## 7. Gene program construction
 
