@@ -137,8 +137,9 @@ own precision calibration.
 
 ### 4.1 UniProt annotation (`use_topology`, default `True`)
 
-One batched UniProt REST request per 100 accessions retrieves seven fields, all cached together. For the
-12,064 accessions retrieved across both precision levels:
+One batched UniProt REST request per 100 accessions retrieves eight fields, all cached together. Seven of them
+locate the protein; the eighth, the Gene Ontology molecular functions (`go_f`), serves orientation rule 6
+(section 6.4). For the 12,064 accessions retrieved across both precision levels:
 
 | Evidence | Field | Coverage |
 | :-- | :-- | --: |
