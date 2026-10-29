@@ -542,7 +542,7 @@ only *cis* evidence left, so the intercellular set grows rather than shrinks: 2,
 2. **Combining discards the interaction class.** `filter_and_combine_gp_dict_gps_v2` merges programs sharing
    a source gene and renames them `<GENE>_combined_GP`, which loses the `_paracrine_`/`_juxtacrine_` label.
 3. **Targeted panels.** An intercellular program needs *both* partners probed. On the 313-gene Xenium human
-   breast panel only 31 of 3,088 intercellular programs retain both partners (17 of 1,584 at
+   breast panel only 31 of 3,082 intercellular programs retain both partners (17 of 1,580 at
    precision 90). The resource is best suited to
    whole-transcriptome data; on a targeted panel it is more informative as a supplement to
    OmniPath, NicheNet and MEBOCOST than on its own.
