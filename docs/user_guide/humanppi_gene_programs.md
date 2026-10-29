@@ -526,8 +526,8 @@ At `precision="90"`, `species="human"`, `program_type="both"` and otherwise defa
 Intercellular programs total 1,580. At `precision="80"` the totals are 27,768 programs of which 3,082 are
 intercellular (1,420 paracrine, 1,662 juxtacrine).
 
-With `use_topology=False` the reach test cannot run and the curated families are the only *cis* evidence
-left, so the intercellular set grows rather than shrinks: 2,273 programs at precision 90 with
+With `use_topology=False` the reach test cannot run and the Complex Portal and the curated families are the
+only *cis* evidence left, so the intercellular set grows rather than shrinks: 2,273 programs at precision 90 with
 `ambiguous_locality="extracellular"`, 1,603 with `"intracellular"`. Both are less trustworthy than the
 1,580 obtained with topology.
 
@@ -607,8 +607,8 @@ left, so the intercellular set grows rather than shrinks: 2,273 programs at prec
    `SLC51A`-`SLC51B` — and are caught by the curated families of section 6.3. Seven of them are also caught
    by the gene-family rule, so `INSR`-`IGF1R`, `NRP1`-`KDR`, `PTCH1`-`SMO` and `CALCR`-`RAMP1` depend on
    curation alone. **Curation does not generalise**, so
-   co-receptor complexes outside those 42 families are still expected to be called `juxtacrine`. Two survive
-   even on the 313-gene breast panel: `CD4`-`CD3D` and `CD8A`-`CD3D` are a T cell co-receptor engaging the
+   co-receptor complexes outside those 42 families are still expected to be called `juxtacrine`. At precision 80, two
+   survive even on the 313-gene breast panel: `CD4`-`CD3D` and `CD8A`-`CD3D` are a T cell co-receptor engaging the
    T cell receptor complex on the same cell, and both are still classified `juxtacrine`. The residual error
    rate among the 769 juxtacrine programs is unmeasured.
 3. **Precision is not measured globally.** Every specific false positive found has been fixed, but there is

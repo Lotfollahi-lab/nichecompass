@@ -2646,11 +2646,10 @@ def extract_gp_dict_from_humanppi_interactions(
         If ´True´ (default), contact-dependent interactions are oriented from
         evidence about which partner sends the signal, so that the ligand is
         placed in the source (neighborhood) component and the receptor in the
-        target (self) component. Curated gene families are used first, then the
-        Gene Ontology molecular functions, the GPI anchor, the kinase and
-        transducer keywords and the cytoplasmic domain lengths of the two
-        partners, all of which come from the UniProt annotation that
-        ´use_topology´ retrieves. See ´_orient_humanppi_intercellular_gp´ for
+        target (self) component. Curated ligand and receptor gene families are
+        used first, then HGNC symbol stems, the OmniPath intercell annotation,
+        the Gene Ontology molecular functions and the GPI anchor; the last two
+        come from the UniProt annotation that ´use_topology´ retrieves. See ´_orient_humanppi_intercellular_gp´ for
         the full precedence chain. If ´False´, the order of the two columns in
         the released predictions is kept, which is arbitrary: on the 224 curated
         directions of contact-dependent interactions in the orientation
@@ -2677,12 +2676,14 @@ def extract_gp_dict_from_humanppi_interactions(
         common protein complex in the EBI Complex Portal, or that belong to a
         common curated gene family (see
         ´HUMANPPI_CIS_COMPLEX_GENE_FAMILY_PATTERNS´), are reclassified from
-        paracrine or juxtacrine to ´cis_complex´, since they assemble within a
-        single cell. The curated families are needed because the Complex Portal
+        paracrine or juxtacrine to ´cis_complex´, or to
+        ´extracellular_assembly´ when both partners are secreted, since they
+        assemble within a single cell. The curated families are needed because the Complex Portal
         covers only under a quarter of the proteins of the human interactome
         and is missing several prominent cell-surface complexes entirely.
         Measured on the predictions at 90% precision, this reclassifies 349 of
-        the 1,929 interactions that would otherwise be called intercellular.
+        the 1,929 interactions that would otherwise be called intercellular
+        (251 as ´cis_complex´, 98 as ´extracellular_assembly´).
     complex_portal_file_path:
         Path of the file where the Complex Portal table for human is cached.
         The file is downloaded on first use.
