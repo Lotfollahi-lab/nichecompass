@@ -55,6 +55,12 @@ the versions that produced it are known.
 The download server for the predictions presents an incomplete TLS certificate chain, so the first attempt is
 retried with certificate verification disabled and a warning. This is expected, not a failure.
 
+Every count in this guide was measured on 28 October 2026 with NicheCompass 1.0.0, the predictions of
+1 August 2025, UniProt release 2026_03 of 2 September 2026, the Complex Portal table of 17 October 2026 and
+that day's OmniPath intercell annotation. Other releases give slightly different counts, because the
+annotations change between releases. A few figures describe rule variants that are no longer in the code,
+or comparisons against other resources; they were measured during development and are marked as such.
+
 ### What the prediction table contains
 
 28 columns per interaction. The classification uses only a few of them, so it is worth knowing what is
@@ -75,7 +81,7 @@ there. Taking PD-1 / PD-L1 as an example:
 | `Disease1/2`, `Function1/2` | ..., `Programmed cell death protein 1` | no |
 
 `Locality` holds **UniProt cellular-component keywords**, and it is a snapshot taken when the screen was
-run, which turns out to matter (see step 4.3).
+run, which turns out to matter (see section 5.4).
 
 ## 3. Preprocessing: which interactions are removed before classification
 
@@ -132,17 +138,17 @@ own precision calibration.
 ### 4.1 UniProt annotation (`use_topology`, default `True`)
 
 One batched UniProt REST request per 100 accessions retrieves seven fields, all cached together. For the
-12,258 accessions across both precision levels:
+12,064 accessions retrieved across both precision levels:
 
 | Evidence | Field | Coverage |
 | :-- | :-- | --: |
-| Membrane anchor (transmembrane segment or GPI anchor) | `ft_transmem`, `ft_lipid` | 3,157 |
-| Topological domains annotated | `ft_topo_dom` | 2,431 |
-| ... of which an **extracellular** domain | `ft_topo_dom` | 1,695 |
-| Signal peptide | `ft_signal` | 2,248 |
-| Current cellular-component keywords | `keyword` | 11,168 |
-| Subcellular location comment | `cc_subcellular_location` | 11,104 |
-| Gene Ontology cellular components | `go_c` | 11,954 |
+| Membrane anchor (transmembrane segment or GPI anchor) | `ft_transmem`, `ft_lipid` | 3,155 |
+| Topological domains annotated | `ft_topo_dom` | 2,430 |
+| ... of which an **extracellular** domain | `ft_topo_dom` | 1,696 |
+| Signal peptide | `ft_signal` | 2,063 |
+| Current cellular-component keywords | `keyword` | 10,982 |
+| Subcellular location comment | `cc_subcellular_location` | 10,919 |
+| Gene Ontology cellular components | `go_c` | 11,749 |
 
 Why topology matters so much: **cellular-component keywords describe whole proteins and say nothing about
 which side of a membrane a protein faces.** Peripheral proteins docked onto the cytoplasmic leaflet of the
@@ -153,15 +159,15 @@ Membrane anchoring is a sequence-level property and resolves them.
 
 ### 4.2 Protein complexes (`detect_cis_complexes`, default `True`)
 
-The human Complex Portal table yields **18,284 unordered accession pairs** that are subunits of a common
+The human Complex Portal table yields **18,305 unordered accession pairs** that are subunits of a common
 complex. Two details:
 
 - **Complexes with fewer than three subunits are skipped.** The Complex Portal also registers
   ligand-receptor pairs as complexes, and those are predominantly binary (tumour necrosis factor with its
   receptors, lymphotoxin beta with its receptor, colony stimulating factor 1 with its receptor). Genuine
   binary *cis* assemblies are covered by the curated families instead.
-- **30 curated gene family patterns** complement the Portal, because it covers only about a fifth of the
-  proteins in this network and is missing several prominent surface complexes outright, among them every MHC
+- **30 curated gene family patterns** complement the Portal, because it covers only 2,314 of the
+  9,806 proteins in the precision-90 network and is missing several prominent surface complexes outright, among them every MHC
   class II alpha-beta pair, the CD79 heterodimer of the B cell receptor and the high-affinity IgE receptor.
   The families cover MHC class I with beta-2 microglobulin, MHC class II, the T cell receptor chains, CD8,
   CD79, FcεRI, CD94/NKG2, integrins, collagens, laminins, sarcoglycans, the BBSome, the AP-2 adaptor,
@@ -243,7 +249,7 @@ Topology is consulted in **both** directions:
 an extracellular face and topology neither confirms nor contradicts it. **With `use_topology=True` and a
 complete annotation cache this parameter is inert and the `ambiguous` class is never produced**, because
 topology resolves every case the keywords leave open: measured on the precision-90 predictions, no gene is
-assigned the `ambiguous` category and both settings give 1,584 intercellular programs. It becomes the
+assigned the `ambiguous` category and both settings give 1,580 intercellular programs. It becomes the
 deciding parameter only with `use_topology=False`, where it gives 2,273 against 1,603 intercellular
 programs.
 
@@ -257,7 +263,7 @@ error while missing a surface protein only costs coverage.
 | --: | :-- | :-- | :-- |
 | 1 | Current UniProt cellular-component keywords | any class | The `Locality` column is a **stale snapshot**, not genuinely absent; refreshing it accounts for most of what the next fallback used to recover |
 | 2 | UniProt subcellular location comment | any class | Curated to the same standard as the keywords, occasionally present when no keyword was assigned |
-| 3 | Gene Ontology cellular components | **intracellular only** | Broadest coverage, but its extracellular calls are 84% wrong |
+| 3 | Gene Ontology cellular components | **intracellular only** | Broadest coverage, but 84% of its extracellular calls were wrong in a development measurement |
 | 4 | Signal peptide | `secreted`, or `cell_surface` if anchored | Sequence evidence that the protein enters the secretory pathway |
 | 5 | Biological-process keywords | **intracellular only** | 42 keywords such as `Transcription`, `mRNA splicing`, `Keratinization` |
 
@@ -274,7 +280,7 @@ Two subtleties:
   intracellular first.
 
 Interactions still unresolved after all five are governed by `unresolved_locality` (default `exclude`):
-524 at precision 90. They can never be classified as intercellular, so setting `intracellular` only ever
+570 at precision 90. They can never be classified as intercellular, so setting `intracellular` only ever
 moves them into the target component.
 
 ## 6. Step two of the classification: the interaction class
@@ -291,12 +297,17 @@ moves them into the target component.
 `program_type="intercellular"` keeps `paracrine` and `juxtacrine`; `"intracellular"` keeps the rest;
 `"both"` keeps everything.
 
+Sections 6.1 to 6.3 give two counts at precision 90 for each piece of *cis* evidence: how many interactions
+it reclassifies when it is the only evidence applied, and how many of those no other evidence catches. Many
+interactions are caught more than once, so the first counts add up to more than the total, which closes
+section 6.3.
+
 ### 6.1 The cis-complex adjudication
 
 Two proteins on the same cell's surface can form a complex rather than signal between cells, and
-localisation cannot see the difference. Before this step, five of the six possible CD3 chain pairs, the CD8
-and CD79 heterodimers, every integrin alpha-beta pair and every MHC class II alpha-beta pair were classified
-as contact-dependent signalling.
+localisation cannot see the difference. Without any *cis* evidence, five of the six possible CD3 chain pairs
+(the sixth is not in the table), the CD8 and CD79 heterodimers, all 20 integrin alpha-beta pairs and the MHC
+class II alpha-beta pairs outside the lysosomal HLA-DM are classified as contact-dependent signalling.
 
 Adjudication is at **pair** level, never complex level, because the Complex Portal registers genuine
 ligand-receptor assemblies as complexes: interferon alpha with its receptor, erythropoietin with its
@@ -305,7 +316,8 @@ assembly** and stays paracrine. If both partners are secreted it is an `extracel
 because secreted multimers such as collagen and laminin trimers, fibrinogen and complement C1q are assembled
 by the cell that produces them.
 
-At precision 90 this reclassifies 147 interactions as `cis_complex` and 57 as `extracellular_assembly`.
+On its own, the Complex Portal reclassifies 76 interactions as `cis_complex` and 36 as
+`extracellular_assembly`; for 30 of them (18 and 12) it is the only evidence.
 
 ### 6.1.1 Assemblies within one gene family
 
@@ -330,10 +342,12 @@ the connexins, the nectins and nectin-like molecules, the desmosomal cadherins, 
 molecules (neurexins, neuroligins, contactins, LRRTMs, DSCAM), and the siglecs and selectins. A root shorter
 than three characters is also ignored as too generic.
 
-This reclassifies 115 interactions at precision 90 **with no change to recall against curated
-ligand-receptor pairs**, which stays at 97.0% — the exemptions are what make that possible. It also raises
-orientation coverage from 54.2% to 58.0%, because interactions that have no direction to find are no longer
-in the intercellular set.
+On its own, this rule reclassifies 218 interactions (164 `cis_complex`, 54 `extracellular_assembly`), and
+116 of them are caught by no other evidence. **Recall against curated ligand-receptor pairs is the same
+with and without it**, 97.0%. The exemptions move only two interactions at this baseline; they are kept
+because in those families a pair of two members is a contact between two cells by design. The rule also
+raises orientation coverage from 54.1% to 57.9%, because interactions that have no direction to find are no
+longer in the intercellular set.
 
 ### 6.2 The reach test (`min_extracellular_domain_length`, default `30`)
 
@@ -360,8 +374,9 @@ Two design decisions matter:
 Connexins, claudins and occludin are exempt by name, because their docking with a partner on the
 neighbouring cell genuinely happens through short extracellular loops.
 
-This reclassifies **166 interactions** at precision 90 with no loss of recall, and catches exactly the
-proteins localisation cannot: `CD247` has a 9-residue ectodomain, `FCER1G` 5, `TYROBP` 19, `KCNJ6` 24,
+On its own, the reach test reclassifies **301 interactions**, and 230 of them are caught by no other
+evidence. It costs one curated ligand-receptor pair, the `NECTIN2`-`PVRIG` checkpoint (section 10), and it
+catches exactly the proteins localisation cannot: `CD247` has a 9-residue ectodomain, `FCER1G` 5, `TYROBP` 19, `KCNJ6` 24,
 `CNGA1` 23, `HCN1` 26, and `ORAI2` has none across four membrane crossings.
 
 ### 6.3 Curated cis co-receptor families
@@ -374,20 +389,17 @@ transforming growth factor beta receptors including endoglin, the Toll-like rece
 metabotropic GABA receptor, the Hedgehog receptor with its transducer and co-receptors, the neuropilins with
 the vascular endothelial growth factor receptors, the calcitonin receptors with their receptor-activity
 modifying proteins, the acid-sensing channels, the aquaporins, and the sterol and organic solute transporter
-heterodimers. These account for a further **44 interactions**.
+heterodimers. On their own, these twelve reclassify **47 interactions**, and 24 of them are caught by no
+other evidence.
 
 Every curated family is asserted in the unit tests to contain no secreted ligand together with its
 receptor, which is the failure mode a family pattern could introduce.
 
-### 6.4 Orientation: which partner goes into the source component
+Together, the *cis* evidence of sections 6.1 to 6.3 reclassifies 650 of the 2,230 interactions that
+localisation alone would call intercellular: 552 become `cis_complex` and 98 `extracellular_assembly`, which
+leaves the 1,580 intercellular programs of section 8.
 
-The rule counts, coverage and accuracy figures in this section are the documented baseline of section 8.
-The other counts in this section and in section 6.5 were re-measured on 28 October 2026 at precision 90,
-with the predictions of 1 August 2025, UniProt release 2026_03, the Complex Portal table of 17 October 2026
-and that day's OmniPath intercell annotation. With those releases the extractor returns 1,580 intercellular
-programs rather than 1,584 (527, 196, 1, 24, 132, 17, 18 and 665 per rule in the table below, 915 oriented
-from evidence, and 214 of 214 decided curated directions correct): the annotations change between releases
-(section 2), and small drifts of this size are expected.
+### 6.4 Orientation: which partner goes into the source component
 
 NicheCompass reconstructs the source component from the **neighbours** and the target component from the
 **cell itself**, so the partner expressed by the sending cell belongs in the source component and the
@@ -402,17 +414,17 @@ times. `orient_juxtacrine_gps`
 
 | # | Rule | Evidence | Interactions | Accuracy |
 | --: | :-- | :-- | --: | --: |
-| 1 | `secreted_partner` | exactly one partner is soluble, so it is released by the neighbour | 529 | physical |
+| 1 | `secreted_partner` | exactly one partner is soluble, so it is released by the neighbour | 527 | physical |
 | 2 | `gene_symbol_family` | one symbol names a curated ligand family, the other a curated receptor family | 196 | 100% |
 | 3 | `gene_symbol_stem` | one symbol is the other plus an HGNC `LG` or `R` suffix | 1 | 100% |
 | 4 | `omnipath_exclusive_role` | OmniPath calls one partner only a ligand and the other only a receptor | 24 | 100% |
 | 5 | `omnipath_surface_ligand` | OmniPath calls exactly one partner a ligand that stays on the surface, the other a receptor | 132 | 100% |
-| 6 | `go_molecular_function` | one carries a ligand molecular function, the other a receptor molecular function | 18 | 100% gold / 57% held out |
+| 6 | `go_molecular_function` | one carries a ligand molecular function, the other a receptor molecular function | 17 | 100% gold; 57% held out in development |
 | 7 | `gpi_anchor` | exactly one partner is GPI anchored, so it has no cytoplasmic domain and cannot signal inwards | 18 | 100% |
-| 8 | `table_order` | no evidence applies, the released order is kept | 666 | arbitrary |
+| 8 | `table_order` | no evidence applies, the released order is kept | 665 | arbitrary |
 
-**918 of 1,584** intercellular interactions (58.0%) are oriented from evidence, and on the 215 curated
-directions the chain decided it is **correct 215 times, including 116 of 116 once the ephrins are
+**915 of 1,580** intercellular interactions (57.9%) are oriented from evidence, and on the 214 curated
+directions the chain decided it is **correct 214 times, including 115 of 115 once the ephrins are
 excluded**. The rule that decided each program is stored under `orientation_rule` and the counts are
 printed. `tests/data/humanppi_orientation_gold.tsv` holds the 224 curated directions and
 `tests/benchmark_humanppi_classification.py` gates on both the accuracy and the coverage.
@@ -425,18 +437,19 @@ Three design decisions are worth stating, because each was arrived at by measure
 
 - **Both sides must match.** A rule fires only when one partner looks like a ligand *and* the other looks
   like a receptor. Comparing a partner that carries receptor evidence against one that carries *no*
-  annotation lets absence of evidence choose the ligand; that variant was measured at 64% against
+  annotation lets absence of evidence choose the ligand; during development that variant was measured at 64% against
   independent curation, versus 100% for the two-sided form.
 - **A bare `L` suffix is not a ligand marker.** `LG` reliably marks one (`KITLG`, `FASLG`, `CD40LG`), but a
   lone `L` far more often abbreviates "like": the rule would call `PXDNL` the ligand of `PXDN`.
-- **Two rules were implemented, measured and removed.** Orienting by which partner carries a kinase,
+- **Two rules were implemented, measured and removed.** In development measurements, orienting by which
+  partner carries a kinase,
   phosphatase or transducer keyword was correct for 33 of 42 interactions held out against NicheNet,
   CellPhoneDB and OmniPath, and orienting by the larger cytoplasmic domain for only 7 of 17, against 45% for
   the released column order. Both fire almost exclusively on pairs where *both* partners are receptors and
   there is no ligand to find, such as `NOTCH1` with `TLR4`, `DCC` with `UNC5D` and `PTPRG` with `TEK`. The
   keyword and the cytoplasmic domain lengths are still retrieved and cached, but no longer decide anything.
 
-The residual 666 are overwhelmingly interactions between poorly characterised proteins — `FAM209A` with
+The residual 665 are overwhelmingly interactions between poorly characterised proteins — `FAM209A` with
 `GYPA`, `SMIM5` with `TMEM52B`, `CTXN2` with `SERTM1` — where no resource states a direction and
 `table_order` is the honest answer. For those programs the interaction class is meaningful and the direction
 is not.
@@ -452,7 +465,7 @@ coverage gap: with one orientation, 537 of the 748 genes taking part in a contac
 appear in only one component across the whole prior set, so no named program ever reconstructs them from the
 other one. With both orientations, none do.
 
-It is nevertheless **off by default**, because it adds 769 programs at precision 90 (1,584 to 2,353
+It is nevertheless **off by default**, because it adds 769 programs at precision 90 (1,580 to 2,349
 intercellular, +49%) and because the arithmetic of the biology does not justify applying it to the whole
 set. Contact-dependent signalling is frequently *bidirectional* — ephrin-B cytoplasmic tails signal in the
 ligand-expressing cell, so do Notch ligand intracellular domains, membrane TNF, B7 and MHC — but
@@ -502,20 +515,20 @@ At `precision="90"`, `species="human"`, `program_type="both"` and otherwise defa
 
 | Class | Count | Share |
 | :-- | --: | --: |
-| `paracrine` | 815 | 4.8% |
+| `paracrine` | 811 | 4.8% |
 | `juxtacrine` | 769 | 4.6% |
-| `cis_complex` | 551 | 3.3% |
+| `cis_complex` | 552 | 3.3% |
 | `extracellular_assembly` | 98 | 0.6% |
-| `intracellular` | 14,614 | 86.7% |
-| **total** | **16,847** | |
+| `intracellular` | 14,571 | 86.7% |
+| **total** | **16,801** | |
 
-Intercellular programs total 1,584. At `precision="80"` the totals are 27,823 programs of which 3,088 are
-intercellular (1,424 paracrine, 1,664 juxtacrine).
+Intercellular programs total 1,580. At `precision="80"` the totals are 27,768 programs of which 3,082 are
+intercellular (1,420 paracrine, 1,662 juxtacrine).
 
 With `use_topology=False` the reach test cannot run and the curated families are the only *cis* evidence
 left, so the intercellular set grows rather than shrinks: 2,273 programs at precision 90 with
 `ambiguous_locality="extracellular"`, 1,603 with `"intracellular"`. Both are less trustworthy than the
-1,584 obtained with topology.
+1,580 obtained with topology.
 
 ## 9. Downstream use and three caveats
 
@@ -560,16 +573,16 @@ left, so the intercellular set grows rather than shrinks: 2,273 programs at prec
   checkpoint. Measured recall therefore understates real performance; the headline number is reported
   unadjusted regardless.
 - **Canonical cis pairs.** All 17 same-cell pairs listed under limitation 2 below are now classified
-  non-intercellular. Before the reach test and the curated co-receptor families, 15 of 15 were `juxtacrine`.
+  non-intercellular. With no *cis* evidence at all, all 17 are classified `juxtacrine`.
 - **True trans pairs preserved.** `PDCD1`-`CD274`, `SIRPA`-`CD47`, `EPHB1`-`EFNB3`, `CCL19`-`CCR7`,
   `IL15`-`IL15RA` and `TNFSF4`-`TNFRSF4` all remain intercellular.
 - **Orientation against curated direction.** `tests/data/humanppi_orientation_gold.tsv` holds 224
-  interactions whose sender is unambiguous from established cell biology. Of the 215 the rules decide, the
-  ligand is placed in the source component **215 times (100%)**, and **116 of 116** once the ephrins are
-  excluded, against 104 of 224 (46.4%) for the released column order. Coverage is 918 of 1,584 (58.0%).
+  interactions whose sender is unambiguous from established cell biology. Of the 214 the rules decide, the
+  ligand is placed in the source component **214 times (100%)**, and **115 of 115** once the ephrins are
+  excluded, against 104 of 224 (46.4%) for the released column order. Coverage is 915 of 1,580 (57.9%).
   Because the gold set and the curated family lexicon share provenance, the chain was additionally scored
   against NicheNet, CellPhoneDB and the OmniPath intercell annotation on interactions the gold set does not
-  cover: **243 of 246 (98.8%)**, with all three disagreements on pairs that are genuinely bidirectional
+  cover, in a development measurement: **243 of 246 (98.8%)**, with all three disagreements on pairs that are genuinely bidirectional
   (`TNFRSF14` with `BTLA` and with `TIGIT`, `SELPLG` with `SPN`).
   `tests/benchmark_humanppi_classification.py` gates on both the accuracy and the coverage.
 - **Unit tests.** `tests/test_humanppi_gene_programs.py` contains 248 offline tests pinning the protein and
@@ -584,20 +597,23 @@ left, so the intercellular set grows rather than shrinks: 2,273 programs at prec
 2. **The *trans* test is a physical proxy, not a functional one.** A positive test for *trans* now exists
    (section 6.2), but reach is necessary rather than sufficient: a protein with a long ectodomain may still
    only ever partner within its own membrane. The 17 canonical same-cell pairs probed are all now classified
-   non-intercellular, but they divide instructively. Seven were caught by the reach test alone
-   (`KCNJ6`-`KCNJ9`, `HCN1`-`HCN4`, `CNGA1`-`CNGB1`, `ORAI2`-`ORAI3`, `CD247`-`FCER1G`, `FCER1G`-`TREM2`,
-   `SLC51A`-`SLC51B`). Ten had ectodomains far too long for any topological test to reject —
-   `ERBB2`-`ERBB3` (630 residues), `INSR`-`IGF1R` (731), `NRP1`-`KDR` (835), `TLR1`-`TLR2` (568),
-   `GABBR1`-`GABBR2` (572), `PTCH1`-`SMO` (320), `ASIC4`-`ASIC3` (349), `CALCR`-`RAMP1`, `BMPR1A`-`BMPR2`,
-   `ABCG5`-`ABCG8` — and required curated families (section 6.3). **Curation does not generalise**, so
+   non-intercellular, but they divide instructively. Six fail the reach test, because one partner barely
+   protrudes from the membrane (`KCNJ6`-`KCNJ9`, `HCN1`-`HCN4`, `CNGA1`-`CNGB1`, `ORAI2`-`ORAI3`,
+   `CD247`-`FCER1G`, `FCER1G`-`TREM2`); the three channel pairs `KCNJ`, `HCN` and `ORAI` are also caught by
+   the gene-family rule of section 6.1.1. The other eleven pass the reach test — `ERBB2`-`ERBB3` (630
+   residues), `INSR`-`IGF1R` (731), `NRP1`-`KDR` (835), `TLR1`-`TLR2` (556), `GABBR1`-`GABBR2` (572),
+   `PTCH1`-`SMO` (320), `ASIC4`-`ASIC3` (349), `CALCR`-`RAMP1`, `BMPR1A`-`BMPR2`, `ABCG5`-`ABCG8`,
+   `SLC51A`-`SLC51B` — and are caught by the curated families of section 6.3. Seven of them are also caught
+   by the gene-family rule, so `INSR`-`IGF1R`, `NRP1`-`KDR`, `PTCH1`-`SMO` and `CALCR`-`RAMP1` depend on
+   curation alone. **Curation does not generalise**, so
    co-receptor complexes outside those 42 families are still expected to be called `juxtacrine`. Two survive
    even on the 313-gene breast panel: `CD4`-`CD3D` and `CD8A`-`CD3D` are a T cell co-receptor engaging the
    T cell receptor complex on the same cell, and both are still classified `juxtacrine`. The residual error
    rate among the 769 juxtacrine programs is unmeasured.
 3. **Precision is not measured globally.** Every specific false positive found has been fixed, but there is
-   no clean negative gold standard, so the fraction of the 1,584 intercellular calls that are wrong is
+   no clean negative gold standard, so the fraction of the 1,580 intercellular calls that are wrong is
    unknown. Recall is measured; precision is argued.
-4. **524 interactions remain unresolved** and are dropped by default. Closing that would need sequence-based
+4. **570 interactions remain unresolved** and are dropped by default. Closing that would need sequence-based
    prediction such as SignalP or DeepTMHMM rather than another annotation source, which is exhausted.
 5. **Two-gene programs are sparse** as single latent dimensions, and nothing checks that a program's partners
    are ever co-expressed in adjacent cells in the data at hand.

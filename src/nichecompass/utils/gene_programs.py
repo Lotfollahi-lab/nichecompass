@@ -235,7 +235,7 @@ def _classify_humanppi_protein_location(
 
 # Gene families whose members assemble into a common complex within one cell,
 # used to complement the EBI Complex Portal. The Complex Portal covers only
-# around a fifth of the proteins of the human interactome and is missing
+# under a quarter of the proteins of the human interactome and is missing
 # several prominent cell-surface complexes entirely, among them the MHC class
 # II alpha-beta heterodimer, the B cell receptor CD79 heterodimer and the
 # high-affinity IgE receptor. Two proteins matching the same pattern are
@@ -1240,8 +1240,8 @@ def _orient_humanppi_intercellular_gp(
 
     Two further rules were implemented, measured and then deliberately removed,
     because both fire almost exclusively on pairs in which *both* partners are
-    receptors, where there is no ligand to identify. Held out against curated
-    direction from NicheNet, CellPhoneDB and the OmniPath intercell annotation,
+    receptors, where there is no ligand to identify. In development
+    measurements held out against curated direction from NicheNet, CellPhoneDB and the OmniPath intercell annotation,
     orienting by which partner carries a kinase, phosphatase or transducer
     keyword was correct for 33 of 42 interactions, and orienting by the larger
     cytoplasmic domain for only 7 of 17, against 45% for keeping the released
@@ -1318,8 +1318,9 @@ def _orient_humanppi_intercellular_gp(
     # measured to be reliable. The margin rule that OmniPath also supports,
     # comparing how many resources call each partner a ligand against a
     # receptor, is deliberately not used: it is a popularity vote that fails
-    # systematically for surface molecules that are curated as both, and it
-    # oriented only 1 of 6 of the interactions the rules above leave undecided.
+    # systematically for surface molecules that are curated as both, and when
+    # measured during development it oriented only 1 of 6 of the interactions
+    # the rules above leave undecided.
     if omnipath_roles is not None:
         roles_1 = omnipath_roles.get(gene_1.upper())
         roles_2 = omnipath_roles.get(gene_2.upper())
@@ -2588,20 +2589,20 @@ def extract_gp_dict_from_humanppi_interactions(
         This only concerns proteins whose evidence is unresolved, so it has
         almost no effect while ´use_topology´ is ´True´ and topology is
         retrievable for most proteins: measured on the predictions at 90%
-        precision, both settings then yield 1,584 intercellular gene programs.
+        precision, both settings then yield 1,580 intercellular gene programs.
         With ´use_topology´ set to ´False´ it is the deciding parameter, giving
         2,273 against 1,603 intercellular gene programs respectively. The
         default is ´extracellular´ because excluding these proteins was
         measured to discard a large amount of genuine biology: recall against
-        curated ligand-receptor pairs drops from 97.4% to 79.7% when topology
+        curated ligand-receptor pairs drops from 95.0% to 77.7% when topology
         is unavailable and they are excluded.
     unresolved_locality:
         Determines how interactions are handled in which the location of at
         least one partner remains unresolved after every available source of
         evidence has been consulted, i.e. the partner has no cellular-component
         keyword, no membrane topology and no decisive biological-process
-        keyword. This is the case for around a tenth of the interactions in the
-        resource. If ´exclude´ (default), these interactions are dropped, since
+        keyword. This is the case for around 3% of the interactions in the
+        resource (570 of 17,371 at 90% precision). If ´exclude´ (default), these interactions are dropped, since
         they cannot be classified either way. If ´intracellular´, they are
         treated as intracellular, which retains them at the risk of mislabeling
         genuine intercellular interactions; note that they can never be
@@ -2678,10 +2679,10 @@ def extract_gp_dict_from_humanppi_interactions(
         ´HUMANPPI_CIS_COMPLEX_GENE_FAMILY_PATTERNS´), are reclassified from
         paracrine or juxtacrine to ´cis_complex´, since they assemble within a
         single cell. The curated families are needed because the Complex Portal
-        covers only around a fifth of the proteins of the human interactome and
-        is missing several prominent cell-surface complexes entirely. Measured on the predictions at 90% precision, this affects
-        around a tenth of the interactions that would otherwise be called
-        intercellular.
+        covers only under a quarter of the proteins of the human interactome
+        and is missing several prominent cell-surface complexes entirely.
+        Measured on the predictions at 90% precision, this reclassifies 349 of
+        the 1,929 interactions that would otherwise be called intercellular.
     complex_portal_file_path:
         Path of the file where the Complex Portal table for human is cached.
         The file is downloaded on first use.
