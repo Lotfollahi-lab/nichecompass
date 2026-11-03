@@ -221,6 +221,13 @@ with itself included. Each row of the result reports both aggregates:
 | `enrichment` | `mean_strength` divided by the program's mean over all edges between cells with a group, whatever `filter_key`; above 1 means stronger than its typical contact |
 | `strength` | the aggregate chosen with `aggregate` (`"mean"` by default), divided by the largest value (`normalize`) |
 
+Any categorical column of `adata.obs` can serve as `group_key`. Niches show where
+in the tissue a signal acts, but they are clusters of the latent representation, so a
+niche network partly reflects how the niches were defined. An independent annotation
+such as cell types shows which kinds of cell exchange the signal, wherever they meet;
+the tutorials draw both. `filter_key` and `filter_cat` restrict either view to the
+contacts whose sending cell lies in one category, for example one niche.
+
 Use the mean to compare pairs of groups: the sum is dominated by large groups and
 by each group paired with itself, because most edges of a spatial graph join cells
 of the same niche. Pairs connected by fewer than `min_edges` edges (default 20)
