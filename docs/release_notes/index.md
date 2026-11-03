@@ -109,8 +109,9 @@ or earlier.
     products only on graph edges, which makes it faster.
     `visualize_communication_gp_network()` draws one arrow per program between two
     groups (it drew only one of several programs that connect the same pair), gains
-    `show_self_loops`, pairs colours and labels correctly and supports more
-    than ten programs.
+    `show_self_loops` and `node_labels`, which numbers long group names such as cell
+    types and names them in a legend instead of crowding the circle, pairs colours
+    and labels correctly and supports more than ten programs.
 -   Multi-GPU training (opt-in, `multi_gpu=True`): one process per GPU with
     `DistributedDataParallel`, launched with `torchrun` or an MPI launcher, with
     `batch_size_scaling="per_process"` (default) or `"global"` and optional runtime

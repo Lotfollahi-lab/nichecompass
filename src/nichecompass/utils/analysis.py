@@ -1387,6 +1387,7 @@ def visualize_communication_gp_network(
     edge_attr: str="strength",
     reserve_all_categories: bool=False,
     show_self_loops: bool=True,
+    node_labels="auto",
     ax=None):
     """
     Visualize a communication gene program network as a circular digraph.
@@ -1424,6 +1425,14 @@ def visualize_communication_gp_network(
         If ´True´ (default), communication between cells of the same group is
         drawn as a loop on its node. Set to ´False´ to show only communication
         between groups.
+    node_labels:
+        How the groups are labelled. ´"names"´ writes each group's name
+        outside the circle. ´"numbers"´ writes a number on each node and adds
+        a legend that maps the numbers to the names, which keeps long names,
+        such as cell types, from crowding the circle. A dict from group to a
+        short label writes those labels outside the circle and adds the same
+        kind of legend. ´"auto"´ (default) uses names when every name has at
+        most 8 characters, as niche numbers do, and numbers otherwise.
     ax:
         Axes to draw on. A new figure is created if this is ´None´.
 
@@ -1515,11 +1524,35 @@ def visualize_communication_gp_network(
             "Without this the colors and the nodes go out of step and "
             "matplotlib raises about the length of its ´c´ argument instead.")
 
+    if isinstance(node_labels, dict):
+        unlabelled = [node for node in node_list if node not in node_labels]
+        if unlabelled:
+            raise ValueError(
+                f"´node_labels´ does not cover the categories {unlabelled}.")
+        label_mode, short_labels = "short", {node: str(node_labels[node])
+                                             for node in node_list}
+    elif node_labels in ("auto", "names", "numbers"):
+        label_mode = node_labels
+        if label_mode == "auto":
+            label_mode = ("names" if all(len(str(node)) <= 8
+                                         for node in node_list)
+                          else "numbers")
+        short_labels = ({node: str(i + 1) for i, node in enumerate(node_list)}
+                        if label_mode == "numbers" else
+                        {node: str(node) for node in node_list})
+    else:
+        raise ValueError(
+            f"´node_labels´ is {node_labels!r}, which is not 'auto', 'names', "
+            "'numbers' or a dict from category to label.")
+
     if ax is None:
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=figsize)
     else:
         fig = ax.get_figure()
     ax.axis("off")
+    # Without an equal aspect, long labels outside the circle made the layout
+    # shrink the axes into a band and squash the circle with it.
+    ax.set_aspect("equal")
 
     angle_dict = {node: 2.0 * np.pi * i / n_nodes
                   for i, node in enumerate(node_list)}
@@ -1576,19 +1609,33 @@ def visualize_communication_gp_network(
         _draw(gp_graph, other_edges, color, True, _connection_style(gp_rank))
         _draw(gp_graph, self_loops, color, False, connection_style)
 
-    # Labels are placed outside the circle and rotated to point outwards, so
-    # they need the rendered text extent, which only exists after a draw.
-    description = nx.draw_networkx_labels(G, pos, font_size=fontsize, ax=ax)
-    fig.canvas.draw()
-    trans = ax.transData.inverted()
-    renderer = fig.canvas.get_renderer()
-    for node, text in description.items():
-        bbox = text.get_window_extent(renderer=renderer).transformed(trans)
-        radius = text_space + bbox.width / 2.0
-        theta = angle_dict[node]
-        text.set_position((radius * np.cos(theta), radius * np.sin(theta)))
-        text.set_rotation(np.degrees(theta))
-        text.set_clip_on(False)
+    if label_mode == "numbers":
+        # Numbers sit on the nodes, in black or white for contrast with the
+        # node's colour.
+        description = nx.draw_networkx_labels(
+            G, pos, labels=short_labels, font_size=max(8, round(fontsize * 0.7)),
+            ax=ax)
+        for node, text in description.items():
+            red, green, blue = colors.to_rgb(cat_colors[node])
+            luminance = 0.299 * red + 0.587 * green + 0.114 * blue
+            text.set_color("black" if luminance > 0.55 else "white")
+    else:
+        # Labels are placed outside the circle and rotated to point outwards,
+        # so they need the rendered text extent, which only exists after a
+        # draw.
+        description = nx.draw_networkx_labels(
+            G, pos, labels=short_labels, font_size=fontsize, ax=ax)
+        fig.canvas.draw()
+        trans = ax.transData.inverted()
+        renderer = fig.canvas.get_renderer()
+        for node, text in description.items():
+            bbox = text.get_window_extent(renderer=renderer).transformed(trans)
+            radius = text_space + bbox.width / 2.0
+            theta = angle_dict[node]
+            text.set_position((radius * np.cos(theta), radius * np.sin(theta)))
+            text.set_rotation(np.degrees(theta))
+            text.set_clip_on(False)
+
 
     if plot_legend:
         # Colors and labels come from the same ordered source. Building the
@@ -1601,7 +1648,23 @@ def visualize_communication_gp_network(
                           color=edge_type_color_dict[gp], lw=5)
                    for gp in drawn]
         labels = [gp if gp.endswith("GP") else f"{gp} GP" for gp in drawn]
-        ax.legend(handles, labels, loc="lower left")
+        program_legend = ax.legend(handles, labels, loc="lower left")
+        # A second ´ax.legend´ call replaces the first, so the program legend
+        # is kept as an artist when the group legend follows.
+        ax.add_artist(program_legend)
+
+    if label_mode != "names":
+        # The legend that says what each number or short label stands for,
+        # outside the circle on the right, in the order of the circle.
+        node_handles = [
+            Line2D([], [], marker="o", linestyle="", markersize=10,
+                   markerfacecolor=cat_colors[node], markeredgecolor="none")
+            for node in node_list]
+        ax.legend(
+            node_handles,
+            [f"{short_labels[node]}  {node}" for node in node_list],
+            loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False,
+            fontsize=max(8, round(fontsize * 0.7)), title=cat_key)
 
     fig.tight_layout()
     if save:

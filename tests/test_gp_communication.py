@@ -449,3 +449,54 @@ def test_plot_reserves_categories_without_missing_labels(communication_model):
     with pytest.raises(ValueError, match="min_edges"):
         visualize_communication_gp_network(
             m.adata, network.iloc[:0], {"a": "#1f77b4"}, cat_key="niche_cat", show=False)
+
+
+def _drawn_node_texts(ax, nodes):
+    """Texts on the axes, excluding legend texts, as drawn by the plot."""
+    return sorted(t.get_text() for t in ax.texts)
+
+
+def test_long_names_are_numbered_with_a_legend_and_short_ones_written_out():
+    """Long group names, such as cell types, used to push the labels so far
+    out that the layout squashed the circle into a band; they are now numbered
+    on the nodes and named in a legend."""
+    import anndata as ad
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.legend import Legend
+    from nichecompass.utils import visualize_communication_gp_network
+
+    def draw(names, **kwargs):
+        adata = ad.AnnData(np.zeros((len(names), 1)))
+        adata.obs["group"] = pd.Categorical(names)
+        network = pd.DataFrame({"source": names, "target": names[1:] + names[:1],
+                                "strength": 1.0, "edge_type": "gp_GP"})
+        colours = {name: "#1f77b4" for name in names}
+        return visualize_communication_gp_network(
+            adata, network, colours, cat_key="group", show=False, **kwargs)
+
+    long_names = ["Telencephalon projecting excitatory neurons", "Astrocytes",
+                  "Vascular and leptomeningeal cells"]
+    ax = draw(long_names)
+    assert ax.get_aspect() == 1.0
+    assert _drawn_node_texts(ax, long_names) == ["1", "2", "3"]
+    legend_texts = [t.get_text() for child in ax.get_children()
+                    if isinstance(child, Legend) for t in child.get_texts()]
+    assert "1  Astrocytes" in legend_texts
+    assert "3  Vascular and leptomeningeal cells" in legend_texts
+    assert "gp_GP" in legend_texts
+    plt.close("all")
+
+    ax = draw(["a", "b", "c"])
+    assert _drawn_node_texts(ax, ["a", "b", "c"]) == ["a", "b", "c"]
+    plt.close("all")
+
+    ax = draw(long_names, node_labels={name: name[:3] for name in long_names})
+    assert _drawn_node_texts(ax, long_names) == ["Ast", "Tel", "Vas"]
+    plt.close("all")
+    with pytest.raises(ValueError, match="node_labels"):
+        draw(long_names, node_labels={"Astrocytes": "A"})
+    with pytest.raises(ValueError, match="node_labels"):
+        draw(long_names, node_labels="initials")
+    plt.close("all")

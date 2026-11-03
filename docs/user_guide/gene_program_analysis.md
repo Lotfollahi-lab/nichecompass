@@ -252,5 +252,7 @@ sections whose coordinates overlap. A graph built with `n_neighbors` is cached a
 rebuilt when the coordinates, sample labels, row order or `n_neighbors` change;
 singleton samples have no edges. Between two different groups the plot draws one
 arrow per program, each bent a little further than the previous one; loops of
-several programs on one group overlap, and `show_self_loops=False` hides them. These
+several programs on one group overlap, and `show_self_loops=False` hides them. Group
+names longer than 8 characters, such as cell types, are numbered on the nodes and named
+in a legend beside the circle (`node_labels`, which also takes a dict of abbreviations). These
 scores describe communication potential, not evidence of a causal interaction.
