@@ -337,10 +337,13 @@ def test_communication_paired_raw_convention_and_zero_expression(model):
     model.adata.obsm[model.latent_key_] = -np.arange(1, 9)[:, None] * np.ones((8, len(active)))
     model.adata.uns["spatial_cci"] = {"params": {"n_neighbors": 3}}
     model.adata.obsp["spatial_cci_connectivities"] = model.adata.obsp[model.adj_key_].copy()
-    first = compute_communication_gp_network(["source_neg"], model, "group", n_neighbors=3)
-    model.prepare_gp_analysis()
+    first = compute_communication_gp_network(["source_neg"], model, "group", n_neighbors=3,
+                                             min_edges=1)
+    # The first call initialised the analysis; a refresh must not change it.
+    model.prepare_gp_analysis(overwrite=True)
     model.add_active_gp_scores_to_obs(use_cached=True)
-    second = compute_communication_gp_network(["source_neg"], model, "group", n_neighbors=3)
+    second = compute_communication_gp_network(["source_neg"], model, "group", n_neighbors=3,
+                                              min_edges=1)
     pd.testing.assert_frame_equal(first, second)
     assert not first.empty
     for gp in ("target_only", "Add-on_0_GP"):

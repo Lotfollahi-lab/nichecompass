@@ -169,8 +169,8 @@ so unrelated add-on programs are not treated as equivalent across fits.
 `generate_enriched_gp_info_plots()` refreshes score columns and rejects a
 different orientation ID in the associated test results. Rerun old differential
 tests after opting a historical model into canonical analysis. Communication
-networks retain their paired raw activity/loading convention, whose products
-are invariant to joint sign reflection.
+networks read each program in its canonical direction, and their scores do not
+change when the signs of a program's activities and loadings flip together.
 
 New differential results also fingerprint model parameters/buffers, counts,
 adjacency, observation/feature order, group labels and encoder covariates. Plots
@@ -179,23 +179,71 @@ on bitwise reproducibility of GPU posterior calculations. They take time proport
 to the model and input size, without retaining additional full input copies. Rerun
 legacy raw tests to obtain this provenance check.
 
-For communication analysis on integrated datasets, pass `sample_key` so neighbors
-are constructed within each independent spatial sample:
-
-```python
-from nichecompass.utils import compute_communication_gp_network
-
-network = compute_communication_gp_network(
-    gp_list=["selected_prior_GP"], model=model,
-    group_key="niche", sample_key="sample", n_neighbors=90)
-```
-
-The communication graph cache checks coordinates and sample labels; singleton
-samples have no edges. Score products are computed on spatial edges without a
-dense all-cell outer product.
-
 The tutorials and audited reproducibility notebooks now initialize the analysis
 view after loading and request `direction="higher"` when selecting enriched
 programs. Their stale saved outputs have been cleared. Rerun these analyses with
 the original data to produce new figures; use Git history for the publication
 workflow. Model retraining is not required for this migration.
+
+## Cell-cell communication
+
+`compute_communication_gp_network()` estimates, for each selected prior program,
+how strongly cells of one group signal to cells of another when they are
+neighbours. Each cell gets two scores, both read in the program's canonical
+direction:
+
+- a **sender score**: the mean, over the program's source genes, of each gene's
+  expression divided by its maximum across cells and multiplied by its loading;
+- a **receiver score**: the cell's activity times the same mean over the target
+  genes, each of the two set to zero where it is negative.
+
+A negative sender score is set to zero too. Only the receiver's activity enters: a cell's
+activity says that its neighbourhood expresses the source genes and that the cell
+itself expresses the target genes, so it marks the receiving end of the program.
+Multiplying in the sender's activity as well would credit only senders that are
+themselves receivers, which favours pairs inside the niche that the program
+defines.
+
+Along every edge of the spatial graph, from a sending cell to a different
+receiving cell, the communication is the sender score times the receiver score.
+By default this is the graph the model was trained on, so communication is
+attributed over the neighbourhood in which the activities were learned; pass
+`n_neighbors` to build a nearest-neighbour graph from `obsm["spatial"]` instead.
+
+The edges are then aggregated for every ordered pair of groups, a group paired
+with itself included. Each row of the result reports both aggregates:
+
+| Column | Meaning |
+| :-- | :-- |
+| `mean_strength` | mean communication per edge between the two groups: how strongly the program acts when they touch |
+| `total_strength` | summed communication over those edges: the total volume, which grows with group size and border length |
+| `n_edges` | number of edges from the sending to the receiving group; a pair of neighbouring cells counts once in each direction |
+| `enrichment` | `mean_strength` divided by the program's mean over all edges between cells with a group, whatever `filter_key`; above 1 means stronger than its typical contact |
+| `strength` | the aggregate chosen with `aggregate` (`"mean"` by default), divided by the largest value (`normalize`) |
+
+Use the mean to compare pairs of groups: the sum is dominated by large groups and
+by each group paired with itself, because most edges of a spatial graph join cells
+of the same niche. Pairs connected by fewer than `min_edges` edges (default 20)
+are omitted, since a mean over a handful of contacts is mostly noise.
+
+```python
+from nichecompass.utils import (compute_communication_gp_network,
+                                visualize_communication_gp_network)
+
+network = compute_communication_gp_network(
+    gp_list=["selected_prior_GP"], model=model, group_key="niche",
+    sample_key="sample")
+visualize_communication_gp_network(
+    model.adata, network, cat_colors=niche_colors, cat_key="niche")
+```
+
+`sample_key` removes edges between independent spatial samples from the training
+graph, and builds a graph requested with `n_neighbors` within each sample. The
+training graphs of the tutorials are built per sample already, but pass it
+whenever a graph could connect samples, for example a nearest-neighbour graph of
+sections whose coordinates overlap. A graph built with `n_neighbors` is cached and
+rebuilt when the coordinates, sample labels, row order or `n_neighbors` change;
+singleton samples have no edges. Between two different groups the plot draws one
+arrow per program, each bent a little further than the previous one; loops of
+several programs on one group overlap, and `show_self_loops=False` hides them. These
+scores describe communication potential, not evidence of a causal interaction.

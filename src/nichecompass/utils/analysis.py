@@ -3,6 +3,7 @@ This module contains utilities to analyze niches inferred by the NicheCompass
 model.
 """
 
+import re
 import warnings
 from typing import Literal, Optional, Tuple
 
@@ -1005,78 +1006,170 @@ def _communication_spatial_graph(adata, n_neighbors, sample_key):
     return adata.obsp[graph_key]
 
 
+def _communication_model_graph(model, sample_key):
+    """
+    Return the spatial graph the model was trained on as an unweighted edge set
+    without self edges, restricted to edges within one sample when
+    ´sample_key´ is given.
+    """
+    adj_key = getattr(model, "adj_key_", None)
+    if adj_key is None or adj_key not in model.adata.obsp:
+        raise ValueError(
+            f"The model's spatial graph ´adata.obsp[{adj_key!r}]´ is missing. "
+            "Restore it, or pass ´n_neighbors´ to build a nearest-neighbour "
+            "graph from ´adata.obsm['spatial']´ instead.")
+    graph = sp.coo_matrix(model.adata.obsp[adj_key])
+    if graph.shape != (model.adata.n_obs, model.adata.n_obs):
+        raise ValueError(
+            f"´adata.obsp[{adj_key!r}]´ has shape {graph.shape}, but the data "
+            f"hold {model.adata.n_obs} observations.")
+    # A cell does not communicate with itself here, and an edge weight says
+    # nothing about signalling, so only the presence of an edge is used.
+    keep = (graph.row != graph.col) & (graph.data > 0)
+    if sample_key is not None:
+        if sample_key not in model.adata.obs:
+            raise ValueError(f"Unknown sample_key: {sample_key!r}.")
+        labels = model.adata.obs[sample_key]
+        if labels.isna().any():
+            raise ValueError("Communication sample labels must not be missing.")
+        sample_codes, _ = pd.factorize(labels, sort=False)
+        keep &= sample_codes[graph.row] == sample_codes[graph.col]
+    return sp.csr_matrix(
+        (np.ones(int(keep.sum()), dtype=np.float32),
+         (graph.row[keep], graph.col[keep])),
+        shape=graph.shape)
+
+
 def compute_communication_gp_network(
     gp_list: list,
     model: NicheCompass,
     group_key: str="niche",
     filter_key: Optional[str]=None,
     filter_cat: Optional[str]=None,
-    n_neighbors: int=90,
+    n_neighbors: Optional[int]=None,
     sample_key: Optional[str]=None,
+    aggregate: Literal["mean", "sum"]="mean",
+    min_edges: int=20,
     normalize: Literal["global", "per_gp", "none"]="global",
     store_scores: bool=True):
     """
-    Compute a network of category aggregated cell-pair communication strengths.
+    Compute a network of communication strengths between groups of cells.
 
-    For every gene program, each cell gets a source score and a target score:
-    the expression of the program's source (respectively target) genes,
-    normalized per gene by its maximum across cells, weighted by that gene's
-    decoder weight, averaged over genes, and scaled by the cell's gene program
-    activity. Negative averages are clipped to zero. The two scores are then
-    multiplied along the edges of a spatial neighbor graph and aggregated per
-    group.
+    For every gene program each cell gets a sender score and a receiver score,
+    both read in the program's canonical direction, in which a positive
+    activity means that the program is on. The sender score is the mean, over
+    the program's source genes, of each gene's expression divided by its
+    maximum across cells and multiplied by its loading. The receiver score is
+    the cell's activity times the same mean over the program's target genes,
+    each of the two set to zero where it is negative. The sender score is set
+    to zero where it is negative too, since a negative value is not a negative
+    amount of communication.
+
+    Only the receiver's activity enters. A cell's activity says that its
+    neighbourhood expresses the program's source genes and that the cell
+    itself expresses its target genes, so it marks the receiving end of the
+    program. Multiplying in the sender's activity as well would credit only
+    senders that are themselves receivers, which favours pairs inside the
+    niche that the program defines over pairs between niches.
+
+    The communication along a directed edge of the spatial graph, from a
+    sending cell to a different receiving cell, is the sender score times the
+    receiver score. These values are then aggregated over the edges of every
+    ordered pair of groups, a group paired with itself included.
 
     Parameters
     ----------
     gp_list:
-        List of GPs for which the cell-pair communication strengths are
-        computed.
+        List of GPs for which the communication strengths are computed. Each
+        must be an active prior GP with measured source and target genes.
     model:
         A trained NicheCompass model.
     group_key:
-        Key in ´adata.obs´ where the groups are stored over which the cell-pair
-        communication strengths will be aggregated.
+        Key in ´adata.obs´ where the groups are stored over which the
+        communication strengths are aggregated, usually the niches. Cells
+        without a group are left out.
     filter_key:
         Key in ´adata.obs´ that contains the category for which the results are
         filtered. The filter applies to the SENDING cell.
     filter_cat:
         Category for which the results are filtered.
     n_neighbors:
-        Number of neighbors for the gp-specific neighborhood graph.
+        If ´None´ (default), the spatial graph the model was trained on,
+        ´adata.obsp[model.adj_key_]´, is used, so that communication is
+        attributed over the neighbourhood in which the activities were learned.
+        Self edges are ignored, and so are edge weights. If an integer, a
+        nearest-neighbour graph with this many neighbours is built from
+        ´adata.obsm["spatial"]´ instead, within each sample when ´sample_key´
+        is given, and cached in ´adata.obsp["spatial_cci_connectivities"]´
+        until the coordinates, sample labels, row order or ´n_neighbors´
+        change.
     sample_key:
-        Observation column identifying independent spatial samples. Neighbors
-        are computed within each sample. Pass this for integrated datasets;
-        otherwise all observations are treated as one spatial sample.
+        Observation column identifying independent spatial samples. Edges
+        between two samples are removed from the training graph, and a graph
+        built with ´n_neighbors´ is built within each sample. Pass it for
+        integrated datasets whenever a graph could connect samples, for
+        example a nearest-neighbour graph of sections whose coordinates
+        overlap.
+    aggregate:
+        ´"mean"´ (default) gives the mean communication per edge between the
+        two groups: how strongly the program acts when cells of the two groups
+        are neighbours. It does not grow with the size of a group or with the
+        length of a shared border. ´"sum"´ gives the summed communication over
+        those edges, the total volume, which grows with both and is therefore
+        dominated by large groups and by each group paired with itself. Both
+        are returned either way; this only chooses which one ´strength´ shows.
+    min_edges:
+        Group pairs connected by fewer edges are omitted (default 20), because
+        a mean over a handful of contacts is mostly noise. Set it to 1 to keep
+        every pair.
     normalize:
         How ´strength´ is scaled. ´"global"´ (default) divides by the largest
         aggregated value across ALL selected gene programs, which keeps widths
         comparable when the programs are drawn on one axes. ´"per_gp"´ divides
         by the largest value within each program, which shows within-program
         rank only. ´"none"´ leaves the aggregated values untouched. In every
-        case zero means no communication: unlike a min-max rescaling, nothing
-        is subtracted, so the weakest pair is not forced to zero and dropped.
+        case zero means no communication: nothing is subtracted, so the
+        weakest pair is not forced to zero and dropped.
     store_scores:
-        If ´True´ (default), write the per-cell scores to
-        ´adata.obs["<gp>_source_score"]´ and ´adata.obs["<gp>_target_score"]´
-        and the edge products to ´adata.obsp["<gp>_connectivities"]´. Set to
-        ´False´ to skip all three, which matters when many gene programs are
-        requested, since each adds an n_obs x n_obs sparse matrix. Note that
-        ´adata´ is not otherwise left untouched: the spatial graph this
-        function builds is cached in ´adata.obsp´ and ´adata.uns´ regardless.
+        If ´True´ (default), write the sender scores to
+        ´adata.obs["<gp>_source_score"]´, the receiver scores to
+        ´adata.obs["<gp>_target_score"]´ and the edge values to
+        ´adata.obsp["<gp>_connectivities"]´. Set to ´False´ to skip all three,
+        which matters when many gene programs are requested, since each adds
+        an n_obs x n_obs sparse matrix. A graph built with ´n_neighbors´ is
+        cached in ´adata.obsp´ and ´adata.uns´ regardless.
 
     Returns
     ----------
     network_df:
         A pandas dataframe with one row per (source group, target group, gene
-        program) and columns ´source´, ´target´, ´strength´,
-        ´strength_unscaled´ and ´edge_type´. Pairs with no communication are
-        omitted.
+        program) and the columns ´source´ (the sending group), ´target´ (the
+        receiving group), ´strength´ (the aggregate chosen by ´aggregate´,
+        scaled by ´normalize´), ´strength_unscaled´ (the same aggregate before
+        scaling), ´mean_strength´ and ´total_strength´ (both aggregates),
+        ´n_edges´ (the number of graph edges from the sending to the receiving
+        group), ´enrichment´ (´mean_strength´ divided by the program's mean
+        over all edges between two cells with a group, whatever
+        ´filter_key´, so that a value above 1 means stronger than the
+        program's typical contact) and ´edge_type´ (the gene program). Pairs
+        connected by fewer than ´min_edges´ edges and pairs with no
+        communication are omitted.
+
+    The canonical sign of each program is read from the model's gene program
+    analysis, which is initialised if it does not exist yet, as the other
+    analysis functions do.
     """
     # Validate before creating graphs or writing communication scores. These
     # scores require a prior with both measured source and target members.
     gp_list, gp_indices = model._gp_selection(gp_list)
     if not gp_list:
         raise ValueError("Select at least one communication GP.")
+    if aggregate not in ("mean", "sum"):
+        raise ValueError(
+            f"´aggregate´ is {aggregate!r}, which is not one of 'mean' or 'sum'.")
+    if (isinstance(min_edges, (bool, np.bool_))
+            or not isinstance(min_edges, (int, np.integer)) or min_edges < 1):
+        raise ValueError("´min_edges´ must be an integer of at least 1.")
     if normalize not in ("global", "per_gp", "none"):
         raise ValueError(
             f"´normalize´ is {normalize!r}, which is not one of 'global', "
@@ -1093,23 +1186,6 @@ def compute_communication_gp_network(
             or (selected_summary.n_source_genes == 0).any()
             or (selected_summary.n_target_genes == 0).any()):
         raise ValueError("Communication requires active prior GPs with source and target genes.")
-    # Products require scores and weights in the same coordinate convention.
-    raw_scores = model.get_gp_activities(gp_list, orientation="raw", use_cached=True)
-    spatial_graph = _communication_spatial_graph(model.adata, n_neighbors, sample_key)
-
-    # Hoisted out of the gene program loop: the edge list of the spatial graph
-    # does not depend on the gene program.
-    edges = (spatial_graph > 0).tocoo()
-    edge_rows, edge_cols = edges.row, edges.col
-
-    # Group codes, once. Aggregating straight into a (n_groups x n_groups)
-    # matrix from the edge list avoids the (n_obs x n_groups) intermediate that
-    # ´aggregate_obsp_matrix_per_cell_type´ builds per gene program.
-    groups = model.adata.obs[group_key]
-    group_cats = sorted(groups.unique().tolist())
-    group_codes = groups.map(
-        {cat: i for i, cat in enumerate(group_cats)}).to_numpy()
-    n_groups = len(group_cats)
     if filter_key is not None:
         if filter_key not in model.adata.obs:
             raise ValueError(f"´filter_key´ {filter_key!r} is not a column of "
@@ -1119,11 +1195,45 @@ def compute_communication_gp_network(
             raise ValueError(
                 f"´filter_cat´ {filter_cat!r} does not appear in "
                 f"´adata.obs[{filter_key!r}]´.")
-        # The filter is a property of the sending cell, i.e. of the edge's row.
-        edge_keep = filter_values[edge_rows] == str(filter_cat)
-        edge_rows, edge_cols = edge_rows[edge_keep], edge_cols[edge_keep]
+    # Raw activities and raw loadings share one coordinate convention; the
+    # canonical sign of each program then says which direction is "on", so
+    # that a program whose raw latent happens to point the other way is read
+    # the same way. Every score below is invariant to a joint sign flip of the
+    # activities and loadings of a program.
+    raw_scores = model.get_gp_activities(gp_list, orientation="raw", use_cached=True)
+    canonical_signs = np.asarray(model._gp_signs(gp_list, "canonical"), dtype=np.float64)
+    if n_neighbors is None:
+        spatial_graph = _communication_model_graph(model, sample_key)
     else:
-        edge_keep = None
+        spatial_graph = _communication_spatial_graph(model.adata, n_neighbors, sample_key)
+
+    # Hoisted out of the gene program loop: the edge list of the spatial graph
+    # does not depend on the gene program. Self edges never carry communication
+    # between cells.
+    edges = (spatial_graph > 0).tocoo()
+    off_diagonal = edges.row != edges.col
+    graph_rows, graph_cols = edges.row[off_diagonal], edges.col[off_diagonal]
+
+    # Group codes, once. Cells without a group get -1, and edges touching them
+    # are left out of the aggregation.
+    groups = model.adata.obs[group_key]
+    group_cats = sorted(groups.dropna().unique().tolist())
+    # Mapped as objects: a categorical column would refuse -1 as a value, and
+    # unused categories of it must not become groups.
+    group_codes = groups.astype(object).map(
+        {cat: i for i, cat in enumerate(group_cats)}).fillna(-1).to_numpy(
+            dtype=np.int64)
+    n_groups = len(group_cats)
+    labelled = ((group_codes[graph_rows] >= 0)
+                & (group_codes[graph_cols] >= 0))
+    labelled_rows, labelled_cols = graph_rows[labelled], graph_cols[labelled]
+    edge_keep = labelled.copy()
+    if filter_key is not None:
+        # The filter is a property of the sending cell, i.e. of the edge's row.
+        edge_keep &= filter_values[graph_rows] == str(filter_cat)
+    edge_rows, edge_cols = graph_rows[edge_keep], graph_cols[edge_keep]
+    pair_index = group_codes[edge_rows] * n_groups + group_codes[edge_cols]
+    n_edges = np.bincount(pair_index, minlength=n_groups * n_groups)
 
     # One pass over the count matrix for the union of every gene involved,
     # instead of an AnnData view per gene. A single column slice of a CSR
@@ -1150,15 +1260,11 @@ def compute_communication_gp_network(
         counts_sub = np.asarray(counts_sub)
         gene_max = counts_sub.max(axis=0)
 
-    def _aggregated_score(genes_idx, gene_names, weights, gp_scores):
+    def _weighted_expression(genes_idx, gene_names, weights):
         """
-        Per-cell score for one arm of a gene program.
-
-        Each column of the matrix the original built was
-        ´counts_i / max_i * w_i * gp_scores´, and only its mean over genes was
-        ever read, so the mean is accumulated directly:
-        ´gp_scores * (counts @ (w / max)) / n_genes´. That is exact, and it
-        avoids allocating an (n_obs x n_genes) float64 scratch matrix per arm.
+        Mean over the genes of one arm of ´counts_i / max_i * w_i´, per cell,
+        accumulated as ´counts @ (w / max) / n_genes´ without allocating an
+        (n_obs x n_genes) scratch matrix.
         """
         weight_of = dict(zip(gene_names, weights))
         columns = np.array([gene_position[gene] for gene in genes_idx],
@@ -1167,80 +1273,82 @@ def compute_communication_gp_network(
         coefficients = np.array(
             [weight_of[model.adata.var_names[gene]] for gene in genes_idx],
             dtype=np.float64)
-        # A gene that is zero in every cell contributed nothing before, and
-        # dividing by its maximum would be a division by zero.
+        # A gene that is zero in every cell contributes nothing, and dividing
+        # by its maximum would be a division by zero.
         coefficients = np.where(maxima > 0,
                                 coefficients / np.where(maxima > 0, maxima, 1),
                                 0.)
         weighted = counts_sub[:, columns] @ coefficients
-        weighted = np.asarray(weighted).ravel()
-        score = (gp_scores * weighted / len(genes_idx)).astype("float32")
-        # Clipped after the mean over genes, as before: a negative average is
-        # not a negative amount of communication.
-        np.clip(score, 0., None, out=score)
-        return score
+        return np.asarray(weighted).ravel() / len(genes_idx)
 
     gp_network_dfs = []
     for gp_column, gp in enumerate(gp_list):
-        gp_scores = raw_scores[:, gp_column]
+        sign = canonical_signs[gp_column]
         summary_row = selected_summary.loc[gp]
         source_genes_idx, target_genes_idx = gene_idx_per_gp[gp]
-
-        agg_gp_source_score = _aggregated_score(
+        source_expression = _weighted_expression(
             source_genes_idx,
             summary_row["gp_source_genes"],
-            summary_row["gp_source_genes_weights"],
-            gp_scores)
-        agg_gp_target_score = _aggregated_score(
+            summary_row["gp_source_genes_weights"])
+        target_expression = _weighted_expression(
             target_genes_idx,
             summary_row["gp_target_genes"],
-            summary_row["gp_target_genes_weights"],
-            gp_scores)
+            summary_row["gp_target_genes_weights"])
+        sender_score = np.clip(sign * source_expression, 0., None).astype("float32")
+        receiver_score = (np.clip(sign * raw_scores[:, gp_column], 0., None)
+                          * np.clip(sign * target_expression, 0., None)).astype("float32")
 
-        products = agg_gp_source_score[edge_rows] * agg_gp_target_score[edge_cols]
+        products = sender_score[edge_rows] * receiver_score[edge_cols]
+        if not (receiver_score > 0).any() and (sender_score > 0).any():
+            warnings.warn(
+                f"No cell receives {gp!r} in its canonical direction: its "
+                "target loadings point against its source loadings, so it has "
+                "no communication. Check its ´orientation_status´ and its "
+                "feature table.")
 
         if store_scores:
-            model.adata.obs[f"{gp}_source_score"] = agg_gp_source_score
-            model.adata.obs[f"{gp}_target_score"] = agg_gp_target_score
-            if edge_keep is None:
-                connectivity_rows, connectivity_cols = edge_rows, edge_cols
-                connectivity_values = products
-            else:
-                connectivity_rows = edges.row
-                connectivity_cols = edges.col
-                connectivity_values = (
-                    agg_gp_source_score[connectivity_rows]
-                    * agg_gp_target_score[connectivity_cols])
+            model.adata.obs[f"{gp}_source_score"] = sender_score
+            model.adata.obs[f"{gp}_target_score"] = receiver_score
             connectivities = sp.csr_matrix(
-                (connectivity_values, (connectivity_rows, connectivity_cols)),
+                (sender_score[graph_rows] * receiver_score[graph_cols],
+                 (graph_rows, graph_cols)),
                 shape=spatial_graph.shape)
             # Building from a COO triplet keeps explicit zeros, so a gene
             # program with no communication would still store one entry per
-            # spatial edge. The old code shed them by accident, inside
-            # ´aggregate_obsp_matrix_per_cell_type´, which this no longer
-            # calls.
+            # spatial edge.
             connectivities.eliminate_zeros()
             model.adata.obsp[f"{gp}_connectivities"] = connectivities
 
-        # Rows are the sending group, columns the receiving group.
-        matrix = np.zeros((n_groups, n_groups), dtype=np.float64)
-        np.add.at(matrix,
-                  (group_codes[edge_rows], group_codes[edge_cols]),
-                  products)
-
-        gp_network_df = pd.DataFrame(
+        # Rows of the flattened matrices are the sending group, columns the
+        # receiving group.
+        total = np.bincount(pair_index, weights=products,
+                            minlength=n_groups * n_groups)
+        mean = np.divide(total, n_edges, out=np.zeros_like(total),
+                         where=n_edges > 0)
+        # The program's typical contact: every edge between two labelled
+        # cells, whatever the sender filter, so that a filtered run is read
+        # against the same baseline as an unfiltered one.
+        baseline = (float(np.mean(sender_score[labelled_rows]
+                                  * receiver_score[labelled_cols]))
+                    if len(labelled_rows) else 0.)
+        enrichment = mean / baseline if baseline > 0 else np.zeros_like(mean)
+        gp_network_dfs.append(pd.DataFrame(
             {"source": np.repeat(group_cats, n_groups),
              "target": np.tile(group_cats, n_groups),
-             "strength_unscaled": matrix.ravel()})
-        gp_network_df["edge_type"] = gp
-        gp_network_dfs.append(gp_network_df)
+             "strength_unscaled": mean if aggregate == "mean" else total,
+             "mean_strength": mean,
+             "total_strength": total,
+             "n_edges": n_edges,
+             "enrichment": enrichment,
+             "edge_type": gp}))
 
     network_df = pd.concat(gp_network_dfs, ignore_index=True)
     # A pair with no communication is dropped; a pair with the weakest nonzero
-    # communication is not. A min-max rescaling subtracts the minimum, which
-    # maps the weakest pair to exactly zero and, with the subsequent positivity
-    # filter, discarded it on every call however strong it really was.
-    network_df = network_df[network_df["strength_unscaled"] > 0].copy()
+    # communication is not. A min-max rescaling would subtract the minimum,
+    # map the weakest pair to exactly zero and, with this positivity filter,
+    # discard it however strong it really was.
+    network_df = network_df[(network_df["total_strength"] > 0)
+                            & (network_df["n_edges"] >= min_edges)].copy()
     if normalize == "none":
         network_df["strength"] = network_df["strength_unscaled"]
     else:
@@ -1256,8 +1364,8 @@ def compute_communication_gp_network(
     network_df = network_df.sort_values(
         "strength_unscaled", ascending=False).reset_index(drop=True)
     return network_df[["source", "target", "strength", "strength_unscaled",
-                       "edge_type"]]
-
+                       "mean_strength", "total_strength", "n_edges",
+                       "enrichment", "edge_type"]]
 
 
 def visualize_communication_gp_network(
@@ -1278,9 +1386,17 @@ def visualize_communication_gp_network(
     cat_key: str="niche",
     edge_attr: str="strength",
     reserve_all_categories: bool=False,
+    show_self_loops: bool=True,
     ax=None):
     """
     Visualize a communication gene program network as a circular digraph.
+
+    Each group is a node, an arrow runs from the sending to the receiving
+    group with a width proportional to ´edge_attr´, and a loop marks
+    communication between cells of the same group. When several gene programs
+    connect two different groups, each gets its own arrow, bent a little
+    further than the previous one when ´connection_style´ is an ´arc3´ style;
+    loops of several programs on one group overlap.
 
     Parameters
     ----------
@@ -1304,6 +1420,10 @@ def visualize_communication_gp_network(
         circle even when it has no edges, so that figures of different gene
         programs are directly superimposable. If ´False´ (default) only the
         categories present in the network are drawn, spaced evenly.
+    show_self_loops:
+        If ´True´ (default), communication between cells of the same group is
+        drawn as a loop on its node. Set to ´False´ to show only communication
+        between groups.
     ax:
         Axes to draw on. A new figure is created if this is ´None´.
 
@@ -1320,9 +1440,10 @@ def visualize_communication_gp_network(
     if len(network_df) == 0:
         raise ValueError(
             "´network_df´ is empty, so there is nothing to draw. This happens "
-            "when every aggregated communication strength was zero; check the "
-            "gene programs and the group key passed to "
-            "´compute_communication_gp_network´.")
+            "when every communication strength was zero, or when every pair "
+            "of groups was connected by fewer than ´min_edges´ edges; check "
+            "the gene programs and the group key passed to "
+            "´compute_communication_gp_network´, or lower its ´min_edges´.")
 
     edge_types = np.unique(network_df["edge_type"])
 
@@ -1357,12 +1478,22 @@ def visualize_communication_gp_network(
             gp: edge_type_colors[i % len(edge_type_colors)]
             for i, gp in enumerate(edge_types)}
 
-    G = nx.from_pandas_edgelist(
-        network_df,
-        source="source",
-        target="target",
-        edge_attr=["edge_type", edge_attr],
-        create_using=nx.DiGraph())
+    # A DiGraph holds one edge per ordered pair, so a single graph built from
+    # every program keeps only one of several programs that connect the same
+    # pair of groups. The nodes come from all programs, and the edges are drawn
+    # program by program, each from its own graph.
+    G = nx.DiGraph()
+    G.add_nodes_from(pd.unique(pd.concat(
+        [network_df["source"], network_df["target"]])).tolist())
+    gp_graphs = {}
+    for gp in edge_types:
+        rows = network_df[network_df["edge_type"] == gp]
+        gp_graph = nx.DiGraph()
+        gp_graph.add_edges_from(
+            (u, v, {edge_attr: w})
+            for u, v, w in zip(rows["source"], rows["target"], rows[edge_attr])
+            if show_self_loops or u != v)
+        gp_graphs[gp] = gp_graph
 
     # The layout is derived from the GRAPH, not from ´adata´. Sizing the circle
     # by the number of categories while placing the graph's nodes on it leaves
@@ -1373,7 +1504,7 @@ def visualize_communication_gp_network(
         if cat_key not in adata.obs:
             raise ValueError(f"´cat_key´ {cat_key!r} is not a column of "
                              "´adata.obs´.")
-        G.add_nodes_from(adata.obs[cat_key].unique().tolist())
+        G.add_nodes_from(adata.obs[cat_key].dropna().unique().tolist())
     node_list = sorted(G.nodes())
     n_nodes = len(node_list)
 
@@ -1396,22 +1527,28 @@ def visualize_communication_gp_network(
            for node, theta in angle_dict.items()}
     node_color = [cat_colors[node] for node in node_list]
 
-    # Partition the edges once. Self loops are drawn separately because they
-    # need ´arrows=False´ to render as a loop rather than a zero length arrow.
-    self_loops, other_edges = [], []
-    for u, v, edge_data in G.edges(data=True):
-        (self_loops if u == v else other_edges).append((u, v, edge_data))
+    # Several programs on one pair of groups would draw on top of each other,
+    # so each program after the first bends its arrows a little further.
+    rad_match = re.fullmatch(
+        r"\s*arc3\s*,\s*rad\s*=\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*",
+        connection_style)
 
-    def _draw(edges, arrows):
+    def _connection_style(gp_rank):
+        if rad_match is None or gp_rank == 0:
+            return connection_style
+        rad = float(rad_match.group(1))
+        # Bend further in the direction the first program already bends.
+        return f"arc3, rad = {rad + np.copysign(0.12 * gp_rank, rad or 1.):.3f}"
+
+    def _draw(gp_graph, edges, color, arrows, style):
         if not edges:
             return
         nx.draw_networkx_edges(
-            G,
+            gp_graph,
             pos,
             edgelist=[(u, v) for u, v, _ in edges],
             width=[d[edge_attr] * edge_width_scale for _, _, d in edges],
-            edge_color=[edge_type_color_dict[d["edge_type"]]
-                        for _, _, d in edges],
+            edge_color=[color] * len(edges),
             node_size=node_size,
             arrows=arrows,
             ax=ax,
@@ -1420,7 +1557,7 @@ def visualize_communication_gp_network(
             # it. Self loops render as loops either way.
             **({"arrowstyle": "-|>",
                 "arrowsize": 20,
-                "connectionstyle": connection_style} if arrows else {}))
+                "connectionstyle": style} if arrows else {}))
 
     nx.draw_networkx_nodes(G,
                            pos,
@@ -1428,8 +1565,16 @@ def visualize_communication_gp_network(
                            node_size=node_size,
                            node_color=node_color,
                            ax=ax)
-    _draw(other_edges, arrows=True)
-    _draw(self_loops, arrows=False)
+    for gp_rank, gp in enumerate(edge_types):
+        gp_graph = gp_graphs[gp]
+        # Self loops are drawn separately because they need ´arrows=False´ to
+        # render as a loop rather than a zero length arrow.
+        self_loops, other_edges = [], []
+        for u, v, edge_data in gp_graph.edges(data=True):
+            (self_loops if u == v else other_edges).append((u, v, edge_data))
+        color = edge_type_color_dict[gp]
+        _draw(gp_graph, other_edges, color, True, _connection_style(gp_rank))
+        _draw(gp_graph, self_loops, color, False, connection_style)
 
     # Labels are placed outside the circle and rotated to point outwards, so
     # they need the rendered text extent, which only exists after a draw.
@@ -1451,8 +1596,7 @@ def visualize_communication_gp_network(
         # order, which is salted per process, so the legend differed between
         # runs of the same script and silently dropped a gene program whose
         # only surviving edge was a self loop.
-        drawn = [gp for gp in edge_types
-                 if gp in {d["edge_type"] for _, _, d in G.edges(data=True)}]
+        drawn = [gp for gp in edge_types if gp_graphs[gp].number_of_edges()]
         handles = [Line2D([0, 1], [0, 1],
                           color=edge_type_color_dict[gp], lw=5)
                    for gp in drawn]

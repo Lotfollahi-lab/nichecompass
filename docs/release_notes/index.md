@@ -53,11 +53,31 @@ or earlier.
     models use it automatically; a model saved by 0.3.3 or earlier opts in with
     `prepare_gp_analysis()`. Raw inference (`get_latent_representation()`) is
     unchanged. Do not flip score columns by hand any more.
--   Communication strengths from `compute_communication_gp_network()` are divided by
-    the largest aggregated value (`normalize="global"`, the default) instead of
-    min-max rescaled, so each program's weakest pair of groups is kept instead of
-    being set to zero and dropped. `strength_unscaled` keeps the aggregated values;
-    no option repeats the old rescaling.
+-   Communication strengths from `compute_communication_gp_network()` now measure how
+    strongly a program acts per contact between two groups of cells, not in total,
+    which changes every communication network:
+    -   Only the receiving cell's activity enters. The sender is scored by its
+        expression of the program's source genes, and the receiver by its activity
+        times its expression of the target genes, both read in the program's
+        canonical direction; the activity and the target-gene term are each set to
+        zero where negative, instead of their product. A cell's activity marks the receiving end of a program,
+        so also multiplying in the sender's activity credited only senders that were
+        themselves receivers, which favoured pairs inside one niche.
+    -   Each ordered pair of groups gets the mean communication per edge of the
+        spatial graph (`aggregate="mean"`, the default) instead of the sum. The sum
+        grows with the size of a group and the length of a shared border, so large
+        niches and their self-loops dominated the networks. `aggregate="sum"` still
+        gives the total. Both are returned for every pair, with the number of edges
+        and an enrichment over the program's mean edge, and pairs connected by fewer
+        than `min_edges` edges (default 20) are omitted.
+    -   The spatial graph is the one the model was trained on (`n_neighbors=None`,
+        the default), so communication is attributed over the neighbourhood in which
+        the activities were learned. An integer `n_neighbors` still builds a
+        nearest-neighbour graph from the coordinates; the default used to be 90.
+    -   `strength` is divided by the largest value (`normalize="global"`, the
+        default) instead of min-max rescaled, so each program's weakest pair is kept
+        instead of being set to zero and dropped. `strength_unscaled` keeps the
+        unscaled values.
 
 #### New features
 
@@ -82,12 +102,15 @@ or earlier.
     settings next to the filtered one, handles zero-variance posteriors, missing
     labels and invalid comparisons, and plots refuse results that no longer match the
     model. See the [GP analysis guide](../user_guide/gene_program_analysis.md).
--   Cell-cell communication. `compute_communication_gp_network()` gains `sample_key`,
-    so that spatial neighbours are found within each sample only, and `normalize`;
-    it builds and caches its own neighbour graph, checks that the selected programs
-    are eligible, and computes products only on graph edges, which makes it faster.
-    `visualize_communication_gp_network()` pairs colours and labels correctly and
-    supports more than ten programs.
+-   Cell-cell communication. `compute_communication_gp_network()` gains `aggregate`,
+    `min_edges`, `normalize` and `sample_key`, which removes edges between samples;
+    it returns `mean_strength`, `total_strength`, `n_edges` and `enrichment` for every
+    pair of groups, checks that the selected programs are eligible, and computes
+    products only on graph edges, which makes it faster.
+    `visualize_communication_gp_network()` draws one arrow per program between two
+    groups (it drew only one of several programs that connect the same pair), gains
+    `show_self_loops`, pairs colours and labels correctly and supports more
+    than ten programs.
 -   Multi-GPU training (opt-in, `multi_gpu=True`): one process per GPU with
     `DistributedDataParallel`, launched with `torchrun` or an MPI launcher, with
     `batch_size_scaling="per_process"` (default) or `"global"` and optional runtime
