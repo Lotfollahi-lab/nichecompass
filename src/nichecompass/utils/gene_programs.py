@@ -2063,6 +2063,21 @@ def extract_gp_dict_from_omnipath_lr_interactions(
     lr_interaction_df = lr_interaction_df[
         lr_interaction_df["curation_effort"] >= min_curation_effort]
 
+    # A few interactions involve a protein for which OmniPath has no gene
+    # symbol, an unreviewed UniProt record such as an isoform entry. Such a
+    # protein cannot be matched to a measured gene, and its missing symbol
+    # arrives as None or NaN depending on the pandas and omnipath versions and
+    # on whether the table was read back from disk, so these interactions are
+    # dropped. The proteins involved also have reviewed records with symbols,
+    # so no ligand loses its program.
+    missing_symbol = (lr_interaction_df["genesymbol_intercell_source"].isna()
+                      | lr_interaction_df["genesymbol_intercell_target"].isna())
+    if missing_symbol.any():
+        print(f"Dropped {int(missing_symbol.sum())} OmniPath ligand-receptor "
+              "interactions in which the ligand or the receptor has no gene "
+              "symbol.")
+        lr_interaction_df = lr_interaction_df[~missing_symbol]
+
     # Group receptors by ligands
     grouped_lr_interaction_df = lr_interaction_df.groupby(
         "genesymbol_intercell_source")["genesymbol_intercell_target"].agg(
@@ -2073,7 +2088,7 @@ def extract_gp_dict_from_omnipath_lr_interactions(
         return [func(item) for item in lst]
 
     def resolve_protein_complexes(x):
-        if x:
+        if isinstance(x, str) and x:
             if "COMPLEX:" not in x:
                 return [x]
             else:

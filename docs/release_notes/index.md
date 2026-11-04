@@ -148,6 +148,14 @@ or earlier.
     expanded correctly when a reference is loaded for mapping.
 -   The API documentation names `extract_gp_dict_from_mebocost_ms_interactions`
     correctly.
+-   `extract_gp_dict_from_omnipath_lr_interactions` drops, with a message, the
+    ligand-receptor interactions in which OmniPath has no gene symbol for the ligand or
+    the receptor (11 of 4,208 curated ones in November 2026, all unreviewed UniProt
+    records; no ligand loses its program). When the missing symbol arrived as NaN, for
+    example from a table read back from disk, the extractor raised `TypeError`.
+-   decoupler 2.1.6 or later is required. Older versions download the human-mouse
+    ortholog table from an address EBI no longer serves, so mouse CollecTRI programs
+    failed with an HTTP 404 error.
 
 #### Documentation
 
