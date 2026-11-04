@@ -174,6 +174,9 @@ or earlier.
 -   All tutorials are updated for these changes, explain every analysis step, run
     from top to bottom and ship without outputs; a new tutorial builds the gene
     program mask from human PPI predictions alone.
+-   The installation guide shows how to install bedtools, which multimodal training
+    needs, in an environment without conda: the prebuilt Linux binary goes into the
+    environment's `bin` folder.
 [@sebastianbirk]
 
 ### 0.3.3 (15.05.2026)

@@ -55,6 +55,26 @@ If you want to install bedtools, we recommend to use conda:
 conda install bedtools=2.30.0 -c bioconda
 ```
 
+bedtools is a command-line program, not a Python package, so `pip` and `uv` cannot
+install it. In a [python-venv] environment without conda, on Linux x86-64, put the
+prebuilt binary that bedtools publishes into the environment's `bin` folder
+instead. Release 2.31.0 is the newest that comes with such a binary, and scglue,
+which runs bedtools for the multimodal functions, needs 2.29.2 or later:
+```
+curl -L -o ${/path/to/new/virtual/environment}/bin/bedtools https://github.com/arq5x/bedtools2/releases/download/v2.31.0/bedtools.static
+chmod +x ${/path/to/new/virtual/environment}/bin/bedtools
+${/path/to/new/virtual/environment}/bin/bedtools --version
+```
+scglue finds bedtools through the `PATH` of the running Python process.
+Activating the environment puts its `bin` folder there, but a Jupyter kernel
+started without activation may not have it, and `generate_multimodal_mapping_dict`
+then fails with `RuntimeError: bedtools exited with error code: 127`. In that case
+add the folder in the notebook before the call; no kernel restart is needed:
+```
+import os
+os.environ["PATH"] = "${/path/to/new/virtual/environment}/bin:" + os.environ["PATH"]
+```
+
 Alternatively, we have provided a conda environment file with all required
 external libraries for PyTorch 2.0.0 and CUDA 11.7, which you can use as:
 ```
