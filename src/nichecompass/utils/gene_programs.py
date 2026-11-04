@@ -1883,9 +1883,10 @@ def extract_gp_dict_from_nichenet_lrt_interactions(
     all_target_gene_scores_sorted = np.flip(all_target_gene_scores)
     all_gps_score_keep_threshold = all_target_gene_scores_sorted[int(
         (len(all_target_gene_scores_sorted) - 1) * keep_target_genes_ratio)]
+    # An element-wise comparison; ´DataFrame.applymap´, used here before, was
+    # removed in pandas 3.
     ligand_target_all_gps_score_keep_threshold_mask_df = (
-        ligand_target_matrix_df.applymap(
-        lambda x: x > all_gps_score_keep_threshold))
+        ligand_target_matrix_df > all_gps_score_keep_threshold)
     ligand_target_per_gp_score_keep_threshold_mask_df = (
         ligand_target_matrix_df.apply(
         lambda col: col > per_gp_score_keep_threshold[col.name], axis=0))
