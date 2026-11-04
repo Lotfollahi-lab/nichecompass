@@ -16,12 +16,13 @@ For the fastest installation experience for unimodal training, use the [uv]
 package manager within a [python-venv] environment. For example, run:
 
 ```
-python3 -m venv ${/path/to/new/virtual/environment}
+python3.11 -m venv ${/path/to/new/virtual/environment}
 source ${/path/to/new/virtual/environment}/bin/activate
 pip install uv
 ```
 where `${/path/to/new/virtual/environment}` should be replaced with the path
-where you want to install the virtual environment.
+where you want to install the virtual environment. Any Python 3.11 or later works
+in place of `python3.11`; a system `python3` is often older.
 
 ## Additional Libraries
 
@@ -75,11 +76,15 @@ import os
 os.environ["PATH"] = "${/path/to/new/virtual/environment}/bin:" + os.environ["PATH"]
 ```
 
-Alternatively, we have provided a conda environment file with all required
-external libraries for PyTorch 2.0.0 and CUDA 11.7, which you can use as:
+Alternatively, the conda environment file `environment.yaml` creates an environment
+with Python 3.11 and bedtools 2.30.0:
 ```
 conda env create -f environment.yaml
+conda activate nichecompass
 ```
+Install PyTorch, PyTorch Scatter and PyTorch Sparse into it with the commands above.
+The file no longer pins PyTorch: its earlier pins, PyTorch 2.0.0 with CUDA 11.7, have
+no conda builds for Python 3.11, which NicheCompass 1.0.0 requires.
 
 ## Installation from source
 

@@ -1,14 +1,8 @@
 name: nichecompass
 channels:
-  - pytorch
-  - pyg
-  - nvidia
+  - conda-forge
   - bioconda
 dependencies:
-  - python=3.10
+  - python=3.11
   - pip
-  - pytorch=2.0.0
-  - pytorch-scatter=2.1.1
-  - pytorch-sparse=0.6.17
-  - pytorch-cuda=11.7
   - bedtools=2.30.0
