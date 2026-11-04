@@ -34,6 +34,9 @@ dependencies = [
     "omnipath",
     "decoupler>=2.1.6",
     "numpy",
+    # anndata 0.12.7 and later require pandas below 3, and earlier anndata
+    # cannot write pandas 3 strings to h5ad, so saving a model would fail.
+    "pandas>=2.1,<3",
 ]
 optional-dependencies.dev = [
     "pre-commit",

@@ -153,6 +153,15 @@ or earlier.
     the receptor (11 of 4,208 curated ones in November 2026, all unreviewed UniProt
     records; no ligand loses its program). When the missing symbol arrived as NaN, for
     example from a table read back from disk, the extractor raised `TypeError`.
+-   pandas is required to be below 3. anndata 0.12.7 and later require pandas below 3,
+    and earlier anndata versions cannot write pandas 3 strings to `.h5ad`, so with
+    pandas 3 saving a model or an AnnData failed. The two places in NicheCompass that
+    pandas 3 breaks (`DataFrame.applymap` in the NicheNet extractor, and missing gene
+    symbols in the OmniPath extractor) are fixed too, so the cap can be lifted once
+    anndata supports pandas 3.
+-   The cell-type aggregation behind the chord plot gives every group one row per cell
+    type, zero where a cell type is absent. Under pandas 3 the absent ones were dropped,
+    so the plot paired the wrong cell types.
 -   decoupler 2.1.6 or later is required. Older versions download the human-mouse
     ortholog table from an address EBI no longer serves, so mouse CollecTRI programs
     failed with an HTTP 404 error.

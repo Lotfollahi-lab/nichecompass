@@ -47,3 +47,31 @@ def test_omnipath_programs_skip_proteins_without_a_gene_symbol(monkeypatch, tmp_
         plot_gp_gene_count_distributions=False)
     assert set(reloaded) == expected
     assert sorted(reloaded["IL2_ligand_receptor_GP"]["targets"]) == ["IL2RA", "IL2RB", "IL2RG"]
+
+
+def test_cell_type_aggregation_keeps_every_cell_type_in_every_group():
+    """Labels in adata.obs are categorical, and pandas 3 groupby drops absent
+    categories by default, so a group without some cell type lost its rows and
+    the chord plot, which reads rows by position, paired the wrong cell types."""
+    import anndata as ad
+    import scipy.sparse as sp
+    from nichecompass.utils import aggregate_obsp_matrix_per_cell_type
+
+    adata = ad.AnnData(np.zeros((6, 1), dtype=np.float32))
+    adata.obs["cell_type"] = pd.Categorical(["a", "a", "b", "b", "c", "c"],
+                                            categories=["a", "b", "c", "unused"])
+    adata.obs["niche"] = pd.Categorical(["n1", "n1", "n1", "n2", "n2", "n2"])
+    # n1 holds a and b, n2 holds b and c: each niche lacks one cell type.
+    adata.obsp["conn"] = sp.csr_matrix(np.ones((6, 6)) - np.eye(6))
+    grouped = aggregate_obsp_matrix_per_cell_type(
+        adata, obsp_key="conn", cell_type_key="cell_type", group_key="niche", agg_rows=True)
+    assert list(grouped.columns) == ["a", "b", "c"]
+    for niche in ("n1", "n2"):
+        block = grouped.loc[niche]
+        assert list(block.index) == ["a", "b", "c"]
+    # n2 holds no cell of type a, so its row of sending a-cells is all zero.
+    assert (grouped.loc["n2"].loc["a"] == 0).all()
+    assert grouped.loc["n1"].loc["a", "b"] == 4.0   # two a-cells, each with two b-neighbours
+    flat = aggregate_obsp_matrix_per_cell_type(
+        adata, obsp_key="conn", cell_type_key="cell_type", agg_rows=True)
+    assert list(flat.index) == ["a", "b", "c"] and list(flat.columns) == ["a", "b", "c"]

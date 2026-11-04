@@ -54,28 +54,30 @@ def aggregate_obsp_matrix_per_cell_type(
         n_cell_types if ´agg_rows == False´, else n_cell_types x n_cell_types).
     """
     n_obs = len(adata)
-    n_cell_types = adata.obs[cell_type_key].nunique()
-    sorted_cell_types = sorted(adata.obs[cell_type_key].unique().tolist())
-
-    cell_type_label_encoder = {k: v for k, v in zip(
-        sorted_cell_types,
-        range(n_cell_types))}
+    sorted_cell_types = sorted(
+        adata.obs[cell_type_key].dropna().unique().tolist())
+    n_cell_types = len(sorted_cell_types)
 
     # Retrieve non zero indices and non zero values, and create row-wise
-    # observation cell type index
+    # observation cell type index. The index is taken as codes against the
+    # sorted cell types: mapping the labels instead turned an unused category
+    # of a categorical column into NaN, which cannot index an array. A
+    # neighbour without a label gets -1 and is left out.
     nz_obsp_idx = adata.obsp[obsp_key].nonzero()
-    neighbor_cell_type_index = adata.obs[cell_type_key].iloc[nz_obsp_idx[1]].map(
-        cell_type_label_encoder).values
+    neighbor_cell_type_index = pd.Categorical(
+        np.asarray(adata.obs[cell_type_key], dtype=object)[nz_obsp_idx[1]],
+        categories=sorted_cell_types).codes
     adata.obsp[obsp_key].eliminate_zeros() # In some sparse reps 0s can appear
     nz_obsp = adata.obsp[obsp_key].data
+    labelled = neighbor_cell_type_index >= 0
 
     # Use non zero indices, non zero values and row-wise observation cell type
     # index to construct new df with cell types as columns and row-wise
     # aggregated values per cell type index as values
     cell_type_agg = np.zeros((n_obs, n_cell_types))
     np.add.at(cell_type_agg,
-              (nz_obsp_idx[0], neighbor_cell_type_index),
-              nz_obsp)
+              (nz_obsp_idx[0][labelled], neighbor_cell_type_index[labelled]),
+              nz_obsp[labelled])
     cell_type_agg_df = pd.DataFrame(
         cell_type_agg,
         columns=sorted_cell_types)
@@ -90,16 +92,28 @@ def aggregate_obsp_matrix_per_cell_type(
     if agg_rows:
         # In addition, aggregate values across rows to get a
         # (n_cell_types x n_cell_types) df
+        # The labels come from ´adata.obs´ and are usually categorical, and
+        # which categories a groupby keeps changed between pandas versions:
+        # pandas 2 kept every category, pandas 3 only those present. So only
+        # the present ones are aggregated, and every group is then given one
+        # row per cell type, zero where a cell type is absent, in the order of
+        # the columns, because the chord plot reads each group's rows by
+        # position against its columns.
         if group_key is not None:
+            sorted_groups = sorted(
+                adata.obs[group_key].dropna().unique().tolist())
             cell_type_agg_df = cell_type_agg_df.groupby(
-                [group_key, cell_type_key]).sum()
+                [group_key, cell_type_key], observed=True).sum()
+            cell_type_agg_df = cell_type_agg_df.reindex(
+                pd.MultiIndex.from_product([sorted_groups, sorted_cell_types],
+                                           names=[group_key, cell_type_key]),
+                fill_value=0.)
         else:
-            cell_type_agg_df = cell_type_agg_df.groupby(cell_type_key).sum()
+            cell_type_agg_df = cell_type_agg_df.groupby(
+                cell_type_key, observed=True).sum()
+            cell_type_agg_df = cell_type_agg_df.reindex(sorted_cell_types,
+                                                        fill_value=0.)
 
-        # Sort index to have same order as columns
-        cell_type_agg_df = cell_type_agg_df.loc[
-            sorted(cell_type_agg_df.index.tolist()), :]
-        
     return cell_type_agg_df
 
 
