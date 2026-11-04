@@ -107,7 +107,7 @@ or earlier.
     importance of every member), `get_gp_activities()` (posterior means and standard
     deviations) are new, and `add_active_gp_scores_to_obs()` now writes canonical
     activities. `run_differential_gp_tests()`
-    gains `direction`, `return_all`, `n_sample` and `seed`, reports `p_higher`,
+    gains `direction`, `return_all`, `orientation` and `adata_atac`, reports `p_higher`,
     `p_lower`, `mean_difference` and group sizes, stores the complete table and the
     settings next to the filtered one, handles zero-variance posteriors, missing
     labels and invalid comparisons, and plots refuse results that no longer match the
@@ -178,8 +178,10 @@ or earlier.
 -   New user guides for human PPI gene programs, gene program analysis, multi-GPU
     training and reference mapping.
 -   All tutorials are updated for these changes, explain every analysis step, run
-    from top to bottom and ship without outputs; a new tutorial builds the gene
+    from top to bottom and ship with the outputs of a full run; a new tutorial builds the gene
     program mask from human PPI predictions alone.
+-   `environment.yaml` creates a conda environment with Python 3.11 and bedtools and no
+    longer pins PyTorch, whose pinned 2.0.0 had no conda builds for Python 3.11.
 -   The installation guide shows how to install bedtools, which multimodal training
     needs, in an environment without conda: the prebuilt Linux binary goes into the
     environment's `bin` folder.
