@@ -164,7 +164,8 @@ or earlier.
     so the plot paired the wrong cell types.
 -   decoupler 2.1.6 or later is required. Older versions download the human-mouse
     ortholog table from an address EBI no longer serves, so mouse CollecTRI programs
-    failed with an HTTP 404 error.
+    failed with an HTTP 404 error. decoupler 2.1.6 requires Python 3.11, so NicheCompass
+    1.0.0 does too; 0.3.3 ran on Python 3.10.
 
 #### Documentation
 

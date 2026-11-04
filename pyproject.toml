@@ -7,7 +7,7 @@ name = "nichecompass"
 version = "1.0.0"
 description = "End-to-end analysis of spatial multi-omics data"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = {file = "LICENSE"}
 authors = [
     {name = "Sebastian Birk"},
@@ -22,7 +22,8 @@ classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
   "Natural Language :: English",
-  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
   "Operating System :: POSIX :: Linux",
   "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
@@ -32,6 +33,8 @@ dependencies = [
     "scanpy",
     "torch-geometric",
     "omnipath",
+    # 2.1.6 fixes the ortholog download that mouse CollecTRI programs need; it
+    # requires Python 3.11, and so does NicheCompass.
     "decoupler>=2.1.6",
     "numpy",
     # anndata 0.12.7 and later require pandas below 3, and earlier anndata

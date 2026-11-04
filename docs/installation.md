@@ -1,6 +1,7 @@
 # Installation
 
-NicheCompass is available for Python 3.10. We recommend to train NicheCompass
+NicheCompass 1.0.0 requires Python 3.11 or later, as decoupler 2.1.6, which it needs,
+does. We recommend to train NicheCompass
 models on a device with GPU support. Apple silicon is not supported. Training on
 several GPUs (`multi_gpu=True`, one process per GPU started with `torchrun` or an
 MPI launcher) is available from 1.0.0 on; see the
