@@ -720,6 +720,10 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
             # Set gp scores of inactive gene programs to 0 to not affect 
             # graph decoder
             z[:, ~active_gp_mask] = 0                
+            # The same programs leave the Kullback-Leibler divergence: the
+            # decoders no longer see them, so they describe nothing the loss
+            # should regularise.
+            output["kl_gp_mask"] = active_gp_mask
 
         if decoder == "omics":
             with torch.no_grad():
@@ -1100,13 +1104,17 @@ class VGPGAE(nn.Module, BaseModuleMixin, VGAEModuleMixin):
         loss_dict = {}
 
         # Compute Kullback-Leibler divergence loss for edge and node batch
+        # Only the programs the decoders saw enter it: once pruning has
+        # started, the pruned ones are set to zero before the decoders.
         loss_dict["kl_reg_loss"] = compute_kl_reg_loss(
             mu=node_model_output["mu"],
-            logstd=node_model_output["logstd"])
+            logstd=node_model_output["logstd"],
+            gp_mask=node_model_output.get("kl_gp_mask"))
         if self.include_edge_kl_loss_:
             loss_dict["kl_reg_loss"] += compute_kl_reg_loss(
                 mu=edge_model_output["mu"],
-                logstd=edge_model_output["logstd"])
+                logstd=edge_model_output["logstd"],
+                gp_mask=edge_model_output.get("kl_gp_mask"))
 
         # Compute edge reconstruction binary cross entropy loss for edge batch
         loss_dict["edge_recon_loss"] = (

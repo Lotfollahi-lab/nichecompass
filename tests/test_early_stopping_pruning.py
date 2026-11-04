@@ -1,7 +1,8 @@
 """Early stopping across the start of gene program pruning.
 
 Pruning starts after ´n_epochs_all_gps´ epochs and makes the loss jump,
-because the programs it removes stop contributing to the reconstruction. If
+because the programs it removes stop contributing to the reconstruction and to
+the Kullback-Leibler divergence. If
 early stopping remembers the best value from before, it judges every pruned
 epoch against an unpruned model: an unpruned state stays the best one, is
 reloaded at the end, and training stops ´patience´ epochs after pruning began.
@@ -284,3 +285,65 @@ def test_reconstructed_feature_lists_follow_the_restored_masks(monkeypatch):
         ).flatten().tolist()
         assert module.features_idx_dict_[
             f"{side}_reconstructed_rna_idx"] == implied
+
+
+def test_masked_divergence_is_that_of_the_selected_programs():
+    from nichecompass.modules.losses import compute_kl_reg_loss
+    generator = torch.Generator().manual_seed(0)
+    mu = torch.randn(5, 4, generator=generator)
+    logstd = 0.3 * torch.randn(5, 4, generator=generator)
+    mask = torch.tensor([True, False, True, False])
+    masked = compute_kl_reg_loss(mu, logstd, gp_mask=mask)
+    assert torch.allclose(masked, compute_kl_reg_loss(mu[:, mask], logstd[:, mask]))
+    # The divergence of every program is nonnegative, so leaving some out
+    # can only lower the sum.
+    assert masked < compute_kl_reg_loss(mu, logstd)
+    assert compute_kl_reg_loss(mu, logstd, gp_mask=torch.zeros(4, dtype=torch.bool)) == 0
+
+
+def test_pruned_programs_leave_the_divergence(monkeypatch):
+    """Pruned programs are set to zero before the decoders, so in 0.3.3 they
+    stayed in the Kullback-Leibler divergence while shaping no
+    reconstruction. Now the divergence covers exactly the programs the
+    decoders see, and every program until pruning starts."""
+    from nichecompass.modules import vgpgae as vgpgae_module
+    from nichecompass.modules.losses import compute_kl_reg_loss
+
+    def train(n_epochs_all_gps, cut_program=None):
+        seen = []
+
+        def recording(mu, logstd, gp_mask=None):
+            seen.append(None if gp_mask is None else gp_mask.detach().clone())
+            return compute_kl_reg_loss(mu, logstd, gp_mask=gp_mask)
+
+        monkeypatch.setattr(vgpgae_module, "compute_kl_reg_loss", recording)
+        model = _model()
+        if cut_program is not None:
+            # A program without loadings is inactive, so pruning removes it on
+            # its first pruned forward pass.
+            k = list(model.adata.uns[model.gp_names_key_]).index(cut_program)
+            with torch.no_grad():
+                for decoder in (model.model.source_rna_decoder,
+                                model.model.target_rna_decoder):
+                    decoder.nb_means_normalized_decoder.masked_l.weight[:, k] = 0
+        model.train(n_epochs=2, n_epochs_all_gps=n_epochs_all_gps,
+                    edge_val_ratio=0, node_val_ratio=0, node_batch_size=8,
+                    edge_batch_size=8, use_cuda_if_available=False,
+                    lambda_l1_addon=0, lambda_edge_recon=1,
+                    lambda_gene_expr_recon=1, monitor=False)
+        return model, seen
+
+    _, before_pruning = train(n_epochs_all_gps=2)
+    assert before_pruning and all(mask is None for mask in before_pruning)
+
+    model, pruned = train(n_epochs_all_gps=0, cut_program="ab")
+    k = list(model.adata.uns[model.gp_names_key_]).index("ab")
+    assert pruned and all(mask is not None for mask in pruned)
+    # Activity is weighted by the running mean absolute activity, which starts
+    # at zero, so the very first pruned pass still counts every program; from
+    # then on the program without loadings is out of the divergence.
+    assert not bool(pruned[-1][k]) and sum(not bool(mask[k]) for mask in pruned) >= len(pruned) - 2
+    assert all(bool(mask.any()) for mask in pruned)
+    # The last mask is the one that zeroes the latent features at the end.
+    assert torch.equal(pruned[-1], model.model.get_active_gp_mask())
+

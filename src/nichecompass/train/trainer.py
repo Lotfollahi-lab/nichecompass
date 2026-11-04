@@ -726,7 +726,7 @@ class Trainer(BaseTrainerMixin):
                 self.use_only_active_gps = True
             # Pruning makes the loss jump in its first epoch, because the
             # gene programs it removes stop contributing to the
-            # reconstruction. Early stopping that remembered a value from
+            # reconstruction and to the Kullback-Leibler divergence. Early stopping that remembered a value from
             # before would judge every pruned epoch against an unpruned model:
             # it would keep an unpruned state as the best one, reload it at
             # the end, and stop ´patience´ epochs after pruning began. So it

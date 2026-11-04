@@ -300,7 +300,8 @@ def compute_gp_group_lasso_reg_loss(model: nn.Module) -> torch.Tensor:
 
 
 def compute_kl_reg_loss(mu: torch.Tensor,
-                        logstd: torch.Tensor) -> torch.Tensor:
+                        logstd: torch.Tensor,
+                        gp_mask: Optional[torch.Tensor]=None) -> torch.Tensor:
     """
     Compute Kullback-Leibler divergence as per Kingma, D. P. & Welling, M. 
     Auto-Encoding Variational Bayes. arXiv [stat.ML] (2013). Equation (10).
@@ -319,12 +320,21 @@ def compute_kl_reg_loss(mu: torch.Tensor,
     logstd:
         Log standard deviations of the normal latent distribution of each node
         (dim: n_nodes_current_batch, n_gps).
+    gp_mask:
+        Boolean mask over the gene programs (dim: n_gps). If given, only the
+        programs it marks enter the divergence. Pruned gene programs are
+        excluded this way: their latent features are set to zero before the
+        decoders, so they no longer shape any reconstruction, and keeping them
+        in the divergence would let them add a term that no longer describes
+        the model.
 
     Returns
     ----------
     kl_reg_loss:
         Kullback-Leibler divergence.
     """
+    if gp_mask is not None:
+        mu, logstd = mu[:, gp_mask], logstd[:, gp_mask]
     # Sum over n_gps and mean over n_nodes_current_batch
     kl_reg_loss = -0.5 * torch.mean(
     torch.sum(1 + 2 * logstd - mu ** 2 - torch.exp(logstd) ** 2, 1))

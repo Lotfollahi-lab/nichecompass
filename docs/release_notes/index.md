@@ -23,6 +23,16 @@ or earlier.
     rate, early stopping starts with the first pruned epoch, and the best state brings
     back the decoder masks of its own epoch. `prune_aware_early_stopping=False`
     restores the behaviour of 0.3.3 exactly.
+-   Pruned gene programs no longer enter the Kullback-Leibler term of the loss. Pruning
+    sets their latent features to zero before the decoders, so they shaped no
+    reconstruction, but 0.3.3 still added their divergence to the training loss and to
+    the loss early stopping reads. The term now covers exactly the programs the decoders
+    see; until pruning starts every program counts, as before. The term is weighted 1,
+    against 300 and 500,000 for the reconstruction terms, so the effect is small: on a
+    synthetic tissue it lowered the Kullback-Leibler term by 3 to 23% and the loss early
+    stopping reads by about 0.04%, and the same number of programs was pruned. The
+    latent values of pruned programs, which no analysis reads, are no longer pulled
+    towards the prior. No option restores the old term.
 -   Categorical covariate embeddings now enter the encoder as well as the decoders by
     default (`cat_covariates_embeds_injection=["encoder", "gene_expr_decoder",
     "chrom_access_decoder"]`). Only a reference trained this way lets query mapping
