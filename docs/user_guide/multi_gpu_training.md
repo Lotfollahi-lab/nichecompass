@@ -28,6 +28,18 @@ model.train(n_epochs=400,
 `torchrun` runs the whole script once per GPU. `multi_gpu=True` without such a launch raises immediately
 with an explanatory error, rather than silently training on one device.
 
+`scripts/train_humanppi_multi_gpu.py` in this repository is a complete example: it trains the model of the
+human PPI tutorial (`mouse_cns_single_sample_humanppi.ipynb`) with `multi_gpu=True` and `profile="phase"`,
+and saves the model from the main process only. It reads its folders from the environment variables
+`GP_DATA_DIR`, `SO_DATA_DIR`, `GA_DATA_DIR` and `OUT_DIR` (and `HUMANPPI_PRECISION`, default `"90"`),
+and needs the human PPI caches in `GP_DATA_DIR` before it starts (section 7); `SO_DATA_DIR` must hold
+`starmap_plus_mouse_cns_batch1.h5ad`, the tutorial's data:
+
+```bash
+GP_DATA_DIR=<gp_data_dir> SO_DATA_DIR=<so_data_dir> GA_DATA_DIR=<ga_data_dir> OUT_DIR=<out_dir> \
+    torchrun --nproc_per_node=4 scripts/train_humanppi_multi_gpu.py
+```
+
 ### On an HPC cluster
 
 Ready-to-edit submitters are in the reproducibility repository at

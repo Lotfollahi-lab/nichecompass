@@ -180,6 +180,8 @@ or earlier.
 -   All tutorials are updated for these changes, explain every analysis step, run
     from top to bottom and ship with the outputs of a full run; a new tutorial builds the gene
     program mask from human PPI predictions alone.
+-   `scripts/train_humanppi_multi_gpu.py` trains the model of the human PPI tutorial on
+    several GPUs; the multi-GPU guide shows how to launch it.
 -   `environment.yaml` creates a conda environment with Python 3.11 and bedtools and no
     longer pins PyTorch, whose pinned 2.0.0 had no conda builds for Python 3.11.
 -   The installation guide shows how to install bedtools, which multimodal training

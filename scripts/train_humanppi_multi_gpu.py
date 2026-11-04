@@ -7,8 +7,7 @@ import squidpy as sq
 from nichecompass.models import NicheCompass
 from nichecompass.train import is_main_process
 from nichecompass.utils import (add_gps_from_gp_dict_to_adata,
-                                extract_gp_dict_from_humanppi_interactions,
-                                filter_and_combine_gp_dict_gps_v2)
+                                extract_gp_dict_from_humanppi_interactions)
 
 GP_DIR = os.environ["GP_DATA_DIR"]
 SO_DIR = os.environ["SO_DATA_DIR"]
@@ -33,8 +32,9 @@ humanppi_gp_dict = extract_gp_dict_from_humanppi_interactions(
     ppi_network_file_path=network_file,
     gene_orthologs_mapping_file_path=f"{GA_DIR}/human_mouse_gene_orthologs.csv",
     plot_gp_gene_count_distributions=False)
-combined_gp_dict = filter_and_combine_gp_dict_gps_v2([humanppi_gp_dict],
-                                                     verbose=False)
+# The programs are not combined, as in the human PPI tutorial: combining merges
+# programs with the same source genes into one ´<GENE>_combined_GP´, whose name
+# no longer carries the interaction class.
 
 # 2. Data and spatial graph
 adata = sc.read_h5ad(f"{SO_DIR}/starmap_plus_mouse_cns_batch1.h5ad")
@@ -43,7 +43,7 @@ sq.gr.spatial_neighbors(adata, coord_type="generic", spatial_key="spatial",
 adata.obsp["spatial_connectivities"] = adata.obsp[
     "spatial_connectivities"].maximum(
         adata.obsp["spatial_connectivities"].T)
-add_gps_from_gp_dict_to_adata(gp_dict=combined_gp_dict, adata=adata,
+add_gps_from_gp_dict_to_adata(gp_dict=humanppi_gp_dict, adata=adata,
                               min_genes_per_gp=2,
                               min_source_genes_per_gp=1,
                               min_target_genes_per_gp=1)
