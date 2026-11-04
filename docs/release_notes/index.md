@@ -153,12 +153,13 @@ or earlier.
     the receptor (11 of 4,208 curated ones in November 2026, all unreviewed UniProt
     records; no ligand loses its program). When the missing symbol arrived as NaN, for
     example from a table read back from disk, the extractor raised `TypeError`.
--   pandas is required to be below 3. anndata 0.12.7 and later require pandas below 3,
+-   pandas is required to be below 3. anndata 0.12.7 to 0.12.x require pandas below 3,
     and earlier anndata versions cannot write pandas 3 strings to `.h5ad`, so with
     pandas 3 saving a model or an AnnData failed. The two places in NicheCompass that
     pandas 3 breaks (`DataFrame.applymap` in the NicheNet extractor, and missing gene
     symbols in the OmniPath extractor) are fixed too, so the cap can be lifted once
-    anndata supports pandas 3.
+    NicheCompass is tested with anndata 0.13, which accepts pandas 3 but needs
+    Python 3.12.
 -   The cell-type aggregation behind the chord plot gives every group one row per cell
     type, zero where a cell type is absent. Under pandas 3 the absent ones were dropped,
     so the plot paired the wrong cell types.
@@ -166,6 +167,11 @@ or earlier.
     ortholog table from an address EBI no longer serves, so mouse CollecTRI programs
     failed with an HTTP 404 error. decoupler 2.1.6 requires Python 3.11, so NicheCompass
     1.0.0 does too; 0.3.3 ran on Python 3.10.
+-   scanpy 1.12.0 is excluded. With anndata 0.13, which returns `obs` columns as pandas
+    arrays and which pip installs on Python 3.12 and later, scanpy 1.12.0 read numeric
+    values as colours in spot plots, so `generate_enriched_gp_info_plots` failed in every
+    sample's feature space with `ValueError: Invalid RGBA argument`; scanpy 1.12.1 fixed
+    it.
 
 #### Documentation
 

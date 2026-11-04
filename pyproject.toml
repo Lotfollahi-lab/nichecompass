@@ -30,15 +30,20 @@ classifiers = [
 dependencies = [
     "mlflow",
     "pyreadr",
-    "scanpy",
+    # anndata 0.13 returns obs columns as pandas arrays, and scanpy 1.12.0 then
+    # takes numeric values for colours in spot plots (sc.pl.spatial with
+    # spot_size), so every per-sample GP score plot failed; 1.12.1 fixed it.
+    "scanpy!=1.12.0",
     "torch-geometric",
     "omnipath",
     # 2.1.6 fixes the ortholog download that mouse CollecTRI programs need; it
     # requires Python 3.11, and so does NicheCompass.
     "decoupler>=2.1.6",
     "numpy",
-    # anndata 0.12.7 and later require pandas below 3, and earlier anndata
+    # anndata 0.12.7 to 0.12.x require pandas below 3, and earlier anndata
     # cannot write pandas 3 strings to h5ad, so saving a model would fail.
+    # anndata 0.13 (Python 3.12 and later) accepts pandas 3, but NicheCompass
+    # has not been tested with it.
     "pandas>=2.1,<3",
 ]
 optional-dependencies.dev = [

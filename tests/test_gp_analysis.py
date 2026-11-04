@@ -326,6 +326,39 @@ def test_plot_scores_and_signed_annotations_agree(model, monkeypatch):
     assert captured["adata"].uns["source_neg_target_genes_top_gene_signs"].tolist() == ["-"]
 
 
+@pytest.mark.parametrize("feature_space", ["a", "latent"])
+def test_info_plots_colour_cells_by_their_score(model, monkeypatch, feature_space):
+    """Drawn for real, the info plots show each cell's score on a colour scale.
+
+    The tests above replace the drawing with a stub. With anndata 0.13, which
+    returns obs columns as pandas arrays, scanpy 1.12.0 took the scores for
+    colour names in spot plots, so every plot in a sample's tissue raised
+    ´ValueError: Invalid RGBA argument´; the package now excludes that scanpy.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import nichecompass.utils.analysis as analysis
+    means = np.tile(np.arange(8.)[:, None], (1, 6))
+    monkeypatch.setattr(model, "get_latent_representation", fixed_posterior(model, means, np.zeros_like(means)))
+    model.adata.obsm["spatial"] = np.column_stack([np.arange(8.), np.zeros(8)])
+    model.adata.obsm["X_umap"] = model.adata.obsm["spatial"].copy()
+    model.run_differential_gp_tests("group", "a", selected_gps=["source_neg"],
+                                    direction="higher", n_sample=10)
+    figures = []
+    subplots = plt.subplots
+    monkeypatch.setattr(analysis.plt, "subplots",
+                        lambda *args, **kwargs: figures.append(subplots(*args, **kwargs)) or figures[-1])
+    analysis.generate_enriched_gp_info_plots("test", model, "group",
+        "nichecompass_differential_gp_test_results", "group", {"a": "red", "b": "blue"},
+        feature_spaces=[feature_space], spot_size=1.)
+    score_ax = np.atleast_2d(figures[0][1])[0, 1]
+    cells = slice(0, 4) if feature_space == "a" else slice(None)
+    np.testing.assert_allclose(np.sort(np.asarray(score_ax.collections[0].get_array())),
+                               np.sort(-means[cells, 0]))
+    plt.close("all")
+
+
 def test_communication_paired_raw_convention_and_zero_expression(model):
     from nichecompass.utils import compute_communication_gp_network
     # Align source/target signs to produce nonzero communication strengths.
